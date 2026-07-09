@@ -7,6 +7,10 @@
 bin/
 obj/
 
+# local tool configs
+.deepcode/
+opencode.json
+
 # User-specific files
 *.rsuser
 *.suo
