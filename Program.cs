@@ -18,7 +18,7 @@ namespace RoslynIndexer;
 
 record DirtyManifest(int SchemaVersion, List<string> DirtyFiles, List<string> DeletedFiles, string MarkedAt);
 record DeclarationSite(string? File, int Line);
-record ReferenceDetail(string? File, int Line, string Project, string? ContainingSymbol, string LocationProvenance);
+record ReferenceDetail(string? File, int Line, string Project, string? ContainingSymbol, string LocationProvenance, string Kind, string KindProvenance);
 record DiscoveredType(string SymbolId, string Kind, string KindCategory, string Namespace, string Project,
     string SourceFile, string Accessibility, string? Inherits, List<string> Implements, List<string> Dependencies);
 record FanSummary(int Count, List<string> Sources, Dictionary<string, int> ByProject);
@@ -155,6 +155,9 @@ public class Program
                 case "structure":
                     await StructureAsync(args);
                     break;
+                case "verify-facts":
+                    await VerifyFactsAsync();
+                    break;
                 default:
                     Console.WriteLine("Required arguments:");
                     Console.WriteLine("  --solution=PATH      Path to the .sln file (or INDEXER_SOLUTION_PATH env var)");
@@ -171,6 +174,7 @@ public class Program
                     Console.WriteLine("  --mode=status");
                     Console.WriteLine("  --mode=lint");
                     Console.WriteLine("  --mode=impact");
+                    Console.WriteLine("  --mode=verify-facts [--json]");
                     break;
             }
         }
@@ -361,12 +365,24 @@ public class Program
         parts.Add($"kind:{namedType.TypeKind}");
         parts.Add($"ns:{namedType.ContainingNamespace?.ToDisplayString() ?? ""}");
 
+        if (namedType.BaseType != null && namedType.BaseType.SpecialType != SpecialType.System_Object)
+            parts.Add($"base:{ResolveTypeName(namedType.BaseType)}");
+
+        parts.AddRange(namedType.AllInterfaces
+            .Select(i => $"iface:{ResolveTypeName(i)}")
+            .OrderBy(x => x));
+
+        parts.AddRange(namedType.GetAttributes()
+            .Select(a => $"attr:{a.AttributeClass?.Name ?? ""}")
+            .OrderBy(x => x));
+
         parts.AddRange(namedType.TypeParameters
             .Select(tp => $"tparam:{tp.Name}|{tp.Variance}")
             .OrderBy(x => x));
 
         parts.AddRange(namedType.GetMembers()
             .OfType<INamedTypeSymbol>()
+            .Where(m => m.DeclaredAccessibility != Accessibility.Private && m.DeclaredAccessibility != Accessibility.ProtectedAndFriend)
             .Select(t => $"nested:{ResolveTypeName(t)}")
             .OrderBy(x => x));
 
@@ -378,17 +394,20 @@ public class Program
 
         parts.AddRange(namedType.GetMembers()
             .OfType<IFieldSymbol>()
+            .Where(f => f.DeclaredAccessibility != Accessibility.Private && f.DeclaredAccessibility != Accessibility.ProtectedAndFriend)
             .Select(FormatField)
             .OrderBy(x => x));
 
         parts.AddRange(namedType.GetMembers()
             .OfType<IPropertySymbol>()
+            .Where(p => p.DeclaredAccessibility != Accessibility.Private && p.DeclaredAccessibility != Accessibility.ProtectedAndFriend)
             .Select(FormatProperty)
             .OrderBy(x => x));
 
         parts.AddRange(namedType.GetMembers()
             .OfType<IMethodSymbol>()
             .Where(m => m.MethodKind == MethodKind.Ordinary)
+            .Where(m => m.DeclaredAccessibility != Accessibility.Private && m.DeclaredAccessibility != Accessibility.ProtectedAndFriend)
             .Select(FormatMethod)
             .OrderBy(x => x));
 
@@ -417,6 +436,33 @@ public class Program
             if (constraints.Count > 0)
                 parts.Add($"tparam_constraint:{tp.Name}:{string.Join(",", constraints)}");
         }
+
+        var externalTypeFqns = new HashSet<string>();
+        foreach (var member in namedType.GetMembers())
+        {
+            switch (member)
+            {
+                case IFieldSymbol field:
+                    externalTypeFqns.Add(ResolveTypeName(field.Type));
+                    break;
+                case IPropertySymbol prop:
+                    externalTypeFqns.Add(ResolveTypeName(prop.Type));
+                    break;
+                case IMethodSymbol method when method.MethodKind == MethodKind.Constructor:
+                    foreach (var p in method.Parameters)
+                        externalTypeFqns.Add(ResolveTypeName(p.Type));
+                    break;
+                case IMethodSymbol method when method.MethodKind == MethodKind.Ordinary:
+                    foreach (var p in method.Parameters)
+                        externalTypeFqns.Add(ResolveTypeName(p.Type));
+                    externalTypeFqns.Add(ResolveTypeName(method.ReturnType));
+                    break;
+            }
+        }
+
+        parts.AddRange(externalTypeFqns
+            .Select(f => $"ext:{f}")
+            .OrderBy(x => x));
 
         var canonicalized = string.Join("|", parts);
         var hash = XxHash3.Hash(Encoding.UTF8.GetBytes(canonicalized));
@@ -1003,6 +1049,7 @@ public class Program
         foreach (var refLoc in allRefs)
         {
             string? containingSymbol = null;
+            var refKind = "type_reference";
             try
             {
                 var doc = refLoc.Document;
@@ -1011,7 +1058,15 @@ public class Program
                 {
                     var root = await syntaxTree.GetRootAsync();
                     var token = root.FindToken(refLoc.Location.SourceSpan.Start);
-                    var node = token.Parent;
+                    var refNode = token.Parent;
+                    refKind = refNode switch
+                    {
+                        ObjectCreationExpressionSyntax => "object_creation",
+                        InvocationExpressionSyntax => "invocation",
+                        SimpleBaseTypeSyntax => "base_list",
+                        _ => "type_reference"
+                    };
+                    var node = refNode;
                     while (node != null && !(node is BaseTypeDeclarationSyntax
                         || node is MethodDeclarationSyntax
                         || node is PropertyDeclarationSyntax
@@ -1042,7 +1097,9 @@ public class Program
                 Line: lineSpan.StartLinePosition.Line + 1,
                 Project: refLoc.Document.Project.Name,
                 ContainingSymbol: containingSymbol,
-                LocationProvenance: "compiler_proved"
+                LocationProvenance: "compiler_proved",
+                Kind: refKind,
+                KindProvenance: "indexer_observed"
             ));
         }
 
@@ -1137,6 +1194,7 @@ public class Program
             referenceBuckets = ProvenanceCompilerProved,
             generatedReferenceCount = ProvenanceIndexerObserved,
             selfReferenceCount = selfReferenceCount > 0 ? ProvenanceCompilerProved : ProvenanceIndexerObserved,
+            externalReferenceCount = ProvenanceIndexerObserved,
             blindSpots = ProvenanceNotDeterminable
         };
 
@@ -1158,7 +1216,12 @@ public class Program
                 symbol = symbolName,
                 resolved = true,
                 declarationSites,
-                referenceCount = allRefs.Count,
+                referenceCount = new
+                {
+                    external = allRefs.Count - selfReferenceCount - generatedCount,
+                    self = selfReferenceCount,
+                    generatedCode = generatedCount
+                },
                 references = referenceDetails,
                 uniqueFiles = uniqueFilesSet.Count,
                 uniqueProjects = uniqueProjectsSet.Count,
@@ -1171,6 +1234,7 @@ public class Program
                 },
                 generatedReferenceCount = generatedCount,
                 selfReferenceCount,
+                externalReferenceCount = allRefs.Count - selfReferenceCount - generatedCount,
                 blindSpots,
                 provenance = "compiler_proved",
                 fieldProvenance
@@ -1218,12 +1282,13 @@ public class Program
 
         if (symbol is INamedTypeSymbol namedType)
         {
-            var surface = ComputeSurfaceHash(namedType);
-            var dependency = ComputeDependencyHash(namedType);
+            var surfaceHash = ComputeSurfaceHash(namedType);
+            var dependencyHash = ComputeDependencyHash(namedType);
+            var hashedDimensions = new[] { "baseType", "interfaces", "attributes", "ctors:all", "members:nonPrivate", "fieldTypes:all", "propertyTypes:all", "methodSignatures:all" };
             if (_useJson)
-                WriteJsonResult("fingerprint", new { symbol = symbolName, fingerprint = new { surface, dependency }, provenance = "compiler_proved" });
+                WriteJsonResult("fingerprint", new { symbol = symbolName, fingerprint = new { surfaceHash, dependencyHash, hashedDimensions }, provenance = "compiler_proved" });
             else
-                Console.WriteLine($"Surface:     {surface}\nDependency:  {dependency}");
+                Console.WriteLine($"SurfaceHash:     {surfaceHash}\nDependencyHash:  {dependencyHash}");
         }
         else
         {
@@ -1287,8 +1352,8 @@ public class Program
                     if (!curatedSymbols.TryGetValue(symbolId, out var sfPath)) continue;
                     if (!matched.Add(symbolId)) continue;
 
-                    var newSurface = ComputeSurfaceHash(namedSymbol);
-                    var newDependency = ComputeDependencyHash(namedSymbol);
+                    var newSurfaceHash = ComputeSurfaceHash(namedSymbol);
+                    var newDependencyHash = ComputeDependencyHash(namedSymbol);
 
                     var fileText = await File.ReadAllTextAsync(sfPath);
                     var node = JsonNode.Parse(fileText)?.AsObject();
@@ -1296,15 +1361,15 @@ public class Program
 
                     var fpNode = node["fingerprint"];
                     var isV1 = fpNode is JsonValue;
-                    string? oldSurface = null, oldDependency = null;
+                    string? oldSurfaceHash = null, oldDependencyHash = null;
 
                     if (!isV1 && fpNode is JsonObject fpObj)
                     {
-                        oldSurface = fpObj["surface"]?.GetValue<string>();
-                        oldDependency = fpObj["dependency"]?.GetValue<string>();
+                        oldSurfaceHash = fpObj["surfaceHash"]?.GetValue<string>();
+                        oldDependencyHash = fpObj["dependencyHash"]?.GetValue<string>();
                     }
 
-                    if (!isV1 && newSurface == oldSurface && newDependency == oldDependency)
+                    if (!isV1 && newSurfaceHash == oldSurfaceHash && newDependencyHash == oldDependencyHash)
                     {
                         WriteProgress($"  [SAME]    {symbolId}");
                         same++;
@@ -1313,8 +1378,8 @@ public class Program
 
                     node["fingerprint"] = new JsonObject
                     {
-                        ["surface"] = newSurface,
-                        ["dependency"] = newDependency
+                        ["surfaceHash"] = newSurfaceHash,
+                        ["dependencyHash"] = newDependencyHash
                     };
                     var json = node.ToJsonString(JsonOptions);
                     var tmp = sfPath + ".tmp";
@@ -1536,12 +1601,27 @@ public class Program
                             continue;
                         }
 
-                        var newSurface = ComputeSurfaceHash(namedSymbol);
-                        var newDependency = ComputeDependencyHash(namedSymbol);
-                        if (newSurface != fpInfo.Surface || newDependency != fpInfo.Dependency)
+                        var newSurfaceHash = ComputeSurfaceHash(namedSymbol);
+                        var newDependencyHash = ComputeDependencyHash(namedSymbol);
+                        var surfaceChanged = newSurfaceHash != fpInfo.Surface;
+                        var dependencyChanged = newDependencyHash != fpInfo.Dependency;
+                        if (surfaceChanged || dependencyChanged)
                         {
-                            WriteProgress($"  Fingerprint changed for: {symbolId}");
-                            await FlagSemanticStaleAsync(symbolId, "fingerprint_changed");
+                            if (surfaceChanged && dependencyChanged)
+                            {
+                                WriteProgress($"  Surface and dependencies changed for: {symbolId}");
+                                await FlagSemanticStaleAsync(symbolId, "surface_changed");
+                            }
+                            else if (surfaceChanged)
+                            {
+                                WriteProgress($"  Surface changed for: {symbolId}");
+                                await FlagSemanticStaleAsync(symbolId, "surface_changed");
+                            }
+                            else
+                            {
+                                WriteProgress($"  Dependencies changed for: {symbolId}");
+                                await FlagSemanticStaleAsync(symbolId, "dependencies_changed");
+                            }
                             flaggedStaleCount++;
                             flaggedDepCount += await FlagDependentsStaleAsync(symbolId, dependentSymbolIds);
                         }
@@ -1760,6 +1840,121 @@ public class Program
             var output = JsonSerializer.Serialize(results, JsonOptions);
             Console.WriteLine(output);
         }
+    }
+
+    private static async Task VerifyFactsAsync()
+    {
+        var solution = await LoadSolutionAsync();
+
+        var semanticFiles = Directory.GetFiles(SemanticDir, "*.semantic.json");
+        var verified = 0;
+        var mismatches = new List<object>();
+        var unresolvedCollaborators = new List<object>();
+
+        foreach (var sf in semanticFiles)
+        {
+            var text = await File.ReadAllTextAsync(sf);
+            var node = JsonNode.Parse(text)?.AsObject();
+            if (node == null) continue;
+
+            var symbolId = node["symbolId"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(symbolId)) continue;
+
+            var facts = node["facts"]?.AsObject();
+            var collaborators = node["interpretation"]?["collaborators"]?.AsArray();
+
+            var cachedNamespace = facts?["namespace"]?.GetValue<string>();
+            var cachedImplements = facts?["implements"]?.GetValue<string>();
+            var cachedSourceFile = facts?["sourceFile"]?.GetValue<string>();
+
+            var (symbol, _) = await FindTypeSymbolAsync(solution, symbolId);
+
+            if (symbol == null)
+            {
+                mismatches.Add(new { symbolId, field = "symbolId", cached = symbolId, actual = "not_found" });
+                if (node["status"]?.GetValue<string>() != "stale")
+                {
+                    node["status"] = "stale";
+                    node["staleReason"] = "symbol_missing";
+                    var json = node.ToJsonString(JsonOptions);
+                    var tmp = sf + ".tmp";
+                    await File.WriteAllTextAsync(tmp, json);
+                    File.Move(tmp, sf, overwrite: true);
+                    WriteProgress($"  Semantic entry flagged stale (symbol_missing): {symbolId}");
+                }
+                continue;
+            }
+
+            var actualNamespace = symbol.ContainingNamespace?.ToDisplayString() ?? "";
+            var actualImplements = string.Join(", ", symbol.AllInterfaces
+                .Select(i => i.ToDisplayString())
+                .OrderBy(x => x));
+            var actualSourceFile = GetRelativePath(symbol.Locations.FirstOrDefault()?.SourceTree?.FilePath ?? "");
+
+            var hasMismatch = false;
+
+            if (cachedNamespace != actualNamespace)
+            {
+                mismatches.Add(new { symbolId, field = "namespace", cached = cachedNamespace, actual = actualNamespace });
+                hasMismatch = true;
+            }
+            if (cachedImplements != actualImplements)
+            {
+                mismatches.Add(new { symbolId, field = "implements", cached = cachedImplements, actual = actualImplements });
+                hasMismatch = true;
+            }
+            if (cachedSourceFile != actualSourceFile)
+            {
+                mismatches.Add(new { symbolId, field = "sourceFile", cached = cachedSourceFile, actual = actualSourceFile });
+                hasMismatch = true;
+            }
+
+            if (hasMismatch)
+            {
+                if (node["status"]?.GetValue<string>() != "stale")
+                {
+                    node["status"] = "stale";
+                    node["staleReason"] = "facts_mismatch";
+                    var json = node.ToJsonString(JsonOptions);
+                    var tmp = sf + ".tmp";
+                    await File.WriteAllTextAsync(tmp, json);
+                    File.Move(tmp, sf, overwrite: true);
+                    WriteProgress($"  Semantic entry flagged stale (facts_mismatch): {symbolId}");
+                }
+            }
+            else
+            {
+                verified++;
+            }
+
+            if (collaborators != null)
+            {
+                foreach (var c in collaborators)
+                {
+                    var collabSymbol = c?["symbol"]?.GetValue<string>();
+                    if (string.IsNullOrEmpty(collabSymbol)) continue;
+
+                    var (resolved, _) = await FindTypeSymbolAsync(solution, collabSymbol);
+                    if (resolved == null)
+                    {
+                        unresolvedCollaborators.Add(new
+                        {
+                            symbolId,
+                            collaborator = collabSymbol,
+                            provenance = "cache_suggests_unverified"
+                        });
+                    }
+                }
+            }
+        }
+
+        WriteJsonResult("verify-facts", new
+        {
+            verified,
+            mismatches,
+            unresolvedCollaborators,
+            provenance = ProvenanceCompilerProved
+        });
     }
 
     private static void ShowStatus()
