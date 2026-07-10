@@ -437,3 +437,5 @@ FodyWeavers.xsd
 *.msp
 
 .tokensave/
+.codeaudit/
+.output/
