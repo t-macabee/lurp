@@ -232,11 +232,12 @@ public class Program
                         var severityCounts = collectedDiags
                             .GroupBy(d => d.Severity)
                             .ToDictionary(g => g.Key, g => g.Count());
+                        var relBaselinePath = GetRelativePath(baselinePath);
                         if (_useJson)
                         {
                             WriteJsonResult("check", new
                             {
-                                baselinePath = GetRelativePath(baselinePath),
+                                baselinePath = relBaselinePath,
                                 projectCount = checkSolution.Projects.Count(),
                                 diagnosticCount = collectedDiags.Count,
                                 severityCounts
@@ -245,7 +246,7 @@ public class Program
                         else
                         {
                             Console.WriteLine($"Baseline saved: {collectedDiags.Count} diagnostic(s) across {checkSolution.Projects.Count()} project(s).");
-                            Console.WriteLine($"  Path: {GetRelativePath(baselinePath)}");
+                            Console.WriteLine($"  Path: {relBaselinePath}");
                             foreach (var kv in severityCounts.OrderBy(k => k.Key))
                                 Console.WriteLine($"  {kv.Key}: {kv.Value}");
                         }
@@ -557,9 +558,7 @@ public class Program
         foreach (var symbol in snapshot.Symbols)
         {
             var fqn = symbol.MetadataName;
-            var incomingCount = snapshot.IncomingEdges.TryGetValue(fqn, out var incomingList)
-                ? incomingList.Distinct().Count()
-                : 0;
+            var (incomingList, incomingCount) = GetIncomingEdges(snapshot, fqn);
 
             string? bucket = null;
 
@@ -635,22 +634,8 @@ public class Program
         {
             var fqn = symbol.MetadataName;
 
-            List<string>? incomingList = null;
-            int incomingCount = 0;
-            if (snapshot.IncomingEdges.TryGetValue(fqn, out var rawList))
-            {
-                incomingList = rawList;
-                incomingCount = rawList.Distinct().Count();
-            }
-
-            var referencingProjectCount = incomingList != null
-                ? incomingList.Distinct()
-                    .Select(src => fqnToProject.TryGetValue(src, out var p) ? p : null)
-                    .Where(p => p != null)
-                    .Cast<string>()
-                    .Distinct()
-                    .Count()
-                : 0;
+            var (incomingList, incomingCount) = GetIncomingEdges(snapshot, fqn);
+            var referencingProjectCount = GetReferencingProjectCount(incomingList, fqnToProject);
 
             var outgoingCount = symbol.OutgoingTypeNames.Count;
 
@@ -763,9 +748,8 @@ public class Program
         foreach (var s in snapshot.Symbols)
         {
             var fqn = s.MetadataName;
-            incomingCount[fqn] = snapshot.IncomingEdges.TryGetValue(fqn, out var list)
-                ? list.Distinct().Count()
-                : 0;
+            var (_, incomingCountValue) = GetIncomingEdges(snapshot, fqn);
+            incomingCount[fqn] = incomingCountValue;
         }
 
         var allChains = new List<(List<string> nodes, bool cycleDetected)>();
@@ -1005,17 +989,19 @@ public class Program
 
     private static async Task<(INamedTypeSymbol? Type, Compilation? Compilation)> FindTypeSymbolAsync(Solution solution, string name)
     {
-        foreach (var project in solution.Projects)
+        await foreach (var (_, compilation) in CompilationHelper.GetAllAsync(solution))
         {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null) continue;
-
             var type = compilation.GetTypeByMetadataName(name);
             if (type != null) return (type, compilation);
         }
         return (null, null);
     }
 
+    // These hash generation methods intentionally duplicate traversal logic because their inclusion rules differ:
+    // - ComputeFingerprint: Includes ALL members (private, protected, etc.) for complete type representation
+    // - ComputeSurfaceHash: Excludes private/protected-and-friend members for surface-level API exposure
+    // - ComputeDependencyHash: Focuses only on dependencies, not type structure
+    // Hash behavior is part of the semantic-cache trust contract - changes would break cache consistency
     private static string ComputeFingerprint(ISymbol symbol, Compilation compilation)
     {
         var parts = new List<string>();
@@ -1083,6 +1069,11 @@ public class Program
         return Convert.ToHexString(hash);
     }
 
+    // These hash generation methods intentionally duplicate traversal logic because their inclusion rules differ:
+    // - ComputeFingerprint: Includes ALL members (private, protected, etc.) for complete type representation
+    // - ComputeSurfaceHash: Excludes private/protected-and-friend members for surface-level API exposure
+    // - ComputeDependencyHash: Focuses only on dependencies, not type structure
+    // Hash behavior is part of the semantic-cache trust contract - changes would break cache consistency
     private static string ComputeSurfaceHash(INamedTypeSymbol namedType)
     {
         var parts = new List<string>();
@@ -1143,6 +1134,11 @@ public class Program
         return Convert.ToHexString(hash);
     }
 
+    // These hash generation methods intentionally duplicate traversal logic because their inclusion rules differ:
+    // - ComputeFingerprint: Includes ALL members (private, protected, etc.) for complete type representation
+    // - ComputeSurfaceHash: Excludes private/protected-and-friend members for surface-level API exposure
+    // - ComputeDependencyHash: Focuses only on dependencies, not type structure
+    // Hash behavior is part of the semantic-cache trust contract - changes would break cache consistency
     private static string ComputeDependencyHash(INamedTypeSymbol namedType)
     {
         var parts = new List<string>();
@@ -1523,6 +1519,22 @@ public class Program
         );
     }
 
+private static DiscoveredType ProjectSymbolRecordToDiscoveredType(SymbolRecord symbol)
+    {
+        return new DiscoveredType(
+            SymbolId: symbol.MetadataName,
+            Kind: symbol.Kind,
+            KindCategory: symbol.Kind,
+            Namespace: symbol.Namespace,
+            Project: symbol.Project,
+            SourceFile: symbol.File,
+            Accessibility: symbol.Kind == "controller" ? "Public" : "Public",
+            Inherits: null,
+            Implements: new List<string>(),
+            Dependencies: symbol.OutgoingTypeNames
+        );
+    }
+
     private static async Task DiscoverAsync(string[] args)
     {
         var kindFilter = args.FirstOrDefault(a => a.StartsWith("--kind="))?.Split('=', 2)[1];
@@ -1541,18 +1553,7 @@ public class Program
             filteredSymbols = filteredSymbols.Where(s => filters.Contains(s.Kind, StringComparer.OrdinalIgnoreCase)).ToList();
         }
 
-        var allTypes = filteredSymbols.Select(s => new DiscoveredType(
-            SymbolId: s.MetadataName,
-            Kind: "unknown",
-            KindCategory: s.Kind,
-            Namespace: s.Namespace,
-            Project: s.Project,
-            SourceFile: s.File,
-            Accessibility: "Public",
-            Inherits: null,
-            Implements: new List<string>(),
-            Dependencies: new List<string>()
-        )).ToList();
+        var allTypes = filteredSymbols.Select(ProjectSymbolRecordToDiscoveredType).ToList();
 
         var byKindCategory = allTypes.GroupBy(t => t.KindCategory)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -1572,19 +1573,19 @@ public class Program
             {
                 summary,
                 types = allTypes,
-                provenance = "compiler_proved",
+                provenance = GetProvenanceCompilerProved(),
                 fieldProvenance = new
                 {
-                    kind = "compiler_proved",
-                    kindCategory = "indexer_observed",
-                    ns = "compiler_proved",
-                    project = "compiler_proved",
-                    sourceFile = "compiler_proved",
-                    accessibility = "compiler_proved",
-                    inherits = "compiler_proved",
-                    implements = "compiler_proved",
-                    dependencies = "compiler_proved",
-                    summary = "compiler_proved",
+                    kind = GetProvenanceCompilerProved(),
+                    kindCategory = GetProvenanceIndexerObserved(),
+                    ns = GetProvenanceCompilerProved(),
+                    project = GetProvenanceCompilerProved(),
+                    sourceFile = GetProvenanceCompilerProved(),
+                    accessibility = GetProvenanceCompilerProved(),
+                    inherits = GetProvenanceCompilerProved(),
+                    implements = GetProvenanceCompilerProved(),
+                    dependencies = GetProvenanceCompilerProved(),
+                    summary = GetProvenanceCompilerProved(),
                     blindSpots = "not_determinable"
                 },
                 blindSpots = GetBlindSpots()
@@ -1664,6 +1665,82 @@ public class Program
         return new FanSummary(sources.Count, sources, byProject);
     }
 
+    private static Dictionary<string, HashSet<string>> BuildOutgoingEdges(
+        List<SymbolRecord> symbols)
+    {
+        var outgoingEdges = new Dictionary<string, HashSet<string>>();
+        foreach (var symbol in symbols)
+        {
+            outgoingEdges[symbol.MetadataName] = new HashSet<string>(symbol.OutgoingTypeNames);
+        }
+        return outgoingEdges;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildIncomingEdges(
+        Dictionary<string, HashSet<string>> outgoingEdges)
+    {
+        var incomingEdges = new Dictionary<string, HashSet<string>>();
+        foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
+        {
+            foreach (var targetSymbol in targetSymbols)
+            {
+                if (!incomingEdges.ContainsKey(targetSymbol))
+                    incomingEdges[targetSymbol] = new HashSet<string>();
+                incomingEdges[targetSymbol].Add(sourceSymbol);
+            }
+        }
+        return incomingEdges;
+    }
+
+    private static Dictionary<string, string> BuildTypeToProjectMap(
+        List<SymbolRecord> symbols)
+    {
+        var typeToProject = new Dictionary<string, string>();
+        foreach (var symbol in symbols)
+        {
+            typeToProject[symbol.MetadataName] = symbol.Project;
+        }
+        return typeToProject;
+    }
+
+    private static Dictionary<string, string> BuildTypeToAccessibilityMap(
+        List<SymbolRecord> symbols)
+    {
+        var typeToAccessibility = new Dictionary<string, string>();
+        foreach (var symbol in symbols)
+        {
+            typeToAccessibility[symbol.MetadataName] = "Public";
+        }
+        return typeToAccessibility;
+    }
+
+    private static (List<string> incomingList, int incomingCount) GetIncomingEdges(
+        DiscoverySnapshot snapshot, string fqn)
+    {
+        var incomingList = snapshot.IncomingEdges.TryGetValue(fqn, out var list)
+            ? list.Distinct().ToList()
+            : new List<string>();
+        var incomingCount = incomingList.Count;
+        return (incomingList, incomingCount);
+    }
+
+    private static int GetReferencingProjectCount(
+        List<string> incomingList,
+        Dictionary<string, string> fqnToProject)
+    {
+        return incomingList != null
+            ? incomingList.Distinct()
+                .Select(src => fqnToProject.TryGetValue(src, out var p) ? p : null)
+                .Where(p => p != null)
+                .Cast<string>()
+                .Distinct()
+                .Count()
+            : 0;
+    }
+
+    private static string GetProvenanceIndexerObserved() => "indexer_observed";
+    private static string GetProvenanceCompilerProved() => "compiler_proved";
+
     private static async Task StructureAsync(string[] args)
     {
         var symbolFilter = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
@@ -1697,35 +1774,10 @@ public class Program
             return;
         }
 
-        var outgoingEdges = new Dictionary<string, HashSet<string>>();
-        foreach (var symbol in snapshot.Symbols)
-        {
-            outgoingEdges[symbol.MetadataName] = new HashSet<string>(symbol.OutgoingTypeNames);
-        }
-
-        var incomingEdges = new Dictionary<string, HashSet<string>>();
-        foreach (var (sourceSymbol, targetSymbols) in outgoingEdges)
-        {
-            foreach (var targetSymbol in targetSymbols)
-            {
-                if (!incomingEdges.ContainsKey(targetSymbol))
-                    incomingEdges[targetSymbol] = new HashSet<string>();
-                incomingEdges[targetSymbol].Add(sourceSymbol);
-            }
-        }
-
-        var typeToProject = new Dictionary<string, string>();
-        foreach (var symbol in snapshot.Symbols)
-        {
-            typeToProject[symbol.MetadataName] = symbol.Project;
-        }
-
-        var typeToAccessibility = new Dictionary<string, string>();
-        foreach (var symbol in snapshot.Symbols)
-        {
-
-            typeToAccessibility[symbol.MetadataName] = "Public";
-        }
+        var outgoingEdges = BuildOutgoingEdges(snapshot.Symbols);
+        var incomingEdges = BuildIncomingEdges(outgoingEdges);
+        var typeToProject = BuildTypeToProjectMap(snapshot.Symbols);
+        var typeToAccessibility = BuildTypeToAccessibilityMap(snapshot.Symbols);
 
         var fanIn = BuildFanSummary(symbolFilter, incomingEdges, typeToProject);
         var fanOut = BuildFanSummary(symbolFilter, outgoingEdges, typeToProject);
@@ -1764,21 +1816,21 @@ public class Program
                 fanIn,
                 fanOut,
                 depth2,
-                provenance = "compiler_proved",
+                provenance = GetProvenanceCompilerProved(),
                 fieldProvenance = new
                 {
-                    kind = "compiler_proved",
-                    kindCategory = "indexer_observed",
-                    ns = "compiler_proved",
-                    project = "compiler_proved",
-                    sourceFile = "compiler_proved",
-                    accessibility = "compiler_proved",
-                    inherits = "compiler_proved",
-                    implements = "compiler_proved",
-                    complexityTier = "indexer_observed",
-                    fanIn = "compiler_proved",
-                    fanOut = "compiler_proved",
-                    depth2 = "compiler_proved",
+                    kind = GetProvenanceCompilerProved(),
+                    kindCategory = GetProvenanceIndexerObserved(),
+                    ns = GetProvenanceCompilerProved(),
+                    project = GetProvenanceCompilerProved(),
+                    sourceFile = GetProvenanceCompilerProved(),
+                    accessibility = GetProvenanceCompilerProved(),
+                    inherits = GetProvenanceCompilerProved(),
+                    implements = GetProvenanceCompilerProved(),
+                    complexityTier = GetProvenanceIndexerObserved(),
+                    fanIn = GetProvenanceCompilerProved(),
+                    fanOut = GetProvenanceCompilerProved(),
+                    depth2 = GetProvenanceCompilerProved(),
                     blindSpots = "not_determinable"
                 },
                 blindSpots = GetBlindSpots()
@@ -2241,7 +2293,7 @@ public class Program
         await AtomicWriteAsync(DirtyFilePath, json);
 
         if (_useJson)
-            return new { dirtyFiles = merged.DirtyFiles, deletedFiles = merged.DeletedFiles, markedAt = merged.MarkedAt, provenance = "indexer_observed" };
+            return new { dirtyFiles = merged.DirtyFiles, deletedFiles = merged.DeletedFiles, markedAt = merged.MarkedAt, provenance = GetProvenanceIndexerObserved() };
         return null;
     }
 
@@ -2527,7 +2579,7 @@ public class Program
 
         if (_useJson)
         {
-            WriteJsonResult("lint", new { ok = !foundIssues, violations, provenance = "indexer_observed" });
+            WriteJsonResult("lint", new { ok = !foundIssues, violations, provenance = GetProvenanceIndexerObserved() });
         }
         else
         {
@@ -2952,10 +3004,8 @@ public class Program
         var candidates = new List<ResolveCandidate>();
         var seen = new HashSet<string>();
 
-        foreach (var project in solution.Projects)
+        await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
         {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null) continue;
 
             foreach (var document in project.Documents)
             {
@@ -3097,12 +3147,17 @@ public class Program
         }
     }
 
-    private static async Task HandleSimulateDeleteAsync(string fqn)
+    private static async Task<(Solution solution, DiagnosticBaseline baseline, INamedTypeSymbol? symbol, Compilation? compilation)> RunSimulationPipelineAsync(string fqn)
     {
         var solution = await LoadSolutionAsync();
         var baseline = EnsureBaselineFreshness();
-
         var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        return (solution, baseline, symbol, compilation);
+    }
+
+    private static async Task HandleSimulateDeleteAsync(string fqn)
+    {
+        var (solution, baseline, symbol, compilation) = await RunSimulationPipelineAsync(fqn);
         if (symbol == null)
         {
             WriteJsonResult("simulate-delete", new
@@ -3199,10 +3254,7 @@ public class Program
 
     private static async Task HandleSimulateRenameAsync(string fqn, string newName)
     {
-        var solution = await LoadSolutionAsync();
-        var baseline = EnsureBaselineFreshness();
-
-        var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        var (solution, baseline, symbol, compilation) = await RunSimulationPipelineAsync(fqn);
         if (symbol == null)
         {
             WriteJsonResult("simulate-rename", new
@@ -3308,10 +3360,7 @@ public class Program
 
     private static async Task HandleSimulateMoveAsync(string fqn, string targetNamespace, string? targetProjectArg)
     {
-        var solution = await LoadSolutionAsync();
-        var baseline = EnsureBaselineFreshness();
-
-        var (symbol, compilation) = await FindTypeSymbolAsync(solution, fqn);
+        var (solution, baseline, symbol, compilation) = await RunSimulationPipelineAsync(fqn);
         if (symbol == null)
         {
             WriteJsonResult("simulate-move", new
@@ -3584,9 +3633,7 @@ public class Program
 
         {
 
-            var callerFqns = snapshot.IncomingEdges.TryGetValue(fqn, out var incoming)
-                ? incoming.Distinct().ToList()
-                : new List<string>();
+            var (callerFqns, _) = GetIncomingEdges(snapshot, fqn);
 
             if (!isCrossProject)
             {
@@ -4004,6 +4051,7 @@ public class Program
         {
             try
             {
+                var relFile = GetRelativePath(file);
                 var text = await File.ReadAllTextAsync(file);
                 var node = JsonNode.Parse(text);
                 if (node == null) continue;
@@ -4022,7 +4070,7 @@ public class Program
                 {
                     entries.Add(new
                     {
-                        file = GetRelativePath(file),
+                        file = relFile,
                         symbol = symbolValue,
                         status = "missing",
                         action = "review_and_remove"
@@ -4053,7 +4101,7 @@ public class Program
                         {
                             entries.Add(new
                             {
-                                file = GetRelativePath(file),
+                                file = relFile,
                                 symbol = symbolValue,
                                 status = "degraded",
                                 action = "review_and_update"
@@ -4066,7 +4114,7 @@ public class Program
 
                 entries.Add(new
                 {
-                    file = GetRelativePath(file),
+                    file = relFile,
                     symbol = symbolValue,
                     status = "ok",
                     action = (string?)null
@@ -4108,7 +4156,7 @@ public class Program
                 solutionPath = SolutionPath,
                 dirtyManifest,
                 curatedEntryCount,
-                provenance = "indexer_observed"
+                provenance = GetProvenanceIndexerObserved()
             });
             return;
         }
