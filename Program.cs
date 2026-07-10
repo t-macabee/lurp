@@ -4000,9 +4000,29 @@ public class Program
         return rewritten;
     }
 
+    private static List<object> ScanCacheImpactForMove(string oldFqn, string newFqn)
+    {
+        var oldHits = ScanCacheImpact(oldFqn);
+        var newHits = ScanCacheImpact(newFqn);
+
+        var seenFiles = new HashSet<string>();
+        var merged = new List<object>();
+
+        foreach (var hit in oldHits)
+        {
+            var file = hit.GetType().GetProperty("file")?.GetValue(hit)?.ToString();
+            if (file != null && seenFiles.Add(file))
+                merged.Add(hit);
         }
 
-        return results;
+        foreach (var hit in newHits)
+        {
+            var file = hit.GetType().GetProperty("file")?.GetValue(hit)?.ToString();
+            if (file != null && seenFiles.Add(file))
+                merged.Add(hit);
+        }
+
+        return merged;
     }
 
     private static List<object> GetMoveBlindSpots()
