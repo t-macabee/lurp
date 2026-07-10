@@ -2848,33 +2848,7 @@ public class Program
 
     private static async Task<List<DiagnosticEntry>> SaveBaselineAsync(Solution solution, string path)
     {
-        var diagnostics = new List<DiagnosticEntry>();
-        foreach (var project in solution.Projects)
-        {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null) continue;
-
-            foreach (var diagnostic in compilation.GetDiagnostics()
-                .Where(d => d.Severity >= DiagnosticSeverity.Warning))
-            {
-                string file = "";
-                int line = 0;
-                if (diagnostic.Location.Kind != LocationKind.None && diagnostic.Location.SourceTree != null)
-                {
-                    file = GetRelativePath(diagnostic.Location.SourceTree.FilePath);
-                    line = diagnostic.Location.GetLineSpan().StartLinePosition.Line + 1;
-                }
-
-                diagnostics.Add(new DiagnosticEntry(
-                    ProjectName: project.Name,
-                    Id: diagnostic.Id,
-                    Severity: diagnostic.Severity.ToString(),
-                    Message: diagnostic.GetMessage(),
-                    File: file,
-                    Line: line
-                ));
-            }
-        }
+        var diagnostics = await CollectDiagnosticsAsync(solution);
 
         var baseline = new DiagnosticBaseline(
             SchemaVersion: SchemaVersion,
@@ -2921,7 +2895,7 @@ public class Program
         return (added, removed);
     }
 
-    private static async Task<List<DiagnosticEntry>> CompileAndCollectDiagnosticsAsync(Solution solution)
+    private static async Task<List<DiagnosticEntry>> CollectDiagnosticsAsync(Solution solution)
     {
         var diagnostics = new List<DiagnosticEntry>();
         foreach (var project in solution.Projects)
@@ -2951,6 +2925,11 @@ public class Program
             }
         }
         return diagnostics;
+    }
+
+    private static async Task<List<DiagnosticEntry>> CompileAndCollectDiagnosticsAsync(Solution solution)
+    {
+        return await CollectDiagnosticsAsync(solution);
     }
 
     private static DiagnosticBaseline EnsureBaselineFreshness()
@@ -3195,7 +3174,7 @@ public class Program
             .ToImmutableArray();
 
         var removedSolution = solution.RemoveDocuments(docIds);
-        var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(removedSolution);
+        var currentDiagnostics = await CollectDiagnosticsAsync(removedSolution);
         var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
         var cacheImpact = ScanCacheImpact(fqn);
@@ -3315,7 +3294,7 @@ public class Program
             }
         }
 
-        var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(renamedSolution);
+        var currentDiagnostics = await CollectDiagnosticsAsync(renamedSolution);
         var (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
         var cacheImpact = ScanCacheImpact(fqn);
@@ -3735,7 +3714,7 @@ public class Program
                 }
             }
 
-            var currentDiagnostics = await CompileAndCollectDiagnosticsAsync(solution);
+            var currentDiagnostics = await CollectDiagnosticsAsync(solution);
             (addedDiagnostics, _) = DiffDiagnostics(baseline, currentDiagnostics);
 
             cacheImpact = ScanCacheImpactForMove(fqn, newFqn);
