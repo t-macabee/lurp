@@ -725,9 +725,7 @@ public class Program
                 };
 
                 var scaffoldJson = JsonSerializer.Serialize(scaffold, JsonOptions);
-                var tmpPath = scaffoldFullPath + ".tmp";
-                await File.WriteAllTextAsync(tmpPath, scaffoldJson);
-                File.Move(tmpPath, scaffoldFullPath, overwrite: true);
+                await AtomicWriteAsync(scaffoldFullPath, scaffoldJson);
 
                 sideEffects.Add(GetRelativePath(scaffoldFullPath));
             }
@@ -2156,9 +2154,7 @@ public class Program
                         ["dependencyHash"] = newDependencyHash
                     };
                     var json = node.ToJsonString(JsonOptions);
-                    var tmp = sfPath + ".tmp";
-                    await File.WriteAllTextAsync(tmp, json);
-                    File.Move(tmp, sfPath, overwrite: true);
+                    await AtomicWriteAsync(sfPath, json);
 
                     WriteProgress($"  [UPDATED] {symbolId}");
                     updated++;
@@ -2222,10 +2218,7 @@ public class Program
         );
 
         var json = JsonSerializer.Serialize(merged, JsonOptions);
-        var tmp = DirtyFilePath + ".tmp";
-
-        await File.WriteAllTextAsync(tmp, json);
-        File.Move(tmp, DirtyFilePath, overwrite: true);
+        await AtomicWriteAsync(DirtyFilePath, json);
 
         if (_useJson)
             return new { dirtyFiles = merged.DirtyFiles, deletedFiles = merged.DeletedFiles, markedAt = merged.MarkedAt, provenance = "indexer_observed" };
@@ -2419,10 +2412,7 @@ public class Program
         );
 
         var json = JsonSerializer.Serialize(remaining, JsonOptions);
-        var tmp = DirtyFilePath + ".tmp";
-
-        await File.WriteAllTextAsync(tmp, json);
-        File.Move(tmp, DirtyFilePath, overwrite: true);
+        await AtomicWriteAsync(DirtyFilePath, json);
 
         var dirtyCount = manifest.DirtyFiles?.Count ?? 0;
         var deletedCount = manifest.DeletedFiles?.Count ?? 0;
@@ -2468,10 +2458,7 @@ public class Program
         node["staleReason"] = reason;
 
         var json = node.ToJsonString(JsonOptions);
-        var tmp = semanticPath + ".tmp";
-
-        await File.WriteAllTextAsync(tmp, json);
-        File.Move(tmp, semanticPath, overwrite: true);
+        await AtomicWriteAsync(semanticPath, json);
 
         WriteProgress($"  Semantic entry flagged stale ({reason}): {symbolId}");
         return true;
@@ -2766,9 +2753,7 @@ public class Program
                     node["status"] = "stale";
                     node["staleReason"] = "symbol_missing";
                     var json = node.ToJsonString(JsonOptions);
-                    var tmp = sf + ".tmp";
-                    await File.WriteAllTextAsync(tmp, json);
-                    File.Move(tmp, sf, overwrite: true);
+                    await AtomicWriteAsync(sf, json);
                     WriteProgress($"  Semantic entry flagged stale (symbol_missing): {symbolId}");
                 }
                 continue;
@@ -2805,9 +2790,7 @@ public class Program
                     node["status"] = "stale";
                     node["staleReason"] = "facts_mismatch";
                     var json = node.ToJsonString(JsonOptions);
-                    var tmp = sf + ".tmp";
-                    await File.WriteAllTextAsync(tmp, json);
-                    File.Move(tmp, sf, overwrite: true);
+                    await AtomicWriteAsync(sf, json);
                     WriteProgress($"  Semantic entry flagged stale (facts_mismatch): {symbolId}");
                 }
             }
@@ -2846,6 +2829,13 @@ public class Program
         });
     }
 
+    private static async Task AtomicWriteAsync(string path, string content)
+    {
+        var tmp = path + ".tmp";
+        await File.WriteAllTextAsync(tmp, content);
+        File.Move(tmp, path, overwrite: true);
+    }
+
     private static async Task<List<DiagnosticEntry>> SaveBaselineAsync(Solution solution, string path)
     {
         var diagnostics = await CollectDiagnosticsAsync(solution);
@@ -2858,9 +2848,7 @@ public class Program
         );
 
         var json = JsonSerializer.Serialize(baseline, JsonOptions);
-        var tmp = path + ".tmp";
-        await File.WriteAllTextAsync(tmp, json);
-        File.Move(tmp, path, overwrite: true);
+        await AtomicWriteAsync(path, json);
 
         WriteProgress($"  Baseline saved: {diagnostics.Count} diagnostics");
         return diagnostics;
