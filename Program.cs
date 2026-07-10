@@ -1227,16 +1227,29 @@ public class Program
         return type.ToDisplayString();
     }
 
+    private static List<object> GetBlindSpotsForContext(string context)
+    {
+        var diRegistration = new { vector = "di_registration", determinability = ProvenanceNotDeterminable };
+        var frameworkInvocation = new { vector = "framework_invocation", determinability = ProvenanceNotDeterminable };
+        var interfacePolymorphism = new { vector = "interface_polymorphism", determinability = ProvenanceNotDeterminable };
+        var reflection = new { vector = "reflection", determinability = ProvenanceNotDeterminable };
+        var sourceGenerators = new { vector = "source_generators", determinability = ProvenanceNotDeterminable };
+        var stringBasedDi = new { vector = "string_based_di", determinability = ProvenanceNotDeterminable };
+        var flutterFrontend = new { vector = "flutter_frontend", determinability = ProvenanceNotDeterminable };
+
+        return context switch
+        {
+            "audit" => new List<object> { diRegistration, frameworkInvocation, interfacePolymorphism, reflection, sourceGenerators },
+            "simulate-delete" => new List<object> { reflection, stringBasedDi, flutterFrontend },
+            "simulate-rename" => new List<object> { stringBasedDi, reflection },
+            "simulate-move" => new List<object> { stringBasedDi, reflection, flutterFrontend, interfacePolymorphism },
+            _ => throw new ArgumentException($"Unknown context: {context}")
+        };
+    }
+
     private static List<object> GetBlindSpots()
     {
-        return new List<object>
-        {
-            new { vector = "di_registration", determinability = "not_determinable" },
-            new { vector = "framework_invocation", determinability = "not_determinable" },
-            new { vector = "interface_polymorphism", determinability = "not_determinable" },
-            new { vector = "reflection", determinability = "not_determinable" },
-            new { vector = "source_generators", determinability = "not_determinable" }
-        };
+        return GetBlindSpotsForContext("audit");
     }
 
     private static bool IsGeneratedFile(string filePath)
@@ -3033,21 +3046,12 @@ public class Program
 
     private static List<object> GetSimulateBlindSpots()
     {
-        return new List<object>
-        {
-            new { vector = "reflection", determinability = "not_determinable" },
-            new { vector = "string_based_di", determinability = "not_determinable" },
-            new { vector = "flutter_frontend", determinability = "not_determinable" }
-        };
+        return GetBlindSpotsForContext("simulate-delete");
     }
 
     private static List<object> GetRenameBlindSpots()
     {
-        return new List<object>
-        {
-            new { vector = "string_based_di", determinability = "not_determinable" },
-            new { vector = "reflection", determinability = "not_determinable" }
-        };
+        return GetBlindSpotsForContext("simulate-rename");
     }
 
     private static List<object> ScanCacheImpact(string fqn)
@@ -3994,13 +3998,7 @@ public class Program
 
     private static List<object> GetMoveBlindSpots()
     {
-        return new List<object>
-        {
-            new { vector = "string_based_di",        determinability = ProvenanceNotDeterminable },
-            new { vector = "reflection",             determinability = ProvenanceNotDeterminable },
-            new { vector = "flutter_frontend",       determinability = ProvenanceNotDeterminable },
-            new { vector = "interface_polymorphism", determinability = ProvenanceNotDeterminable }
-        };
+        return GetBlindSpotsForContext("simulate-move");
     }
 
     private static async Task HandlePruneAsync()
