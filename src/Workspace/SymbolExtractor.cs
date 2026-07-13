@@ -1,0 +1,402 @@
+using System.Collections.Immutable;
+using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynIndexer.Storage;
+using SymKind = RoslynIndexer.Storage.SymbolKind;
+
+namespace RoslynIndexer;
+
+public sealed class SymbolExtractor
+{
+    private readonly Compilation _compilation;
+    private readonly IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> _documentContents;
+    private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions;
+    private readonly string _assemblyIdentity;
+
+    public SymbolExtractor(
+        Compilation compilation,
+        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
+        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions)
+    {
+        _compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
+        _documentContents = documentContents ?? throw new ArgumentNullException(nameof(documentContents));
+        _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
+        _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+    }
+
+    public List<SymbolDeclaration> ExtractAll()
+    {
+        var results = new List<SymbolDeclaration>();
+
+        foreach (var typeSymbol in GetNamespaceTypeMembers(_compilation.Assembly.GlobalNamespace))
+        {
+            ExtractTypeDeclarations(typeSymbol, results);
+        }
+
+        return results;
+    }
+
+    private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results)
+    {
+        AddSymbolDeclarations(typeSymbol, results);
+
+        foreach (var nestedType in typeSymbol.GetTypeMembers())
+        {
+            ExtractTypeDeclarations(nestedType, results);
+        }
+
+        foreach (var member in typeSymbol.GetMembers())
+        {
+            if (member is INamedTypeSymbol)
+                continue;
+
+            AddSymbolDeclarations(member, results);
+        }
+    }
+
+    private void AddSymbolDeclarations(ISymbol symbol, List<SymbolDeclaration> results)
+    {
+        var docCommentId = symbol.GetDocumentationCommentId();
+        if (string.IsNullOrEmpty(docCommentId))
+            return;
+
+        var fqn = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var kind = MapKind(symbol);
+        var metadataJson = BuildMetadataJson(symbol);
+
+        var symbolId = new SymbolId(docCommentId, _assemblyIdentity, fqn);
+        bool isPartial = symbol is INamedTypeSymbol typeSymbol && typeSymbol.DeclaringSyntaxReferences.Length > 1;
+
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            var syntaxNode = syntaxRef.GetSyntax();
+            var syntaxTree = syntaxRef.SyntaxTree;
+
+            var documentId = ResolveDocumentId(syntaxTree);
+            if (documentId == null)
+                continue;
+
+            if (!_documentVersions.TryGetValue(documentId.Value, out var versionId))
+                continue;
+
+            if (!_documentContents.TryGetValue(documentId.Value, out var contentInfo))
+                continue;
+
+            var encoding = GetEncoding(contentInfo.Encoding);
+            var sourceText = syntaxTree.GetText();
+            var sourceString = sourceText.ToString();
+
+            var (fullSpan, signatureSpan, bodySpan, nameSpan) = ComputeSpans(syntaxNode, sourceString, encoding);
+
+            results.Add(new SymbolDeclaration(
+                symbolId: symbolId,
+                kind: kind,
+                documentVersionId: versionId.ToString(),
+                fullSpan: fullSpan,
+                signatureSpan: signatureSpan,
+                bodySpan: bodySpan,
+                nameSpan: nameSpan,
+                isPartial: isPartial,
+                metadataJson: metadataJson));
+        }
+    }
+
+    private static (DeclarationSpan full, DeclarationSpan signature, DeclarationSpan body, DeclarationSpan name)
+        ComputeSpans(SyntaxNode node, string sourceText, Encoding encoding)
+    {
+        var fullCharSpan = node.FullSpan;
+        var fullStart = CharOffsetToByteOffset(sourceText, fullCharSpan.Start, encoding);
+        var fullEnd = CharOffsetToByteOffset(sourceText, fullCharSpan.End, encoding);
+        var full = new DeclarationSpan(fullStart, fullEnd);
+
+        DeclarationSpan name;
+        if (node is BaseTypeDeclarationSyntax typeDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, typeDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, typeDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is MethodDeclarationSyntax methodDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, methodDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, methodDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is ConstructorDeclarationSyntax ctorDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, ctorDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, ctorDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is PropertyDeclarationSyntax propDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, propDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, propDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is EventDeclarationSyntax eventDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, eventDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, eventDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is VariableDeclaratorSyntax varDecl)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, varDecl.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, varDecl.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else if (node is EnumMemberDeclarationSyntax enumMember)
+        {
+            var idStart = CharOffsetToByteOffset(sourceText, enumMember.Identifier.SpanStart, encoding);
+            var idEnd = CharOffsetToByteOffset(sourceText, enumMember.Identifier.Span.End, encoding);
+            name = new DeclarationSpan(idStart, idEnd);
+        }
+        else
+        {
+            var tokens = node.ChildTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken) || t.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
+            if (tokens.Length > 0)
+            {
+                var firstId = tokens[0];
+                name = new DeclarationSpan(
+                    CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
+                    CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
+            }
+            else
+            {
+                name = full;
+            }
+        }
+
+        DeclarationSpan body;
+        int signatureCharEnd;
+
+        if (node is MethodDeclarationSyntax method && method.Body != null)
+        {
+            body = SpanFromCharSpan(sourceText, method.Body.Span, encoding);
+            signatureCharEnd = method.Body.SpanStart;
+        }
+        else if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
+        {
+            body = SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding);
+            signatureCharEnd = methodExpr.ExpressionBody.SpanStart;
+        }
+        else if (node is MethodDeclarationSyntax methodAbstract && methodAbstract.Body == null && methodAbstract.ExpressionBody == null)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is PropertyDeclarationSyntax prop && prop.AccessorList != null)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
+        {
+            body = SpanFromCharSpan(sourceText, propExpr.ExpressionBody.Span, encoding);
+            signatureCharEnd = propExpr.ExpressionBody.SpanStart;
+        }
+        else if (node is BaseTypeDeclarationSyntax typeDecl2)
+        {
+            body = new DeclarationSpan(
+                CharOffsetToByteOffset(sourceText, typeDecl2.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, typeDecl2.CloseBraceToken.Span.End, encoding));
+            signatureCharEnd = typeDecl2.OpenBraceToken.SpanStart;
+        }
+        else if (node is BaseFieldDeclarationSyntax fieldDecl)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is EventDeclarationSyntax eventDecl2 && eventDecl2.AccessorList != null)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is EventFieldDeclarationSyntax eventField)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is EnumDeclarationSyntax enumDecl)
+        {
+            body = new DeclarationSpan(
+                CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
+            signatureCharEnd = enumDecl.OpenBraceToken.SpanStart;
+        }
+        else if (node is DelegateDeclarationSyntax delegateDecl)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else if (node is NamespaceDeclarationSyntax nsDecl)
+        {
+            body = new DeclarationSpan(
+                CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
+                CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
+            signatureCharEnd = nsDecl.OpenBraceToken.SpanStart;
+        }
+        else if (node is FileScopedNamespaceDeclarationSyntax fileScopedNs)
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+        else
+        {
+            body = new DeclarationSpan(null, null);
+            signatureCharEnd = fullCharSpan.End;
+        }
+
+        var signature = new DeclarationSpan(
+            fullStart,
+            CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
+
+        return (full, signature, body, name);
+    }
+
+    private static DeclarationSpan SpanFromCharSpan(string sourceText, Microsoft.CodeAnalysis.Text.TextSpan charSpan, Encoding encoding)
+    {
+        return new DeclarationSpan(
+            CharOffsetToByteOffset(sourceText, charSpan.Start, encoding),
+            CharOffsetToByteOffset(sourceText, charSpan.End, encoding));
+    }
+
+    private static int CharOffsetToByteOffset(string text, int charOffset, Encoding encoding)
+    {
+        if (charOffset <= 0)
+            return 0;
+        if (charOffset >= text.Length)
+            return encoding.GetByteCount(text);
+
+        return encoding.GetByteCount(text.AsSpan(0, charOffset));
+    }
+
+    private DocumentId? ResolveDocumentId(SyntaxTree syntaxTree)
+    {
+        var filePath = syntaxTree.FilePath;
+        if (string.IsNullOrEmpty(filePath))
+            return null;
+
+        var normalized = filePath.Replace('\\', '/');
+
+        foreach (var docId in _documentContents.Keys)
+        {
+            var docPath = docId.ToString().Replace('\\', '/');
+            if (docPath == normalized || docPath.EndsWith("/" + normalized) || normalized.EndsWith("/" + docPath))
+                return docId;
+        }
+
+        return null;
+    }
+
+    private static Encoding GetEncoding(string encodingName)
+    {
+        return encodingName?.ToLowerInvariant() switch
+        {
+            "utf-8" => Encoding.UTF8,
+            "utf-8-bom" => Encoding.UTF8,
+            "utf-16-le" => Encoding.Unicode,
+            "utf-16-be" => Encoding.BigEndianUnicode,
+            _ => Encoding.UTF8,
+        };
+    }
+
+    private static SymKind MapKind(ISymbol symbol)
+    {
+        return symbol.Kind switch
+        {
+            Microsoft.CodeAnalysis.SymbolKind.Namespace => SymKind.Namespace,
+            Microsoft.CodeAnalysis.SymbolKind.NamedType => SymKind.Type,
+            Microsoft.CodeAnalysis.SymbolKind.Method => SymKind.Method,
+            Microsoft.CodeAnalysis.SymbolKind.Property => SymKind.Property,
+            Microsoft.CodeAnalysis.SymbolKind.Field => SymKind.Field,
+            Microsoft.CodeAnalysis.SymbolKind.Event => SymKind.Event,
+            Microsoft.CodeAnalysis.SymbolKind.Parameter => SymKind.Parameter,
+            Microsoft.CodeAnalysis.SymbolKind.Local => SymKind.Local,
+            Microsoft.CodeAnalysis.SymbolKind.RangeVariable => SymKind.RangeVariable,
+            Microsoft.CodeAnalysis.SymbolKind.ArrayType => SymKind.ArrayType,
+            Microsoft.CodeAnalysis.SymbolKind.PointerType => SymKind.PointerType,
+            Microsoft.CodeAnalysis.SymbolKind.TypeParameter => SymKind.TypeParameter,
+            _ => SymKind.Unknown,
+        };
+    }
+
+    private static string? BuildMetadataJson(ISymbol symbol)
+    {
+        var metadata = new Dictionary<string, object?>();
+
+        if (symbol is IMethodSymbol method)
+        {
+            metadata["returnType"] = method.ReturnType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata["isAbstract"] = method.IsAbstract;
+            metadata["isVirtual"] = method.IsVirtual;
+            metadata["isOverride"] = method.IsOverride;
+            metadata["isStatic"] = method.IsStatic;
+            metadata["isAsync"] = method.IsAsync;
+            metadata["accessibility"] = method.DeclaredAccessibility.ToString();
+            metadata["arity"] = method.Arity;
+            metadata["isExtensionMethod"] = method.IsExtensionMethod;
+        }
+        else if (symbol is INamedTypeSymbol type)
+        {
+            metadata["typeKind"] = type.TypeKind.ToString();
+            metadata["isAbstract"] = type.IsAbstract;
+            metadata["isStatic"] = type.IsStatic;
+            metadata["isRecord"] = type.IsRecord;
+            metadata["accessibility"] = type.DeclaredAccessibility.ToString();
+            metadata["arity"] = type.Arity;
+        }
+        else if (symbol is IPropertySymbol prop)
+        {
+            metadata["returnType"] = prop.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata["isAbstract"] = prop.IsAbstract;
+            metadata["isVirtual"] = prop.IsVirtual;
+            metadata["isOverride"] = prop.IsOverride;
+            metadata["isStatic"] = prop.IsStatic;
+            metadata["isReadOnly"] = prop.IsReadOnly;
+            metadata["isWriteOnly"] = prop.IsWriteOnly;
+            metadata["accessibility"] = prop.DeclaredAccessibility.ToString();
+        }
+        else if (symbol is IFieldSymbol field)
+        {
+            metadata["returnType"] = field.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata["isStatic"] = field.IsStatic;
+            metadata["isReadOnly"] = field.IsReadOnly;
+            metadata["isConst"] = field.IsConst;
+            metadata["isVolatile"] = field.IsVolatile;
+            metadata["accessibility"] = field.DeclaredAccessibility.ToString();
+        }
+        else if (symbol is IEventSymbol evt)
+        {
+            metadata["returnType"] = evt.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata["isAbstract"] = evt.IsAbstract;
+            metadata["isVirtual"] = evt.IsVirtual;
+            metadata["isOverride"] = evt.IsOverride;
+            metadata["isStatic"] = evt.IsStatic;
+            metadata["accessibility"] = evt.DeclaredAccessibility.ToString();
+        }
+
+        return metadata.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(metadata)
+            : null;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
+    {
+        foreach (var type in ns.GetTypeMembers())
+        {
+            yield return type;
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            foreach (var type in GetNamespaceTypeMembers(childNs))
+            {
+                yield return type;
+            }
+        }
+    }
+}
