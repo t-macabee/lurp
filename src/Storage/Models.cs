@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Lurp.Storage
 {
@@ -158,6 +159,50 @@ namespace Lurp.Storage
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));
             Value = value ?? throw new ArgumentNullException(nameof(value));
         }
+    }
+
+    public static class ChangeType
+    {
+        public const string SymbolAdded = "symbol_added";
+        public const string SymbolRemoved = "symbol_removed";
+        public const string SymbolRenamed = "symbol_renamed";
+        public const string AccessibilityChanged = "accessibility_changed";
+        public const string SignatureChanged = "signature_changed";
+        public const string BaseTypeChanged = "base_type_changed";
+        public const string EdgeAdded = "edge_added";
+        public const string EdgeRemoved = "edge_removed";
+        public const string AttributeChanged = "attribute_changed";
+        public const string BodyOnlyChanged = "body_only_changed";
+    }
+
+    public sealed class SemanticChange
+    {
+        [JsonConstructor]
+        public SemanticChange(
+            string changeId,
+            string fromSnapshotId,
+            string toSnapshotId,
+            string changeType,
+            string symbolId,
+            string? detailJson,
+            DateTime createdAtUtc)
+        {
+            ChangeId = changeId ?? throw new ArgumentNullException(nameof(changeId));
+            FromSnapshotId = fromSnapshotId ?? throw new ArgumentNullException(nameof(fromSnapshotId));
+            ToSnapshotId = toSnapshotId ?? throw new ArgumentNullException(nameof(toSnapshotId));
+            ChangeType = changeType ?? throw new ArgumentNullException(nameof(changeType));
+            SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
+            DetailJson = detailJson;
+            CreatedAtUtc = createdAtUtc;
+        }
+
+        public string ChangeId { get; }
+        public string FromSnapshotId { get; }
+        public string ToSnapshotId { get; }
+        public string ChangeType { get; }
+        public string SymbolId { get; }
+        public string? DetailJson { get; }
+        public DateTime CreatedAtUtc { get; }
     }
 
     public class DocumentVersion

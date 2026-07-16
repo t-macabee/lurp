@@ -33,7 +33,7 @@ public class MigrationRunnerTests : IDisposable
 
         runner.RunMigrations();
 
-        Assert.Equal(6, runner.GetCurrentSchemaVersion());
+        Assert.Equal(7, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(6, runner.GetCurrentSchemaVersion());
+        Assert.Equal(7, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public class MigrationRunnerTests : IDisposable
         
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(6, runner.GetCurrentSchemaVersion());
+        Assert.Equal(7, runner.GetCurrentSchemaVersion());
 
         
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
@@ -874,7 +874,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -895,7 +895,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1072,11 +1072,11 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
 
             // Second run — must not throw and version stays the same
             runner.RunMigrations();
-            Assert.Equal(6, runner.GetCurrentSchemaVersion());
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
         }
 
         /// <summary>
@@ -1498,6 +1498,353 @@ class Derived : Base {
             Assert.Contains("Base", dispatchEdge.SourceSymbolId);
             Assert.Contains("Derived", dispatchEdge.TargetSymbolId);
             Assert.Contains("M", dispatchEdge.TargetSymbolId);
+        }
+    }
+
+    public class B3SemanticChangesTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public B3SemanticChangesTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_b3test_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        [Fact]
+        public void Migration_007_IsIdempotent()
+        {
+            var runner = new MigrationRunner(_dbPath);
+            runner.RunMigrations();
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+
+            runner.RunMigrations();
+            Assert.Equal(7, runner.GetCurrentSchemaVersion());
+
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+            using var cmd = connection.CreateCommand();
+
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_changes';";
+            var tableExists = cmd.ExecuteScalar();
+            Assert.NotNull(tableExists);
+
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_semantic_changes_to_snapshot';";
+            var indexExists = cmd.ExecuteScalar();
+            Assert.NotNull(indexExists);
+
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_semantic_changes_from_to';";
+            var indexExists2 = cmd.ExecuteScalar();
+            Assert.NotNull(indexExists2);
+        }
+
+        [Fact]
+        public void SaveAndGetSemanticChanges_RoundTrip()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-001";
+            var toSnapshotId = "snap-b3-002";
+
+            var changes = new List<SemanticChange>
+            {
+                new SemanticChange(
+                    changeId: "change-1",
+                    fromSnapshotId: fromSnapshotId,
+                    toSnapshotId: toSnapshotId,
+                    changeType: ChangeType.SymbolAdded,
+                    symbolId: "M:Ns.Foo|asm1",
+                    detailJson: "{\"symbol_id\": \"M:Ns.Foo|asm1\"}",
+                    createdAtUtc: DateTime.UtcNow),
+                new SemanticChange(
+                    changeId: "change-2",
+                    fromSnapshotId: fromSnapshotId,
+                    toSnapshotId: toSnapshotId,
+                    changeType: ChangeType.SymbolRemoved,
+                    symbolId: "M:Ns.Bar|asm1",
+                    detailJson: "{\"symbol_id\": \"M:Ns.Bar|asm1\"}",
+                    createdAtUtc: DateTime.UtcNow),
+            };
+
+            store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes);
+
+            var loaded = store.GetSemanticChanges(fromSnapshotId, toSnapshotId);
+            Assert.Equal(2, loaded.Count);
+
+            var change1 = loaded[0];
+            Assert.Equal("change-1", change1.ChangeId);
+            Assert.Equal(fromSnapshotId, change1.FromSnapshotId);
+            Assert.Equal(toSnapshotId, change1.ToSnapshotId);
+            Assert.Equal(ChangeType.SymbolAdded, change1.ChangeType);
+            Assert.Equal("M:Ns.Foo|asm1", change1.SymbolId);
+            Assert.Equal(
+                "{\"symbol_id\": \"M:Ns.Foo|asm1\"}",
+                change1.DetailJson);
+
+            var change2 = loaded[1];
+            Assert.Equal("change-2", change2.ChangeId);
+            Assert.Equal(fromSnapshotId, change2.FromSnapshotId);
+            Assert.Equal(toSnapshotId, change2.ToSnapshotId);
+            Assert.Equal(ChangeType.SymbolRemoved, change2.ChangeType);
+            Assert.Equal("M:Ns.Bar|asm1", change2.SymbolId);
+            Assert.Equal(
+                "{\"symbol_id\": \"M:Ns.Bar|asm1\"}",
+                change2.DetailJson);
+        }
+
+        [Fact]
+        public void GetSemanticChanges_EmptyList_ReturnsEmpty()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-003";
+            var toSnapshotId = "snap-b3-004";
+
+            var loaded = store.GetSemanticChanges(fromSnapshotId, toSnapshotId);
+            Assert.Empty(loaded);
+        }
+
+        [Fact]
+        public void SemanticDiffer_SymbolAddedAndRemoved()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-005";
+            var toSnapshotId = "snap-b3-006";
+
+            var fromSymbols = new List<string>
+            {
+                "M:Ns.Foo|asm1",
+                "M:Ns.Bar|asm1",
+            };
+            var toSymbols = new List<string>
+            {
+                "M:Ns.Bar|asm1",
+                "M:Ns.Baz|asm1",
+            };
+
+            foreach (var symbolId in fromSymbols)
+            {
+                var decl = MakeDecl(
+                    symbolId: symbolId,
+                    docCommentId: "T:Ns.Foo",
+                    assembly: "asm1",
+                    kind: SymbolKind.Method,
+                    docVersionId: "doc1",
+                    fullS: 0, fullE: 10,
+                    sigS: 0, sigE: 5,
+                    bodyS: 6, bodyE: 10,
+                    nameS: 0, nameE: 5);
+                store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { decl });
+            }
+
+            foreach (var symbolId in toSymbols)
+            {
+                var decl = MakeDecl(
+                    symbolId: symbolId,
+                    docCommentId: "T:Ns.Baz",
+                    assembly: "asm1",
+                    kind: SymbolKind.Method,
+                    docVersionId: "doc1",
+                    fullS: 0, fullE: 10,
+                    sigS: 0, sigE: 5,
+                    bodyS: 6, bodyE: 10,
+                    nameS: 0, nameE: 5);
+                store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { decl });
+            }
+
+            var differ = new SemanticDiffer(_dbPath, store);
+            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var symbolAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolAdded);
+            Assert.NotNull(symbolAdded);
+            Assert.Equal("M:Ns.Baz|asm1", symbolAdded.SymbolId);
+
+            var symbolRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRemoved);
+            Assert.NotNull(symbolRemoved);
+            Assert.Equal("M:Ns.Foo|asm1", symbolRemoved.SymbolId);
+        }
+
+        [Fact]
+        public void SemanticDiffer_EdgeAddedAndRemoved()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-009";
+            var toSnapshotId = "snap-b3-010";
+
+            var fromEdges = new List<EdgeRecord>
+            {
+                new EdgeRecord(
+                    sourceSymbolId: "M:Ns.Foo|asm1",
+                    targetSymbolId: "M:Ns.Bar|asm1",
+                    kind: "Calls",
+                    provenance: "compiler_proved"),
+            };
+            var toEdges = new List<EdgeRecord>
+            {
+                new EdgeRecord(
+                    sourceSymbolId: "M:Ns.Bar|asm1",
+                    targetSymbolId: "M:Ns.Baz|asm1",
+                    kind: "Calls",
+                    provenance: "compiler_proved"),
+            };
+
+            store.SaveEdges(fromSnapshotId, fromEdges);
+            store.SaveEdges(toSnapshotId, toEdges);
+
+            var differ = new SemanticDiffer(_dbPath, store);
+            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
+            Assert.NotNull(edgeAdded);
+            Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
+            Assert.Equal("M:Ns.Baz|asm1", edgeAdded.DetailJson!);
+
+            var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
+            Assert.NotNull(edgeRemoved);
+            Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
+            Assert.Equal("M:Ns.Bar|asm1", edgeRemoved.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_SignatureChangedViaMetadata()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-011";
+            var toSnapshotId = "snap-b3-012";
+
+            var symbolId = "M:Ns.Foo|asm1";
+
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
+            fromDecl.MetadataJson = "{\"signature\": \"void Foo()\", \"return_type\": \"void\"}";
+
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
+            toDecl.MetadataJson = "{\"signature\": \"int Foo()\", \"return_type\": \"int\"}";
+
+            store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
+            store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
+
+            var differ = new SemanticDiffer(_dbPath, store);
+            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+        }
+
+        [Fact]
+        public void SemanticDiffer_SymbolRenamed()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-013";
+            var toSnapshotId = "snap-b3-014";
+
+            var symbolId = "M:Ns.Foo|asm1";
+
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
+
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
+
+            store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { fromDecl });
+            store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { toDecl });
+
+            var differ = new SemanticDiffer(_dbPath, store);
+            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var symbolRenamed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
+            Assert.NotNull(symbolRenamed);
+            Assert.Equal(symbolId, symbolRenamed.SymbolId);
+            Assert.Contains("before", symbolRenamed.DetailJson!);
+            Assert.Contains("after", symbolRenamed.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_EmptyDiff()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-015";
+            var toSnapshotId = "snap-b3-016";
+
+            var symbolId = "M:Ns.Foo|asm1";
+
+            var decl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: SymbolKind.Method,
+                docVersionId: "doc1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5);
+
+            store.SaveDeclarations(fromSnapshotId, new List<SymbolDeclaration> { decl });
+            store.SaveDeclarations(toSnapshotId, new List<SymbolDeclaration> { decl });
+
+            var differ = new SemanticDiffer(_dbPath, store);
+            var changes = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            Assert.Empty(changes);
         }
     }
 }

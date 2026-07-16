@@ -105,6 +105,11 @@ namespace Lurp.Storage
         List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind);
         List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId);
         List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
+
+        // B3: semantic changes
+        void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes);
+        List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId);
+        List<string> GetSnapshotIds(string workspaceId);
     }
 }
 

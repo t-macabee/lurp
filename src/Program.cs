@@ -9,6 +9,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp
 {
@@ -48,6 +49,12 @@ namespace Lurp
                 return;
             }
 
+            if (args.Contains("--mode=diff"))
+            {
+                RunDiff(args);
+                return;
+            }
+
             if (args.Contains("--mode=test-migration"))
             {
                 TestMigration();
@@ -77,7 +84,7 @@ namespace Lurp
                 return;
             }
 
-            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=status, or --mode=test-migration.");
+            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=status, or --mode=test-migration.");
             Environment.Exit(1);
         }
 
@@ -577,6 +584,19 @@ namespace Lurp
                 Console.WriteLine($"  Edges:        {totalEdges}");
                 Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
                 Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+
+                // B3: auto-diff against previous snapshot if one exists
+                var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
+                var previousManifest = store.LoadLatestSnapshot(storageWsId);
+                if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
+                {
+                    Console.WriteLine();
+                    Console.Write("Computing semantic diff from previous snapshot... ");
+                    var differ = new SemanticDiffer(dbPath, store);
+                    var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
+                    store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
+                    Console.WriteLine($"done ({diffChanges.Count} changes).");
+                }
             }
             finally
             {
@@ -587,7 +607,6 @@ namespace Lurp
         private static void TestMigration()
         {
             Console.WriteLine("Testing migration runner...")
-;
 
             var dbPath = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "test-index.db");
             if (File.Exists(dbPath))
@@ -623,6 +642,61 @@ namespace Lurp
             }
 
             store.Close();
+        }
+
+        private static void RunDiff(string[] args)
+        {
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
+                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            if (string.IsNullOrEmpty(outputDirArg))
+            {
+                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
+                Environment.Exit(1);
+            }
+
+            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+            if (!File.Exists(dbPath))
+            {
+                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
+                Environment.Exit(1);
+            }
+
+            var fromSnapshot = args.FirstOrDefault(a => a.StartsWith("--from-snapshot="))?.Split('=', 2)[1];
+            var toSnapshot = args.FirstOrDefault(a => a.StartsWith("--to-snapshot="))?.Split('=', 2)[1];
+
+            if (string.IsNullOrEmpty(fromSnapshot) || string.IsNullOrEmpty(toSnapshot))
+            {
+                Console.Error.WriteLine("ERROR: --from-snapshot=<id> and --to-snapshot=<id> are required for --mode=diff.");
+                Environment.Exit(1);
+            }
+
+            var store = new SqliteIndexStore(dbPath);
+            store.Open(dbPath);
+            try
+            {
+                var differ = new SemanticDiffer(dbPath, store);
+                var changes = differ.ComputeDiff(fromSnapshot, toSnapshot);
+
+                var json = JsonSerializer.Serialize(new
+                {
+                    from_snapshot = fromSnapshot,
+                    to_snapshot = toSnapshot,
+                    change_count = changes.Count,
+                    changes = changes.Select(c => new
+                    {
+                        change_id = c.ChangeId,
+                        change_type = c.ChangeType,
+                        symbol_id = c.SymbolId,
+                        detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null,
+                        created_at_utc = c.CreatedAtUtc
+                    })
+                }, new JsonSerializerOptions { WriteIndented = true });
+                Console.WriteLine(json);
+            }
+            finally
+            {
+                store.Close();
+            }
         }
 
         private static void ShowStatus()
