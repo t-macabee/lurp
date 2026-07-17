@@ -166,6 +166,7 @@ namespace Lurp.Storage
         public const string SymbolAdded = "symbol_added";
         public const string SymbolRemoved = "symbol_removed";
         public const string SymbolRenamed = "symbol_renamed";
+        public const string SymbolMoved = "symbol_moved";
         public const string AccessibilityChanged = "accessibility_changed";
         public const string SignatureChanged = "signature_changed";
         public const string BaseTypeChanged = "base_type_changed";

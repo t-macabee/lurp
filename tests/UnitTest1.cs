@@ -61,7 +61,7 @@ public class MigrationRunnerTests : IDisposable
 
         runner.RunMigrations();
 
-        Assert.Equal(10, runner.GetCurrentSchemaVersion());
+        Assert.Equal(11, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(10, runner.GetCurrentSchemaVersion());
+        Assert.Equal(11, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -343,7 +343,7 @@ public class MigrationRunnerTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(10, runner.GetCurrentSchemaVersion());
+        Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
         using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
         {
@@ -886,7 +886,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -907,7 +907,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1080,10 +1080,10 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
         }
 
         [Fact]
@@ -1536,10 +1536,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1937,10 +1937,10 @@ class Derived : Base {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(10, runner.GetCurrentSchemaVersion());
+            Assert.Equal(11, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -2131,6 +2131,114 @@ class Derived : Base {
                 references);
         }
 
+        private static readonly string MediatRStubs = @"
+namespace MediatR {
+    public interface IRequest<TResponse> { }
+    public interface IRequestHandler<TRequest, TResponse> where TRequest : IRequest<TResponse> { }
+    public interface INotification { }
+    public interface INotificationHandler<TNotification> where TNotification : INotification { }
+}";
+
+        private static readonly string AspNetCoreMvcStubs = @"
+namespace Microsoft.AspNetCore.Mvc {
+    public class ControllerBase {
+        public IActionResult Ok() => null!;
+        public IActionResult Ok(object value) => null!;
+    }
+    public class RouteAttribute : System.Attribute {
+        public RouteAttribute(string template) { }
+    }
+    public class HttpGetAttribute : System.Attribute {
+        public HttpGetAttribute(string template) { }
+    }
+    public class HttpPostAttribute : System.Attribute {
+        public HttpPostAttribute() { }
+    }
+    public class FromBodyAttribute : System.Attribute { }
+    public interface IActionResult { }
+}";
+
+        private static readonly string DependencyInjectionStubs = @"
+namespace Microsoft.Extensions.DependencyInjection {
+    public interface IServiceCollection { }
+    public static class ServiceCollectionServiceExtensions {
+        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services) where TImplementation : TService => services;
+        public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services) where TImplementation : TService => services;
+        public static IServiceCollection AddSingleton<TService, TImplementation>(this IServiceCollection services) where TImplementation : TService => services;
+    }
+}";
+
+        private static readonly string EfCoreStubs = @"
+namespace Microsoft.EntityFrameworkCore {
+    public class DbContext { }
+    public class DbSet<TEntity> where TEntity : class { }
+}";
+
+        private static readonly string XunitStubs = @"
+namespace Xunit {
+    public class FactAttribute : System.Attribute { }
+}";
+
+        private static Compilation CreateCompilationWithStubs(string source, string stubs, string assemblyName = "TestAssembly")
+        {
+            var testTree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
+            var stubsTree = CSharpSyntaxTree.ParseText(stubs, path: "stubs.cs");
+
+            return CSharpCompilation.Create(
+                assemblyName,
+                new[] { stubsTree, testTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        }
+
+        private static MetadataReference EmitStubAssembly(string assemblyName, string stubSource)
+        {
+            var stubTree = CSharpSyntaxTree.ParseText(stubSource, path: $"{assemblyName}.cs");
+            var compilation = CSharpCompilation.Create(
+                assemblyName,
+                new[] { stubTree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            using var ms = new System.IO.MemoryStream();
+            var emitResult = compilation.Emit(ms);
+            if (!emitResult.Success)
+                throw new InvalidOperationException(
+                    $"{assemblyName} stub assembly emission failed: " +
+                    string.Join("; ", emitResult.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+            ms.Position = 0;
+            return MetadataReference.CreateFromStream(ms);
+        }
+
+        private static Compilation CreateCompilationWithMediatR(string source)
+        {
+            var testTree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
+            var mediatrRef = EmitStubAssembly("MediatR", MediatRStubs);
+
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { testTree },
+                new[]
+                {
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                    mediatrRef,
+                });
+        }
+
+        private static Compilation CreateCompilationWithEfCore(string source)
+        {
+            var testTree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
+            var efCoreRef = EmitStubAssembly("Microsoft.EntityFrameworkCore", EfCoreStubs);
+
+            return CSharpCompilation.Create(
+                "TestAssembly",
+                new[] { testTree },
+                new[]
+                {
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                    efCoreRef,
+                });
+        }
+
         [Fact]
         public void AspNetCore_RouteAttribute_EmitsRoutesToEdge()
         {
@@ -2145,11 +2253,12 @@ public class UsersController : ControllerBase
 }
 ";
 
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithStubs(source, AspNetCoreMvcStubs);
             var adapter = new AspNetCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-aspnet-001");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "RoutesTo");
 
         }
 
@@ -2166,11 +2275,12 @@ public class OrdersController : ControllerBase
     public IActionResult CreateOrder([FromBody] object order) => Ok();
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithStubs(source, AspNetCoreMvcStubs);
             var adapter = new AspNetCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-aspnet-003");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "RoutesTo");
 
         }
 
@@ -2207,11 +2317,12 @@ public class Startup
     }
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-di-001");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
 
         }
 
@@ -2232,11 +2343,12 @@ public class Startup
     }
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-di-003");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
         }
 
         [Fact]
@@ -2256,11 +2368,12 @@ public class Startup
     }
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
             var adapter = new DependencyInjectionAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-di-004");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId.Contains("Service"));
         }
 
         [Fact]
@@ -2272,15 +2385,16 @@ using MediatR;
 public class UserCreatedEvent : INotification { }
 public class UserCreatedHandler : INotificationHandler<UserCreatedEvent>
 {
-    public Task Handle(UserCreatedEvent notification, CancellationToken cancellationToken)
-        => Task.CompletedTask;
+    public void Handle(UserCreatedEvent notification) { }
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithMediatR(source);
             var adapter = new MediatRAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-mediatr-003");
 
-            Assert.Empty(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "Handles" && e.Provenance == "framework_derived");
+            Assert.Contains(edges, e => e.TargetSymbolId.Contains("Handle") && e.SourceSymbolId.Contains("UserCreatedEvent"));
         }
 
         [Fact]
@@ -2289,19 +2403,19 @@ public class UserCreatedHandler : INotificationHandler<UserCreatedEvent>
             var source = @"
 using MediatR;
 
-public class GetUserQuery : IRequest<User> { }
-public class User { }
-public class GetUserHandler : IRequestHandler<GetUserQuery, User>
+public class GetUserQuery : IRequest<string> { }
+public class GetUserHandler : IRequestHandler<GetUserQuery, string>
 {
-    public Task<User> Handle(GetUserQuery request, CancellationToken cancellationToken)
-        => Task.FromResult(new User());
+    public string Handle(GetUserQuery request) => ""ok"";
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithMediatR(source);
             var adapter = new MediatRAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-mediatr-001");
 
-            Assert.Empty(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "Handles" && e.Provenance == "framework_derived");
+            Assert.Contains(edges, e => e.TargetSymbolId.Contains("Handle") && e.SourceSymbolId.Contains("GetUserQuery"));
         }
 
         [Fact]
@@ -2329,11 +2443,12 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
 }
 ";
-            var compilation = CreateCompilation(source);
+            var compilation = CreateCompilationWithEfCore(source);
             var adapter = new EfCoreAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-ef-001");
 
-            Assert.NotNull(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "MapsTo" && e.TargetSymbolId.Contains("User"));
 
         }
 
@@ -2379,34 +2494,25 @@ public class Plain
         [Fact]
         public void TestAdapter_FactMethod_EmitsTestedByEdge()
         {
-
-            var syntaxTree = CSharpSyntaxTree.ParseText(@"
+            var source = @"
 using Xunit;
-
-public class Bar
-{
-    public Bar() { }
-}
 
 public class BarTests
 {
     [Fact]
-    public void Foo_ReturnsBar()
+    public void Foo_UsesStringBuilder()
     {
-        var x = new Bar();
+        var x = new System.Text.StringBuilder();
     }
 }
-", path: "test.cs");
-
-            var compilation = CSharpCompilation.Create(
-                "MyProject.Tests",
-                new[] { syntaxTree },
-                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
-
+";
+            var compilation = CreateCompilationWithStubs(source, XunitStubs, "MyProject.Tests");
             var adapter = new TestAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-test-001");
 
-            Assert.Empty(edges);
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.Kind == "TestedBy" && e.Provenance == "framework_derived");
+            Assert.Contains(edges, e => e.SourceSymbolId.Contains("StringBuilder") && e.TargetSymbolId.Contains("Foo_UsesStringBuilder"));
         }
 
         [Fact]

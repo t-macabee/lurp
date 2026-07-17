@@ -131,6 +131,9 @@ namespace Lurp
         [JsonPropertyName("secondDegreeContext")]
         public List<CapsuleItem> SecondDegreeContext { get; init; } = new();
 
+        [JsonPropertyName("surroundingSource")]
+        public List<CapsuleItem> SurroundingSource { get; init; } = new();
+
         [JsonPropertyName("budget")]
         public int Budget { get; init; }
 

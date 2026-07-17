@@ -673,6 +673,11 @@ namespace Lurp
                     manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
                     Console.WriteLine("done.");
 
+                    store.MarkSnapshotInProgress(snapshotIdStr);
+
+                    try
+                    {
+
                     int totalDeclarations = 0;
                     int totalEdges = 0;
                     int totalDiagnostics = 0;
@@ -771,13 +776,21 @@ namespace Lurp
                         Console.WriteLine($"done ({diffChanges.Count} changes).");
                     }
 
-                    Console.Write("Pruning old snapshots... ");
-                    store.PruneOldSnapshots(keep: 3);
-                    Console.WriteLine("done.");
-
-                    totalSw.Stop();
-                    Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
+                    store.MarkSnapshotComplete(snapshotIdStr);
                 }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in 'in_progress' state: {ex.Message}");
+                    throw;
+                }
+
+                Console.Write("Pruning old snapshots... ");
+                store.PruneOldSnapshots(keep: 3);
+                Console.WriteLine("done.");
+
+                totalSw.Stop();
+                Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
+            }
             }
             finally
             {

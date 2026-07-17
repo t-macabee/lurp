@@ -182,6 +182,30 @@ namespace Lurp.Storage
             }
         }
 
+        public void MarkSnapshotInProgress(string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE snapshots SET status = 'in_progress' WHERE snapshot_id = @snapshotId;";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        public void MarkSnapshotComplete(string snapshotId)
+        {
+            EnsureOpen();
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE snapshots SET status = 'complete' WHERE snapshot_id = @snapshotId;";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.ExecuteNonQuery();
+        }
+
         public SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId)
         {
             EnsureOpen();
@@ -195,6 +219,7 @@ namespace Lurp.Storage
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
+                  AND s.status = 'complete'
                 ORDER BY s.built_at_utc DESC
                 LIMIT 1;
             ";
@@ -260,12 +285,12 @@ namespace Lurp.Storage
             using var command = connection.CreateCommand();
             if (!string.IsNullOrEmpty(workspaceId))
             {
-                command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId ORDER BY built_at_utc DESC LIMIT 1;";
+                command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = 'complete' ORDER BY built_at_utc DESC LIMIT 1;";
                 command.Parameters.AddWithValue("@workspaceId", workspaceId);
             }
             else
             {
-                command.CommandText = "SELECT snapshot_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+                command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = 'complete' ORDER BY built_at_utc DESC LIMIT 1;";
             }
 
             return command.ExecuteScalar() as string;

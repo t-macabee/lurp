@@ -89,7 +89,8 @@ namespace Lurp
                 ((Func<List<CapsuleItem>>)BuildDirectCallers, "directCallers"),
                 ((Func<List<CapsuleItem>>)BuildRegisteredImplementations, "registeredImplementations"),
                 ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
-                (BuildSecondDegreeCombined, "secondDegreeContext"),
+                ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
+                ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
             };
 
             switch (_intent)
@@ -101,8 +102,9 @@ namespace Lurp
                         ((Func<List<CapsuleItem>>)BuildDirectCallees, "directCallees"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallers, "directCallers"),
                         ((Func<List<CapsuleItem>>)BuildRegisteredImplementations, "registeredImplementations"),
-                        (BuildSecondDegreeCombined, "secondDegreeContext"),
+                        ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
                         ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
+                        ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
                     };
 
                 case ContextIntent.Modify:
@@ -113,7 +115,8 @@ namespace Lurp
                         ((Func<List<CapsuleItem>>)BuildRegisteredImplementations, "registeredImplementations"),
                         ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallees, "directCallees"),
-                        (BuildSecondDegreeCombined, "secondDegreeContext"),
+                        ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
+                        ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
                     };
 
                 case ContextIntent.Diagnose:
@@ -124,20 +127,13 @@ namespace Lurp
                         ((Func<List<CapsuleItem>>)BuildContracts, "contracts"),
                         ((Func<List<CapsuleItem>>)BuildDirectCallees, "directCallees"),
                         ((Func<List<CapsuleItem>>)BuildRelevantTests, "relevantTests"),
-                        (BuildSecondDegreeCombined, "secondDegreeContext"),
+                        ((Func<List<CapsuleItem>>)BuildSecondDegreeContext, "secondDegreeContext"),
+                        ((Func<List<CapsuleItem>>)BuildSurroundingSiblings, "surroundingSource"),
                     };
 
                 default:
                     return defaultTiers;
             }
-        }
-
-        private List<CapsuleItem> BuildSecondDegreeCombined()
-        {
-            var items = new List<CapsuleItem>();
-            items.AddRange(BuildSecondDegreeContext());
-            items.AddRange(BuildSurroundingSiblings());
-            return items;
         }
 
         private static void AddTierToCapsule(ContextCapsule capsule, string tierName, List<CapsuleItem> items)
@@ -161,6 +157,9 @@ namespace Lurp
                     break;
                 case "secondDegreeContext":
                     capsule.SecondDegreeContext.AddRange(items);
+                    break;
+                case "surroundingSource":
+                    capsule.SurroundingSource.AddRange(items);
                     break;
             }
         }
@@ -487,6 +486,7 @@ namespace Lurp
             CollectFromItems(capsule.RegisteredImplementations);
             CollectFromItems(capsule.RelevantTests);
             CollectFromItems(capsule.SecondDegreeContext);
+            CollectFromItems(capsule.SurroundingSource);
 
             var anchorEdges = _store.GetIncomingEdges(_snapshotId, _symbolId.Value)
                 .Concat(_store.GetOutgoingEdges(_snapshotId, _symbolId.Value))

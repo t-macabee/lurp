@@ -18,6 +18,7 @@ namespace Lurp.Storage
         Throws,
         Declares,
         MayDispatchTo,
+        StaticallyCalls,
         RoutesTo,
         Registers,
         Handles,

@@ -43,14 +43,14 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                     requestTypes.Add(type);
                 }
 
-                if (ifaceName == "IRequestHandler`2")
+                if (ifaceName == "IRequestHandler")
                 {
                     var requestTypeArg = iface.TypeArguments.FirstOrDefault();
                     if (requestTypeArg is INamedTypeSymbol namedRequest)
                         handlerTypes.Add((type, namedRequest));
                 }
 
-                if (ifaceName == "INotificationHandler`1")
+                if (ifaceName == "INotificationHandler")
                 {
 
                     var notificationTypeArg = iface.TypeArguments.FirstOrDefault();

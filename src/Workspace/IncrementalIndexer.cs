@@ -117,116 +117,129 @@ public sealed class IncrementalIndexer
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
         Console.WriteLine("done.");
 
-        Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
+        _store.MarkSnapshotInProgress(newSnapshotIdStr);
 
-        _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
-
-        if (changedPaths.Count > 0)
-            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, changedPaths);
-
-        if (oldDocVersionIdSet.Count > 0)
-            _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
-
-        _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
-
-        Console.WriteLine("done.");
-
-        Console.WriteLine("Extracting replacement facts for affected projects...");
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;
 
-        foreach (var (projectName, compilation) in affectedCompilations)
+        try
         {
-            Console.Write($"  [{projectName}] ");
+            Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
-            var extractor = new SymbolExtractor(
-                compilation,
-                workspaceInfo.DocumentContents,
-                workspaceInfo.Documents,
-                workspaceInfo.GeneratedDocuments,
-                newSnapshotIdStr);
-            var declarations = extractor.ExtractAll();
-            _store.SaveDeclarations(newSnapshotIdStr, declarations);
-            totalDeclarations += declarations.Count;
+            _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
 
-            var typeEdges = extractor.ExtractEdges();
-            _store.SaveEdges(newSnapshotIdStr, typeEdges);
-            totalEdges += typeEdges.Count;
+            if (changedPaths.Count > 0)
+                _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, changedPaths);
 
-            var memberEdgeExtractor = new MemberEdgeExtractor(
-                compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, newSnapshotIdStr);
-            var memberEdges = memberEdgeExtractor.ExtractAll();
-            _store.SaveEdges(newSnapshotIdStr, memberEdges);
-            totalEdges += memberEdges.Count;
+            if (oldDocVersionIdSet.Count > 0)
+                _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
 
-            var polyExtractor = new PolymorphismExtractor(compilation, newSnapshotIdStr);
-            var polyEdges = polyExtractor.ExtractAll();
-            _store.SaveEdges(newSnapshotIdStr, polyEdges);
-            totalEdges += polyEdges.Count;
+            _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
 
-            try
+            Console.WriteLine("done.");
+
+            Console.WriteLine("Extracting replacement facts for affected projects...");
+
+            foreach (var (projectName, compilation) in affectedCompilations)
             {
-                var reflectionExtractor = new ReflectionExtractor(compilation, newSnapshotIdStr);
-                var reflectionEdges = reflectionExtractor.Extract();
-                _store.SaveEdges(newSnapshotIdStr, reflectionEdges);
-                totalEdges += reflectionEdges.Count;
-                Console.Write($"  Reflection: {reflectionEdges.Count} edges. ");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.Write($"  WARNING: Reflection extraction failed: {ex.Message} ");
-            }
+                Console.Write($"  [{projectName}] ");
 
-            int adapterEdgesCount = 0;
-            var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(_skipAdapters);
-            foreach (var adapter in adaptersToRun)
-            {
+                var extractor = new SymbolExtractor(
+                    compilation,
+                    workspaceInfo.DocumentContents,
+                    workspaceInfo.Documents,
+                    workspaceInfo.GeneratedDocuments,
+                    newSnapshotIdStr);
+                var declarations = extractor.ExtractAll();
+                _store.SaveDeclarations(newSnapshotIdStr, declarations);
+                totalDeclarations += declarations.Count;
+
+                var typeEdges = extractor.ExtractEdges();
+                _store.SaveEdges(newSnapshotIdStr, typeEdges);
+                totalEdges += typeEdges.Count;
+
+                var memberEdgeExtractor = new MemberEdgeExtractor(
+                    compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, newSnapshotIdStr);
+                var memberEdges = memberEdgeExtractor.ExtractAll();
+                _store.SaveEdges(newSnapshotIdStr, memberEdges);
+                totalEdges += memberEdges.Count;
+
+                var polyExtractor = new PolymorphismExtractor(compilation, newSnapshotIdStr);
+                var polyEdges = polyExtractor.ExtractAll();
+                _store.SaveEdges(newSnapshotIdStr, polyEdges);
+                totalEdges += polyEdges.Count;
+
                 try
                 {
-                    Console.Write($"  Adapter [{adapter.Name}]... ");
-                    var adapterEdges = adapter.Extract(compilation, newSnapshotIdStr);
-                    _store.SaveEdges(newSnapshotIdStr, adapterEdges);
-                    adapterEdgesCount += adapterEdges.Count;
-                    Console.Write($"{adapterEdges.Count} edges. ");
+                    var reflectionExtractor = new ReflectionExtractor(compilation, newSnapshotIdStr);
+                    var reflectionEdges = reflectionExtractor.Extract();
+                    _store.SaveEdges(newSnapshotIdStr, reflectionEdges);
+                    totalEdges += reflectionEdges.Count;
+                    Console.Write($"  Reflection: {reflectionEdges.Count} edges. ");
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.Write($"  ERROR: Adapter '{adapter.Name}' failed: {ex.Message} ");
+                    Console.Error.Write($"  WARNING: Reflection extraction failed: {ex.Message} ");
                 }
+
+                int adapterEdgesCount = 0;
+                var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(_skipAdapters);
+                foreach (var adapter in adaptersToRun)
+                {
+                    try
+                    {
+                        Console.Write($"  Adapter [{adapter.Name}]... ");
+                        var adapterEdges = adapter.Extract(compilation, newSnapshotIdStr);
+                        _store.SaveEdges(newSnapshotIdStr, adapterEdges);
+                        adapterEdgesCount += adapterEdges.Count;
+                        Console.Write($"{adapterEdges.Count} edges. ");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.Write($"  ERROR: Adapter '{adapter.Name}' failed: {ex.Message} ");
+                    }
+                }
+                totalEdges += adapterEdgesCount;
+
+                var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
+                _store.SaveDiagnostics(newSnapshotIdStr, diagnostics);
+                totalDiagnostics += diagnostics.Count;
+
+                Console.WriteLine($"{declarations.Count} symbols, {typeEdges.Count + memberEdges.Count + polyEdges.Count + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
             }
-            totalEdges += adapterEdgesCount;
 
-            var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
-            _store.SaveDiagnostics(newSnapshotIdStr, diagnostics);
-            totalDiagnostics += diagnostics.Count;
+            Console.Write("Updating cross-document edges... ");
+            var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(
+                solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths);
+            totalEdges += crossDocEdgesProcessed;
+            Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
 
-            Console.WriteLine($"{declarations.Count} symbols, {typeEdges.Count + memberEdges.Count + polyEdges.Count + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
-        }
+            Console.Write("Rebuilding FTS5 search index... ");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            _store.BuildSearchIndex(newSnapshotIdStr);
+            sw.Stop();
+            Console.WriteLine($"done ({sw.ElapsedMilliseconds} ms).");
 
-        Console.Write("Updating cross-document edges... ");
-        var crossDocEdgesProcessed = await UpdateCrossDocumentEdgesAsync(
-            solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths);
-        totalEdges += crossDocEdgesProcessed;
-        Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
+            Console.Write("Computing semantic diff from previous snapshot... ");
+            try
+            {
+                var differ = new Workspace.SemanticDiffer(_store);
+                var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
+                _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
+                Console.WriteLine($"done ({diffChanges.Count} changes).");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
+            }
 
-        Console.Write("Rebuilding FTS5 search index... ");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        _store.BuildSearchIndex(newSnapshotIdStr);
-        sw.Stop();
-        Console.WriteLine($"done ({sw.ElapsedMilliseconds} ms).");
-
-        Console.Write("Computing semantic diff from previous snapshot... ");
-        try
-        {
-            var differ = new Workspace.SemanticDiffer(_store);
-            var diffChanges = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr);
-            _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
-            Console.WriteLine($"done ({diffChanges.Count} changes).");
+            _store.MarkSnapshotComplete(newSnapshotIdStr);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
+            Console.Error.WriteLine($"ERROR: Incremental index failed, snapshot {newSnapshotIdStr} left in 'in_progress' state: {ex.Message}");
+            throw;
         }
 
         Console.WriteLine();

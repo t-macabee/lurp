@@ -79,7 +79,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         {
             foreach (var iface in type.AllInterfaces)
             {
-                if (iface.OriginalDefinition?.Name == "IEntityTypeConfiguration`1")
+                if (iface.OriginalDefinition?.Name == "IEntityTypeConfiguration")
                 {
                     var configId = MakeSymbolId(type, assemblyIdentity);
                     if (configId == null)
@@ -138,7 +138,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (originalDef == null)
             return false;
 
-        if (originalDef.Name != "DbSet`1")
+        if (originalDef.Name != "DbSet")
             return false;
 
         if (namedType.TypeArguments.Length == 1 &&

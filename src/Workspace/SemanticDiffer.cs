@@ -61,10 +61,26 @@ namespace Lurp.Workspace
                 if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
                     fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
                 {
-                    changes.Add(MakeChange(
-                        fromSnapshotId, toSnapshotId,
-                        ChangeType.SymbolRenamed, symbolId,
-                        new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
+                    var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
+                    var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
+                    var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
+                    var toContainer = GetContainer(toInfo.FullyQualifiedName);
+
+                    if (fromSimple != toSimple)
+                    {
+                        changes.Add(MakeChange(
+                            fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolRenamed, symbolId,
+                            new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
+                    }
+
+                    if (fromContainer != toContainer)
+                    {
+                        changes.Add(MakeChange(
+                            fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolMoved, symbolId,
+                            new { before = fromContainer, after = toContainer }));
+                    }
                 }
 
                 var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
@@ -192,6 +208,20 @@ namespace Lurp.Workspace
             }
 
             return changes;
+        }
+
+        private static string GetSimpleName(string? fqn)
+        {
+            if (string.IsNullOrEmpty(fqn)) return string.Empty;
+            var idx = fqn.LastIndexOf('.');
+            return idx < 0 ? fqn : fqn.Substring(idx + 1);
+        }
+
+        private static string GetContainer(string? fqn)
+        {
+            if (string.IsNullOrEmpty(fqn)) return string.Empty;
+            var idx = fqn.LastIndexOf('.');
+            return idx < 0 ? string.Empty : fqn.Substring(0, idx);
         }
 
         private static string? GetMetaString(Dictionary<string, JsonElement> meta, string key)

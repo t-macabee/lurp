@@ -13,4 +13,7 @@ public static class ExtractorConstants
     public const string ThrowsExtractor     = "throws-v1";
     public const string ParameterDependenciesExtractor = "parameter-deps-v1";
     public const string ReflectionExtractor  = "reflection-v1";
+    public const string StaticallyCallsExtractor = "statically-calls-v1";
+    public const string PolymorphismExtractor = "polymorphism-v1";
+    public const string DependencyInjectionExtractor = "di-v1";
 }
