@@ -3043,5 +3043,378 @@ class Source {
             Assert.Contains(unknownEdges, e => e.Provenance == "runtime_unknown");
         }
     }
+
+    public class C16SimulationTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public C16SimulationTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_c16_sim_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+            store.SaveEdges(snapshotId, edges);
+            return store;
+        }
+
+        private void CreateStoreWithSymbols(SqliteIndexStore store, string snapshotId, List<string> symbolIds)
+        {
+            var declarations = symbolIds.Select(id =>
+            {
+                var sid = SymbolId.Parse(id);
+                return new SymbolDeclaration(
+                    symbolId: sid,
+                    kind: SymbolKind.Method,
+                    documentVersionId: "doc-v1",
+                    fullSpan: new DeclarationSpan(null, null),
+                    signatureSpan: new DeclarationSpan(null, null),
+                    bodySpan: new DeclarationSpan(null, null),
+                    nameSpan: new DeclarationSpan(null, null),
+                    metadataJson: "{\"accessibility\":\"public\"}");
+            }).ToList();
+            store.SaveDeclarations(snapshotId, declarations);
+        }
+
+        [Fact]
+        public void SimulateRename_CallerEdge_ReportsCallerSymbol()
+        {
+            const string snapId = "snap-c16-sim-001";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+
+            Assert.Equal("rename", report.SimulationType);
+            Assert.Contains(report.Items, i => i.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateRename_OverrideEdge_ReportsOverrideDeclaration()
+        {
+            const string snapId = "snap-c16-sim-002";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:C|asm", "M:B|asm", "Overrides")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "M:C|asm" && i.EdgeKind == "Overrides");
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateRename_NoCallers_ReturnsEmptyItems()
+        {
+            const string snapId = "snap-c16-sim-003";
+            var store = CreateStoreWithEdges(snapId, new List<EdgeRecord>());
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+
+            Assert.Empty(report.Items);
+            Assert.Equal(0, report.AffectedCount);
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateMove_CallerWithDocumentPath_ReportsDocumentPath()
+        {
+            const string snapId = "snap-c16-sim-004";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:A|asm", "M:B|asm", "Calls", "compiler_proved", snapId, "v1",
+                    sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateMove("M:B|asm", "NewNs");
+
+            var item = Assert.Single(report.Items);
+            Assert.Equal("src/A.cs", item.DocumentPath);
+            Assert.Equal(10, item.Line);
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateRemove_DependentWithRegistration_ReportsOrphanedRegistration()
+        {
+            const string snapId = "snap-c16-sim-005";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("T:Startup|asm", "M:B|asm", "Registers"),
+                new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateRemove("M:B|asm");
+
+            Assert.Contains(report.Items, i => i.EdgeKind == "Registers");
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateRemove_SymbolWithTest_ReportsOrphanedTest()
+        {
+            const string snapId = "snap-c16-sim-006";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:FooTest|asm", "M:B|asm", "TestedBy")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, snapId);
+
+            var report = engine.SimulateRemove("M:B|asm");
+
+            Assert.Contains(report.Items, i => i.EdgeKind == "TestedBy");
+            store.Close();
+        }
+    }
+
+    public class C16AuditTests : IDisposable
+    {
+        private readonly string _dbPath;
+
+        public C16AuditTests()
+        {
+            _dbPath = Path.Combine(Path.GetTempPath(), $"indexer_c16_aud_{Guid.NewGuid():N}.db");
+        }
+
+        public void Dispose()
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+
+        private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+            store.SaveEdges(snapshotId, edges);
+            return store;
+        }
+
+        private void CreateStoreWithSymbols(SqliteIndexStore store, string snapshotId, List<string> symbolIds, string? metadataJson = null)
+        {
+            // Seed FK references needed by SaveDeclarations
+            using (var fkConn = new SqliteConnection($"Data Source={_dbPath}"))
+            {
+                fkConn.Open();
+                using var fkCmd = fkConn.CreateCommand();
+                fkCmd.CommandText = @"
+                    INSERT OR IGNORE INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('test-ws', '/fake/root', 'test.sln');
+                    INSERT OR IGNORE INTO snapshots (snapshot_id, workspace_id, built_at_utc)
+                    VALUES (@sid, 'test-ws', '2026-01-01T00:00:00Z');
+                    INSERT OR IGNORE INTO documents (document_id, relative_path)
+                    VALUES ('doc-1', 'test.cs');
+                    INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash)
+                    VALUES ('doc-v1', 'doc-1', 'hash');
+                ";
+                fkCmd.Parameters.AddWithValue("@sid", snapshotId);
+                fkCmd.ExecuteNonQuery();
+            }
+
+            var declarations = symbolIds.Select(id =>
+            {
+                var sid = SymbolId.Parse(id);
+                return new SymbolDeclaration(
+                    symbolId: sid,
+                    kind: SymbolKind.Method,
+                    documentVersionId: "doc-v1",
+                    fullSpan: new DeclarationSpan(null, null),
+                    signatureSpan: new DeclarationSpan(null, null),
+                    bodySpan: new DeclarationSpan(null, null),
+                    nameSpan: new DeclarationSpan(null, null),
+                    metadataJson: metadataJson ?? "{\"accessibility\":\"public\"}");
+            }).ToList();
+            store.SaveDeclarations(snapshotId, declarations);
+        }
+
+        [Fact]
+        public void DeadSymbol_NoIncomingEdges_Flagged()
+        {
+            const string snapId = "snap-c16-aud-001";
+            var store = CreateStoreWithEdges(snapId, new List<EdgeRecord>());
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "dead-symbol" }));
+
+            Assert.Contains(report.Findings, f => f.Check == "dead-symbol" && f.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void DeadSymbol_OnlyTestedByIncoming_StillFlagged()
+        {
+            const string snapId = "snap-c16-aud-002";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:Test|asm", "M:A|asm", "TestedBy")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Test|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "dead-symbol" }));
+
+            Assert.Contains(report.Findings, f => f.Check == "dead-symbol" && f.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void DeadSymbol_HasCallsIncoming_NotFlagged()
+        {
+            const string snapId = "snap-c16-aud-003";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:Caller|asm", "M:A|asm", "Calls")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Caller|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "dead-symbol" }));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "dead-symbol" && f.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UntestedSurface_SymbolWithNoTestedBy_Flagged()
+        {
+            const string snapId = "snap-c16-aud-004";
+            var store = CreateStoreWithEdges(snapId, new List<EdgeRecord>());
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm" },
+                metadataJson: "{\"accessibility\":\"public\"}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "untested-surface" }));
+
+            Assert.Contains(report.Findings, f => f.Check == "untested-surface" && f.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UntestedSurface_SymbolWithTestedByEdge_NotFlagged()
+        {
+            const string snapId = "snap-c16-aud-005";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:Test|asm", "M:A|asm", "TestedBy")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:A|asm", "M:Test|asm" },
+                metadataJson: "{\"accessibility\":\"public\"}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "untested-surface" }));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "untested-surface" && f.SymbolId == "M:A|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UnregisteredImpl_ImplementsWithoutRegisters_Flagged()
+        {
+            const string snapId = "snap-c16-aud-006";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("T:Impl|asm", "T:IFoo|asm", "Implements")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "T:Impl|asm", "T:IFoo|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "unregistered-impl" }));
+
+            Assert.Contains(report.Findings, f => f.Check == "unregistered-impl" && f.SymbolId == "T:Impl|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UnregisteredImpl_ImplementsWithRegisters_NotFlagged()
+        {
+            const string snapId = "snap-c16-aud-007";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("T:Impl|asm", "T:IFoo|asm", "Implements"),
+                new EdgeRecord("T:Startup|asm", "T:Impl|asm", "Registers")
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "T:Impl|asm", "T:IFoo|asm", "T:Startup|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "unregistered-impl" }));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "unregistered-impl" && f.SymbolId == "T:Impl|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void HighFanOut_ExceedsThreshold_Flagged()
+        {
+            const string snapId = "snap-c16-aud-008";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:God|asm", "M:T1|asm", "Calls"),
+                new EdgeRecord("M:God|asm", "M:T2|asm", "Calls"),
+                new EdgeRecord("M:God|asm", "M:T3|asm", "Calls"),
+                new EdgeRecord("M:God|asm", "M:T4|asm", "Calls"),
+                new EdgeRecord("M:God|asm", "M:T5|asm", "Calls"),
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:God|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "high-fan-out" }, fanOutThreshold: 3));
+
+            Assert.Contains(report.Findings, f => f.Check == "high-fan-out" && f.SymbolId == "M:God|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void HighFanOut_BelowThreshold_NotFlagged()
+        {
+            const string snapId = "snap-c16-aud-009";
+            var edges = new List<EdgeRecord>
+            {
+                new EdgeRecord("M:Lean|asm", "M:T1|asm", "Calls"),
+                new EdgeRecord("M:Lean|asm", "M:T2|asm", "Calls"),
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, new List<string> { "M:Lean|asm" });
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(new HashSet<string> { "high-fan-out" }, fanOutThreshold: 3));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "high-fan-out" && f.SymbolId == "M:Lean|asm");
+            store.Close();
+        }
+    }
 }
 

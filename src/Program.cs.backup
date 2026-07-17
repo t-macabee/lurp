@@ -103,31 +103,7 @@ namespace Lurp
                 return;
             }
 
-            if (args.Contains("--mode=simulate-rename"))
-            {
-                RunSimulateRename(args);
-                return;
-            }
-
-            if (args.Contains("--mode=simulate-move"))
-            {
-                RunSimulateMove(args);
-                return;
-            }
-
-            if (args.Contains("--mode=simulate-remove"))
-            {
-                RunSimulateRemove(args);
-                return;
-            }
-
-            if (args.Contains("--mode=audit"))
-            {
-                RunAudit(args);
-                return;
-            }
-
-            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=test-migration, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, or --mode=audit.");
+            Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, or --mode=test-migration.");
             Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
             Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
             Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
@@ -502,19 +478,15 @@ namespace Lurp
             Console.WriteLine("lurp — Roslyn-based code indexer");
             Console.WriteLine();
             Console.WriteLine("MODES");
-            Console.WriteLine("  --mode=index              Index a solution and store facts in the database.");
-            Console.WriteLine("  --mode=get-source          Retrieve source for a symbol by ID.");
-            Console.WriteLine("  --mode=get-symbol          Look up symbol metadata.");
-            Console.WriteLine("  --mode=search              Full-text search over source and symbols.");
-            Console.WriteLine("  --mode=find-symbol         Resolve a symbol by FQN.");
-            Console.WriteLine("  --mode=diff                Show semantic changes between two snapshots.");
-            Console.WriteLine("  --mode=impact              Trace the impact path of a changed symbol.");
-            Console.WriteLine("  --mode=context             Assemble a context capsule for a symbol.");
-            Console.WriteLine("  --mode=status              Show the current database status.");
-            Console.WriteLine("  --mode=simulate-rename     Simulate renaming a symbol and show affected references.");
-            Console.WriteLine("  --mode=simulate-move       Simulate moving a symbol to a new namespace.");
-            Console.WriteLine("  --mode=simulate-remove     Simulate removing a symbol and show cascading impact.");
-            Console.WriteLine("  --mode=audit               Run static analysis checks on the index.");
+            Console.WriteLine("  --mode=index       Index a solution and store facts in the database.");
+            Console.WriteLine("  --mode=get-source  Retrieve source for a symbol by ID.");
+            Console.WriteLine("  --mode=get-symbol  Look up symbol metadata.");
+            Console.WriteLine("  --mode=search      Full-text search over source and symbols.");
+            Console.WriteLine("  --mode=find-symbol Resolve a symbol by file location.");
+            Console.WriteLine("  --mode=diff        Show semantic changes between two snapshots.");
+            Console.WriteLine("  --mode=impact      Trace the impact path of a changed symbol.");
+            Console.WriteLine("  --mode=context     Assemble a context capsule for a symbol.");
+            Console.WriteLine("  --mode=status      Show the current database status.");
             Console.WriteLine();
             Console.WriteLine("INDEXING (--mode=index)");
             Console.WriteLine("  Required:");
@@ -538,24 +510,6 @@ namespace Lurp
             Console.WriteLine("    --skip-adapter=<name> Skip a named framework adapter.");
             Console.WriteLine("                          Valid: ASP.NET Core, Dependency Injection,");
             Console.WriteLine("                                 MediatR, EF Core, Serialization, Test.");
-            Console.WriteLine();
-            Console.WriteLine("SIMULATION (--mode=simulate-*)");
-            Console.WriteLine("  Required:");
-            Console.WriteLine("    --symbol=<id>         The symbol ID to simulate.");
-            Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
-            Console.WriteLine("  Options:");
-            Console.WriteLine("    --new-name=<name>     New simple name (simulate-rename only).");
-            Console.WriteLine("    --new-namespace=<ns>  Target namespace (simulate-move only).");
-            Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
-            Console.WriteLine();
-            Console.WriteLine("AUDIT (--mode=audit)");
-            Console.WriteLine("  Required:");
-            Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
-            Console.WriteLine("  Options:");
-            Console.WriteLine("    --checks=<list>       Comma-separated checks: dead-symbol, untested-surface,");
-            Console.WriteLine("                          unregistered-impl, high-fan-out (default: all).");
-            Console.WriteLine("    --fan-out-threshold=N Call-count threshold for high-fan-out (default: 20).");
-            Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
             Console.WriteLine();
             Console.WriteLine("SNAPSHOT LIFECYCLE");
             Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot.");
@@ -1008,7 +962,7 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    snapshotId = _indexStore!.GetLatestSnapshotId();
+                    snapshotId = _indexStore.GetLatestSnapshotId();
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1125,7 +1079,7 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    snapshotId = _indexStore!.GetLatestSnapshotId();
+                    snapshotId = _indexStore.GetLatestSnapshotId();
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1231,234 +1185,6 @@ namespace Lurp
 
             var version = _indexStore.GetCurrentSchemaVersion();
             Console.WriteLine($"Database schema version: {version}");
-        }
-
-        // ── Simulation mode handlers ──────────────────────────────────────
-
-        private static void RunSimulateRename(string[] args)
-        {
-            var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
-            if (string.IsNullOrEmpty(symbolArg))
-            {
-                Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-rename.");
-                Environment.Exit(1);
-            }
-
-            var newNameArg = args.FirstOrDefault(a => a.StartsWith("--new-name="))?.Split('=', 2)[1];
-            if (string.IsNullOrEmpty(newNameArg))
-            {
-                Console.Error.WriteLine("ERROR: --new-name=<name> is required for --mode=simulate-rename.");
-                Environment.Exit(1);
-            }
-
-            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-            if (string.IsNullOrEmpty(outputDirArg))
-            {
-                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-                Environment.Exit(1);
-            }
-
-            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-            if (!File.Exists(dbPath))
-            {
-                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-                Environment.Exit(1);
-            }
-
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
-            try
-            {
-                var snapshotId = snapshotArg;
-                if (string.IsNullOrEmpty(snapshotId))
-                {
-                    snapshotId = store.GetLatestSnapshotId();
-                    if (snapshotId == null)
-                    {
-                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                        Environment.Exit(1);
-                    }
-                }
-
-                var engine = new SimulationEngine(store, snapshotId);
-                var report = engine.SimulateRename(symbolArg, newNameArg);
-                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-                Console.WriteLine(json);
-            }
-            finally
-            {
-                store.Close();
-            }
-        }
-
-        private static void RunSimulateMove(string[] args)
-        {
-            var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
-            if (string.IsNullOrEmpty(symbolArg))
-            {
-                Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
-                Environment.Exit(1);
-            }
-
-            var newNamespaceArg = args.FirstOrDefault(a => a.StartsWith("--new-namespace="))?.Split('=', 2)[1];
-            if (string.IsNullOrEmpty(newNamespaceArg))
-            {
-                Console.Error.WriteLine("ERROR: --new-namespace=<namespace> is required for --mode=simulate-move.");
-                Environment.Exit(1);
-            }
-
-            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-            if (string.IsNullOrEmpty(outputDirArg))
-            {
-                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-                Environment.Exit(1);
-            }
-
-            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-            if (!File.Exists(dbPath))
-            {
-                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-                Environment.Exit(1);
-            }
-
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
-            try
-            {
-                var snapshotId = snapshotArg;
-                if (string.IsNullOrEmpty(snapshotId))
-                {
-                    snapshotId = store.GetLatestSnapshotId();
-                    if (snapshotId == null)
-                    {
-                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                        Environment.Exit(1);
-                    }
-                }
-
-                var engine = new SimulationEngine(store, snapshotId);
-                var report = engine.SimulateMove(symbolArg, newNamespaceArg);
-                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-                Console.WriteLine(json);
-            }
-            finally
-            {
-                store.Close();
-            }
-        }
-
-        private static void RunSimulateRemove(string[] args)
-        {
-            var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
-            if (string.IsNullOrEmpty(symbolArg))
-            {
-                Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-remove.");
-                Environment.Exit(1);
-            }
-
-            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-            if (string.IsNullOrEmpty(outputDirArg))
-            {
-                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-                Environment.Exit(1);
-            }
-
-            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-            if (!File.Exists(dbPath))
-            {
-                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-                Environment.Exit(1);
-            }
-
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
-            try
-            {
-                var snapshotId = snapshotArg;
-                if (string.IsNullOrEmpty(snapshotId))
-                {
-                    snapshotId = store.GetLatestSnapshotId();
-                    if (snapshotId == null)
-                    {
-                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                        Environment.Exit(1);
-                    }
-                }
-
-                var engine = new SimulationEngine(store, snapshotId);
-                var report = engine.SimulateRemove(symbolArg);
-                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-                Console.WriteLine(json);
-            }
-            finally
-            {
-                store.Close();
-            }
-        }
-
-        private static void RunAudit(string[] args)
-        {
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-            if (string.IsNullOrEmpty(outputDirArg))
-            {
-                Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-                Environment.Exit(1);
-            }
-
-            var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var checksArg = args.FirstOrDefault(a => a.StartsWith("--checks="))?.Split('=', 2)[1] ?? "all";
-            var fanOutThresholdArg = args.FirstOrDefault(a => a.StartsWith("--fan-out-threshold="))?.Split('=', 2)[1];
-
-            int fanOutThreshold = 20;
-            if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, out fanOutThreshold))
-            {
-                Console.Error.WriteLine("ERROR: --fan-out-threshold must be an integer.");
-                Environment.Exit(1);
-            }
-
-            var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-            if (!File.Exists(dbPath))
-            {
-                Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-                Environment.Exit(1);
-            }
-
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
-            try
-            {
-                var snapshotId = snapshotArg;
-                if (string.IsNullOrEmpty(snapshotId))
-                {
-                    snapshotId = store.GetLatestSnapshotId();
-                    if (snapshotId == null)
-                    {
-                        Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                        Environment.Exit(1);
-                    }
-                }
-
-                var checks = new HashSet<string>(
-                    checksArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                    StringComparer.OrdinalIgnoreCase);
-
-                var options = new AuditOptions(checks, fanOutThreshold);
-                var engine = new AuditEngine(store, snapshotId);
-                var report = engine.RunAudit(options);
-                var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-                Console.WriteLine(json);
-            }
-            finally
-            {
-                store.Close();
-            }
         }
     }
 }
