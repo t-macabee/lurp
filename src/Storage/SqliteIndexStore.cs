@@ -8,7 +8,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage
 {
-    public class SqliteIndexStore : IIndexStore
+    public class SqliteIndexStore : IIndexStore, ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore
     {
         private string? _dbPath;
         private bool _isOpen;

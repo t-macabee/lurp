@@ -62,29 +62,31 @@ public sealed class SimulationReport
 
 public sealed class SimulationEngine
 {
-    private readonly IIndexStore _store;
+    private readonly IEdgeStore _edgeStore;
+    private readonly IDeclarationStore _declarationStore;
     private readonly string _snapshotId;
 
-    public SimulationEngine(IIndexStore store, string snapshotId)
+    public SimulationEngine(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
+        _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     }
 
     public SimulationReport SimulateRename(string symbolId, string newSimpleName)
     {
-        var incoming = _store.GetIncomingEdges(_snapshotId, symbolId);
+        var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
         var filteredIncoming = incoming.Where(e =>
             e.Kind is "Calls" or "References" or "Overrides" or "Implements");
 
-        var outgoing = _store.GetOutgoingEdges(_snapshotId, symbolId);
+        var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
         var overrideOutgoing = outgoing.Where(e => e.Kind == "Overrides");
 
         var items = new List<SimulationItem>();
 
         foreach (var edge in filteredIncoming)
         {
-            var info = _store.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
+            var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
             items.Add(new SimulationItem(
                 symbolId: edge.SourceSymbolId,
                 fqn: info?.FullyQualifiedName,
@@ -95,7 +97,7 @@ public sealed class SimulationEngine
 
         foreach (var edge in overrideOutgoing)
         {
-            var info = _store.GetSymbolInfo(edge.TargetSymbolId, _snapshotId);
+            var info = _declarationStore.GetSymbolInfo(edge.TargetSymbolId, _snapshotId);
             items.Add(new SimulationItem(
                 symbolId: edge.TargetSymbolId,
                 fqn: info?.FullyQualifiedName,
@@ -109,7 +111,7 @@ public sealed class SimulationEngine
 
     public SimulationReport SimulateMove(string symbolId, string newNamespace)
     {
-        var incoming = _store.GetIncomingEdges(_snapshotId, symbolId);
+        var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
         var filteredIncoming = incoming.Where(e =>
             e.Kind is "Calls" or "References" or "Implements");
 
@@ -117,7 +119,7 @@ public sealed class SimulationEngine
 
         foreach (var edge in filteredIncoming)
         {
-            var info = _store.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
+            var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
             items.Add(new SimulationItem(
                 symbolId: edge.SourceSymbolId,
                 fqn: info?.FullyQualifiedName,
@@ -134,7 +136,7 @@ public sealed class SimulationEngine
         var allItems = new Dictionary<string, SimulationItem>();
 
         // 1. Upstream impact paths via ImpactTraverser
-        var traverser = new ImpactTraverser(_store, _snapshotId);
+        var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
         var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream);
 
         foreach (var path in paths)
@@ -144,7 +146,7 @@ public sealed class SimulationEngine
                 var key = hop.SourceSymbolId;
                 if (!allItems.ContainsKey(key))
                 {
-                    var info = _store.GetSymbolInfo(key, _snapshotId);
+                    var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
                     allItems[key] = new SimulationItem(
                         symbolId: key,
                         fqn: info?.FullyQualifiedName,
@@ -156,14 +158,14 @@ public sealed class SimulationEngine
         }
 
         // 2. Registers (DI registrations that would orphan)
-        var registers = _store.GetIncomingEdges(_snapshotId, symbolId)
+        var registers = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
             .Where(e => e.Kind == "Registers");
         foreach (var edge in registers)
         {
             var key = edge.SourceSymbolId;
             if (!allItems.ContainsKey(key))
             {
-                var info = _store.GetSymbolInfo(key, _snapshotId);
+                var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
                 allItems[key] = new SimulationItem(
                     symbolId: key,
                     fqn: info?.FullyQualifiedName,
@@ -174,14 +176,14 @@ public sealed class SimulationEngine
         }
 
         // 3. TestedBy (tests that would lose their target)
-        var testedBy = _store.GetIncomingEdges(_snapshotId, symbolId)
+        var testedBy = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
             .Where(e => e.Kind == "TestedBy");
         foreach (var edge in testedBy)
         {
             var key = edge.SourceSymbolId;
             if (!allItems.ContainsKey(key))
             {
-                var info = _store.GetSymbolInfo(key, _snapshotId);
+                var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
                 allItems[key] = new SimulationItem(
                     symbolId: key,
                     fqn: info?.FullyQualifiedName,
@@ -192,14 +194,14 @@ public sealed class SimulationEngine
         }
 
         // 4. Implements (outgoing — interfaces this type fulfills, contract broken)
-        var outgoingImplements = _store.GetOutgoingEdges(_snapshotId, symbolId)
+        var outgoingImplements = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId)
             .Where(e => e.Kind == "Implements");
         foreach (var edge in outgoingImplements)
         {
             var key = edge.TargetSymbolId;
             if (!allItems.ContainsKey(key))
             {
-                var info = _store.GetSymbolInfo(key, _snapshotId);
+                var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
                 allItems[key] = new SimulationItem(
                     symbolId: key,
                     fqn: info?.FullyQualifiedName,

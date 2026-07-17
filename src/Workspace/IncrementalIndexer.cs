@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Lurp.Adapters;
 using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -165,68 +164,21 @@ public sealed class IncrementalIndexer
             {
                 Console.Write($"  [{projectName}] ");
 
-                var extractor = new SymbolExtractor(
-                    compilation,
-                    workspaceInfo.DocumentContents,
-                    workspaceInfo.Documents,
-                    workspaceInfo.GeneratedDocuments,
-                    newSnapshotIdStr);
-                var declarations = extractor.ExtractAll();
-                _store.SaveDeclarations(newSnapshotIdStr, declarations);
-                totalDeclarations += declarations.Count;
+                var result = CompilationFactExtractor.ExtractAll(
+                    compilation, workspaceInfo, newSnapshotIdStr, projectName, _skipAdapters,
+                    logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                    logError: msg => Console.Error.Write($"  ERROR: {msg} "));
 
-                var typeEdges = extractor.ExtractEdges();
-                _store.SaveEdges(newSnapshotIdStr, typeEdges);
-                totalEdges += typeEdges.Count;
+                _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
+                totalDeclarations += result.Declarations.Count;
 
-                var memberEdgeExtractor = new MemberEdgeExtractor(
-                    compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, newSnapshotIdStr);
-                var memberEdges = memberEdgeExtractor.ExtractAll();
-                _store.SaveEdges(newSnapshotIdStr, memberEdges);
-                totalEdges += memberEdges.Count;
+                _store.SaveEdges(newSnapshotIdStr, result.Edges);
+                totalEdges += result.Edges.Count;
 
-                var polyExtractor = new PolymorphismExtractor(compilation, newSnapshotIdStr);
-                var polyEdges = polyExtractor.ExtractAll();
-                _store.SaveEdges(newSnapshotIdStr, polyEdges);
-                totalEdges += polyEdges.Count;
+                _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
+                totalDiagnostics += result.Diagnostics.Count;
 
-                try
-                {
-                    var reflectionExtractor = new ReflectionExtractor(compilation, newSnapshotIdStr);
-                    var reflectionEdges = reflectionExtractor.Extract();
-                    _store.SaveEdges(newSnapshotIdStr, reflectionEdges);
-                    totalEdges += reflectionEdges.Count;
-                    Console.Write($"  Reflection: {reflectionEdges.Count} edges. ");
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.Write($"  WARNING: Reflection extraction failed: {ex.Message} ");
-                }
-
-                int adapterEdgesCount = 0;
-                var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(_skipAdapters);
-                foreach (var adapter in adaptersToRun)
-                {
-                    try
-                    {
-                        Console.Write($"  Adapter [{adapter.Name}]... ");
-                        var adapterEdges = adapter.Extract(compilation, newSnapshotIdStr);
-                        _store.SaveEdges(newSnapshotIdStr, adapterEdges);
-                        adapterEdgesCount += adapterEdges.Count;
-                        Console.Write($"{adapterEdges.Count} edges. ");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.Write($"  ERROR: Adapter '{adapter.Name}' failed: {ex.Message} ");
-                    }
-                }
-                totalEdges += adapterEdgesCount;
-
-                var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
-                _store.SaveDiagnostics(newSnapshotIdStr, diagnostics);
-                totalDiagnostics += diagnostics.Count;
-
-                Console.WriteLine($"{declarations.Count} symbols, {typeEdges.Count + memberEdges.Count + polyEdges.Count + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
+                Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
 
             Console.Write("Updating cross-document edges... ");
@@ -428,49 +380,15 @@ public sealed class IncrementalIndexer
             if (compilation == null)
                 continue;
 
-            var typeExtractor = new SymbolExtractor(
-                compilation,
-                workspaceInfo.DocumentContents,
-                workspaceInfo.Documents,
-                workspaceInfo.GeneratedDocuments,
-                newSnapshotId);
-            var typeEdges = typeExtractor.ExtractEdges();
-            _store.SaveEdges(newSnapshotId, typeEdges);
-            totalEdges += typeEdges.Count;
+            var result = CompilationFactExtractor.ExtractAll(
+                compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters,
+                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                logError: msg => Console.Error.Write($"  ERROR: {msg} "));
 
-            var memberEdgeExtractor = new MemberEdgeExtractor(
-                compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, newSnapshotId);
-            var memberEdges = memberEdgeExtractor.ExtractAll();
-            _store.SaveEdges(newSnapshotId, memberEdges);
-            totalEdges += memberEdges.Count;
+            _store.SaveEdges(newSnapshotId, result.Edges);
+            totalEdges += result.Edges.Count;
 
-            var polyExtractor = new PolymorphismExtractor(compilation, newSnapshotId);
-            var polyEdges = polyExtractor.ExtractAll();
-            _store.SaveEdges(newSnapshotId, polyEdges);
-            totalEdges += polyEdges.Count;
-
-            try
-            {
-                var reflectionExtractor = new ReflectionExtractor(compilation, newSnapshotId);
-                var reflectionEdges = reflectionExtractor.Extract();
-                _store.SaveEdges(newSnapshotId, reflectionEdges);
-                totalEdges += reflectionEdges.Count;
-            }
-            catch { }
-
-            var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(_skipAdapters);
-            foreach (var adapter in adaptersToRun)
-            {
-                try
-                {
-                    var adapterEdges = adapter.Extract(compilation, newSnapshotId);
-                    _store.SaveEdges(newSnapshotId, adapterEdges);
-                    totalEdges += adapterEdges.Count;
-                }
-                catch { }
-            }
-
-            Console.Write($"  [cross-doc {project.Name}] {typeEdges.Count + memberEdges.Count + polyEdges.Count} edges. ");
+            Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }
 
         return totalEdges;

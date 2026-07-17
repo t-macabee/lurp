@@ -1,14 +1,9 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.MSBuild;
-using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
 
@@ -616,227 +611,14 @@ namespace Lurp
                 Console.WriteLine($"JSON export: {jsonExportPath}");
             Console.WriteLine();
 
-            if (!MSBuildLocator.IsRegistered)
-            {
-                var instances = MSBuildLocator.RegisterDefaults();
-                Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
-            }
-
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
             store.RunMigrations();
             store.ValidateSchema(expectedVersion: VersionConstants.DatabaseSchemaVersion);
 
-            string strategy;
-            if (strategyArg != null)
-            {
-                strategy = strategyArg.ToLowerInvariant();
-                if (strategy != "incremental" && strategy != "full")
-                {
-                    Console.Error.WriteLine("ERROR: --strategy must be 'incremental' or 'full'.");
-                    Environment.Exit(1);
-                    return;
-                }
-            }
-            else
-            {
-                var latestSnapshotId = store.GetLatestSnapshotId();
-                if (latestSnapshotId == null)
-                {
-                    strategy = "full";
-                    Console.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
-                }
-                else
-                {
-                    strategy = "incremental";
-                }
-            }
-
-            Console.WriteLine($"Strategy: {strategy}");
-            if (strategy == "full")
-            {
-                Console.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
-            }
-
-            var totalSw = System.Diagnostics.Stopwatch.StartNew();
-
             try
             {
-
-                Console.Write("Loading solution... ");
-                using var workspace = MSBuildWorkspace.Create();
-                var solution = await workspace.OpenSolutionAsync(solutionPathArg);
-                Console.WriteLine($"done ({solution.Projects.Count()} projects).");
-
-                var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPathArg))!;
-                Console.Write("Building workspace info... ");
-                var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
-                Console.WriteLine("done.");
-
-                if (strategy == "incremental")
-                {
-
-                    var storageWsId = new Storage.WorkspaceId(workspaceInfo.Id.Value);
-                    var previousStorageManifest = store.LoadLatestSnapshot(storageWsId);
-                    if (previousStorageManifest == null)
-                    {
-                        Console.WriteLine("No previous snapshot found. Falling back to full index.");
-                        strategy = "full";
-                    }
-                    else
-                    {
-                        var incrementalIndexer = new IncrementalIndexer(
-                            store, gitRoot, solutionPathArg, outputDir, skipAdapters, jsonExportPath);
-                        var result = await incrementalIndexer.RunIncrementalAsync(
-                            solution, workspaceInfo, previousStorageManifest);
-                        Console.WriteLine();
-                        Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
-                        Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-                        Console.WriteLine($"  Changed documents: {result.ChangedDocumentCount}");
-                        Console.WriteLine($"  Declarations:      {result.DeclarationsExtracted}");
-                        Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
-                        Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
-                        Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-
-                        Console.Write("Pruning old snapshots... ");
-                        store.PruneOldSnapshots(keep: 3);
-                        Console.WriteLine("done.");
-
-                        totalSw.Stop();
-                        Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
-
-                        return;
-                    }
-                }
-
-                if (strategy == "full")
-                {
-                    var snapshotId = SnapshotId.New();
-                    var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
-                    var snapshotIdStr = snapshotId.ToString();
-
-                    Console.Write("Saving snapshot to database... ");
-                    manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
-                    Console.WriteLine("done.");
-
-                    store.MarkSnapshotInProgress(snapshotIdStr);
-
-                    try
-                    {
-
-                    int totalDeclarations = 0;
-                    int totalEdges = 0;
-                    int totalDiagnostics = 0;
-
-                    await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
-                    {
-                        var projectName = project.Name;
-                        Console.Write($"  [{projectName}] ");
-
-                        var extractor = new SymbolExtractor(
-                            compilation,
-                            workspaceInfo.DocumentContents,
-                            workspaceInfo.Documents,
-                            workspaceInfo.GeneratedDocuments,
-                            snapshotIdStr);
-                        var declarations = extractor.ExtractAll();
-                        store.SaveDeclarations(snapshotIdStr, declarations);
-                        totalDeclarations += declarations.Count;
-
-                        var edges = extractor.ExtractEdges();
-                        store.SaveEdges(snapshotIdStr, edges);
-                        totalEdges += edges.Count;
-
-                        var memberEdgeExtractor = new MemberEdgeExtractor(
-                            compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
-                        var memberEdges = memberEdgeExtractor.ExtractAll();
-                        store.SaveEdges(snapshotIdStr, memberEdges);
-                        totalEdges += memberEdges.Count;
-
-                        var polyExtractor = new PolymorphismExtractor(
-                            compilation, snapshotIdStr);
-                        var polyEdges = polyExtractor.ExtractAll();
-                        store.SaveEdges(snapshotIdStr, polyEdges);
-                        totalEdges += polyEdges.Count;
-
-                        int reflectionEdgesCount = 0;
-                        try
-                        {
-                            var reflectionExtractor = new ReflectionExtractor(
-                                compilation, snapshotIdStr);
-                            var reflectionEdges = reflectionExtractor.Extract();
-                            store.SaveEdges(snapshotIdStr, reflectionEdges);
-                            reflectionEdgesCount = reflectionEdges.Count;
-                            totalEdges += reflectionEdgesCount;
-                            Console.WriteLine($"  Reflection extraction: {reflectionEdgesCount} edges.");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.Error.WriteLine($"WARNING: Reflection extraction failed: {ex.Message}");
-                        }
-
-                        int adapterEdgesCount = 0;
-                        var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(skipAdapters);
-                        foreach (var adapter in adaptersToRun)
-                        {
-                            try
-                            {
-                                Console.Write($"  Running adapter [{adapter.Name}]... ");
-                                var adapterEdges = adapter.Extract(compilation, snapshotIdStr);
-                                store.SaveEdges(snapshotIdStr, adapterEdges);
-                                adapterEdgesCount += adapterEdges.Count;
-                                Console.WriteLine($"{adapterEdges.Count} edges.");
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.Error.WriteLine($"ERROR: Adapter '{adapter.Name}' failed: {ex.Message}");
-
-                            }
-                        }
-
-                        var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
-                        store.SaveDiagnostics(snapshotIdStr, diagnostics);
-                        totalDiagnostics += diagnostics.Count;
-
-                        totalEdges += adapterEdgesCount;
-
-                        Console.WriteLine($"{declarations.Count} symbols, {edges.Count + memberEdges.Count + polyEdges.Count + reflectionEdgesCount + adapterEdgesCount} edges, {diagnostics.Count} diagnostics.");
-                    }
-
-                    Console.WriteLine();
-                    Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
-                    Console.WriteLine($"  Declarations: {totalDeclarations}");
-                    Console.WriteLine($"  Edges:        {totalEdges}");
-                    Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
-                    Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-
-                    var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
-                    var previousManifest = store.LoadLatestSnapshot(storageWsId);
-                    if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
-                    {
-                        Console.WriteLine();
-                        Console.Write("Computing semantic diff from previous snapshot... ");
-                        var differ = new SemanticDiffer(store);
-                        var diffChanges = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
-                        store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
-                        Console.WriteLine($"done ({diffChanges.Count} changes).");
-                    }
-
-                    store.MarkSnapshotComplete(snapshotIdStr);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in 'in_progress' state: {ex.Message}");
-                    throw;
-                }
-
-                Console.Write("Pruning old snapshots... ");
-                store.PruneOldSnapshots(keep: 3);
-                Console.WriteLine("done.");
-
-                totalSw.Stop();
-                Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
-            }
+                await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg);
             }
             finally
             {
@@ -846,42 +628,8 @@ namespace Lurp
 
         private static void TestMigration()
         {
-            Console.WriteLine("Testing migration runner...");
-
             var dbPath = Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location)!, "test-index.db");
-            if (File.Exists(dbPath))
-            {
-                File.Delete(dbPath);
-            }
-
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
-
-            var initialVersion = store.GetCurrentSchemaVersion();
-            Console.WriteLine($"Initial schema version: {initialVersion}");
-
-            store.RunMigrations();
-
-            var afterVersion = store.GetCurrentSchemaVersion();
-            Console.WriteLine($"Schema version after migrations: {afterVersion}");
-
-            store.RunMigrations();
-
-            var secondVersion = store.GetCurrentSchemaVersion();
-            Console.WriteLine($"Schema version after second run: {secondVersion}");
-
-            var expected = VersionConstants.DatabaseSchemaVersion;
-            if (afterVersion == expected && secondVersion == expected)
-            {
-                Console.WriteLine($"✓ Migration test passed: schema version is {expected} and idempotent");
-            }
-            else
-            {
-                Console.WriteLine($"✗ Migration test failed: expected {expected}, got {afterVersion}/{secondVersion}");
-                Environment.Exit(1);
-            }
-
-            store.Close();
+            MigrationRunner.RunTest(dbPath);
         }
 
         private static void RunDiff(string[] args)
@@ -1110,6 +858,17 @@ namespace Lurp
                 Environment.Exit(1);
             }
 
+            int? lineNumber = null;
+            if (hasFile)
+            {
+                if (!int.TryParse(lineArg, out var ln) || ln < 1)
+                {
+                    Console.Error.WriteLine("ERROR: --line must be a positive integer.");
+                    Environment.Exit(1);
+                }
+                lineNumber = ln;
+            }
+
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
             if (!File.Exists(dbPath))
             {
@@ -1125,7 +884,7 @@ namespace Lurp
                 var snapshotId = snapshotArg;
                 if (string.IsNullOrEmpty(snapshotId))
                 {
-                    snapshotId = _indexStore!.GetLatestSnapshotId();
+                    snapshotId = store.GetLatestSnapshotId();
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1133,67 +892,10 @@ namespace Lurp
                     }
                 }
 
-                if (hasSymbol)
-                {
-                    var symbolId = SymbolId.Parse(symbolArg!);
-                    var assembler = new ContextAssembler(
-                        store: store,
-                        snapshotId: snapshotId,
-                        symbolId: symbolId,
-                        intent: intent,
-                        budget: budget,
-                        maxHops: maxHops,
-                        includeGenerated: includeGenerated);
-                    var capsule = assembler.Assemble();
-                    WriteCapsuleOutput(capsule, outputDirArg);
-                }
-                else
-                {
-                    if (!int.TryParse(lineArg, out var lineNumber) || lineNumber < 1)
-                    {
-                        Console.Error.WriteLine("ERROR: --line must be a positive integer.");
-                        Environment.Exit(1);
-                    }
-
-                    var resolvedId = store.ResolveSymbolByLocation(fileArg!, lineNumber, snapshotId, includeGenerated);
-
-                    if (resolvedId == null)
-                    {
-                        var gapAnchor = new CapsuleAnchor(
-                            symbolId: $"file://{fileArg}:{lineNumber}",
-                            fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",
-                            kind: "gap",
-                            source: string.Empty);
-
-                        var gapCapsule = new ContextCapsule(gapAnchor)
-                        {
-                            Budget = budget,
-                            EstimatedTokens = 0,
-                            Truncated = false,
-                        };
-
-                        gapCapsule.Uncertainties.Add(new UncertaintyEntry(
-                            new List<string> { gapAnchor.SymbolId },
-                            "location_gap",
-                            $"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
-
-                        WriteCapsuleOutput(gapCapsule, outputDirArg);
-                    }
-                    else
-                    {
-                        var symbolId = SymbolId.Parse(resolvedId);
-                        var assembler = new ContextAssembler(
-                            store: store,
-                            snapshotId: snapshotId,
-                            symbolId: symbolId,
-                            intent: intent,
-                            budget: budget,
-                            maxHops: maxHops,
-                            includeGenerated: includeGenerated);
-                        var capsule = assembler.Assemble();
-                        WriteCapsuleOutput(capsule, outputDirArg);
-                    }
-                }
+                var capsule = ContextAssembler.ResolveAndAssemble(
+                    store, snapshotId, symbolArg, fileArg, lineNumber,
+                    intent, budget, maxHops, includeGenerated);
+                WriteCapsuleOutput(capsule, outputDirArg);
             }
             finally
             {
@@ -1282,7 +984,7 @@ namespace Lurp
                     }
                 }
 
-                var engine = new SimulationEngine(store, snapshotId);
+                var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateRename(symbolArg, newNameArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
                 Console.WriteLine(json);
@@ -1340,7 +1042,7 @@ namespace Lurp
                     }
                 }
 
-                var engine = new SimulationEngine(store, snapshotId);
+                var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateMove(symbolArg, newNamespaceArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
                 Console.WriteLine(json);
@@ -1391,7 +1093,7 @@ namespace Lurp
                     }
                 }
 
-                var engine = new SimulationEngine(store, snapshotId);
+                var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateRemove(symbolArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
                 Console.WriteLine(json);

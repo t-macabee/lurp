@@ -5,7 +5,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Lurp;
-using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
@@ -125,82 +124,20 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
                 var projectName = project.Name;
                 Console.WriteLine($"    [{projectName}]");
 
-                var extractor = new SymbolExtractor(
-                    compilation,
-                    workspaceInfo.DocumentContents,
-                    workspaceInfo.Documents,
-                    workspaceInfo.GeneratedDocuments,
-                    snapshotIdStr);
-                var declarations = extractor.ExtractAll();
-                store.SaveDeclarations(snapshotIdStr, declarations);
-                totalDeclarations += declarations.Count;
+                var result = CompilationFactExtractor.ExtractAll(
+                    compilation, workspaceInfo, snapshotIdStr, projectName,
+                    skipAdapters: new HashSet<string>());
 
-                var typeEdges = extractor.ExtractEdges();
-                store.SaveEdges(snapshotIdStr, typeEdges);
-                totalEdges += typeEdges.Count;
+                store.SaveDeclarations(snapshotIdStr, result.Declarations);
+                totalDeclarations += result.Declarations.Count;
 
-                var memberEdgeExtractor = new MemberEdgeExtractor(
-                    compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
-                var memberEdges = memberEdgeExtractor.ExtractAll();
-                store.SaveEdges(snapshotIdStr, memberEdges);
-                totalEdges += memberEdges.Count;
+                store.SaveEdges(snapshotIdStr, result.Edges);
+                totalEdges += result.Edges.Count;
 
-                var polyExtractor = new PolymorphismExtractor(compilation, snapshotIdStr);
-                var polyEdges = polyExtractor.ExtractAll();
-                store.SaveEdges(snapshotIdStr, polyEdges);
-                totalEdges += polyEdges.Count;
+                store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
+                totalDiagnostics += result.Diagnostics.Count;
 
-                try
-                {
-                    var reflectionExtractor = new ReflectionExtractor(compilation, snapshotIdStr);
-                    var reflectionEdges = reflectionExtractor.Extract();
-                    store.SaveEdges(snapshotIdStr, reflectionEdges);
-                    totalEdges += reflectionEdges.Count;
-                }
-                catch {  }
-
-                var adaptersToRun = Adapters.AdapterRegistry.GetAdapters(new HashSet<string>());
-                foreach (var adapter in adaptersToRun)
-                {
-                    try
-                    {
-                        var adapterEdges = adapter.Extract(compilation, snapshotIdStr);
-                        store.SaveEdges(snapshotIdStr, adapterEdges);
-                        totalEdges += adapterEdges.Count;
-                    }
-                    catch {  }
-                }
-
-                var diagResults = new List<DiagnosticRecord>();
-                foreach (var diag in compilation.GetDiagnostics())
-                {
-                    var loc = diag.Location;
-                    int? startLine = null, startColumn = null, endLine = null, endColumn = null;
-                    string? documentPath = null;
-                    if (loc.IsInSource && loc.SourceTree != null)
-                    {
-                        var span = loc.GetLineSpan();
-                        documentPath = loc.SourceTree.FilePath;
-                        startLine = span.StartLinePosition.Line;
-                        startColumn = span.StartLinePosition.Character;
-                        endLine = span.EndLinePosition.Line;
-                        endColumn = span.EndLinePosition.Character;
-                    }
-                    diagResults.Add(new DiagnosticRecord(
-                        projectName: projectName,
-                        documentPath: documentPath,
-                        severity: diag.Severity.ToString(),
-                        id: diag.Id,
-                        message: diag.GetMessage(),
-                        startLine: startLine,
-                        startColumn: startColumn,
-                        endLine: endLine,
-                        endColumn: endColumn));
-                }
-                store.SaveDiagnostics(snapshotIdStr, diagResults);
-                totalDiagnostics += diagResults.Count;
-
-                Console.WriteLine($"      {declarations.Count} symbols, {typeEdges.Count + memberEdges.Count + polyEdges.Count} edges, {diagResults.Count} diagnostics.");
+                Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
 
             var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);

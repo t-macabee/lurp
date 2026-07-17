@@ -3096,7 +3096,7 @@ class Source {
                 new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
             };
             var store = CreateStoreWithEdges(snapId, edges);
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateRename("M:B|asm", "BRenamed");
 
@@ -3114,7 +3114,7 @@ class Source {
                 new EdgeRecord("M:C|asm", "M:B|asm", "Overrides")
             };
             var store = CreateStoreWithEdges(snapId, edges);
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateRename("M:B|asm", "BRenamed");
 
@@ -3127,7 +3127,7 @@ class Source {
         {
             const string snapId = "snap-c16-sim-003";
             var store = CreateStoreWithEdges(snapId, new List<EdgeRecord>());
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateRename("M:B|asm", "BRenamed");
 
@@ -3146,7 +3146,7 @@ class Source {
                     sourceDocumentPath: "src/A.cs", sourceStartLine: 10)
             };
             var store = CreateStoreWithEdges(snapId, edges);
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateMove("M:B|asm", "NewNs");
 
@@ -3166,7 +3166,7 @@ class Source {
                 new EdgeRecord("M:A|asm", "M:B|asm", "Calls")
             };
             var store = CreateStoreWithEdges(snapId, edges);
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateRemove("M:B|asm");
 
@@ -3183,7 +3183,7 @@ class Source {
                 new EdgeRecord("M:FooTest|asm", "M:B|asm", "TestedBy")
             };
             var store = CreateStoreWithEdges(snapId, edges);
-            var engine = new SimulationEngine(store, snapId);
+            var engine = new SimulationEngine(store, store, snapId);
 
             var report = engine.SimulateRemove("M:B|asm");
 

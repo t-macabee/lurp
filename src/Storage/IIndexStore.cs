@@ -67,64 +67,8 @@ namespace Lurp.Storage
         }
     }
 
-    public interface IIndexStore
+    public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore
     {
-        void Open(string dbPath);
-        void Close();
-        bool IsOpen { get; }
-        void RunMigrations();
-        int GetCurrentSchemaVersion();
-        void ValidateSchema(int expectedVersion);
-        void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc);
-        void SaveSnapshot(SnapshotManifest manifest);
-        void MarkSnapshotInProgress(string snapshotId);
-        void MarkSnapshotComplete(string snapshotId);
-        SnapshotManifest? LoadLatestSnapshot(WorkspaceId workspaceId);
-        string? GetLatestSnapshotId(string? workspaceId = null);
-        string? GetSource(string relativePath, string snapshotId);
-
-        void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations);
-        SymbolInfo? GetSymbolInfo(string symbolId, string snapshotId);
-        string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false);
-        string? GetContainingTypeSource(string symbolId, string snapshotId);
-        string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines);
-
-        void BuildSearchIndex(string snapshotId);
-        List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false);
-        List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null);
-        SymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
-
-        void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);
-        void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics);
-        void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations);
-
-        List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null);
-        List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null);
-        List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
-
-        List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind);
-        List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId);
-        List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
-
-        void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
-        void DeleteEdgesWithNullDocumentPath(string snapshotId);
-        void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds);
-        void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId);
-        void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId);
-        Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId);
-        List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths);
-        void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds);
-        List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);
-        void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries);
-        void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds);
-
-        void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes);
-        List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId);
-        List<string> GetSnapshotIds(string workspaceId);
-        List<string> GetSymbolIdsInSnapshot(string snapshotId);
-        string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);
-
-        void PruneOldSnapshots(int keep = 3);
     }
 }
 

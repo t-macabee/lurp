@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Microsoft.Data.Sqlite;
 using Lurp.Storage.Migrations;
@@ -98,6 +99,45 @@ namespace Lurp.Storage
                 new Migration_010_AddLastChangedSnapshotId(),
                 new Migration_011_SnapshotStatus(),
             };
+
+        public static void RunTest(string testDbPath)
+        {
+            Console.WriteLine("Testing migration runner...");
+
+            if (File.Exists(testDbPath))
+            {
+                File.Delete(testDbPath);
+            }
+
+            var store = new SqliteIndexStore(testDbPath);
+            store.Open(testDbPath);
+
+            var initialVersion = store.GetCurrentSchemaVersion();
+            Console.WriteLine($"Initial schema version: {initialVersion}");
+
+            store.RunMigrations();
+
+            var afterVersion = store.GetCurrentSchemaVersion();
+            Console.WriteLine($"Schema version after migrations: {afterVersion}");
+
+            store.RunMigrations();
+
+            var secondVersion = store.GetCurrentSchemaVersion();
+            Console.WriteLine($"Schema version after second run: {secondVersion}");
+
+            var expected = GetMigrations().Max(m => m.Version);
+            if (afterVersion == expected && secondVersion == expected)
+            {
+                Console.WriteLine($"\u2713 Migration test passed: schema version is {expected} and idempotent");
+            }
+            else
+            {
+                Console.WriteLine($"\u2717 Migration test failed: expected {expected}, got {afterVersion}/{secondVersion}");
+                Environment.Exit(1);
+            }
+
+            store.Close();
+        }
     }
 }
 

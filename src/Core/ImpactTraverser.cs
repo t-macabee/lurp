@@ -6,10 +6,10 @@ namespace Lurp
 {
     public sealed class ImpactTraverser
     {
-        private readonly IIndexStore _store;
+        private readonly IEdgeStore _store;
         private readonly string _snapshotId;
 
-        public ImpactTraverser(IIndexStore store, string snapshotId)
+        public ImpactTraverser(IEdgeStore store, string snapshotId)
         {
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
@@ -50,8 +50,9 @@ namespace Lurp
                         _ => new List<EdgeRecord>()
                     };
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
                     continue;
                 }
 

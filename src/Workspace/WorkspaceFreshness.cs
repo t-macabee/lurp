@@ -15,7 +15,7 @@ public static class WorkspaceFreshness
 
     public static FreshnessResult CheckFreshness(
         WorkspaceInfo current,
-        IIndexStore store)
+        ISnapshotStore store)
     {
         var storageWorkspaceId = new Storage.WorkspaceId(current.Id.Value);
         var storageManifest = store.LoadLatestSnapshot(storageWorkspaceId);

@@ -192,8 +192,9 @@ public sealed class WorkspaceInfo
                 .FirstOrDefault()?.Version.ToString()
                 ?? "unknown";
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"WARNING: Failed to detect MSBuild SDK version: {ex.Message}");
             return "unknown";
         }
     }
@@ -232,8 +233,9 @@ public sealed class WorkspaceInfo
 
                 map[project.Name] = tf ?? "unknown";
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"WARNING: Failed to parse project file '{project.FilePath}' for TargetFramework: {ex.Message}");
                 map[project.Name] = "unknown";
             }
         }
