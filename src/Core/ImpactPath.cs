@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Lurp
@@ -20,13 +18,7 @@ namespace Lurp
         public int? SourceLine { get; }
 
         [JsonConstructor]
-        public ImpactHop(
-            string sourceSymbolId,
-            string targetSymbolId,
-            string edgeKind,
-            string provenance,
-            string? sourceDocument = null,
-            int? sourceLine = null)
+        public ImpactHop(string sourceSymbolId,string targetSymbolId,string edgeKind,string provenance,string? sourceDocument = null,int? sourceLine = null)
         {
             SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
             TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
@@ -45,10 +37,7 @@ namespace Lurp
         public int TotalSteps { get; }
 
         [JsonConstructor]
-        public ImpactPath(
-            List<ImpactHop> hops,
-            bool truncated = false,
-            string? truncationReason = null)
+        public ImpactPath(List<ImpactHop> hops,bool truncated = false,string? truncationReason = null)
         {
             Hops = hops ?? throw new ArgumentNullException(nameof(hops));
             Truncated = truncated;

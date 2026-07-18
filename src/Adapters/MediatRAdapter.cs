@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -19,8 +16,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a =>
-            a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
+        bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a =>a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;
@@ -80,10 +76,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
             if (seen.Add(key))
             {
-                edges.Add(new EdgeRecord(
-                    sourceSymbolId: requestId,
-                    targetSymbolId: handleMethodId,
-                    kind: EdgeKind.Handles.ToString(),
+                edges.Add(new EdgeRecord(sourceSymbolId: requestId,targetSymbolId: handleMethodId,kind: EdgeKind.Handles.ToString(),
                     provenance: "framework_derived",
                     snapshotId: snapshotId,
                     extractorVersion: Version));

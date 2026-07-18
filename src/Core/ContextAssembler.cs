@@ -13,15 +13,7 @@ namespace Lurp
         private readonly int _maxHops;
         private readonly bool _includeGenerated;
 
-        public ContextAssembler(
-            IEdgeStore edgeStore,
-            IDeclarationStore declarationStore,
-            string snapshotId,
-            SymbolId symbolId,
-            ContextIntent intent,
-            int budget,
-            int maxHops = 3,
-            bool includeGenerated = false)
+        public ContextAssembler(IEdgeStore edgeStore,IDeclarationStore declarationStore,string snapshotId,SymbolId symbolId,ContextIntent intent,int budget,int maxHops = 3,bool includeGenerated = false)
         {
             _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
             _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
@@ -172,17 +164,13 @@ namespace Lurp
             var info = _declarationStore.GetSymbolInfo(_symbolId.Value, _snapshotId);
             if (info == null)
             {
-                throw new InvalidOperationException(
-                    $"Symbol '{_symbolId.Value}' not found in snapshot '{_snapshotId}'.");
+                throw new InvalidOperationException($"Symbol '{_symbolId.Value}' not found in snapshot '{_snapshotId}'.");
             }
 
             var source = _declarationStore.GetSymbolSource(_symbolId.Value, _snapshotId, ViewKind.Declaration, _includeGenerated);
             source ??= string.Empty;
 
-            return new CapsuleAnchor(
-                symbolId: _symbolId.Value,
-                fullyQualifiedName: info.FullyQualifiedName ?? _symbolId.Value,
-                kind: info.Kind.ToString(),
+            return new CapsuleAnchor(symbolId: _symbolId.Value,fullyQualifiedName: info.FullyQualifiedName ?? _symbolId.Value,kind: info.Kind.ToString(),
                 source: source);
         }
 
@@ -219,11 +207,7 @@ namespace Lurp
             };
 
             var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(
-                symbolId: _symbolId.Value,
-                direction: ImpactDirection.Downstream,
-                allowedEdgeKinds: allowedKinds,
-                maxDepth: 1);
+            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Downstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -254,11 +238,7 @@ namespace Lurp
             };
 
             var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(
-                symbolId: _symbolId.Value,
-                direction: ImpactDirection.Upstream,
-                allowedEdgeKinds: allowedKinds,
-                maxDepth: 1);
+            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: 1);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -382,11 +362,7 @@ namespace Lurp
                 return results;
 
             var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-            var paths = traverser.TraceImpact(
-                symbolId: _symbolId.Value,
-                direction: ImpactDirection.Upstream,
-                allowedEdgeKinds: allowedKinds,
-                maxDepth: _maxHops);
+            var paths = traverser.TraceImpact(symbolId: _symbolId.Value,direction: ImpactDirection.Upstream,allowedEdgeKinds: allowedKinds,maxDepth: _maxHops);
 
             var seen = new HashSet<string>();
             foreach (var path in paths)
@@ -464,9 +440,7 @@ namespace Lurp
                     return null;
             }
 
-            return new CapsuleItem(
-                symbolId: symbolId,
-                kind: info.Kind.ToString(),
+            return new CapsuleItem(symbolId: symbolId,kind: info.Kind.ToString(),
                 fullyQualifiedName: info.FullyQualifiedName ?? symbolId,
                 provenance: provenance,
                 edgeKind: edgeKind,
@@ -510,17 +484,11 @@ namespace Lurp
                 {
                     if (edge.Kind == EdgeKind.ReflectionNameCandidate.ToString())
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(
-                            new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },
-                            edge.Kind,
-                            $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
                     }
                     else if (edge.Kind == EdgeKind.ReflectionTargetUnknown.ToString())
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(
-                            new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },
-                            edge.Kind,
-                            "Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,"Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
                     }
                 }
             }
@@ -535,10 +503,7 @@ namespace Lurp
                     if (edge.Provenance == "compiler_proved" || edge.Provenance == "framework_derived")
                         continue;
 
-                    capsule.Uncertainties.Add(new UncertaintyEntry(
-                        new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },
-                        edge.Kind,
-                        $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
+                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
                 }
             }
 
@@ -561,10 +526,7 @@ namespace Lurp
                     if (edge.Provenance != "convention")
                         continue;
 
-                    capsule.Uncertainties.Add(new UncertaintyEntry(
-                        new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },
-                        edge.Kind,
-                        $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
+                    capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { edge.SourceSymbolId, edge.TargetSymbolId },edge.Kind,$"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
                 }
             }
 
@@ -577,10 +539,7 @@ namespace Lurp
 
                     if (hasGeneratedSource != null && hasNonGeneratedSource == null)
                     {
-                        capsule.Uncertainties.Add(new UncertaintyEntry(
-                            new List<string> { symbolId },
-                            "generated_excluded",
-                            $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
+                        capsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { symbolId },"generated_excluded",$"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
                     }
                 }
             }
@@ -598,10 +557,7 @@ namespace Lurp
                 var testInfo = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
                 var testName = testInfo?.FullyQualifiedName ?? edge.SourceSymbolId;
 
-                capsule.SuggestedVerification.Add(new VerificationSuggestion(
-                    testId: edge.SourceSymbolId,
-                    testName: testName,
-                    description: $"Run '{testName}' to verify correctness after modifications."));
+                capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: edge.SourceSymbolId,testName: testName,description: $"Run '{testName}' to verify correctness after modifications."));
             }
         }
 
@@ -610,29 +566,12 @@ namespace Lurp
             return (text ?? string.Empty).Length / 4;
         }
 
-        public static ContextCapsule ResolveAndAssemble(
-            IIndexStore store,
-            string snapshotId,
-            string? symbolArg,
-            string? fileArg,
-            int? lineNumber,
-            ContextIntent intent,
-            int budget,
-            int maxHops,
-            bool includeGenerated)
+        public static ContextCapsule ResolveAndAssemble(IIndexStore store,string snapshotId,string? symbolArg,string? fileArg,int? lineNumber,ContextIntent intent,int budget,int maxHops,bool includeGenerated)
         {
             if (!string.IsNullOrEmpty(symbolArg))
             {
                 var symbolId = SymbolId.Parse(symbolArg!);
-                var assembler = new ContextAssembler(
-                    edgeStore: store,
-                    declarationStore: store,
-                    snapshotId: snapshotId,
-                    symbolId: symbolId,
-                    intent: intent,
-                    budget: budget,
-                    maxHops: maxHops,
-                    includeGenerated: includeGenerated);
+                var assembler = new ContextAssembler(edgeStore: store,declarationStore: store,snapshotId: snapshotId,symbolId: symbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
                 return assembler.Assemble();
             }
 
@@ -640,11 +579,7 @@ namespace Lurp
 
             if (resolvedId == null)
             {
-                var gapAnchor = new CapsuleAnchor(
-                    symbolId: $"file://{fileArg}:{lineNumber}",
-                    fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",
-                    kind: "gap",
-                    source: string.Empty);
+                var gapAnchor = new CapsuleAnchor(symbolId: $"file://{fileArg}:{lineNumber}",fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",kind: "gap",source: string.Empty);
 
                 var gapCapsule = new ContextCapsule(gapAnchor)
                 {
@@ -653,24 +588,13 @@ namespace Lurp
                     Truncated = false,
                 };
 
-                gapCapsule.Uncertainties.Add(new UncertaintyEntry(
-                    new List<string> { gapAnchor.SymbolId },
-                    "location_gap",
-                    $"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
+                gapCapsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { gapAnchor.SymbolId },"location_gap",$"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 
                 return gapCapsule;
             }
 
             var resolvedSymbolId = SymbolId.Parse(resolvedId);
-            var resolvedAssembler = new ContextAssembler(
-                edgeStore: store,
-                declarationStore: store,
-                snapshotId: snapshotId,
-                symbolId: resolvedSymbolId,
-                intent: intent,
-                budget: budget,
-                maxHops: maxHops,
-                includeGenerated: includeGenerated);
+            var resolvedAssembler = new ContextAssembler(edgeStore: store,declarationStore: store,snapshotId: snapshotId,symbolId: resolvedSymbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
             return resolvedAssembler.Assemble();
         }
     }

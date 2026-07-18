@@ -1,6 +1,3 @@
-using System;
-using System.Text.Json;
-
 namespace Lurp.Storage
 {
     public enum EdgeKind
@@ -82,9 +79,7 @@ namespace Lurp.Storage
             var pipeIndex = value.IndexOf('|');
             if (pipeIndex < 0)
                 throw new FormatException($"Invalid SymbolId format: '{value}'. Expected 'docCommentId|assemblyIdentity'.");
-            return new SymbolId(
-                docCommentId: value[..pipeIndex],
-                assemblyIdentity: value[(pipeIndex + 1)..]);
+            return new SymbolId(docCommentId: value[..pipeIndex],assemblyIdentity: value[(pipeIndex + 1)..]);
         }
     }
 
@@ -146,18 +141,7 @@ namespace Lurp.Storage
         public bool IsGenerated { get; }
         public string? GeneratorIdentity { get; }
 
-        public SymbolDeclaration(
-            SymbolId symbolId,
-            SymbolKind kind,
-            string documentVersionId,
-            DeclarationSpan fullSpan,
-            DeclarationSpan signatureSpan,
-            DeclarationSpan bodySpan,
-            DeclarationSpan nameSpan,
-            bool isPartial = false,
-            string? metadataJson = null,
-            bool isGenerated = false,
-            string? generatorIdentity = null)
+        public SymbolDeclaration(SymbolId symbolId,SymbolKind kind,string documentVersionId,DeclarationSpan fullSpan,DeclarationSpan signatureSpan,DeclarationSpan bodySpan,DeclarationSpan nameSpan,bool isPartial = false,string? metadataJson = null,bool isGenerated = false,string? generatorIdentity = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind;

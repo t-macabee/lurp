@@ -53,10 +53,7 @@ public sealed class SnapshotManifest
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
     public SnapshotId? PreviousSnapshotId { get; init; }
 
-    public static SnapshotManifest FromWorkspace(
-        WorkspaceInfo workspace,
-        SnapshotId snapshotId,
-        SnapshotId? previousSnapshotId = null)
+    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace,SnapshotId snapshotId,SnapshotId? previousSnapshotId = null)
     {
         return new SnapshotManifest
         {
@@ -67,9 +64,7 @@ public sealed class SnapshotManifest
             SdkVersion = workspace.SdkVersion,
             CompilerVersion = workspace.CompilerVersion.ToString(),
             TargetFrameworks = new Dictionary<string, string>(workspace.TargetFrameworks),
-            ProjectGraph = workspace.ProjectGraph.ToDictionary(
-                kvp => kvp.Key,
-                kvp => kvp.Value.OrderBy(x => x).ToArray(),
+            ProjectGraph = workspace.ProjectGraph.ToDictionary(kvp => kvp.Key,kvp => kvp.Value.OrderBy(x => x).ToArray(),
                 StringComparer.Ordinal),
             DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
@@ -85,8 +80,7 @@ public sealed class SnapshotManifest
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public void Save(IIndexStore store,
-        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(IIndexStore store,IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
         if (store == null)
@@ -109,13 +103,9 @@ public sealed class SnapshotManifest
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 
-    internal Storage.SnapshotManifest ToStorageManifest(
-        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+    internal Storage.SnapshotManifest ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
-        var documents = DocumentVersions.Select(kvp =>
-        {
-            var docId = kvp.Key;
-            var docPath = docId.ToString();
+        var documents = DocumentVersions.Select(kvp =>{var docId = kvp.Key;var docPath = docId.ToString();
             byte[]? content = null;
             string encoding = "";
             string lineStarts = "";
@@ -127,10 +117,7 @@ public sealed class SnapshotManifest
                 lineStarts = entry.LineStarts;
             }
 
-            return new DocumentVersion(
-                documentId: docPath,
-                filePath: docPath,
-                contentHash: kvp.Value.ToString(),
+            return new DocumentVersion(documentId: docPath,filePath: docPath,contentHash: kvp.Value.ToString(),
                 encoding: encoding,
                 lineStart: lineStarts,
                 createdAtUtc: DateTime.MinValue,
@@ -139,8 +126,7 @@ public sealed class SnapshotManifest
             );
         }).ToList();
 
-        return new Storage.SnapshotManifest(
-            snapshotId: SnapshotId.ToString(),
+        return new Storage.SnapshotManifest(snapshotId: SnapshotId.ToString(),
             workspaceId: WorkspaceId.Value,
             gitRoot: WorkspaceId.GitRoot,
             solutionPath: WorkspaceId.SolutionPath,
@@ -265,8 +251,7 @@ public sealed class SnapshotManifest
     private sealed class DocumentVersionMapConverter
         : JsonConverter<Dictionary<DocumentId, DocumentVersionId>>
     {
-        public override Dictionary<DocumentId, DocumentVersionId> Read(
-            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Dictionary<DocumentId, DocumentVersionId> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             var result = new Dictionary<DocumentId, DocumentVersionId>();
 
@@ -284,9 +269,7 @@ public sealed class SnapshotManifest
             return result;
         }
 
-        public override void Write(
-            Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value,
-            JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value,JsonSerializerOptions options)
         {
             writer.WriteStartObject();
             foreach (var kvp in value)

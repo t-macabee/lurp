@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
+﻿using System.Data;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -53,8 +50,7 @@ namespace Lurp.Storage
         {
             var actual = GetCurrentSchemaVersion();
             if (actual != expectedVersion)
-                throw new InvalidOperationException(
-                    $"Schema version mismatch: expected {expectedVersion}, got {actual}.");
+                throw new InvalidOperationException($"Schema version mismatch: expected {expectedVersion}, got {actual}.");
         }
 
         public void SaveWorkspace(WorkspaceId id, string gitRoot, string solutionPath, DateTime createdAtUtc)
@@ -96,15 +92,7 @@ namespace Lurp.Storage
                 command.ExecuteNonQuery();
 
                 command.CommandText = @"
-                    INSERT INTO snapshots (
-                        snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,
-                        database_schema_version, output_schema_version, extractor_version,
-                        tool_version, previous_snapshot_id
-                    ) VALUES (
-                        @snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,
-                        @databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,
-                        @toolVersion, @previousSnapshotId
-                    );
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId);
                 ";
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
@@ -147,11 +135,7 @@ namespace Lurp.Storage
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
-                        INSERT OR IGNORE INTO document_versions (
-                            document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts
-                        ) VALUES (
-                            @documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts
-                        );
+                        INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts);
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@documentVersionId", doc.ContentHash);
@@ -254,8 +238,7 @@ namespace Lurp.Storage
             while (docReader.Read())
             {
                 var lineStarts = docReader.IsDBNull(4) ? "" : docReader.GetString(4);
-                documents.Add(new DocumentVersion(
-                    documentId: docReader.GetString(0),
+                documents.Add(new DocumentVersion(documentId: docReader.GetString(0),
                     filePath: docReader.GetString(1),
                     contentHash: docReader.GetString(2),
                     encoding: docReader.IsDBNull(3) ? "" : docReader.GetString(3),
@@ -264,16 +247,7 @@ namespace Lurp.Storage
                 ));
             }
 
-            return new SnapshotManifest(
-                snapshotId: snapshotId,
-                workspaceId: workspaceIdStr,
-                gitRoot: gitRoot,
-                solutionPath: solutionPath,
-                sdkVersion: sdkVersion ?? "",
-                compilerVersion: compilerVersion ?? "",
-                createdAtUtc: builtAtUtc,
-                documents: documents
-            );
+            return new SnapshotManifest(snapshotId: snapshotId,workspaceId: workspaceIdStr,gitRoot: gitRoot,solutionPath: solutionPath,sdkVersion: sdkVersion ?? "",compilerVersion: compilerVersion ?? "",createdAtUtc: builtAtUtc,documents: documents);
         }
 
         public string? GetLatestSnapshotId(string? workspaceId = null)
@@ -364,25 +338,7 @@ namespace Lurp.Storage
                     command.ExecuteNonQuery();
 
                     command.CommandText = @"
-                        INSERT INTO declarations (
-                            symbol_id, document_version_id,
-                            full_start, full_end,
-                            signature_start, signature_end,
-                            body_start, body_end,
-                            name_start, name_end,
-                            is_partial,
-                            is_generated,
-                            generator_identity
-                        ) VALUES (
-                            @symbolId, @documentVersionId,
-                            @fullStart, @fullEnd,
-                            @signatureStart, @signatureEnd,
-                            @bodyStart, @bodyEnd,
-                            @nameStart, @nameEnd,
-                            @isPartial,
-                            @isGenerated,
-                            @generatorIdentity
-                        )
+                        INSERT INTO declarations (symbol_id, document_version_id,full_start, full_end,signature_start, signature_end,body_start, body_end,name_start, name_end,is_partial,is_generated,generator_identity) VALUES (@symbolId, @documentVersionId,@fullStart, @fullEnd,@signatureStart, @signatureEnd,@bodyStart, @bodyEnd,@nameStart, @nameEnd,@isPartial,@isGenerated,@generatorIdentity)
                         ON CONFLICT(symbol_id, document_version_id)
                         DO UPDATE SET
                             full_start        = excluded.full_start,
@@ -459,18 +415,14 @@ namespace Lurp.Storage
             if (!reader.Read())
                 return null;
 
-            var sid = new SymbolId(
-                docCommentId: reader.GetString(1),
+            var sid = new SymbolId(docCommentId: reader.GetString(1),
                 assemblyIdentity: reader.GetString(2),
                 fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
 
             var kindStr = reader.GetString(3);
             Enum.TryParse<SymbolKind>(kindStr, ignoreCase: true, out var kind);
 
-            return new SymbolInfo(
-                symbolId: sid,
-                kind: kind,
-                fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
+            return new SymbolInfo(symbolId: sid,kind: kind,fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
                 metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
                 declarationCount: reader.GetInt32(6),
                 isPartial: reader.GetInt32(7) == 1);
@@ -559,8 +511,7 @@ namespace Lurp.Storage
             return SliceToString(content, byteStart, byteEnd);
         }
 
-        private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(
-            string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
+        private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
         {
             EnsureOpen();
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
@@ -733,8 +684,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new SourceSearchResult(
-                    documentPath: reader.GetString(0),
+                results.Add(new SourceSearchResult(documentPath: reader.GetString(0),
                     snippet: reader.IsDBNull(1) ? "" : reader.GetString(1)));
             }
             return results;
@@ -779,8 +729,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new SymbolSearchResult(
-                    symbolId: reader.GetString(0),
+                results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
                     fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
                     kind: reader.GetString(3),
                     docCommentId: reader.GetString(2)));
@@ -851,18 +800,14 @@ namespace Lurp.Storage
 
         private static SymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
         {
-            var sid = new SymbolId(
-                docCommentId: reader.GetString(1),
+            var sid = new SymbolId(docCommentId: reader.GetString(1),
                 assemblyIdentity: reader.GetString(2),
                 fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
 
             var kindStr = reader.GetString(3);
             Enum.TryParse<SymbolKind>(kindStr, ignoreCase: true, out var kind);
 
-            return new SymbolInfo(
-                symbolId: sid,
-                kind: kind,
-                fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
+            return new SymbolInfo(symbolId: sid,kind: kind,fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
                 metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
                 declarationCount: reader.GetInt32(6),
                 isPartial: reader.GetInt32(7) == 1);
@@ -883,17 +828,7 @@ namespace Lurp.Storage
                 foreach (var edge in edges)
                 {
                     command.CommandText = @"
-                        INSERT INTO edges (
-                            snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,
-                            extractor_version, source_document_path,
-                            source_start_line, source_start_column,
-                            source_end_line, source_end_column
-                        ) VALUES (
-                            @snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,
-                            @extractorVersion, @sourceDocumentPath,
-                            @sourceStartLine, @sourceStartColumn,
-                            @sourceEndLine, @sourceEndColumn
-                        );
+                        INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn);
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -1029,8 +964,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new EdgeRecord(
-                    sourceSymbolId: reader.GetString(0),
+                results.Add(new EdgeRecord(sourceSymbolId: reader.GetString(0),
                     targetSymbolId: reader.GetString(1),
                     kind: reader.GetString(2),
                     provenance: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
@@ -1060,10 +994,8 @@ namespace Lurp.Storage
                 foreach (var diag in diagnostics)
                 {
                     command.CommandText = @"
-                        INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,
-                                                 start_line, start_column, end_line, end_column)
-                        VALUES (@snapshotId, @projectName, @documentPath, @severity, @id, @message,
-                                @startLine, @startColumn, @endLine, @endColumn);
+                        INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,start_line, start_column, end_line, end_column)
+                        VALUES (@snapshotId, @projectName, @documentPath, @severity, @id, @message,@startLine, @startColumn, @endLine, @endColumn);
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -1122,8 +1054,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new DiagnosticRecord(
-                    projectName: reader.GetString(0),
+                results.Add(new DiagnosticRecord(projectName: reader.GetString(0),
                     documentPath: reader.IsDBNull(1) ? null : reader.GetString(1),
                     severity: reader.GetString(2),
                     id: reader.GetString(3),
@@ -1203,8 +1134,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new AnnotationRecord(
-                    symbolId: reader.GetString(0),
+                results.Add(new AnnotationRecord(symbolId: reader.GetString(0),
                     kind: reader.GetString(1),
                     value: reader.GetString(2)));
             }
@@ -1240,15 +1170,13 @@ namespace Lurp.Storage
             }
         }
 
-        // Edges sourced from symbols with no DeclaringSyntaxReferences (e.g. an
-        // implicit default constructor) carry a NULL source_document_path, so they
+        // Edges sourced from symbols with no DeclaringSyntaxReferences (e.g. an// implicit default constructor) carry a NULL source_document_path, so they
         // can't be scoped to a project by path the way DeleteEdgesByDocumentPaths
         // scopes ordinary edges. Every symbol id is "<docCommentId>|<assemblyIdentity>"
         // (see SymbolExtractor.MakeSymbolId), and assembly identity is stable per
         // project across recompiles, so we scope by matching that suffix instead —
         // this deletes only the re-extracted project(s)' null-path edges and leaves
-        // untouched projects' null-path edges (copied forward from the previous
-        // snapshot) alone.
+        // untouched projects' null-path edges (copied forward from the previous// snapshot) alone.
         public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
         {
             var identityList = assemblyIdentities as IReadOnlyCollection<string> ?? assemblyIdentities.ToList();
@@ -1309,12 +1237,7 @@ namespace Lurp.Storage
             connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT INTO edges (
-                    snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,
-                    extractor_version, source_document_path,
-                    source_start_line, source_start_column,
-                    source_end_line, source_end_column
-                )
+                INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column)
                 SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
                        extractor_version, source_document_path,
                        source_start_line, source_start_column,
@@ -1334,10 +1257,7 @@ namespace Lurp.Storage
             connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT INTO diagnostics (
-                    snapshot_id, project_name, document_path, severity, id, message,
-                    start_line, start_column, end_line, end_column
-                )
+                INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,start_line, start_column, end_line, end_column)
                 SELECT @toSnapshotId, project_name, document_path, severity, id, message,
                        start_line, start_column, end_line, end_column
                 FROM diagnostics
@@ -1564,13 +1484,7 @@ namespace Lurp.Storage
                 foreach (var change in changes)
                 {
                     command.CommandText = @"
-                        INSERT OR REPLACE INTO semantic_changes (
-                            change_id, from_snapshot_id, to_snapshot_id,
-                            change_type, symbol_id, detail_json, created_at_utc
-                        ) VALUES (
-                            @changeId, @fromSnapshotId, @toSnapshotId,
-                            @changeType, @symbolId, @detailJson, @createdAtUtc
-                        );
+                        INSERT OR REPLACE INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id,change_type, symbol_id, detail_json, created_at_utc) VALUES (@changeId, @fromSnapshotId, @toSnapshotId,@changeType, @symbolId, @detailJson, @createdAtUtc);
                     ";
                     command.Parameters.Clear();
                     command.Parameters.AddWithValue("@changeId", change.ChangeId);
@@ -1613,8 +1527,7 @@ namespace Lurp.Storage
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                results.Add(new SemanticChange(
-                    changeId: reader.GetString(0),
+                results.Add(new SemanticChange(changeId: reader.GetString(0),
                     fromSnapshotId: reader.GetString(1),
                     toSnapshotId: reader.GetString(2),
                     changeType: reader.GetString(3),

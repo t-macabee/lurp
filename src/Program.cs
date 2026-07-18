@@ -1,11 +1,7 @@
-﻿using System;
-using System.IO;
-using System.Linq;
+﻿using Lurp.Storage;
+using Lurp.Workspace;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
-using Lurp.Storage;
-using Lurp.Workspace;
 
 namespace Lurp
 {
@@ -77,24 +73,32 @@ namespace Lurp
 
             if (args.Contains("--mode=status"))
             {
-                var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1]
-                    ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
-                var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                    ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+                var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+                var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
                 if (!string.IsNullOrEmpty(solutionPathArg) && !string.IsNullOrEmpty(outputDirArg))
                 {
                     var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
                     _indexStore = new SqliteIndexStore(dbPath);
                     _indexStore.Open(dbPath);
                     _indexStore.RunMigrations();
                     _indexStore.ValidateSchema(expectedVersion: VersionConstants.DatabaseSchemaVersion);
-                    try { ShowStatus(); }
-                    finally { _indexStore.Close(); }
+
+                    try
+                    {
+                        ShowStatus();
+                    }
+                    finally
+                    {
+                        _indexStore.Close();
+                    }
                 }
                 else
                 {
                     Console.WriteLine("INDEXER_SOLUTION_PATH and INDEXER_OUTPUT_DIR must be set, or provide --solution= and --output-dir=.");
                 }
+
                 return;
             }
 
@@ -128,12 +132,14 @@ namespace Lurp
             Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
             Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
             Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<TypeKind>.");
+
             Environment.Exit(1);
         }
 
         private static void RunGetSource(string[] args)
         {
             var documentArg = args.FirstOrDefault(a => a.StartsWith("--document="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(documentArg))
             {
                 Console.Error.WriteLine("ERROR: --document=<relative-path> is required for --mode=get-source.");
@@ -141,9 +147,8 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -151,6 +156,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -162,8 +168,8 @@ namespace Lurp
 
             try
             {
-
                 string? source;
+
                 if (!string.IsNullOrEmpty(snapshotArg))
                 {
                     source = _indexStore.GetSource(documentArg, snapshotArg);
@@ -171,6 +177,7 @@ namespace Lurp
                 else
                 {
                     var latestSnapshot = _indexStore.GetLatestSnapshotId();
+
                     if (latestSnapshot == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -196,6 +203,7 @@ namespace Lurp
         private static void RunGetSymbol(string[] args)
         {
             var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(symbolArg))
             {
                 Console.Error.WriteLine("ERROR: --symbol=<symbolId> is required for --mode=get-symbol.");
@@ -203,6 +211,7 @@ namespace Lurp
             }
 
             var viewArg = args.FirstOrDefault(a => a.StartsWith("--view="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(viewArg))
             {
                 Console.Error.WriteLine("ERROR: --view=<view-kind> is required for --mode=get-symbol.");
@@ -210,8 +219,8 @@ namespace Lurp
                 Environment.Exit(1);
             }
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -223,6 +232,7 @@ namespace Lurp
             var includeGenerated = args.Contains("--include-generated");
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -283,6 +293,7 @@ namespace Lurp
                 if (isMetadataView)
                 {
                     var info = _indexStore.GetSymbolInfo(symbolArg, snapshotId);
+
                     if (info == null)
                     {
                         Console.Error.WriteLine($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
@@ -300,37 +311,46 @@ namespace Lurp
                         declarationCount = info.DeclarationCount,
                         isPartial = info.IsPartial,
                         snapshotId
-                    }, new JsonSerializerOptions { WriteIndented = true });
+                    },
+                        new JsonSerializerOptions { WriteIndented = true }
+                    );
+
                     Console.WriteLine(json);
                 }
                 else if (isContainingType)
                 {
                     var source = _indexStore.GetContainingTypeSource(symbolArg, snapshotId);
+
                     if (source == null)
                     {
                         Console.Error.WriteLine($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
                         Environment.Exit(1);
                     }
+
                     Console.Write(source);
                 }
                 else if (isSurrounding)
                 {
                     var source = _indexStore.GetSurroundingLines(symbolArg, snapshotId, contextLines);
+
                     if (source == null)
                     {
                         Console.Error.WriteLine($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
                         Environment.Exit(1);
                     }
+
                     Console.Write(source);
                 }
                 else
                 {
                     var source = _indexStore.GetSymbolSource(symbolArg, snapshotId, viewKind, includeGenerated);
+
                     if (source == null)
                     {
                         Console.Error.WriteLine($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
                         Environment.Exit(1);
                     }
+
                     Console.Write(source);
                 }
             }
@@ -343,6 +363,7 @@ namespace Lurp
         private static void RunSearch(string[] args)
         {
             var queryArg = args.FirstOrDefault(a => a.StartsWith("--query="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(queryArg))
             {
                 Console.Error.WriteLine("ERROR: --query=<term> is required for --mode=search.");
@@ -354,15 +375,17 @@ namespace Lurp
             var limitArg = args.FirstOrDefault(a => a.StartsWith("--limit="))?.Split('=', 2)[1];
             var kindArg = args.FirstOrDefault(a => a.StartsWith("--kind="))?.Split('=', 2)[1];
             var includeGenerated = args.Contains("--include-generated");
+
             int limit = 20;
+
             if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, out limit))
             {
                 Console.Error.WriteLine("ERROR: --limit must be an integer.");
                 Environment.Exit(1);
             }
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -370,6 +393,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -382,9 +406,11 @@ namespace Lurp
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = _indexStore.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -397,6 +423,7 @@ namespace Lurp
                 if (typeArg == "source" || typeArg == "all")
                 {
                     var sourceResults = _indexStore.SearchSource(queryArg, snapshotId, limit, includeGenerated);
+
                     foreach (var r in sourceResults)
                     {
                         results.Add(new { type = "source", documentPath = r.DocumentPath, snippet = r.Snippet });
@@ -406,14 +433,15 @@ namespace Lurp
                 if (typeArg == "symbol" || typeArg == "all")
                 {
                     var symbolResults = _indexStore.SearchSymbols(queryArg, snapshotId, limit, includeGenerated, kindArg);
+
                     foreach (var r in symbolResults)
                     {
                         results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
                     }
                 }
 
-                var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results },
-                    new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results }, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally
@@ -425,6 +453,7 @@ namespace Lurp
         private static void RunFindSymbol(string[] args)
         {
             var fqnArg = args.FirstOrDefault(a => a.StartsWith("--fqn="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(fqnArg))
             {
                 Console.Error.WriteLine("ERROR: --fqn=<name> is required for --mode=find-symbol.");
@@ -433,9 +462,8 @@ namespace Lurp
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
             var includeGenerated = args.Contains("--include-generated");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -443,6 +471,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -455,9 +484,11 @@ namespace Lurp
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = _indexStore.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -466,6 +497,7 @@ namespace Lurp
                 }
 
                 var info = _indexStore.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
+
                 if (info == null)
                 {
                     Console.Error.WriteLine($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
@@ -483,7 +515,10 @@ namespace Lurp
                     declarationCount = info.DeclarationCount,
                     isPartial = info.IsPartial,
                     snapshotId
-                }, new JsonSerializerOptions { WriteIndented = true });
+                },
+                    new JsonSerializerOptions { WriteIndented = true }
+                );
+
                 Console.WriteLine(json);
             }
             finally
@@ -565,16 +600,16 @@ namespace Lurp
 
         private static async Task RunIndex(string[] args)
         {
-            var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+            var solutionPathArg = args.FirstOrDefault(a => a.StartsWith("--solution="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 Console.Error.WriteLine("ERROR: --solution=path or INDEXER_SOLUTION_PATH is required and must point to an existing .sln file.");
                 Environment.Exit(1);
             }
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -583,23 +618,24 @@ namespace Lurp
 
             var outputDir = Path.GetFullPath(outputDirArg);
             var dbPath = Path.Combine(outputDir, "index.db");
-
             var jsonExportPath = args.FirstOrDefault(a => a.StartsWith("--output-json="))?.Split('=', 2)[1];
 
             var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))
                                    .Select(a => a.Split('=', 2)[1])
                                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             if (skipAdapters.Count > 0)
             {
                 var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                     "ASP.NET Core", "Dependency Injection", "MediatR", "EF Core", "Serialization", "Test"
                 };
+
                 foreach (var name in skipAdapters)
                 {
-                    if (!knownNames.Contains(name))
-                        Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+                    if (!knownNames.Contains(name)) Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
                 }
+
                 Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
             }
 
@@ -607,11 +643,14 @@ namespace Lurp
 
             Console.WriteLine($"Solution: {solutionPathArg}");
             Console.WriteLine($"Output DB: {dbPath}");
+
             if (jsonExportPath != null)
                 Console.WriteLine($"JSON export: {jsonExportPath}");
+
             Console.WriteLine();
 
             var store = new SqliteIndexStore(dbPath);
+
             store.Open(dbPath);
             store.RunMigrations();
             store.ValidateSchema(expectedVersion: VersionConstants.DatabaseSchemaVersion);
@@ -634,8 +673,8 @@ namespace Lurp
 
         private static void RunDiff(string[] args)
         {
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -643,6 +682,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -660,6 +700,7 @@ namespace Lurp
 
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
+
             try
             {
                 var differ = new SemanticDiffer(store);
@@ -690,6 +731,7 @@ namespace Lurp
         private static void RunImpact(string[] args)
         {
             var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(symbolArg))
             {
                 Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
@@ -697,7 +739,9 @@ namespace Lurp
             }
 
             var directionArg = args.FirstOrDefault(a => a.StartsWith("--direction="))?.Split('=', 2)[1] ?? "downstream";
+
             ImpactDirection direction;
+
             switch (directionArg.ToLowerInvariant())
             {
                 case "downstream":
@@ -713,9 +757,9 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-
             var maxDepthArg = args.FirstOrDefault(a => a.StartsWith("--max-depth="))?.Split('=', 2)[1];
             int maxDepth = 10;
+
             if (!string.IsNullOrEmpty(maxDepthArg))
             {
                 if (!int.TryParse(maxDepthArg, out maxDepth) || maxDepth < 1)
@@ -726,15 +770,16 @@ namespace Lurp
             }
 
             var kindsArg = args.FirstOrDefault(a => a.StartsWith("--kinds="))?.Split('=', 2)[1];
+
             HashSet<string>? allowedKinds = null;
+
             if (!string.IsNullOrEmpty(kindsArg))
             {
-                allowedKinds = new HashSet<string>(
-                    kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                allowedKinds = [.. kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
             }
 
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -742,6 +787,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -754,6 +800,7 @@ namespace Lurp
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = _indexStore!.GetLatestSnapshotId();
@@ -765,12 +812,7 @@ namespace Lurp
                 }
 
                 var traverser = new ImpactTraverser(store, snapshotId);
-                var paths = traverser.TraceImpact(
-                    symbolId: symbolArg,
-                    direction: direction,
-                    allowedEdgeKinds: allowedKinds,
-                    maxDepth: maxDepth,
-                    includeSource: true);
+                var paths = traverser.TraceImpact(symbolId: symbolArg, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
 
                 var json = JsonSerializer.Serialize(new
                 {
@@ -783,15 +825,7 @@ namespace Lurp
                         truncated = p.Truncated,
                         truncation_reason = p.TruncationReason,
                         total_steps = p.TotalSteps,
-                        hops = p.Hops.Select(h => new
-                        {
-                            source_symbol_id = h.SourceSymbolId,
-                            target_symbol_id = h.TargetSymbolId,
-                            edge_kind = h.EdgeKind,
-                            provenance = h.Provenance,
-                            source_document = h.SourceDocument,
-                            source_line = h.SourceLine
-                        })
+                        hops = p.Hops.Select(h => new { source_symbol_id = h.SourceSymbolId, target_symbol_id = h.TargetSymbolId, edge_kind = h.EdgeKind, provenance = h.Provenance, source_document = h.SourceDocument, source_line = h.SourceLine })
                     })
                 }, new JsonSerializerOptions { WriteIndented = true });
 
@@ -813,9 +847,7 @@ namespace Lurp
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
             var maxHopsArg = args.FirstOrDefault(a => a.StartsWith("--max-hops="))?.Split('=', 2)[1];
             var includeGenerated = args.Contains("--include-generated");
-
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
 
             if (string.IsNullOrEmpty(outputDirArg))
             {
@@ -833,6 +865,7 @@ namespace Lurp
             }
 
             ContextIntent intent;
+
             switch (intentArg.ToLowerInvariant())
             {
                 case "inspect": intent = ContextIntent.Inspect; break;
@@ -845,6 +878,7 @@ namespace Lurp
             }
 
             int budget = 8000;
+
             if (!string.IsNullOrEmpty(budgetArg) && (!int.TryParse(budgetArg, out budget) || budget < 1))
             {
                 Console.Error.WriteLine("ERROR: --budget must be a positive integer.");
@@ -852,6 +886,7 @@ namespace Lurp
             }
 
             int maxHops = 3;
+
             if (!string.IsNullOrEmpty(maxHopsArg) && (!int.TryParse(maxHopsArg, out maxHops) || maxHops < 1))
             {
                 Console.Error.WriteLine("ERROR: --max-hops must be a positive integer.");
@@ -859,6 +894,7 @@ namespace Lurp
             }
 
             int? lineNumber = null;
+
             if (hasFile)
             {
                 if (!int.TryParse(lineArg, out var ln) || ln < 1)
@@ -870,6 +906,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -882,9 +919,11 @@ namespace Lurp
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = store.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -892,9 +931,8 @@ namespace Lurp
                     }
                 }
 
-                var capsule = ContextAssembler.ResolveAndAssemble(
-                    store, snapshotId, symbolArg, fileArg, lineNumber,
-                    intent, budget, maxHops, includeGenerated);
+                var capsule = ContextAssembler.ResolveAndAssemble(store, snapshotId, symbolArg, fileArg, lineNumber, intent, budget, maxHops, includeGenerated);
+
                 WriteCapsuleOutput(capsule, outputDirArg);
             }
             finally
@@ -905,21 +943,18 @@ namespace Lurp
 
         private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
         {
-            var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
+            var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
 
             var safeName = capsule.Anchor.SymbolId
                 .Replace('|', '_')
                 .Replace(':', '_')
                 .Replace('/', '_')
                 .Replace('\\', '_');
+
             var outputFileName = $"capsule-{safeName}.json";
             var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
-            File.WriteAllText(outputPath, json);
 
+            File.WriteAllText(outputPath, json);
             Console.WriteLine(json);
         }
 
@@ -932,14 +967,14 @@ namespace Lurp
             }
 
             var version = _indexStore.GetCurrentSchemaVersion();
+
             Console.WriteLine($"Database schema version: {version}");
         }
-
-        // ── Simulation mode handlers ──────────────────────────────────────
 
         private static void RunSimulateRename(string[] args)
         {
             var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(symbolArg))
             {
                 Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-rename.");
@@ -947,6 +982,7 @@ namespace Lurp
             }
 
             var newNameArg = args.FirstOrDefault(a => a.StartsWith("--new-name="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(newNameArg))
             {
                 Console.Error.WriteLine("ERROR: --new-name=<name> is required for --mode=simulate-rename.");
@@ -954,8 +990,8 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -963,6 +999,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -971,9 +1008,11 @@ namespace Lurp
 
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
+
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = store.GetLatestSnapshotId();
@@ -987,6 +1026,7 @@ namespace Lurp
                 var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateRename(symbolArg, newNameArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally
@@ -998,6 +1038,7 @@ namespace Lurp
         private static void RunSimulateMove(string[] args)
         {
             var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(symbolArg))
             {
                 Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
@@ -1005,6 +1046,7 @@ namespace Lurp
             }
 
             var newNamespaceArg = args.FirstOrDefault(a => a.StartsWith("--new-namespace="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(newNamespaceArg))
             {
                 Console.Error.WriteLine("ERROR: --new-namespace=<namespace> is required for --mode=simulate-move.");
@@ -1012,8 +1054,8 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -1021,6 +1063,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -1029,12 +1072,15 @@ namespace Lurp
 
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
+
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = store.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1045,6 +1091,7 @@ namespace Lurp
                 var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateMove(symbolArg, newNamespaceArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally
@@ -1056,6 +1103,7 @@ namespace Lurp
         private static void RunSimulateRemove(string[] args)
         {
             var symbolArg = args.FirstOrDefault(a => a.StartsWith("--symbol="))?.Split('=', 2)[1];
+
             if (string.IsNullOrEmpty(symbolArg))
             {
                 Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-remove.");
@@ -1063,8 +1111,8 @@ namespace Lurp
             }
 
             var snapshotArg = args.FirstOrDefault(a => a.StartsWith("--snapshot="))?.Split('=', 2)[1];
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -1072,6 +1120,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -1080,12 +1129,15 @@ namespace Lurp
 
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
+
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = store.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1096,6 +1148,7 @@ namespace Lurp
                 var engine = new SimulationEngine(store, store, snapshotId);
                 var report = engine.SimulateRemove(symbolArg);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally
@@ -1106,8 +1159,8 @@ namespace Lurp
 
         private static void RunAudit(string[] args)
         {
-            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
-                ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1] ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+
             if (string.IsNullOrEmpty(outputDirArg))
             {
                 Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
@@ -1119,6 +1172,7 @@ namespace Lurp
             var fanOutThresholdArg = args.FirstOrDefault(a => a.StartsWith("--fan-out-threshold="))?.Split('=', 2)[1];
 
             int fanOutThreshold = 20;
+
             if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, out fanOutThreshold))
             {
                 Console.Error.WriteLine("ERROR: --fan-out-threshold must be an integer.");
@@ -1126,6 +1180,7 @@ namespace Lurp
             }
 
             var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
+
             if (!File.Exists(dbPath))
             {
                 Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
@@ -1134,12 +1189,15 @@ namespace Lurp
 
             var store = new SqliteIndexStore(dbPath);
             store.Open(dbPath);
+
             try
             {
                 var snapshotId = snapshotArg;
+
                 if (string.IsNullOrEmpty(snapshotId))
                 {
                     snapshotId = store.GetLatestSnapshotId();
+
                     if (snapshotId == null)
                     {
                         Console.Error.WriteLine("ERROR: No snapshots found in the database.");
@@ -1147,14 +1205,12 @@ namespace Lurp
                     }
                 }
 
-                var checks = new HashSet<string>(
-                    checksArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                    StringComparer.OrdinalIgnoreCase);
-
+                var checks = new HashSet<string>(checksArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), StringComparer.OrdinalIgnoreCase);
                 var options = new AuditOptions(checks, fanOutThreshold);
                 var engine = new AuditEngine(store, snapshotId);
                 var report = engine.RunAudit(options);
                 var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+
                 Console.WriteLine(json);
             }
             finally

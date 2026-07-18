@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public sealed class MemberEdgeExtractor
 {
@@ -14,11 +14,7 @@ public sealed class MemberEdgeExtractor
     private readonly string _snapshotId;
     private readonly string _assemblyIdentity;
 
-    public MemberEdgeExtractor(
-        Compilation compilation,
-        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
-        IReadOnlySet<DocumentId> generatedDocuments,
-        string snapshotId)
+    public MemberEdgeExtractor(Compilation compilation,IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,IReadOnlySet<DocumentId> generatedDocuments,string snapshotId)
     {
         _compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
         _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
@@ -68,10 +64,7 @@ public sealed class MemberEdgeExtractor
                     continue;
 
                 var loc = GetMemberSourceLocation(member);
-                edges.Add(new EdgeRecord(
-                    sourceSymbolId: typeId,
-                    targetSymbolId: memberId,
-                    kind: EdgeKind.Declares.ToString(),
+                edges.Add(new EdgeRecord(sourceSymbolId: typeId,targetSymbolId: memberId,kind: EdgeKind.Declares.ToString(),
                     provenance: "compiler_proved",
                     snapshotId: _snapshotId,
                     extractorVersion: ExtractorConstants.DeclaresExtractor,
@@ -245,8 +238,7 @@ public sealed class MemberEdgeExtractor
                     continue;
 
                 var loc = GetLocationInfo(access.GetLocation());
-                edges.Add(MakeEdge(callerId, memberId, kind,
-                    ExtractorConstants.ReadsWritesExtractor, loc));
+                edges.Add(MakeEdge(callerId, memberId, kind,ExtractorConstants.ReadsWritesExtractor, loc));
             }
         }
 
@@ -258,22 +250,19 @@ public sealed class MemberEdgeExtractor
         if (node.Parent is AssignmentExpressionSyntax assign)
             return assign.Left == node;
 
-        if (node.Parent is PrefixUnaryExpressionSyntax preUnary &&
-            (preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
+        if (node.Parent is PrefixUnaryExpressionSyntax preUnary &&(preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
              preUnary.IsKind(SyntaxKind.PreDecrementExpression)))
         {
             return preUnary.Operand == node;
         }
 
-        if (node.Parent is PostfixUnaryExpressionSyntax postUnary &&
-            (postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
+        if (node.Parent is PostfixUnaryExpressionSyntax postUnary &&(postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
              postUnary.IsKind(SyntaxKind.PostDecrementExpression)))
         {
             return postUnary.Operand == node;
         }
 
-        if (node.Parent is ArgumentSyntax arg &&
-            (arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
+        if (node.Parent is ArgumentSyntax arg &&(arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
              arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)))
         {
             return true;
@@ -487,9 +476,7 @@ public sealed class MemberEdgeExtractor
         return $"{docCommentId}|{_assemblyIdentity}";
     }
 
-    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind,
-        string extractorVersion,
-        (string? path, int? sl, int? sc, int? el, int? ec)? location)
+    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind,string extractorVersion,(string? path, int? sl, int? sc, int? el, int? ec)? location)
     {
         var sourceDocumentPath = location?.path;
         var isSourceGenerated = IsGeneratedDocument(sourceDocumentPath);
@@ -500,18 +487,7 @@ public sealed class MemberEdgeExtractor
             provenance += ":cross_generated";
         }
 
-        return new EdgeRecord(
-            sourceSymbolId: sourceId,
-            targetSymbolId: targetId,
-            kind: kind,
-            provenance: provenance,
-            snapshotId: _snapshotId,
-            extractorVersion: extractorVersion,
-            sourceDocumentPath: location?.path,
-            sourceStartLine: location?.sl,
-            sourceStartColumn: location?.sc,
-            sourceEndLine: location?.el,
-            sourceEndColumn: location?.ec);
+        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: kind,provenance: provenance,snapshotId: _snapshotId,extractorVersion: extractorVersion,sourceDocumentPath: location?.path,sourceStartLine: location?.sl,sourceStartColumn: location?.sc,sourceEndLine: location?.el,sourceEndColumn: location?.ec);
     }
 
     private bool IsGeneratedDocument(string? documentPath)
@@ -555,11 +531,7 @@ public sealed class MemberEdgeExtractor
 
         var lineSpan = location.GetLineSpan();
         var path = ResolveDocumentPath(location.SourceTree);
-        return (path,
-                lineSpan.StartLinePosition.Line,
-                lineSpan.StartLinePosition.Character,
-                lineSpan.EndLinePosition.Line,
-                lineSpan.EndLinePosition.Character);
+        return (path,lineSpan.StartLinePosition.Line,lineSpan.StartLinePosition.Character,lineSpan.EndLinePosition.Line,lineSpan.EndLinePosition.Character);
     }
 
     private string? ResolveDocumentPath(SyntaxTree? syntaxTree)
@@ -576,8 +548,7 @@ public sealed class MemberEdgeExtractor
         foreach (var docId in _documentVersions.Keys)
         {
             var docPath = docId.ToString().Replace('\\', '/');
-            if (docPath == normalized ||
-                docPath.EndsWith("/" + normalized, StringComparison.Ordinal) ||
+            if (docPath == normalized ||docPath.EndsWith("/" + normalized, StringComparison.Ordinal) ||
                 normalized.EndsWith("/" + docPath, StringComparison.Ordinal))
             {
                 return docPath;
@@ -587,9 +558,7 @@ public sealed class MemberEdgeExtractor
         return normalized;
     }
 
-    private SemanticModel GetOrCreateSemanticModel(
-        SyntaxTree syntaxTree,
-        Dictionary<SyntaxTree, SemanticModel> cache)
+    private SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache)
     {
         if (!cache.TryGetValue(syntaxTree, out var model))
         {

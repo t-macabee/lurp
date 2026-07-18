@@ -1,0 +1,9 @@
+[*.cs]
+max_line_length = 250
+
+csharp_style_allow_multiple_blank_lines_experimental = false
+csharp_wrap_before_binary_operators = ignore
+
+csharp_argument_list_wrapping = never
+csharp_parameter_list_wrapping = never
+csharp_method_call_chain_placement = prefer_on_same_line

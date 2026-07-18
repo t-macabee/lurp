@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Lurp.Storage.Migrations;
 
 namespace Lurp.Storage
@@ -66,11 +62,7 @@ namespace Lurp.Storage
             return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result);
         }
 
-        private static void UpdateSchemaVersion(
-            SqliteConnection connection,
-            int version,
-            string migrationId,
-            SqliteTransaction transaction)
+        private static void UpdateSchemaVersion(SqliteConnection connection,int version,string migrationId,SqliteTransaction transaction)
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;

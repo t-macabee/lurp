@@ -11,15 +11,7 @@ namespace Lurp.Storage.Migrations
             using var command = connection.CreateCommand();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS semantic_changes (
-                    change_id         TEXT  PRIMARY KEY,
-                    from_snapshot_id  TEXT  NOT NULL,
-                    to_snapshot_id    TEXT  NOT NULL,
-                    change_type       TEXT  NOT NULL,
-                    symbol_id         TEXT  NOT NULL,
-                    detail_json       TEXT,
-                    created_at_utc    TEXT  NOT NULL
-                );
+                CREATE TABLE IF NOT EXISTS semantic_changes (change_id         TEXT  PRIMARY KEY,from_snapshot_id  TEXT  NOT NULL,to_snapshot_id    TEXT  NOT NULL,change_type       TEXT  NOT NULL,symbol_id         TEXT  NOT NULL,detail_json       TEXT,created_at_utc    TEXT  NOT NULL);
             ";
             command.ExecuteNonQuery();
 

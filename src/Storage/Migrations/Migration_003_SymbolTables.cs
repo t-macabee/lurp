@@ -11,14 +11,7 @@ namespace Lurp.Storage.Migrations
             using var command = connection.CreateCommand();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS symbols (
-                    symbol_id        TEXT PRIMARY KEY,
-                    doc_comment_id   TEXT NOT NULL,
-                    assembly_identity TEXT NOT NULL,
-                    kind             TEXT NOT NULL,
-                    metadata_json    TEXT,
-                    fqn              TEXT
-                );
+                CREATE TABLE IF NOT EXISTS symbols (symbol_id        TEXT PRIMARY KEY,doc_comment_id   TEXT NOT NULL,assembly_identity TEXT NOT NULL,kind             TEXT NOT NULL,metadata_json    TEXT,fqn              TEXT);
             ";
             command.ExecuteNonQuery();
 
@@ -29,9 +22,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS declarations (
-                    declaration_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol_id           TEXT NOT NULL REFERENCES symbols(symbol_id),
+                CREATE TABLE IF NOT EXISTS declarations (declaration_id      INTEGER PRIMARY KEY AUTOINCREMENT,symbol_id           TEXT NOT NULL REFERENCES symbols(symbol_id),
                     document_version_id TEXT NOT NULL REFERENCES document_versions(document_version_id),
                     full_start          INTEGER,
                     full_end            INTEGER,
@@ -56,8 +47,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS partial_declarations (
-                    symbol_id      TEXT    NOT NULL REFERENCES symbols(symbol_id),
+                CREATE TABLE IF NOT EXISTS partial_declarations (symbol_id      TEXT    NOT NULL REFERENCES symbols(symbol_id),
                     declaration_id INTEGER NOT NULL REFERENCES declarations(declaration_id),
                     PRIMARY KEY (symbol_id, declaration_id)
                 );
@@ -65,8 +55,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS snapshot_symbols (
-                    snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
+                CREATE TABLE IF NOT EXISTS snapshot_symbols (snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
                     symbol_id   TEXT NOT NULL REFERENCES symbols(symbol_id),
                     PRIMARY KEY (snapshot_id, symbol_id)
                 );

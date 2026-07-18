@@ -29,12 +29,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS extractors (
-                    extractor_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name         TEXT NOT NULL,
-                    version      TEXT NOT NULL,
-                    description  TEXT
-                );
+                CREATE TABLE IF NOT EXISTS extractors (extractor_id INTEGER PRIMARY KEY AUTOINCREMENT,name         TEXT NOT NULL,version      TEXT NOT NULL,description  TEXT);
             ";
             command.ExecuteNonQuery();
 

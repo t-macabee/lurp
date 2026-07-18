@@ -61,7 +61,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
         if (Directory.Exists(_testDir))
         {
             try { Directory.Delete(_testDir, recursive: true); }
-            catch {  }
+            catch { }
         }
     }
 

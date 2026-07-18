@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Lurp.Storage
@@ -35,15 +33,7 @@ namespace Lurp.Storage
         public DateTime CreatedAtUtc { get; }
         public List<DocumentVersion> Documents { get; }
 
-        public SnapshotManifest(
-            string snapshotId,
-            string workspaceId,
-            string gitRoot,
-            string solutionPath,
-            string sdkVersion,
-            string compilerVersion,
-            DateTime createdAtUtc,
-            List<DocumentVersion>? documents = null)
+        public SnapshotManifest(string snapshotId,string workspaceId,string gitRoot,string solutionPath,string sdkVersion,string compilerVersion,DateTime createdAtUtc,List<DocumentVersion>? documents = null)
         {
             SnapshotId = snapshotId;
             WorkspaceId = workspaceId;
@@ -70,18 +60,7 @@ namespace Lurp.Storage
         public int? SourceEndLine { get; }
         public int? SourceEndColumn { get; }
 
-        public EdgeRecord(
-            string sourceSymbolId,
-            string targetSymbolId,
-            string kind,
-            string provenance,
-            string snapshotId,
-            string extractorVersion,
-            string? sourceDocumentPath = null,
-            int? sourceStartLine = null,
-            int? sourceStartColumn = null,
-            int? sourceEndLine = null,
-            int? sourceEndColumn = null)
+        public EdgeRecord(string sourceSymbolId,string targetSymbolId,string kind,string provenance,string snapshotId,string extractorVersion,string? sourceDocumentPath = null,int? sourceStartLine = null,int? sourceStartColumn = null,int? sourceEndLine = null,int? sourceEndColumn = null)
         {
             SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
             TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
@@ -96,18 +75,8 @@ namespace Lurp.Storage
             SourceEndColumn = sourceEndColumn;
         }
 
-        public EdgeRecord(
-            string sourceSymbolId,
-            string targetSymbolId,
-            string kind,
-            string? provenance = null)
-            : this(
-                  sourceSymbolId,
-                  targetSymbolId,
-                  kind,
-                  provenance ?? string.Empty,
-                  snapshotId: string.Empty,
-                  extractorVersion: string.Empty)
+        public EdgeRecord(string sourceSymbolId,string targetSymbolId,string kind,string? provenance = null)
+            : this(sourceSymbolId,targetSymbolId,kind,provenance ?? string.Empty,snapshotId: string.Empty,extractorVersion: string.Empty)
         {
         }
     }
@@ -124,16 +93,7 @@ namespace Lurp.Storage
         public int? EndLine { get; }
         public int? EndColumn { get; }
 
-        public DiagnosticRecord(
-            string projectName,
-            string? documentPath,
-            string severity,
-            string id,
-            string message,
-            int? startLine = null,
-            int? startColumn = null,
-            int? endLine = null,
-            int? endColumn = null)
+        public DiagnosticRecord(string projectName,string? documentPath,string severity,string id,string message,int? startLine = null,int? startColumn = null,int? endLine = null,int? endColumn = null)
         {
             ProjectName = projectName ?? throw new ArgumentNullException(nameof(projectName));
             DocumentPath = documentPath;
@@ -179,14 +139,7 @@ namespace Lurp.Storage
     public sealed class SemanticChange
     {
         [JsonConstructor]
-        public SemanticChange(
-            string changeId,
-            string fromSnapshotId,
-            string toSnapshotId,
-            string changeType,
-            string symbolId,
-            string? detailJson,
-            DateTime createdAtUtc)
+        public SemanticChange(string changeId,string fromSnapshotId,string toSnapshotId,string changeType,string symbolId,string? detailJson,DateTime createdAtUtc)
         {
             ChangeId = changeId ?? throw new ArgumentNullException(nameof(changeId));
             FromSnapshotId = fromSnapshotId ?? throw new ArgumentNullException(nameof(fromSnapshotId));
@@ -219,13 +172,7 @@ namespace Lurp.Storage
         public int ByteCount => Content?.Length ?? 0;
         public string? LineStarts { get; }
 
-        public DocumentVersion(
-            string documentId,
-            string filePath,
-            string contentHash,
-            string encoding,
-            string lineStart,
-            DateTime createdAtUtc)
+        public DocumentVersion(string documentId,string filePath,string contentHash,string encoding,string lineStart,DateTime createdAtUtc)
         {
             DocumentId = documentId;
             FilePath = filePath;
@@ -235,15 +182,7 @@ namespace Lurp.Storage
             CreatedAtUtc = createdAtUtc;
         }
 
-        public DocumentVersion(
-            string documentId,
-            string filePath,
-            string contentHash,
-            string encoding,
-            string lineStart,
-            DateTime createdAtUtc,
-            byte[] content,
-            string lineStarts)
+        public DocumentVersion(string documentId,string filePath,string contentHash,string encoding,string lineStart,DateTime createdAtUtc,byte[] content,string lineStarts)
             : this(documentId, filePath, contentHash, encoding, lineStart, createdAtUtc)
         {
             Content = content;

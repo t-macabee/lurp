@@ -1,26 +1,14 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Lurp.Storage;
-using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public static class IndexRunner
 {
-    public static async Task RunAsync(
-        IIndexStore store,
-        string solutionPath,
-        string outputDir,
-        HashSet<string> skipAdapters,
-        string? jsonExportPath,
-        string? strategyArg)
+    public static async Task RunAsync(IIndexStore store,string solutionPath,string outputDir,HashSet<string> skipAdapters,string? jsonExportPath,string? strategyArg)
     {
         if (!MSBuildLocator.IsRegistered)
         {
@@ -59,10 +47,8 @@ public static class IndexRunner
             }
             else
             {
-                var incrementalIndexer = new IncrementalIndexer(
-                    store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
-                var result = await incrementalIndexer.RunIncrementalAsync(
-                    solution, workspaceInfo, previousStorageManifest);
+                var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
+                var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
                 Console.WriteLine();
                 Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
                 Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
@@ -95,12 +81,7 @@ public static class IndexRunner
         Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(
-        IIndexStore store,
-        Solution solution,
-        WorkspaceInfo workspaceInfo,
-        HashSet<string> skipAdapters,
-        string? jsonExportPath)
+    private static async Task RunFullIndexAsync(IIndexStore store,Solution solution,WorkspaceInfo workspaceInfo,HashSet<string> skipAdapters,string? jsonExportPath)
     {
         var snapshotId = SnapshotId.New();
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
@@ -123,9 +104,7 @@ public static class IndexRunner
                 var projectName = project.Name;
                 Console.Write($"  [{projectName}] ");
 
-                var result = CompilationFactExtractor.ExtractAll(
-                    compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters,
-                    logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
+                var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters,logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
                     logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
 
                 store.SaveDeclarations(snapshotIdStr, result.Declarations);

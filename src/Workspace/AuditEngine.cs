@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using Lurp.Storage;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public sealed class AuditOptions
 {
@@ -29,58 +26,37 @@ public sealed class AuditOptions
     }
 }
 
-public sealed class AuditFinding
+public sealed class AuditFinding(string check, string symbolId, string? fqn = null, string? detail = null)
 {
     [JsonPropertyName("check")]
-    public string Check { get; }
+    public string Check { get; } = check ?? throw new ArgumentNullException(nameof(check));
 
     [JsonPropertyName("symbol_id")]
-    public string SymbolId { get; }
+    public string SymbolId { get; } = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
 
     [JsonPropertyName("fqn")]
-    public string? Fqn { get; }
+    public string? Fqn { get; } = fqn;
 
     [JsonPropertyName("detail")]
-    public string? Detail { get; }
-
-    public AuditFinding(string check, string symbolId, string? fqn = null, string? detail = null)
-    {
-        Check = check ?? throw new ArgumentNullException(nameof(check));
-        SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
-        Fqn = fqn;
-        Detail = detail;
-    }
+    public string? Detail { get; } = detail;
 }
 
-public sealed class AuditReport
+public sealed class AuditReport(string snapshotId, List<string> checksRun, List<AuditFinding> findings)
 {
     [JsonPropertyName("snapshot_id")]
-    public string SnapshotId { get; }
+    public string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
 
     [JsonPropertyName("checks_run")]
-    public List<string> ChecksRun { get; }
+    public List<string> ChecksRun { get; } = checksRun ?? throw new ArgumentNullException(nameof(checksRun));
 
     [JsonPropertyName("findings")]
-    public List<AuditFinding> Findings { get; }
-
-    public AuditReport(string snapshotId, List<string> checksRun, List<AuditFinding> findings)
-    {
-        SnapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
-        ChecksRun = checksRun ?? throw new ArgumentNullException(nameof(checksRun));
-        Findings = findings ?? throw new ArgumentNullException(nameof(findings));
-    }
+    public List<AuditFinding> Findings { get; } = findings ?? throw new ArgumentNullException(nameof(findings));
 }
 
-public sealed class AuditEngine
+public sealed class AuditEngine(IIndexStore store, string snapshotId)
 {
-    private readonly IIndexStore _store;
-    private readonly string _snapshotId;
-
-    public AuditEngine(IIndexStore store, string snapshotId)
-    {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
-        _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
-    }
+    private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly string _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
 
     public AuditReport RunAudit(AuditOptions options)
     {
@@ -88,8 +64,6 @@ public sealed class AuditEngine
         var checksRun = options.Checks.ToList();
 
         var allSymbolIds = _store.GetSymbolIdsInSnapshot(_snapshotId);
-
-        // Cache symbol info lookups to avoid redundant store calls
         var symbolInfoCache = new Dictionary<string, SymbolInfo?>();
 
         SymbolInfo? GetInfo(string symbolId)
@@ -97,6 +71,7 @@ public sealed class AuditEngine
             if (!symbolInfoCache.TryGetValue(symbolId, out var info))
             {
                 info = _store.GetSymbolInfo(symbolId, _snapshotId);
+
                 symbolInfoCache[symbolId] = info;
             }
             return info;
@@ -107,16 +82,12 @@ public sealed class AuditEngine
             foreach (var symbolId in allSymbolIds)
             {
                 var incoming = _store.GetIncomingEdges(_snapshotId, symbolId);
-                var relevant = incoming.Where(e =>
-                    e.Kind is "Calls" or "References" or "Overrides" or "Implements");
+                var relevant = incoming.Where(e => e.Kind is "Calls" or "References" or "Overrides" or "Implements");
 
                 if (!relevant.Any())
                 {
                     var info = GetInfo(symbolId);
-                    findings.Add(new AuditFinding(
-                        check: "dead-symbol",
-                        symbolId: symbolId,
-                        fqn: info?.FullyQualifiedName));
+                    findings.Add(new AuditFinding(check: "dead-symbol", symbolId: symbolId, fqn: info?.FullyQualifiedName));
                 }
             }
         }
@@ -133,27 +104,27 @@ public sealed class AuditEngine
                     continue;
 
                 var info = GetInfo(symbolId);
+
                 if (info?.MetadataJson == null)
                     continue;
 
                 try
                 {
                     var metadata = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(info.MetadataJson);
+
                     if (metadata != null && metadata.TryGetValue("accessibility", out var accEl))
                     {
                         var acc = accEl.GetString();
+
                         if (acc is "public" or "internal")
                         {
-                            findings.Add(new AuditFinding(
-                                check: "untested-surface",
-                                symbolId: symbolId,
-                                fqn: info.FullyQualifiedName));
+                            findings.Add(new AuditFinding(check: "untested-surface", symbolId: symbolId, fqn: info.FullyQualifiedName));
                         }
                     }
                 }
                 catch (JsonException)
                 {
-                    // skip symbols with unparseable metadata
+
                 }
             }
         }
@@ -168,15 +139,11 @@ public sealed class AuditEngine
 
             foreach (var edge in implementsEdges)
             {
-                // Source of an Implements edge is the concrete class
                 if (!registered.Contains(edge.SourceSymbolId))
                 {
                     var info = GetInfo(edge.SourceSymbolId);
-                    findings.Add(new AuditFinding(
-                        check: "unregistered-impl",
-                        symbolId: edge.SourceSymbolId,
-                        fqn: info?.FullyQualifiedName,
-                        detail: $"implements {edge.TargetSymbolId}"));
+
+                    findings.Add(new AuditFinding(check: "unregistered-impl", symbolId: edge.SourceSymbolId, fqn: info?.FullyQualifiedName, detail: $"implements {edge.TargetSymbolId}"));
                 }
             }
         }
@@ -193,17 +160,11 @@ public sealed class AuditEngine
                 if (callCount > options.FanOutThreshold)
                 {
                     var info = GetInfo(symbolId);
-                    fanOutFindings.Add((
-                        new AuditFinding(
-                            check: "high-fan-out",
-                            symbolId: symbolId,
-                            fqn: info?.FullyQualifiedName,
-                            detail: callCount.ToString()),
+                    fanOutFindings.Add((new AuditFinding(check: "high-fan-out", symbolId: symbolId, fqn: info?.FullyQualifiedName, detail: callCount.ToString()),
                         callCount));
                 }
             }
 
-            // Sort by count descending
             fanOutFindings.Sort((a, b) => b.count.CompareTo(a.count));
             findings.AddRange(fanOutFindings.Select(f => f.finding));
         }

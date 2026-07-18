@@ -11,14 +11,7 @@ namespace Lurp.Storage.Migrations
             using var command = connection.CreateCommand();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS edges (
-                    edge_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    snapshot_id    TEXT    NOT NULL,
-                    source_symbol_id TEXT  NOT NULL,
-                    target_symbol_id TEXT  NOT NULL,
-                    kind           TEXT    NOT NULL,
-                    provenance     TEXT
-                );
+                CREATE TABLE IF NOT EXISTS edges (edge_id        INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_id    TEXT    NOT NULL,source_symbol_id TEXT  NOT NULL,target_symbol_id TEXT  NOT NULL,kind           TEXT    NOT NULL,provenance     TEXT);
             ";
             command.ExecuteNonQuery();
 
@@ -32,19 +25,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS diagnostics (
-                    diagnostic_id  INTEGER PRIMARY KEY AUTOINCREMENT,
-                    snapshot_id    TEXT    NOT NULL,
-                    project_name   TEXT    NOT NULL,
-                    document_path  TEXT,
-                    severity       TEXT    NOT NULL,
-                    id             TEXT    NOT NULL,
-                    message        TEXT    NOT NULL,
-                    start_line     INTEGER,
-                    start_column   INTEGER,
-                    end_line       INTEGER,
-                    end_column     INTEGER
-                );
+                CREATE TABLE IF NOT EXISTS diagnostics (diagnostic_id  INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_id    TEXT    NOT NULL,project_name   TEXT    NOT NULL,document_path  TEXT,severity       TEXT    NOT NULL,id             TEXT    NOT NULL,message        TEXT    NOT NULL,start_line     INTEGER,start_column   INTEGER,end_line       INTEGER,end_column     INTEGER);
             ";
             command.ExecuteNonQuery();
 
@@ -55,13 +36,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS annotations (
-                    annotation_id  INTEGER PRIMARY KEY AUTOINCREMENT,
-                    snapshot_id    TEXT    NOT NULL,
-                    symbol_id      TEXT    NOT NULL,
-                    kind           TEXT    NOT NULL,
-                    value          TEXT    NOT NULL
-                );
+                CREATE TABLE IF NOT EXISTS annotations (annotation_id  INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_id    TEXT    NOT NULL,symbol_id      TEXT    NOT NULL,kind           TEXT    NOT NULL,value          TEXT    NOT NULL);
             ";
             command.ExecuteNonQuery();
 

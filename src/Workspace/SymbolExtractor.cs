@@ -1,5 +1,4 @@
-﻿using System.Collections.Immutable;
-using System.Text;
+﻿using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,8 +24,7 @@ public sealed class SymbolExtractor
 
         var headerText = Encoding.UTF8.GetString(content, 0, 512);
 
-        var generatedCodeAttr = "[GeneratedCode(";
-        var attrIndex = headerText.IndexOf(generatedCodeAttr, StringComparison.OrdinalIgnoreCase);
+        var generatedCodeAttr = "[GeneratedCode(";var attrIndex = headerText.IndexOf(generatedCodeAttr, StringComparison.OrdinalIgnoreCase);
         if (attrIndex >= 0)
         {
             var start = attrIndex + generatedCodeAttr.Length;
@@ -53,9 +51,7 @@ public sealed class SymbolExtractor
         return null;
     }
 
-    public SymbolExtractor(
-        Compilation compilation,
-        IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
+    public SymbolExtractor(Compilation compilation,IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId)
@@ -98,9 +94,7 @@ public sealed class SymbolExtractor
         if (sourceId == null)
             return;
 
-        if (typeSymbol.BaseType != null &&
-            typeSymbol.BaseType.SpecialType != SpecialType.System_Object &&
-            typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType)
+        if (typeSymbol.BaseType != null &&typeSymbol.BaseType.SpecialType != SpecialType.System_Object &&typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType)
         {
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
@@ -225,10 +219,7 @@ public sealed class SymbolExtractor
                 generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content);
             }
 
-            results.Add(new SymbolDeclaration(
-                symbolId: symbolId,
-                kind: kind,
-                documentVersionId: versionId.ToString(),
+            results.Add(new SymbolDeclaration(symbolId: symbolId,kind: kind,documentVersionId: versionId.ToString(),
                 fullSpan: fullSpan,
                 signatureSpan: signatureSpan,
                 bodySpan: bodySpan,
@@ -297,8 +288,7 @@ public sealed class SymbolExtractor
             if (tokens.Length > 0)
             {
                 var firstId = tokens[0];
-                name = new DeclarationSpan(
-                    CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
+                name = new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
                     CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
             }
             else
@@ -337,8 +327,7 @@ public sealed class SymbolExtractor
         }
         else if (node is BaseTypeDeclarationSyntax typeDecl2)
         {
-            body = new DeclarationSpan(
-                CharOffsetToByteOffset(sourceText, typeDecl2.OpenBraceToken.SpanStart, encoding),
+            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl2.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, typeDecl2.CloseBraceToken.Span.End, encoding));
             signatureCharEnd = typeDecl2.OpenBraceToken.SpanStart;
         }
@@ -359,8 +348,7 @@ public sealed class SymbolExtractor
         }
         else if (node is EnumDeclarationSyntax enumDecl)
         {
-            body = new DeclarationSpan(
-                CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
+            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
             signatureCharEnd = enumDecl.OpenBraceToken.SpanStart;
         }
@@ -371,8 +359,7 @@ public sealed class SymbolExtractor
         }
         else if (node is NamespaceDeclarationSyntax nsDecl)
         {
-            body = new DeclarationSpan(
-                CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
+            body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
             signatureCharEnd = nsDecl.OpenBraceToken.SpanStart;
         }
@@ -387,17 +374,14 @@ public sealed class SymbolExtractor
             signatureCharEnd = fullCharSpan.End;
         }
 
-        var signature = new DeclarationSpan(
-            fullStart,
-            CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
+        var signature = new DeclarationSpan(fullStart,CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
 
         return (full, signature, body, name);
     }
 
     private static DeclarationSpan SpanFromCharSpan(string sourceText, Microsoft.CodeAnalysis.Text.TextSpan charSpan, Encoding encoding)
     {
-        return new DeclarationSpan(
-            CharOffsetToByteOffset(sourceText, charSpan.Start, encoding),
+        return new DeclarationSpan(CharOffsetToByteOffset(sourceText, charSpan.Start, encoding),
             CharOffsetToByteOffset(sourceText, charSpan.End, encoding));
     }
 
@@ -524,18 +508,7 @@ public sealed class SymbolExtractor
     private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol)
     {
         var loc = GetSymbolSourceLocation(sourceSymbol);
-        return new EdgeRecord(
-            sourceSymbolId: sourceId,
-            targetSymbolId: targetId,
-            kind: kind,
-            provenance: "roslyn",
-            snapshotId: _snapshotId,
-            extractorVersion: VersionConstants.ExtractorVersion,
-            sourceDocumentPath: loc?.path,
-            sourceStartLine: loc?.startLine,
-            sourceStartColumn: loc?.startColumn,
-            sourceEndLine: loc?.endLine,
-            sourceEndColumn: loc?.endColumn);
+        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: kind,provenance: "roslyn",snapshotId: _snapshotId,extractorVersion: VersionConstants.ExtractorVersion,sourceDocumentPath: loc?.path,sourceStartLine: loc?.startLine,sourceStartColumn: loc?.startColumn,sourceEndLine: loc?.endLine,sourceEndColumn: loc?.endColumn);
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?

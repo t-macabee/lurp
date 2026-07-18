@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+﻿using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -27,6 +22,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 continue;
 
             var controllerId = MakeSymbolId(type, assemblyIdentity);
+
             if (controllerId == null)
                 continue;
 
@@ -39,64 +35,62 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                     continue;
 
                 var methodId = MakeSymbolId(method, assemblyIdentity);
+
                 if (methodId == null)
                     continue;
 
                 var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
+
                 if (seen.Add(declaresKey))
                 {
-                    edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(),
-                        snapshotId, assemblyIdentity));
+                    edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, assemblyIdentity));
                 }
 
                 var routeTemplate = ExtractRouteTemplate(type, method);
+
                 if (routeTemplate != null)
                 {
                     var routeSourceId = $"route://{routeTemplate}";
                     var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
+
                     if (seen.Add(routeKey))
                     {
-                        edges.Add(new EdgeRecord(
-                            sourceSymbolId: routeSourceId,
-                            targetSymbolId: methodId,
-                            kind: EdgeKind.RoutesTo.ToString(),
-                            provenance: "framework_derived",
-                            snapshotId: snapshotId,
-                            extractorVersion: Version));
+                        edges.Add(new EdgeRecord(sourceSymbolId: routeSourceId, targetSymbolId: methodId, kind: EdgeKind.RoutesTo.ToString(), provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: Version));
                     }
                 }
 
                 if (!method.ReturnsVoid && method.ReturnType != null)
                 {
                     var returnTypeId = MakeSymbolId(method.ReturnType, assemblyIdentity);
+
                     if (returnTypeId != null)
                     {
                         var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
+
                         if (seen.Add(retKey))
                         {
-                            edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(),
-                                snapshotId, assemblyIdentity));
+                            edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, assemblyIdentity));
                         }
                     }
                 }
 
                 foreach (var param in method.Parameters)
                 {
-                    var hasFromServices = param.GetAttributes().Any(a =>
-                        a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
+                    var hasFromServices = param.GetAttributes().Any(a => a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
 
                     if (!hasFromServices)
                         continue;
 
                     var paramTypeId = MakeSymbolId(param.Type, assemblyIdentity);
+
                     if (paramTypeId == null)
                         continue;
 
                     var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
+
                     if (seen.Add(refKey))
                     {
-                        edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(),
-                            snapshotId, assemblyIdentity));
+                        edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, assemblyIdentity));
                     }
                 }
             }
@@ -111,10 +105,12 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             return false;
 
         var current = type.BaseType;
+
         while (current != null)
         {
             if (current.Name is "ControllerBase" or "Controller")
                 return true;
+
             current = current.BaseType;
         }
 
@@ -125,28 +121,20 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     {
         var parts = new List<string>();
 
-        var classRoute = controller.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route");
+        var classRoute = controller.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route");
 
-        if (classRoute?.ConstructorArguments.Length > 0 &&
-            classRoute.ConstructorArguments[0].Value is string classTemplate)
+        if (classRoute?.ConstructorArguments.Length > 0 && classRoute.ConstructorArguments[0].Value is string classTemplate)
         {
             parts.Add(classTemplate.TrimStart('/'));
         }
 
-        var methodRoute = action.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route" or
-                "HttpGetAttribute" or "HttpGet" or
-                "HttpPostAttribute" or "HttpPost" or
-                "HttpPutAttribute" or "HttpPut" or
-                "HttpDeleteAttribute" or "HttpDelete" or
-                "HttpPatchAttribute" or "HttpPatch");
+        var methodRoute = action.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is"RouteAttribute" or "Route" or"HttpGetAttribute" or "HttpGet" or"HttpPostAttribute" or "HttpPost" or"HttpPutAttribute" or "HttpPut" or"HttpDeleteAttribute" or "HttpDelete" or"HttpPatchAttribute" or "HttpPatch");
 
-        if (methodRoute?.ConstructorArguments.Length > 0 &&
-            methodRoute.ConstructorArguments[0].Value is string methodTemplate)
+        if (methodRoute?.ConstructorArguments.Length > 0 && methodRoute.ConstructorArguments[0].Value is string methodTemplate)
         {
             if (methodTemplate.StartsWith("/"))
                 return methodTemplate.TrimStart('/');
+
             parts.Add(methodTemplate);
         }
 
@@ -156,27 +144,26 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
     {
         var docCommentId = symbol.GetDocumentationCommentId();
+
         if (string.IsNullOrEmpty(docCommentId))
             return null;
+
         return $"{docCommentId}|{assemblyIdentity}";
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind,
-        string snapshotId, string assemblyIdentity)
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, string assemblyIdentity)
     {
-        return new EdgeRecord(
-            sourceSymbolId: sourceId,
-            targetSymbolId: targetId,
-            kind: kind,
-            provenance: "framework_derived",
-            snapshotId: snapshotId,
-            extractorVersion: "aspnetcore-v1");
+        ArgumentNullException.ThrowIfNull(assemblyIdentity);
+
+        return new EdgeRecord(sourceSymbolId: sourceId, targetSymbolId: targetId, kind: kind, provenance: "framework_derived", snapshotId: snapshotId, extractorVersion: "aspnetcore-v1");
     }
 
     private static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)
     {
         var types = new List<INamedTypeSymbol>();
+
         CollectTypes(ns, types);
+
         return types;
     }
 
@@ -185,6 +172,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         foreach (var type in ns.GetTypeMembers())
         {
             types.Add(type);
+
             foreach (var nested in type.GetTypeMembers())
                 types.Add(nested);
         }

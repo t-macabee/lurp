@@ -52,8 +52,7 @@ public sealed class WorkspaceInfo
         ExtractorVersion = VersionConstants.ExtractorVersion;
     }
 
-    private static (Dictionary<DocumentId, DocumentVersionId> Hashes,
-                    Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
+    private static (Dictionary<DocumentId, DocumentVersionId> Hashes,Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
                     IReadOnlySet<DocumentId> GeneratedDocuments)
         BuildDocumentMap(Solution solution, string gitRoot)
     {
@@ -181,11 +180,7 @@ public sealed class WorkspaceInfo
     {
         try
         {
-            var instances = MSBuildLocator.QueryVisualStudioInstances(
-                new VisualStudioInstanceQueryOptions
-                {
-                    DiscoveryTypes = DiscoveryType.DotNetSdk
-                });
+            var instances = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions{DiscoveryTypes = DiscoveryType.DotNetSdk});
 
             return instances
                 .OrderByDescending(i => i.Version)
@@ -243,13 +238,11 @@ public sealed class WorkspaceInfo
         return new Dictionary<string, string>(map, StringComparer.Ordinal);
     }
 
-    private static Dictionary<string, ImmutableHashSet<string>> BuildProjectGraph(
-        Solution solution)
+    private static Dictionary<string, ImmutableHashSet<string>> BuildProjectGraph(Solution solution)
     {
         var projectIdToName = solution.Projects.ToDictionary(p => p.Id, p => p.Name);
 
-        var graph = new Dictionary<string, ImmutableHashSet<string>>(
-            StringComparer.Ordinal);
+        var graph = new Dictionary<string, ImmutableHashSet<string>>(StringComparer.Ordinal);
 
         foreach (var project in solution.Projects)
         {

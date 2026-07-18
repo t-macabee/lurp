@@ -2123,7 +2123,7 @@ class Derived : Base {
             foreach (var asm in refAssemblies)
             {
                 try { references.Add(MetadataReference.CreateFromFile(asm)); }
-                catch {  }
+                catch { }
             }
             return CSharpCompilation.Create(
                 "TestAssembly",

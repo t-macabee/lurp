@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp
 {
@@ -53,13 +52,7 @@ namespace Lurp
         [JsonPropertyName("source")]
         public string? Source { get; init; }
 
-        public CapsuleItem(
-            string symbolId,
-            string kind,
-            string fullyQualifiedName,
-            string provenance,
-            string edgeKind,
-            string? source = null)
+        public CapsuleItem(string symbolId,string kind,string fullyQualifiedName,string provenance,string edgeKind,string? source = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));

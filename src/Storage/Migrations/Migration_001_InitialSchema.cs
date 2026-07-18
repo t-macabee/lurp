@@ -11,27 +11,17 @@ namespace Lurp.Storage.Migrations
             using var command = connection.CreateCommand();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS schema_metadata (
-                    version INTEGER NOT NULL,
-                    applied_at_utc TEXT NOT NULL,
-                    migration_id TEXT NOT NULL
-                );
+                CREATE TABLE IF NOT EXISTS schema_metadata (version INTEGER NOT NULL,applied_at_utc TEXT NOT NULL,migration_id TEXT NOT NULL);
             ";
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS workspaces (
-                    workspace_id TEXT PRIMARY KEY,
-                    git_root TEXT NOT NULL,
-                    solution_path TEXT NOT NULL
-                );
+                CREATE TABLE IF NOT EXISTS workspaces (workspace_id TEXT PRIMARY KEY,git_root TEXT NOT NULL,solution_path TEXT NOT NULL);
             ";
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS snapshots (
-                    snapshot_id TEXT PRIMARY KEY,
-                    workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+                CREATE TABLE IF NOT EXISTS snapshots (snapshot_id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
                     built_at_utc TEXT NOT NULL,
                     sdk_version TEXT,
                     compiler_version TEXT,
@@ -45,9 +35,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS projects (
-                    project_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
+                CREATE TABLE IF NOT EXISTS projects (project_id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
                     name TEXT NOT NULL,
                     target_framework TEXT
                 );
@@ -55,25 +43,19 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS project_references (
-                    project_id INTEGER NOT NULL REFERENCES projects(project_id),
+                CREATE TABLE IF NOT EXISTS project_references (project_id INTEGER NOT NULL REFERENCES projects(project_id),
                     referenced_project_name TEXT NOT NULL
                 );
             ";
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS documents (
-                    document_id TEXT PRIMARY KEY,
-                    relative_path TEXT NOT NULL
-                );
+                CREATE TABLE IF NOT EXISTS documents (document_id TEXT PRIMARY KEY,relative_path TEXT NOT NULL);
             ";
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS document_versions (
-                    document_version_id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL REFERENCES documents(document_id),
+                CREATE TABLE IF NOT EXISTS document_versions (document_version_id TEXT PRIMARY KEY,document_id TEXT NOT NULL REFERENCES documents(document_id),
                     content_hash TEXT NOT NULL,
                     content BLOB,
                     encoding TEXT,
@@ -83,8 +65,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS snapshot_documents (
-                    snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
+                CREATE TABLE IF NOT EXISTS snapshot_documents (snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
                     document_version_id TEXT NOT NULL REFERENCES document_versions(document_version_id)
                 );
             ";

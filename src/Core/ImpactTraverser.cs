@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Lurp.Storage;
+﻿using Lurp.Storage;
 
 namespace Lurp
 {
@@ -15,12 +13,7 @@ namespace Lurp
             _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
         }
 
-        public List<ImpactPath> TraceImpact(
-            string symbolId,
-            ImpactDirection direction,
-            HashSet<string>? allowedEdgeKinds = null,
-            int maxDepth = 10,
-            bool includeSource = true)
+        public List<ImpactPath> TraceImpact(string symbolId,ImpactDirection direction,HashSet<string>? allowedEdgeKinds = null,int maxDepth = 10,bool includeSource = true)
         {
             var results = new List<ImpactPath>();
 
@@ -33,10 +26,7 @@ namespace Lurp
 
                 if (hopsSoFar.Count >= maxDepth)
                 {
-                    results.Add(new ImpactPath(
-                        hops: hopsSoFar,
-                        truncated: true,
-                        truncationReason: "max depth reached"));
+                    results.Add(new ImpactPath(hops: hopsSoFar,truncated: true,truncationReason: "max depth reached"));
                     continue;
                 }
 
@@ -81,13 +71,7 @@ namespace Lurp
 
                     anyEdgeFollowed = true;
 
-                    var newHop = new ImpactHop(
-                        sourceSymbolId: edge.SourceSymbolId,
-                        targetSymbolId: edge.TargetSymbolId,
-                        edgeKind: edge.Kind,
-                        provenance: edge.Provenance,
-                        sourceDocument: includeSource ? edge.SourceDocumentPath : null,
-                        sourceLine: includeSource ? edge.SourceStartLine : null);
+                    var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,sourceDocument: includeSource ? edge.SourceDocumentPath : null,sourceLine: includeSource ? edge.SourceStartLine : null);
 
                     var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
                     var newVisited = new HashSet<string>(visited) { neighborId };

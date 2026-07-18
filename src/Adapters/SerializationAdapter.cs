@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.Json;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
@@ -27,16 +23,14 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
             {
-                ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel,
-                    assemblyIdentity, snapshotId, edges, seen);
+                ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel,assemblyIdentity, snapshotId, edges, seen);
             }
 
             foreach (var field in tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>())
             {
                 foreach (var variable in field.Declaration.Variables)
                 {
-                    ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel,
-                        assemblyIdentity, snapshotId, edges, seen);
+                    ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel,assemblyIdentity, snapshotId, edges, seen);
                 }
             }
 
@@ -86,14 +80,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         return edges;
     }
 
-    private static void ProcessMemberWithSerializationAttrs(
-        SyntaxNode memberNode,
-        SyntaxList<AttributeListSyntax> attributeLists,
-        SemanticModel semanticModel,
-        string assemblyIdentity,
-        string snapshotId,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode,SyntaxList<AttributeListSyntax> attributeLists,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
 
         ISymbol? memberSymbol = memberNode switch
@@ -190,8 +177,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (attr.ArgumentList?.Arguments.Count > 0)
         {
             var arg = attr.ArgumentList.Arguments[0];
-            if (arg.Expression is LiteralExpressionSyntax literal &&
-                literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (arg.Expression is LiteralExpressionSyntax literal &&literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return literal.Token.ValueText;
             }
@@ -206,9 +192,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
         foreach (var arg in attr.ArgumentList.Arguments)
         {
-            if (arg.NameEquals?.Name.Identifier.Text == argumentName &&
-                arg.Expression is LiteralExpressionSyntax literal &&
-                literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (arg.NameEquals?.Name.Identifier.Text == argumentName &&arg.Expression is LiteralExpressionSyntax literal &&literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return literal.Token.ValueText;
             }
@@ -224,15 +208,8 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         return $"{docCommentId}|{assemblyIdentity}";
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind,
-        string snapshotId)
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind,string snapshotId)
     {
-        return new EdgeRecord(
-            sourceSymbolId: sourceId,
-            targetSymbolId: targetId,
-            kind: kind,
-            provenance: "framework_derived",
-            snapshotId: snapshotId,
-            extractorVersion: "serialization-v1");
+        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: kind,provenance: "framework_derived",snapshotId: snapshotId,extractorVersion: "serialization-v1");
     }
 }

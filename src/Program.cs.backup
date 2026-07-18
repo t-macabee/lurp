@@ -270,12 +270,7 @@ namespace Lurp
                         Environment.Exit(1);
                     }
 
-                    var json = JsonSerializer.Serialize(new
-                    {
-                        symbolId = info.SymbolId.Value,
-                        docCommentId = info.SymbolId.DocCommentId,
-                        assemblyIdentity = info.SymbolId.AssemblyIdentity,
-                        kind = info.Kind.ToString(),
+                    var json = JsonSerializer.Serialize(new{symbolId = info.SymbolId.Value,docCommentId = info.SymbolId.DocCommentId,assemblyIdentity = info.SymbolId.AssemblyIdentity,kind = info.Kind.ToString(),
                         fullyQualifiedName = info.FullyQualifiedName,
                         metadataJson = info.MetadataJson,
                         declarationCount = info.DeclarationCount,
@@ -393,8 +388,7 @@ namespace Lurp
                     }
                 }
 
-                var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results },
-                    new JsonSerializerOptions { WriteIndented = true });
+                var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results },new JsonSerializerOptions { WriteIndented = true });
                 Console.WriteLine(json);
             }
             finally
@@ -453,12 +447,7 @@ namespace Lurp
                     Environment.Exit(1);
                 }
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    symbolId = info.SymbolId.Value,
-                    docCommentId = info.SymbolId.DocCommentId,
-                    assemblyIdentity = info.SymbolId.AssemblyIdentity,
-                    kind = info.Kind.ToString(),
+                var json = JsonSerializer.Serialize(new{symbolId = info.SymbolId.Value,docCommentId = info.SymbolId.DocCommentId,assemblyIdentity = info.SymbolId.AssemblyIdentity,kind = info.Kind.ToString(),
                     fullyQualifiedName = info.FullyQualifiedName,
                     metadataJson = info.MetadataJson,
                     declarationCount = info.DeclarationCount,
@@ -639,10 +628,8 @@ namespace Lurp
                     }
                     else
                     {
-                        var incrementalIndexer = new IncrementalIndexer(
-                            store, gitRoot, solutionPathArg, outputDir, skipAdapters, jsonExportPath);
-                        var result = await incrementalIndexer.RunIncrementalAsync(
-                            solution, workspaceInfo, previousStorageManifest);
+                        var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPathArg, outputDir, skipAdapters, jsonExportPath);
+                        var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
                         Console.WriteLine();
                         Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
                         Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
@@ -687,12 +674,7 @@ namespace Lurp
                         var projectName = project.Name;
                         Console.Write($"  [{projectName}] ");
 
-                        var extractor = new SymbolExtractor(
-                            compilation,
-                            workspaceInfo.DocumentContents,
-                            workspaceInfo.Documents,
-                            workspaceInfo.GeneratedDocuments,
-                            snapshotIdStr);
+                        var extractor = new SymbolExtractor(compilation,workspaceInfo.DocumentContents,workspaceInfo.Documents,workspaceInfo.GeneratedDocuments,snapshotIdStr);
                         var declarations = extractor.ExtractAll();
                         store.SaveDeclarations(snapshotIdStr, declarations);
                         totalDeclarations += declarations.Count;
@@ -701,14 +683,12 @@ namespace Lurp
                         store.SaveEdges(snapshotIdStr, edges);
                         totalEdges += edges.Count;
 
-                        var memberEdgeExtractor = new MemberEdgeExtractor(
-                            compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
+                        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotIdStr);
                         var memberEdges = memberEdgeExtractor.ExtractAll();
                         store.SaveEdges(snapshotIdStr, memberEdges);
                         totalEdges += memberEdges.Count;
 
-                        var polyExtractor = new PolymorphismExtractor(
-                            compilation, snapshotIdStr);
+                        var polyExtractor = new PolymorphismExtractor(compilation, snapshotIdStr);
                         var polyEdges = polyExtractor.ExtractAll();
                         store.SaveEdges(snapshotIdStr, polyEdges);
                         totalEdges += polyEdges.Count;
@@ -716,8 +696,7 @@ namespace Lurp
                         int reflectionEdgesCount = 0;
                         try
                         {
-                            var reflectionExtractor = new ReflectionExtractor(
-                                compilation, snapshotIdStr);
+                            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotIdStr);
                             var reflectionEdges = reflectionExtractor.Extract();
                             store.SaveEdges(snapshotIdStr, reflectionEdges);
                             reflectionEdgesCount = reflectionEdges.Count;
@@ -871,17 +850,7 @@ namespace Lurp
                 var differ = new SemanticDiffer(store);
                 var changes = differ.ComputeDiff(fromSnapshot, toSnapshot);
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    from_snapshot = fromSnapshot,
-                    to_snapshot = toSnapshot,
-                    change_count = changes.Count,
-                    changes = changes.Select(c => new
-                    {
-                        change_id = c.ChangeId,
-                        change_type = c.ChangeType,
-                        symbol_id = c.SymbolId,
-                        detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null,
+                var json = JsonSerializer.Serialize(new{from_snapshot = fromSnapshot,to_snapshot = toSnapshot,change_count = changes.Count,changes = changes.Select(c => new{change_id = c.ChangeId,change_type = c.ChangeType,symbol_id = c.SymbolId,detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null,
                         created_at_utc = c.CreatedAtUtc
                     })
                 }, new JsonSerializerOptions { WriteIndented = true });
@@ -935,8 +904,7 @@ namespace Lurp
             HashSet<string>? allowedKinds = null;
             if (!string.IsNullOrEmpty(kindsArg))
             {
-                allowedKinds = new HashSet<string>(
-                    kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                allowedKinds = new HashSet<string>(kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
             }
 
             var outputDirArg = args.FirstOrDefault(a => a.StartsWith("--output-dir="))?.Split('=', 2)[1]
@@ -971,33 +939,9 @@ namespace Lurp
                 }
 
                 var traverser = new ImpactTraverser(store, snapshotId);
-                var paths = traverser.TraceImpact(
-                    symbolId: symbolArg,
-                    direction: direction,
-                    allowedEdgeKinds: allowedKinds,
-                    maxDepth: maxDepth,
-                    includeSource: true);
+                var paths = traverser.TraceImpact(symbolId: symbolArg,direction: direction,allowedEdgeKinds: allowedKinds,maxDepth: maxDepth,includeSource: true);
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    snapshot_id = snapshotId,
-                    symbol_id = symbolArg,
-                    direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",
-                    max_depth = maxDepth,
-                    paths = paths.Select(p => new
-                    {
-                        truncated = p.Truncated,
-                        truncation_reason = p.TruncationReason,
-                        total_steps = p.TotalSteps,
-                        hops = p.Hops.Select(h => new
-                        {
-                            source_symbol_id = h.SourceSymbolId,
-                            target_symbol_id = h.TargetSymbolId,
-                            edge_kind = h.EdgeKind,
-                            provenance = h.Provenance,
-                            source_document = h.SourceDocument,
-                            source_line = h.SourceLine
-                        })
+                var json = JsonSerializer.Serialize(new{snapshot_id = snapshotId,symbol_id = symbolArg,direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",max_depth = maxDepth,paths = paths.Select(p => new{truncated = p.Truncated,truncation_reason = p.TruncationReason,total_steps = p.TotalSteps,hops = p.Hops.Select(h => new{source_symbol_id = h.SourceSymbolId,target_symbol_id = h.TargetSymbolId,edge_kind = h.EdgeKind,provenance = h.Provenance,source_document = h.SourceDocument,source_line = h.SourceLine})
                     })
                 }, new JsonSerializerOptions { WriteIndented = true });
 
@@ -1090,14 +1034,7 @@ namespace Lurp
                 if (hasSymbol)
                 {
                     var symbolId = SymbolId.Parse(symbolArg!);
-                    var assembler = new ContextAssembler(
-                        store: store,
-                        snapshotId: snapshotId,
-                        symbolId: symbolId,
-                        intent: intent,
-                        budget: budget,
-                        maxHops: maxHops,
-                        includeGenerated: includeGenerated);
+                    var assembler = new ContextAssembler(store: store,snapshotId: snapshotId,symbolId: symbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
                     var capsule = assembler.Assemble();
                     WriteCapsuleOutput(capsule, outputDirArg);
                 }
@@ -1113,11 +1050,7 @@ namespace Lurp
 
                     if (resolvedId == null)
                     {
-                        var gapAnchor = new CapsuleAnchor(
-                            symbolId: $"file://{fileArg}:{lineNumber}",
-                            fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",
-                            kind: "gap",
-                            source: string.Empty);
+                        var gapAnchor = new CapsuleAnchor(symbolId: $"file://{fileArg}:{lineNumber}",fullyQualifiedName: $"<no symbol at {fileArg}:{lineNumber}>",kind: "gap",source: string.Empty);
 
                         var gapCapsule = new ContextCapsule(gapAnchor)
                         {
@@ -1126,24 +1059,14 @@ namespace Lurp
                             Truncated = false,
                         };
 
-                        gapCapsule.Uncertainties.Add(new UncertaintyEntry(
-                            new List<string> { gapAnchor.SymbolId },
-                            "location_gap",
-                            $"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
+                        gapCapsule.Uncertainties.Add(new UncertaintyEntry(new List<string> { gapAnchor.SymbolId },"location_gap",$"No symbol found at {fileArg}:{lineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 
                         WriteCapsuleOutput(gapCapsule, outputDirArg);
                     }
                     else
                     {
                         var symbolId = SymbolId.Parse(resolvedId);
-                        var assembler = new ContextAssembler(
-                            store: store,
-                            snapshotId: snapshotId,
-                            symbolId: symbolId,
-                            intent: intent,
-                            budget: budget,
-                            maxHops: maxHops,
-                            includeGenerated: includeGenerated);
+                        var assembler = new ContextAssembler(store: store,snapshotId: snapshotId,symbolId: symbolId,intent: intent,budget: budget,maxHops: maxHops,includeGenerated: includeGenerated);
                         var capsule = assembler.Assemble();
                         WriteCapsuleOutput(capsule, outputDirArg);
                     }
@@ -1157,11 +1080,7 @@ namespace Lurp
 
         private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
         {
-            var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
+            var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions{WriteIndented = true,DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull});
 
             var safeName = capsule.Anchor.SymbolId
                 .Replace('|', '_')

@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.Json;
+﻿using System.Text.Json;
 using Lurp.Storage;
 
 namespace Lurp.Workspace
@@ -30,10 +27,7 @@ namespace Lurp.Workspace
             {
                 if (!fromSet.Contains(symbolId))
                 {
-                    changes.Add(MakeChange(
-                        fromSnapshotId, toSnapshotId,
-                        ChangeType.SymbolAdded, symbolId,
-                        new { symbol_id = symbolId }));
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.SymbolAdded, symbolId,new { symbol_id = symbolId }));
                 }
             }
 
@@ -41,10 +35,7 @@ namespace Lurp.Workspace
             {
                 if (!toSet.Contains(symbolId))
                 {
-                    changes.Add(MakeChange(
-                        fromSnapshotId, toSnapshotId,
-                        ChangeType.SymbolRemoved, symbolId,
-                        new { symbol_id = symbolId }));
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.SymbolRemoved, symbolId,new { symbol_id = symbolId }));
                 }
             }
 
@@ -68,18 +59,12 @@ namespace Lurp.Workspace
 
                     if (fromSimple != toSimple)
                     {
-                        changes.Add(MakeChange(
-                            fromSnapshotId, toSnapshotId,
-                            ChangeType.SymbolRenamed, symbolId,
-                            new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.SymbolRenamed, symbolId,new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
                     }
 
                     if (fromContainer != toContainer)
                     {
-                        changes.Add(MakeChange(
-                            fromSnapshotId, toSnapshotId,
-                            ChangeType.SymbolMoved, symbolId,
-                            new { before = fromContainer, after = toContainer }));
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.SymbolMoved, symbolId,new { before = fromContainer, after = toContainer }));
                     }
                 }
 
@@ -93,20 +78,15 @@ namespace Lurp.Workspace
             var fromEdges = _store.GetEdges(fromSnapshotId);
             var toEdges = _store.GetEdges(toSnapshotId);
 
-            var fromEdgeSet = new HashSet<(string source, string target, string kind)>(
-                fromEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
-            var toEdgeSet = new HashSet<(string source, string target, string kind)>(
-                toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
+            var fromEdgeSet = new HashSet<(string source, string target, string kind)>(fromEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
+            var toEdgeSet = new HashSet<(string source, string target, string kind)>(toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
 
             foreach (var edge in toEdges)
             {
                 var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
                 if (!fromEdgeSet.Contains(key))
                 {
-                    changes.Add(MakeChange(
-                        fromSnapshotId, toSnapshotId,
-                        ChangeType.EdgeAdded, edge.SourceSymbolId,
-                        new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.EdgeAdded, edge.SourceSymbolId,new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
                 }
             }
 
@@ -115,10 +95,7 @@ namespace Lurp.Workspace
                 var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
                 if (!toEdgeSet.Contains(key))
                 {
-                    changes.Add(MakeChange(
-                        fromSnapshotId, toSnapshotId,
-                        ChangeType.EdgeRemoved, edge.SourceSymbolId,
-                        new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId,ChangeType.EdgeRemoved, edge.SourceSymbolId,new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
                 }
             }
 
@@ -130,12 +107,7 @@ namespace Lurp.Workspace
             return _store.GetSymbolIdsInSnapshot(snapshotId);
         }
 
-        private List<SemanticChange> CompareMetadata(
-            string symbolId,
-            string? fromJson,
-            string? toJson,
-            string fromSnapshotId,
-            string toSnapshotId)
+        private List<SemanticChange> CompareMetadata(string symbolId,string? fromJson,string? toJson,string fromSnapshotId,string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
 
@@ -151,41 +123,34 @@ namespace Lurp.Workspace
             var toAcc = GetMetaString(toMeta, "accessibility");
             if (fromAcc != null && toAcc != null && fromAcc != toAcc)
             {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AccessibilityChanged, symbolId,
-                    new { before = fromAcc, after = toAcc }));
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AccessibilityChanged, symbolId,new { before = fromAcc, after = toAcc }));
             }
 
             var fromSig = GetMetaString(fromMeta, "signature");
             var toSig = GetMetaString(toMeta, "signature");
             if (fromSig != null && toSig != null && fromSig != toSig)
             {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SignatureChanged, symbolId,
-                    new { before = fromSig, after = toSig }));
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SignatureChanged, symbolId,new { before = fromSig, after = toSig }));
             }
 
             var fromBase = GetMetaString(fromMeta, "base_type");
             var toBase = GetMetaString(toMeta, "base_type");
             if (fromBase != null && toBase != null && fromBase != toBase)
             {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BaseTypeChanged, symbolId,
-                    new { before = fromBase, after = toBase }));
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BaseTypeChanged, symbolId,new { before = fromBase, after = toBase }));
             }
 
             var fromAttrs = GetMetaArray(fromMeta, "attributes");
             var toAttrs = GetMetaArray(toMeta, "attributes");
             if (fromAttrs != null && toAttrs != null && !fromAttrs.SequenceEqual(toAttrs))
             {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AttributeChanged, symbolId,
-                    new { before = fromAttrs, after = toAttrs }));
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AttributeChanged, symbolId,new { before = fromAttrs, after = toAttrs }));
             }
 
             return changes;
         }
 
-        private List<SemanticChange> CompareSource(
-            string symbolId,
-            string fromSnapshotId,
-            string toSnapshotId)
+        private List<SemanticChange> CompareSource(string symbolId,string fromSnapshotId,string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
 
@@ -202,8 +167,7 @@ namespace Lurp.Workspace
             {
                 if (fromBody != toBody)
                 {
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BodyOnlyChanged, symbolId,
-                        new { note = "signature unchanged, body differs" }));
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BodyOnlyChanged, symbolId,new { note = "signature unchanged, body differs" }));
                 }
             }
 
@@ -243,15 +207,9 @@ namespace Lurp.Workspace
             return null;
         }
 
-        private static SemanticChange MakeChange(
-            string? fromSnapshotId,
-            string? toSnapshotId,
-            string changeType,
-            string symbolId,
-            object? detail)
+        private static SemanticChange MakeChange(string? fromSnapshotId,string? toSnapshotId,string changeType,string symbolId,object? detail)
         {
-            return new SemanticChange(
-                changeId: Guid.NewGuid().ToString("N"),
+            return new SemanticChange(changeId: Guid.NewGuid().ToString("N"),
                 fromSnapshotId: fromSnapshotId ?? string.Empty,
                 toSnapshotId: toSnapshotId ?? string.Empty,
                 changeType: changeType,

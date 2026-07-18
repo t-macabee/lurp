@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
@@ -32,8 +29,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
             foreach (var member in type.GetMembers())
             {
-                if (member is IPropertySymbol prop &&
-                    IsDbSetType(prop.Type, out var entityType))
+                if (member is IPropertySymbol prop &&IsDbSetType(prop.Type, out var entityType))
                 {
                     if (entityType == null) continue;
                     var entityTypeId = MakeSymbolId(entityType, assemblyIdentity);
@@ -46,10 +42,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     var key = (sourceId, entityTypeId, EdgeKind.MapsTo.ToString());
                     if (seen.Add(key))
                     {
-                        edges.Add(new EdgeRecord(
-                            sourceSymbolId: sourceId,
-                            targetSymbolId: entityTypeId,
-                            kind: EdgeKind.MapsTo.ToString(),
+                        edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
                             provenance: "framework_derived",
                             snapshotId: snapshotId,
                             extractorVersion: Version));
@@ -68,8 +61,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
                     {
                         var semanticModel = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
-                        ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, assemblyIdentity,
-                            snapshotId, edges, seen);
+                        ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, assemblyIdentity,snapshotId, edges, seen);
                     }
                 }
             }
@@ -94,10 +86,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                             var key = (configId, entityTypeId, EdgeKind.MapsTo.ToString());
                             if (seen.Add(key))
                             {
-                                edges.Add(new EdgeRecord(
-                                    sourceSymbolId: configId,
-                                    targetSymbolId: entityTypeId,
-                                    kind: EdgeKind.MapsTo.ToString(),
+                                edges.Add(new EdgeRecord(sourceSymbolId: configId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
                                     provenance: "framework_derived",
                                     snapshotId: snapshotId,
                                     extractorVersion: Version));
@@ -141,8 +130,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (originalDef.Name != "DbSet")
             return false;
 
-        if (namedType.TypeArguments.Length == 1 &&
-            namedType.TypeArguments[0] is INamedTypeSymbol entity)
+        if (namedType.TypeArguments.Length == 1 &&namedType.TypeArguments[0] is INamedTypeSymbol entity)
         {
             entityType = entity;
             return true;
@@ -151,23 +139,14 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void ExtractEntityCalls(
-        MethodDeclarationSyntax methodSyntax,
-        SemanticModel semanticModel,
-        string dbContextId,
-        string assemblyIdentity,
-        string snapshotId,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private static void ExtractEntityCalls(MethodDeclarationSyntax methodSyntax,SemanticModel semanticModel,string dbContextId,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
 
         var invocations = methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
         foreach (var invocation in invocations)
         {
-            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-                memberAccess.Name is GenericNameSyntax genericName &&
-                genericName.Identifier.Text == "Entity")
+            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName &&genericName.Identifier.Text == "Entity")
             {
 
                 if (genericName.TypeArgumentList.Arguments.Count == 1)
@@ -181,10 +160,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                             var key = (dbContextId, entityTypeId, EdgeKind.MapsTo.ToString());
                             if (seen.Add(key))
                             {
-                                edges.Add(new EdgeRecord(
-                                    sourceSymbolId: dbContextId,
-                                    targetSymbolId: entityTypeId,
-                                    kind: EdgeKind.MapsTo.ToString(),
+                                edges.Add(new EdgeRecord(sourceSymbolId: dbContextId,targetSymbolId: entityTypeId,kind: EdgeKind.MapsTo.ToString(),
                                     provenance: "framework_derived",
                                     snapshotId: snapshotId,
                                     extractorVersion: "efcore-v1"));
@@ -214,10 +190,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                                     var key = (dbContextId, navTypeId, EdgeKind.References.ToString());
                                     if (seen.Add(key))
                                     {
-                                        edges.Add(new EdgeRecord(
-                                            sourceSymbolId: dbContextId,
-                                            targetSymbolId: navTypeId,
-                                            kind: EdgeKind.References.ToString(),
+                                        edges.Add(new EdgeRecord(sourceSymbolId: dbContextId,targetSymbolId: navTypeId,kind: EdgeKind.References.ToString(),
                                             provenance: "framework_derived",
                                             snapshotId: snapshotId,
                                             extractorVersion: "efcore-v1"));

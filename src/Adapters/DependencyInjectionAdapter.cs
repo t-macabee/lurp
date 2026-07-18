@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -24,11 +21,10 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
+
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var diExtractorVersion = ExtractorConstants.DependencyInjectionExtractor;
-
-        var serviceCollectionType = compilation.GetTypeByMetadataName(
-            "Microsoft.Extensions.DependencyInjection.IServiceCollection");
+        var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
 
         foreach (var tree in compilation.SyntaxTrees)
         {
@@ -42,38 +38,27 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
                 var methodName = methodSymbol.Name;
 
-                // ── Category 1: Explicit generic registrations (existing) ──
                 if (methodName is "AddScoped" or "AddTransient" or "AddSingleton")
                 {
-                    ProcessExplicitGeneric(invocation, methodSymbol, semanticModel,
-                        assemblyIdentity, snapshotId, edges, seen);
+                    ProcessExplicitGeneric(invocation, methodSymbol, semanticModel,assemblyIdentity, snapshotId, edges, seen);
                     continue;
                 }
 
-                // ── Category 2: Convention-based candidate patterns ──
                 if (ConventionMethodNames.Contains(methodName))
                 {
-                    ProcessConventionCandidate(invocation, methodSymbol, semanticModel,
-                        compilation, assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessConventionCandidate(invocation, methodSymbol, semanticModel,compilation, assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
                     continue;
                 }
 
-                // ── Category 3: Runtime-unknown patterns ──
-
-                // Explicit runtime-unknown registration methods
                 if (methodName is "AddHostedService" or "Configure" or "AddOptions")
                 {
-                    ProcessRuntimeUnknown(invocation, semanticModel,
-                        assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessRuntimeUnknown(invocation, semanticModel,assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
                     continue;
                 }
 
-                // IServiceCollection passed as parameter to an external method
-                if (serviceCollectionType != null &&
-                    IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType))
+                if (serviceCollectionType != null &&IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType))
                 {
-                    ProcessRuntimeUnknown(invocation, semanticModel,
-                        assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
+                    ProcessRuntimeUnknown(invocation, semanticModel,assemblyIdentity, snapshotId, diExtractorVersion, edges, seen);
                 }
             }
         }
@@ -81,18 +66,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return edges;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Category 1 — explicit generic registrations (unchanged logic)
-    // ────────────────────────────────────────────────────────────────
-
-    private static void ProcessExplicitGeneric(
-        InvocationExpressionSyntax invocation,
-        IMethodSymbol methodSymbol,
-        SemanticModel semanticModel,
-        string assemblyIdentity,
-        string snapshotId,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         var containingType = methodSymbol.ContainingType;
         if (containingType == null)
@@ -102,9 +76,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var current = containingType;
         while (current != null)
         {
-            if (current.Name is "ServiceCollectionServiceExtensions" or
-                "ExtensionsServiceCollectionExtensions" or
-                "ServiceCollectionDescriptorExtensions")
+            if (current.Name is "ServiceCollectionServiceExtensions" or"ExtensionsServiceCollectionExtensions" or"ServiceCollectionDescriptorExtensions")
             {
                 isDiExtension = true;
                 break;
@@ -121,8 +93,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         var typeArgs = new List<ITypeSymbol>();
 
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Name is GenericNameSyntax genericName)
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName)
         {
             foreach (var typeArg in genericName.TypeArgumentList.Arguments)
             {
@@ -153,10 +124,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
                 if (seen.Add(key))
                 {
-                    edges.Add(new EdgeRecord(
-                        sourceSymbolId: sourceId,
-                        targetSymbolId: implTypeId,
-                        kind: EdgeKind.Registers.ToString(),
+                    edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: implTypeId,kind: EdgeKind.Registers.ToString(),
                         provenance: "framework_derived",
                         snapshotId: snapshotId,
                         extractorVersion: "di-v1"));
@@ -171,10 +139,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
                 if (seen.Add(key))
                 {
-                    edges.Add(new EdgeRecord(
-                        sourceSymbolId: sourceId,
-                        targetSymbolId: implTypeId,
-                        kind: EdgeKind.Registers.ToString(),
+                    edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: implTypeId,kind: EdgeKind.Registers.ToString(),
                         provenance: "framework_derived",
                         snapshotId: snapshotId,
                         extractorVersion: "di-v1"));
@@ -183,73 +148,41 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Category 2 — convention-based registration candidates
-    // ────────────────────────────────────────────────────────────────
 
-    private static void ProcessConventionCandidate(
-        InvocationExpressionSyntax invocation,
-        IMethodSymbol methodSymbol,
-        SemanticModel semanticModel,
-        Compilation compilation,
-        string assemblyIdentity,
-        string snapshotId,
-        string extractorVersion,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessConventionCandidate(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string assemblyIdentity,string snapshotId,string extractorVersion,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         var sourceId = ResolveSourceId(invocation, semanticModel, assemblyIdentity);
         if (sourceId == null)
             return;
 
-        var assemblyName = TryExtractConventionAssemblyName(
-            invocation, methodSymbol, semanticModel, compilation, assemblyIdentity);
+        var assemblyName = TryExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, assemblyIdentity);
 
         var targetId = $"convention:assembly_scan:{assemblyName}";
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
         if (seen.Add(key))
         {
-            edges.Add(new EdgeRecord(
-                sourceSymbolId: sourceId,
-                targetSymbolId: targetId,
-                kind: EdgeKind.Registers.ToString(),
+            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.Registers.ToString(),
                 provenance: "convention",
                 snapshotId: snapshotId,
                 extractorVersion: extractorVersion));
         }
     }
 
-    /// <summary>
-    /// Attempts to determine the assembly name from a convention-based
-    /// scanning call. Checks the following in order:
-    ///   1. The invocation itself — if it is <c>FromAssemblyOf&lt;T&gt;</c> or
-    ///      <c>AddAssemblyTypes&lt;T&gt;</c>, extract T's assembly.
-    ///   2. If the invocation is <c>Scan(...)</c> with a lambda argument,
-    ///      search the lambda body for <c>FromAssemblyOf&lt;T&gt;</c> /
-    ///      <c>FromAssembliesOf(...)</c> and extract the first type's assembly.
-    ///   3. Fall back to the current compilation's assembly name.
-    /// </summary>
-    private static string TryExtractConventionAssemblyName(
-        InvocationExpressionSyntax invocation,
-        IMethodSymbol methodSymbol,
-        SemanticModel semanticModel,
-        Compilation compilation,
-        string fallback)
-    {
-        // 1. Direct type-argument extraction (FromAssemblyOf<T>, AddAssemblyTypes<T>, etc.)
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Name is GenericNameSyntax genericName)
+    
+    private static string TryExtractConventionAssemblyName(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string fallback)
+    {        
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName)
         {
             foreach (var typeArg in genericName.TypeArgumentList.Arguments)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeArg);
+
                 if (typeInfo.Type?.ContainingAssembly != null)
                     return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
             }
         }
 
-        // 2. Scan(...) with a lambda — look for FromAssemblyOf<T> / FromAssembliesOf inside
         if (methodSymbol.Name == "Scan")
         {
             foreach (var arg in invocation.ArgumentList.Arguments)
@@ -258,10 +191,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 {
                     foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
                     {
-                        if (nested.Expression is MemberAccessExpressionSyntax nestedAccess &&
-                            nestedAccess.Name is SimpleNameSyntax nestedName &&
-                            (nestedName.Identifier.Text == "FromAssemblyOf" ||
-                             nestedName.Identifier.Text == "FromAssembliesOf"))
+                        if (nested.Expression is MemberAccessExpressionSyntax nestedAccess &&nestedAccess.Name is SimpleNameSyntax nestedName &&(nestedName.Identifier.Text == "FromAssemblyOf" ||nestedName.Identifier.Text == "FromAssembliesOf"))
                         {
                             if (nestedAccess.Name is GenericNameSyntax nestedGeneric)
                             {
@@ -273,7 +203,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                                 }
                             }
 
-                            // FromAssembliesOf can also take typeof(...) arguments
                             foreach (var nestedArg in nested.ArgumentList.Arguments)
                             {
                                 if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
@@ -292,35 +221,20 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return fallback;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Category 3 — runtime-unknown registrations
-    // ────────────────────────────────────────────────────────────────
-
-    private static void ProcessRuntimeUnknown(
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel,
-        string assemblyIdentity,
-        string snapshotId,
-        string extractorVersion,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,string extractorVersion,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         var sourceId = ResolveSourceId(invocation, semanticModel, assemblyIdentity);
+
         if (sourceId == null)
             return;
 
         const string targetId = "runtime:unknown";
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
+
         if (seen.Add(key))
         {
-            edges.Add(new EdgeRecord(
-                sourceSymbolId: sourceId,
-                targetSymbolId: targetId,
-                kind: EdgeKind.Registers.ToString(),
-                provenance: "runtime_unknown",
-                snapshotId: snapshotId,
-                extractorVersion: extractorVersion));
+            edges.Add(new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.Registers.ToString(), provenance: "runtime_unknown", snapshotId: snapshotId, extractorVersion: extractorVersion));
         }
     }
 
@@ -329,10 +243,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     /// the current <paramref name="compilation"/> and has at least one
     /// parameter whose type is <paramref name="serviceCollectionType"/>.
     /// </summary>
-    private static bool IsExternalMethodWithServiceCollectionParam(
-        IMethodSymbol methodSymbol,
-        Compilation compilation,
-        INamedTypeSymbol serviceCollectionType)
+    private static bool IsExternalMethodWithServiceCollectionParam(IMethodSymbol methodSymbol,Compilation compilation,INamedTypeSymbol serviceCollectionType)
     {
         if (SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingAssembly, compilation.Assembly))
             return false;
@@ -354,10 +265,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     /// Resolves the source symbol ID for an invocation. Prefers the enclosing
     /// method, falling back to the enclosing type declaration.
     /// </summary>
-    private static string? ResolveSourceId(
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel,
-        string assemblyIdentity)
+    private static string? ResolveSourceId(InvocationExpressionSyntax invocation,SemanticModel semanticModel,string assemblyIdentity)
     {
         var containingMethod = invocation.Ancestors()
             .OfType<MethodDeclarationSyntax>()

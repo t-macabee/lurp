@@ -1,15 +1,10 @@
-﻿using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 
 internal static class CompilationHelper
 {
-    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(
-        Solution solution,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(Solution solution,[EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var project in solution.Projects)
         {
@@ -21,9 +16,7 @@ internal static class CompilationHelper
         }
     }
 
-    public static List<DiagnosticRecord> GetDiagnostics(
-        string projectName,
-        Compilation compilation)
+    public static List<DiagnosticRecord> GetDiagnostics(string projectName,Compilation compilation)
     {
         var results = new List<DiagnosticRecord>();
 
@@ -44,10 +37,7 @@ internal static class CompilationHelper
                 endColumn = span.EndLinePosition.Character;
             }
 
-            results.Add(new DiagnosticRecord(
-                projectName: projectName,
-                documentPath: documentPath,
-                severity: diag.Severity.ToString(),
+            results.Add(new DiagnosticRecord(projectName: projectName,documentPath: documentPath,severity: diag.Severity.ToString(),
                 id: diag.Id,
                 message: diag.GetMessage(),
                 startLine: startLine,

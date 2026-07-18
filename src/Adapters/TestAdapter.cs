@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
@@ -57,24 +54,21 @@ public sealed class TestAdapter : IFrameworkAdapter
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(invocation);
                         if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,
-                                testMethodId, snapshotId, referencedSymbols);
+                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
                     }
 
                     foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(creation);
                         if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,
-                                testMethodId, snapshotId, referencedSymbols);
+                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
                     }
 
                     foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
                     {
                         var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
                         if (symbolInfo.Symbol != null)
-                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,
-                                testMethodId, snapshotId, referencedSymbols);
+                            TryAddProductionRef(symbolInfo.Symbol, assemblyIdentity, seen, edges,testMethodId, snapshotId, referencedSymbols);
                     }
                 }
             }
@@ -123,19 +117,14 @@ public sealed class TestAdapter : IFrameworkAdapter
                 return true;
 
             var fullName = attr.AttributeClass.ToDisplayString();
-            if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or
-                "NUnit.Framework.TestAttribute" or
-                "Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute")
+            if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or"NUnit.Framework.TestAttribute" or"Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute")
                 return true;
         }
 
         return false;
     }
 
-    private static void TryAddProductionRef(
-        ISymbol symbol,
-        string assemblyIdentity,
-        HashSet<(string source, string target, string kind)> seen,
+    private static void TryAddProductionRef(ISymbol symbol,string assemblyIdentity,HashSet<(string source, string target, string kind)> seen,
         List<EdgeRecord> edges,
         string testMethodId,
         string snapshotId,
@@ -163,10 +152,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         var key = (productionId, testMethodId, EdgeKind.TestedBy.ToString());
         if (seen.Add(key))
         {
-            edges.Add(new EdgeRecord(
-                sourceSymbolId: productionId,
-                targetSymbolId: testMethodId,
-                kind: EdgeKind.TestedBy.ToString(),
+            edges.Add(new EdgeRecord(sourceSymbolId: productionId,targetSymbolId: testMethodId,kind: EdgeKind.TestedBy.ToString(),
                 provenance: "framework_derived",
                 snapshotId: snapshotId,
                 extractorVersion: "test-v1"));
@@ -181,10 +167,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         return $"{docCommentId}|{assemblyIdentity}";
     }
 
-    private static SemanticModel GetOrCreateSemanticModel(
-        SyntaxTree syntaxTree,
-        Dictionary<SyntaxTree, SemanticModel> cache,
-        Compilation compilation)
+    private static SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache,Compilation compilation)
     {
         if (!cache.TryGetValue(syntaxTree, out var model))
         {

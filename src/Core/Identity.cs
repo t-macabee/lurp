@@ -1,5 +1,4 @@
 ﻿using System.Globalization;
-using System.IO.Hashing;
 
 using System.Security.Cryptography;
 using System.Text;
@@ -25,7 +24,7 @@ public readonly record struct WorkspaceId
     public static WorkspaceId Create(string gitRoot, string solutionPath)
     {
         var root = Normalise(gitRoot).TrimEnd('/');
-        var sln  = Normalise(solutionPath);
+        var sln = Normalise(solutionPath);
 
         var relative = sln.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
             ? sln[(root.Length + 1)..]

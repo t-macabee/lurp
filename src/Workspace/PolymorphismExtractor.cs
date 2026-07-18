@@ -38,9 +38,7 @@ public sealed class PolymorphismExtractor
     private readonly string _snapshotId;
     private readonly string _assemblyIdentity;
 
-    public PolymorphismExtractor(
-        Compilation compilation,
-        string snapshotId)
+    public PolymorphismExtractor(Compilation compilation,string snapshotId)
     {
         _compilation = compilation ?? throw new ArgumentNullException(nameof(compilation));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
@@ -71,13 +69,9 @@ public sealed class PolymorphismExtractor
     /// Provenance:
     ///   "compiler_proved" when the implementing member is declared directly on
     ///   the type (not inherited from a base type).
-    ///   "possible" when inherited (still a valid target, but a derived type
-    ///   could re-implement the interface in a future compilation).
+    ///   "possible" when inherited (still a valid target, but a derived type///   could re-implement the interface in a future compilation).
     /// </summary>
-    private void ExtractInterfaceDispatches(
-        List<INamedTypeSymbol> allTypes,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private void ExtractInterfaceDispatches(List<INamedTypeSymbol> allTypes,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         foreach (var type in allTypes)
         {
@@ -115,10 +109,7 @@ public sealed class PolymorphismExtractor
                     bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
                     string provenance = isDirect ? "compiler_proved" : "possible";
 
-                    edges.Add(new EdgeRecord(
-                        sourceSymbolId: ifaceMemberId,
-                        targetSymbolId: implMemberId,
-                        kind: EdgeKind.MayDispatchTo.ToString(),
+                    edges.Add(new EdgeRecord(sourceSymbolId: ifaceMemberId,targetSymbolId: implMemberId,kind: EdgeKind.MayDispatchTo.ToString(),
                         provenance: provenance,
                         snapshotId: _snapshotId,
                         extractorVersion: ExtractorConstants.PolymorphismExtractor,
@@ -142,10 +133,7 @@ public sealed class PolymorphismExtractor
     /// override chain is fully resolved at compile time within a single
     /// compilation, all such edges are "compiler_proved".
     /// </summary>
-    private void ExtractVirtualOverrides(
-        List<INamedTypeSymbol> allTypes,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private void ExtractVirtualOverrides(List<INamedTypeSymbol> allTypes,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         foreach (var type in allTypes)
         {
@@ -216,10 +204,7 @@ public sealed class PolymorphismExtractor
     ///   Handler.Handle --[statically_calls]--> IRepository.SaveAsync
     ///   IRepository.SaveAsync --[may_dispatch_to]--> Repository.SaveAsync
     /// </summary>
-    private void ExtractStaticCalls(
-        List<INamedTypeSymbol> allTypes,
-        List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+    private void ExtractStaticCalls(List<INamedTypeSymbol> allTypes,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen)
     {
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
@@ -260,10 +245,7 @@ public sealed class PolymorphismExtractor
                         continue;
 
                     var loc = GetLocationInfo(invocation.GetLocation());
-                    edges.Add(new EdgeRecord(
-                        sourceSymbolId: callerId,
-                        targetSymbolId: calleeId,
-                        kind: EdgeKind.StaticallyCalls.ToString(),
+                    edges.Add(new EdgeRecord(sourceSymbolId: callerId,targetSymbolId: calleeId,kind: EdgeKind.StaticallyCalls.ToString(),
                         provenance: "compiler_proved",
                         snapshotId: _snapshotId,
                         extractorVersion: ExtractorConstants.StaticallyCallsExtractor,
@@ -285,8 +267,7 @@ public sealed class PolymorphismExtractor
     /// Enumerate all method-like declarations (methods, constructors, accessors)
     /// owned by types in the current compilation, paired with their syntax nodes.
     /// </summary>
-    private static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(
-        List<INamedTypeSymbol> allTypes)
+    private static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(List<INamedTypeSymbol> allTypes)
     {
         foreach (var typeSymbol in allTypes)
         {
@@ -333,9 +314,7 @@ public sealed class PolymorphismExtractor
         };
     }
 
-    private SemanticModel GetOrCreateSemanticModel(
-        SyntaxTree syntaxTree,
-        Dictionary<SyntaxTree, SemanticModel> cache)
+    private SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache)
     {
         if (!cache.TryGetValue(syntaxTree, out var model))
         {
@@ -379,10 +358,7 @@ public sealed class PolymorphismExtractor
 
     private EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance)
     {
-        return new EdgeRecord(
-            sourceSymbolId: sourceId,
-            targetSymbolId: targetId,
-            kind: EdgeKind.MayDispatchTo.ToString(),
+        return new EdgeRecord(sourceSymbolId: sourceId,targetSymbolId: targetId,kind: EdgeKind.MayDispatchTo.ToString(),
             provenance: provenance,
             snapshotId: _snapshotId,
             extractorVersion: ExtractorConstants.PolymorphismExtractor,

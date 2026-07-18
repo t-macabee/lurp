@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace Lurp.Storage
+﻿namespace Lurp.Storage
 {
     public sealed class SourceSearchResult
     {
@@ -50,13 +47,7 @@ namespace Lurp.Storage
         public int DeclarationCount { get; }
         public bool IsPartial { get; }
 
-        public SymbolInfo(
-            SymbolId symbolId,
-            SymbolKind kind,
-            string? fullyQualifiedName,
-            string? metadataJson,
-            int declarationCount,
-            bool isPartial)
+        public SymbolInfo(SymbolId symbolId,SymbolKind kind,string? fullyQualifiedName,string? metadataJson,int declarationCount,bool isPartial)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind;

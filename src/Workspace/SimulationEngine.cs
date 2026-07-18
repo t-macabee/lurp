@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json.Serialization;
 using Lurp.Storage;
 
@@ -76,8 +73,7 @@ public sealed class SimulationEngine
     public SimulationReport SimulateRename(string symbolId, string newSimpleName)
     {
         var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
-        var filteredIncoming = incoming.Where(e =>
-            e.Kind is "Calls" or "References" or "Overrides" or "Implements");
+        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Overrides" or "Implements");
 
         var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
         var overrideOutgoing = outgoing.Where(e => e.Kind == "Overrides");
@@ -87,23 +83,13 @@ public sealed class SimulationEngine
         foreach (var edge in filteredIncoming)
         {
             var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
-            items.Add(new SimulationItem(
-                symbolId: edge.SourceSymbolId,
-                fqn: info?.FullyQualifiedName,
-                edgeKind: edge.Kind,
-                documentPath: edge.SourceDocumentPath,
-                line: edge.SourceStartLine));
+            items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
         }
 
         foreach (var edge in overrideOutgoing)
         {
             var info = _declarationStore.GetSymbolInfo(edge.TargetSymbolId, _snapshotId);
-            items.Add(new SimulationItem(
-                symbolId: edge.TargetSymbolId,
-                fqn: info?.FullyQualifiedName,
-                edgeKind: edge.Kind,
-                documentPath: edge.SourceDocumentPath,
-                line: edge.SourceStartLine));
+            items.Add(new SimulationItem(symbolId: edge.TargetSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
         }
 
         return new SimulationReport("rename", symbolId, _snapshotId, items);
@@ -112,20 +98,14 @@ public sealed class SimulationEngine
     public SimulationReport SimulateMove(string symbolId, string newNamespace)
     {
         var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
-        var filteredIncoming = incoming.Where(e =>
-            e.Kind is "Calls" or "References" or "Implements");
+        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Implements");
 
         var items = new List<SimulationItem>();
 
         foreach (var edge in filteredIncoming)
         {
             var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
-            items.Add(new SimulationItem(
-                symbolId: edge.SourceSymbolId,
-                fqn: info?.FullyQualifiedName,
-                edgeKind: edge.Kind,
-                documentPath: edge.SourceDocumentPath,
-                line: edge.SourceStartLine));
+            items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
         }
 
         return new SimulationReport("move", symbolId, _snapshotId, items);
@@ -147,12 +127,7 @@ public sealed class SimulationEngine
                 if (!allItems.ContainsKey(key))
                 {
                     var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
-                    allItems[key] = new SimulationItem(
-                        symbolId: key,
-                        fqn: info?.FullyQualifiedName,
-                        edgeKind: hop.EdgeKind,
-                        documentPath: hop.SourceDocument,
-                        line: hop.SourceLine);
+                    allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: hop.EdgeKind,documentPath: hop.SourceDocument,line: hop.SourceLine);
                 }
             }
         }
@@ -166,12 +141,7 @@ public sealed class SimulationEngine
             if (!allItems.ContainsKey(key))
             {
                 var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
-                allItems[key] = new SimulationItem(
-                    symbolId: key,
-                    fqn: info?.FullyQualifiedName,
-                    edgeKind: edge.Kind,
-                    documentPath: edge.SourceDocumentPath,
-                    line: edge.SourceStartLine);
+                allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine);
             }
         }
 
@@ -184,12 +154,7 @@ public sealed class SimulationEngine
             if (!allItems.ContainsKey(key))
             {
                 var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
-                allItems[key] = new SimulationItem(
-                    symbolId: key,
-                    fqn: info?.FullyQualifiedName,
-                    edgeKind: edge.Kind,
-                    documentPath: edge.SourceDocumentPath,
-                    line: edge.SourceStartLine);
+                allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine);
             }
         }
 
@@ -202,12 +167,7 @@ public sealed class SimulationEngine
             if (!allItems.ContainsKey(key))
             {
                 var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
-                allItems[key] = new SimulationItem(
-                    symbolId: key,
-                    fqn: info?.FullyQualifiedName,
-                    edgeKind: edge.Kind,
-                    documentPath: edge.SourceDocumentPath,
-                    line: edge.SourceStartLine);
+                allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine);
             }
         }
 
