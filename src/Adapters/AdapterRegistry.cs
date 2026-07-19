@@ -2,7 +2,7 @@ namespace Lurp.Adapters;
 
 internal static class AdapterRegistry
 {
-    private static readonly IFrameworkAdapter[] All =
+    private static readonly IFrameworkAdapter[] _all =
     [
         new AspNetCoreAdapter(),
         new DependencyInjectionAdapter(),
@@ -15,7 +15,7 @@ internal static class AdapterRegistry
     public static IFrameworkAdapter[] GetAdapters(IReadOnlySet<string>? skipAdapters = null)
     {
         if (skipAdapters == null || skipAdapters.Count == 0)
-            return All;
-        return [.. All.Where(a => !skipAdapters.Contains(a.Name, StringComparer.OrdinalIgnoreCase))];
+            return _all;
+        return [.. _all.Where(a => !skipAdapters.Contains(a.Name, StringComparer.OrdinalIgnoreCase))];
     }
 }

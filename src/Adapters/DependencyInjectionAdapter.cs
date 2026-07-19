@@ -20,7 +20,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         HashSet<(string source, string target, string kind)> Seen
     );
 
-    private static readonly HashSet<string> ConventionMethodNames = new()
+    private static readonly HashSet<string> _conventionMethodNames = new()
     {
         "Scan", "AddClasses", "AsImplementedInterfaces",
         "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes",
@@ -59,7 +59,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     continue;
                 }
 
-                if (ConventionMethodNames.Contains(methodName))
+                if (_conventionMethodNames.Contains(methodName))
                 {
                     ProcessConventionCandidate(invocation, methodSymbol, semanticModel, compilation, ctx);
                     continue;
@@ -180,7 +180,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (sourceId == null)
             return;
 
-        var assemblyName = TryExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, ctx.AssemblyIdentity);
+        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, ctx.AssemblyIdentity);
 
         var targetId = $"convention:assembly_scan:{assemblyName}";
 
@@ -200,7 +200,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
     
-    private static string TryExtractConventionAssemblyName(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string fallback)
+    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string fallback)
     {        
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName)
         {

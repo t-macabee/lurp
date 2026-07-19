@@ -1,6 +1,4 @@
-using Lurp.Workspace;
-
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public enum MismatchKind
 {

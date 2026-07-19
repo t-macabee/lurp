@@ -5,10 +5,9 @@ using System.Xml.Linq;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Lurp.Workspace;
 using DocumentId = Lurp.Workspace.DocumentId;
 
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public sealed class WorkspaceInfo
 {

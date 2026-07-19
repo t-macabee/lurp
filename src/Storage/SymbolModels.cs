@@ -26,10 +26,7 @@ namespace Lurp.Storage
         ReflectionNameCandidate,
         ReflectionTargetUnknown,
     }
-}
 
-namespace Lurp.Storage
-{
     public enum SymbolKind
     {
         Namespace,

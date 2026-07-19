@@ -1,8 +1,6 @@
 using System.Text.Json.Serialization;
 using Lurp.Storage;
-using Lurp.Workspace;
-
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public sealed class SimulationItem
 {

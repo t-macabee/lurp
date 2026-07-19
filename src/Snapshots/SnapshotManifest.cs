@@ -75,7 +75,7 @@ public sealed class SnapshotManifest
         };
     }
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -92,7 +92,7 @@ public sealed class SnapshotManifest
 
         if (jsonExportPath != null)
         {
-            var json = JsonSerializer.Serialize(this, JsonOptions);
+            var json = JsonSerializer.Serialize(this, _jsonOptions);
             File.WriteAllText(jsonExportPath, json);
         }
     }
@@ -100,7 +100,7 @@ public sealed class SnapshotManifest
     public static SnapshotManifest Load(string path)
     {
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<SnapshotManifest>(json, JsonOptions)
+        return JsonSerializer.Deserialize<SnapshotManifest>(json, _jsonOptions)
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 

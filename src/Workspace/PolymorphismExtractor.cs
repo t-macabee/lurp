@@ -3,9 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
-using Lurp.Workspace;
-
-namespace Lurp;
+namespace Lurp.Workspace;
 
 /// <summary>
 /// Extracts polymorphism-related edges:
