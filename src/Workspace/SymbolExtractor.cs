@@ -5,6 +5,8 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
 using SymKind = Lurp.Storage.SymbolKind;
+using Lurp.Workspace;
+using DocumentId = Lurp.Workspace.DocumentId;
 
 namespace Lurp;
 

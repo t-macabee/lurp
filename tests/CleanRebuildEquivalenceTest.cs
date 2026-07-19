@@ -170,8 +170,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
                 Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
 
-            var storageWsId = new Storage.WorkspaceId(manifest.WorkspaceId.Value);
-            var previousManifest = store.LoadLatestSnapshot(storageWsId);
+            var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
                 var differ = new Workspace.SemanticDiffer(store);
@@ -209,8 +208,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             var gitRoot = _testDir;
             var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
-            var storageWsId = new Storage.WorkspaceId(workspaceInfo.Id.Value);
-            var previousManifest = store.LoadLatestSnapshot(storageWsId);
+            var previousManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
 
             if (previousManifest == null)
                 throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");

@@ -1,4 +1,4 @@
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public static class ExtractorConstants
 {

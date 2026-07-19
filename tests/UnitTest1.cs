@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
+using DocumentId = Lurp.Workspace.DocumentId;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -125,7 +126,7 @@ public class MigrationRunnerTests : IDisposable
 
         store.SaveSnapshot(original);
 
-        var loaded = store.LoadLatestSnapshot(new Storage.WorkspaceId(workspaceId));
+        var loaded = store.LoadLatestSnapshot(workspaceId);
 
         Assert.NotNull(loaded);
         Assert.Equal(snapshotId, loaded!.SnapshotId);
@@ -157,7 +158,7 @@ public class MigrationRunnerTests : IDisposable
         store.Open(_dbPath);
         store.RunMigrations();
 
-        var result = store.LoadLatestSnapshot(new Storage.WorkspaceId("workspace:///nonexistent"));
+        var result = store.LoadLatestSnapshot("workspace:///nonexistent");
 
         Assert.Null(result);
 
@@ -297,7 +298,7 @@ public class MigrationRunnerTests : IDisposable
         );
         store.SaveSnapshot(original);
 
-        var loaded = store.LoadLatestSnapshot(new Storage.WorkspaceId(workspaceId));
+        var loaded = store.LoadLatestSnapshot(workspaceId);
         Assert.NotNull(loaded);
         var doc = loaded!.Documents[0];
         Assert.Equal("[0,6,12,18]", doc.LineStart);

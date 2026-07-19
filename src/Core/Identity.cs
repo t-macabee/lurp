@@ -3,7 +3,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Lurp;
+namespace Lurp.Workspace;
 
 public readonly record struct WorkspaceId
 {

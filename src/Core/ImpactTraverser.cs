@@ -1,6 +1,6 @@
 ﻿using Lurp.Storage;
 
-namespace Lurp
+namespace Lurp.Workspace
 {
     public sealed class ImpactTraverser
     {
