@@ -46,10 +46,29 @@ jobs:
       - name: Install NDepend
         run: choco install ndepend --no-progress -y
 
-      - name: Run NDepend analysis (informational)
+      - name: Build (Debug) for NDepend
+        # Lurp.ndproj analyzes the Debug configuration, but the steps above build
+        # Release. Produce the Debug assemblies so NDepend has something to analyze.
+        run: dotnet build --configuration Debug
+
+      - name: Run NDepend quality gates
+        # Enforcing gate. NDepend compares against the pinned baseline
+        # (baselines/Lurp-baseline.ndar) and returns a non-zero exit code when a
+        # quality gate fails, because ForceReturnZeroExitCode is False in Lurp.ndproj.
+        # A failing gate (e.g. Critical Rules Violated > 0) now blocks the merge.
         shell: pwsh
         run: |
           $ndepend = Resolve-Path "$env:ChocolateyInstall\lib\ndepend\tools\NDepend.Console.exe"
           & $ndepend Lurp.ndproj /Silent
-        continue-on-error: true
-        # continue-on-error keeps this informational until the quality gate is green
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "NDepend quality gate failed (exit code $LASTEXITCODE). See the ndepend-report artifact."
+            exit $LASTEXITCODE
+          }
+
+      - name: Upload NDepend report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndepend-report
+          path: NDependOut/
+          if-no-files-found: ignore
