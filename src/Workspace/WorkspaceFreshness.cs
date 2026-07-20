@@ -26,8 +26,6 @@ public static class WorkspaceFreshness
 
     public static FreshnessResult CheckFreshness(WorkspaceInfo current,SnapshotManifest? stored)
     {
-        var mismatches = new List<SnapshotMismatch>();
-
         if (stored == null)
         {
             return new FreshnessResult(IsFresh: false,Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed — no snapshot manifest found.",Document: null,Detail: null)
@@ -37,11 +35,30 @@ public static class WorkspaceFreshness
                 StoredWorkspaceId: null);
         }
 
+        var mismatches = new List<SnapshotMismatch>();
+        mismatches.AddRange(CheckWorkspaceIdentity(current, stored));
+        mismatches.AddRange(CheckDocuments(current, stored));
+        mismatches.AddRange(CheckSdkAndCompiler(current, stored));
+        mismatches.AddRange(CheckTargetFrameworks(current, stored));
+        mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckExtractorVersion(current, stored));
+
+        return new FreshnessResult(IsFresh: mismatches.Count == 0,Mismatches: mismatches.AsReadOnly(),
+            CurrentWorkspaceId: current.Id,
+            StoredSnapshotId: stored.SnapshotId,
+            StoredWorkspaceId: stored.WorkspaceId);
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckWorkspaceIdentity(WorkspaceInfo current, SnapshotManifest stored)
+    {
         if (current.Id.Value != stored.WorkspaceId.Value)
         {
-            mismatches.Add(new SnapshotMismatch(MismatchKind.SdkChanged,$"Workspace identity mismatch: current '{current.Id.Value}' vs stored '{stored.WorkspaceId.Value}'.",Document: null,Detail: $"{current.Id.Value} → {stored.WorkspaceId.Value}"));
+            yield return new SnapshotMismatch(MismatchKind.SdkChanged,$"Workspace identity mismatch: current '{current.Id.Value}' vs stored '{stored.WorkspaceId.Value}'.",Document: null,Detail: $"{current.Id.Value} → {stored.WorkspaceId.Value}");
         }
+    }
 
+    private static IEnumerable<SnapshotMismatch> CheckDocuments(WorkspaceInfo current, SnapshotManifest stored)
+    {
         var currentDocs = current.Documents;
         var storedDocs = stored.DocumentVersions;
 
@@ -49,7 +66,7 @@ public static class WorkspaceFreshness
         {
             if (!currentDocs.ContainsKey(docId))
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.DocumentRemoved,$"Document removed: '{docId}'.",Document: docId,Detail: null));
+                yield return new SnapshotMismatch(MismatchKind.DocumentRemoved,$"Document removed: '{docId}'.",Document: docId,Detail: null);
             }
         }
 
@@ -57,25 +74,31 @@ public static class WorkspaceFreshness
         {
             if (!storedDocs.TryGetValue(docId, out var storedHash))
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.DocumentAdded,$"Document added: '{docId}'.",Document: docId,Detail: $"hash (new) = {currentHash}"));
+                yield return new SnapshotMismatch(MismatchKind.DocumentAdded,$"Document added: '{docId}'.",Document: docId,Detail: $"hash (new) = {currentHash}");
             }
             else if (currentHash != storedHash)
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.DocumentModified,$"Document content changed: '{docId}'.",Document: docId,Detail: $"hash {storedHash} → {currentHash}"));
+                yield return new SnapshotMismatch(MismatchKind.DocumentModified,$"Document content changed: '{docId}'.",Document: docId,Detail: $"hash {storedHash} → {currentHash}");
             }
         }
+    }
 
+    private static IEnumerable<SnapshotMismatch> CheckSdkAndCompiler(WorkspaceInfo current, SnapshotManifest stored)
+    {
         if (!string.Equals(current.SdkVersion, stored.SdkVersion, StringComparison.Ordinal))
         {
-            mismatches.Add(new SnapshotMismatch(MismatchKind.SdkChanged,$".NET SDK version changed.",Document: null,Detail: $"{stored.SdkVersion} → {current.SdkVersion}"));
+            yield return new SnapshotMismatch(MismatchKind.SdkChanged,$".NET SDK version changed.",Document: null,Detail: $"{stored.SdkVersion} → {current.SdkVersion}");
         }
 
         var currentCompiler = current.CompilerVersion.ToString();
         if (!string.Equals(currentCompiler, stored.CompilerVersion, StringComparison.Ordinal))
         {
-            mismatches.Add(new SnapshotMismatch(MismatchKind.CompilerChanged,"Roslyn compiler version changed.",Document: null,Detail: $"{stored.CompilerVersion} → {currentCompiler}"));
+            yield return new SnapshotMismatch(MismatchKind.CompilerChanged,"Roslyn compiler version changed.",Document: null,Detail: $"{stored.CompilerVersion} → {currentCompiler}");
         }
+    }
 
+    private static IEnumerable<SnapshotMismatch> CheckTargetFrameworks(WorkspaceInfo current, SnapshotManifest stored)
+    {
         var currentTfms = current.TargetFrameworks;
         var storedTfms = stored.TargetFrameworks;
 
@@ -83,7 +106,7 @@ public static class WorkspaceFreshness
         {
             if (!currentTfms.ContainsKey(projName))
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.ProjectRemoved,$"Project removed: '{projName}'.",Document: null,Detail: projName));
+                yield return new SnapshotMismatch(MismatchKind.ProjectRemoved,$"Project removed: '{projName}'.",Document: null,Detail: projName);
             }
         }
 
@@ -91,14 +114,17 @@ public static class WorkspaceFreshness
         {
             if (!storedTfms.TryGetValue(projName, out var storedTfm))
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.ProjectAdded,$"Project added: '{projName}'.",Document: null,Detail: projName));
+                yield return new SnapshotMismatch(MismatchKind.ProjectAdded,$"Project added: '{projName}'.",Document: null,Detail: projName);
             }
             else if (!string.Equals(currentTfm, storedTfm, StringComparison.Ordinal))
             {
-                mismatches.Add(new SnapshotMismatch(MismatchKind.TargetFrameworkChanged,$"Target framework changed for project '{projName}'.",Document: null,Detail: $"{storedTfm} → {currentTfm}"));
+                yield return new SnapshotMismatch(MismatchKind.TargetFrameworkChanged,$"Target framework changed for project '{projName}'.",Document: null,Detail: $"{storedTfm} → {currentTfm}");
             }
         }
+    }
 
+    private static IEnumerable<SnapshotMismatch> CheckProjectGraph(WorkspaceInfo current, SnapshotManifest stored)
+    {
         var currentGraph = current.ProjectGraph;
         var storedGraph = stored.ProjectGraph;
 
@@ -117,19 +143,17 @@ public static class WorkspaceFreshness
             {
                 var currentSorted = currentRefs.OrderBy(x => x, StringComparer.Ordinal);
                 var storedSorted = storedRefs.OrderBy(x => x, StringComparer.Ordinal);
-                mismatches.Add(new SnapshotMismatch(MismatchKind.ProjectReferenceChanged,$"Project references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]"));
+                yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged,$"Project references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]");
             }
         }
+    }
 
+    private static IEnumerable<SnapshotMismatch> CheckExtractorVersion(WorkspaceInfo current, SnapshotManifest stored)
+    {
         if (!string.Equals(current.ExtractorVersion, stored.ExtractorVersion, StringComparison.Ordinal))
         {
-            mismatches.Add(new SnapshotMismatch(MismatchKind.VersionChanged,"Extractor version changed.",Document: null,Detail: $"{stored.ExtractorVersion} → {current.ExtractorVersion}"));
+            yield return new SnapshotMismatch(MismatchKind.VersionChanged,"Extractor version changed.",Document: null,Detail: $"{stored.ExtractorVersion} → {current.ExtractorVersion}");
         }
-
-        return new FreshnessResult(IsFresh: mismatches.Count == 0,Mismatches: mismatches.AsReadOnly(),
-            CurrentWorkspaceId: current.Id,
-            StoredSnapshotId: stored.SnapshotId,
-            StoredWorkspaceId: stored.WorkspaceId);
     }
 }
 

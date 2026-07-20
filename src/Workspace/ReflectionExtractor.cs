@@ -95,61 +95,58 @@ public sealed class ReflectionExtractor
 
         foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
-            if (invocation.Expression is not IdentifierNameSyntax identifier)
+            if (!IsNameOfInvocation(invocation))
                 continue;
 
-            if (!identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal))
-                continue;
-
-            if (invocation.ArgumentList.Arguments.Count != 1)
-                continue;
-
-            var argument = invocation.ArgumentList.Arguments[0].Expression;
-            var sourceId = GetContainingMemberSymbolId(invocation, semanticModel);
-            if (sourceId == null)
-                continue;
-
-            var symbolInfo = semanticModel.GetSymbolInfo(argument);
-            var resolvedSymbol = symbolInfo.Symbol;
-            if (resolvedSymbol == null && symbolInfo.CandidateSymbols.Length > 0)
-            {
-                resolvedSymbol = symbolInfo.CandidateSymbols[0];
-            }
-
-            if (resolvedSymbol != null && resolvedSymbol.CanBeReferencedByName)
-            {
-                var targetId = MakeSymbolId(resolvedSymbol);
-                if (targetId == null)
-                    continue;
-
-                var key = (sourceId, targetId, EdgeKind.ReflectionMemberRef.ToString());
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = GetLocationInfo(invocation.GetLocation());
-                edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = sourceId,
-                    TargetSymbolId = targetId,
-                    Kind = EdgeKind.ReflectionMemberRef.ToString(),
-                    Provenance = "compiler_proved",
-                    SnapshotId = _snapshotId,
-                    ExtractorVersion = ExtractorConstants.ReflectionExtractor,
-                    SourceDocumentPath = loc.path,
-                    SourceStartLine = loc.startLine,
-                    SourceStartColumn = loc.startColumn,
-                    SourceEndLine = loc.endLine,
-                    SourceEndColumn = loc.endColumn,
-                });
-            }
-            else
-            {
-
-                continue;
-            }
+            TryEmitNameOfEdge(invocation, semanticModel, edges, seen);
         }
 
         return edges;
+    }
+
+    private static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
+    {
+        return invocation.Expression is IdentifierNameSyntax identifier
+            && identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal)
+            && invocation.ArgumentList.Arguments.Count == 1;
+    }
+
+    private void TryEmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var sourceId = GetContainingMemberSymbolId(invocation, semanticModel);
+        if (sourceId == null)
+            return;
+
+        var argument = invocation.ArgumentList.Arguments[0].Expression;
+        var symbolInfo = semanticModel.GetSymbolInfo(argument);
+        var resolvedSymbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+
+        if (resolvedSymbol == null || !resolvedSymbol.CanBeReferencedByName)
+            return;
+
+        var targetId = MakeSymbolId(resolvedSymbol);
+        if (targetId == null)
+            return;
+
+        var key = (sourceId, targetId, EdgeKind.ReflectionMemberRef.ToString());
+        if (!seen.Add(key))
+            return;
+
+        var loc = GetLocationInfo(invocation.GetLocation());
+        edges.Add(new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = EdgeKind.ReflectionMemberRef.ToString(),
+            Provenance = "compiler_proved",
+            SnapshotId = _snapshotId,
+            ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+            SourceDocumentPath = loc.path,
+            SourceStartLine = loc.startLine,
+            SourceStartColumn = loc.startColumn,
+            SourceEndLine = loc.endLine,
+            SourceEndColumn = loc.endColumn,
+        });
     }
 
     private List<EdgeRecord> ExtractStringLiteralCandidates(SyntaxNode root,SemanticModel semanticModel,HashSet<string> knownTypeNames,HashSet<string> knownMemberNames)
@@ -265,58 +262,15 @@ public sealed class ReflectionExtractor
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            var memberName = memberAccess.Name.Identifier.Text;
+            var pattern = ResolveReflectionPattern(memberAccess, invocation, semanticModel);
+            if (pattern == null)
+                continue;
+
             var sourceId = GetContainingMemberSymbolId(invocation, semanticModel);
             if (sourceId == null)
                 continue;
 
-            string? argumentString = null;
-            if (invocation.ArgumentList.Arguments.Count > 0)
-            {
-                var firstArg = invocation.ArgumentList.Arguments[0].Expression;
-                if (firstArg is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
-                {
-                    argumentString = lit.Token.ValueText;
-                }
-            }
-
-            string? pattern = null;
-
-            switch (memberName)
-            {
-                case "GetType" when IsTypeGetType(invocation, semanticModel):
-                    pattern = "Type.GetType";
-                    break;
-                case "GetType":
-                case "GetExportedTypes":
-
-                    var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression);
-                    if (receiverType.Type != null &&receiverType.Type.ToDisplayString() is "System.Reflection.Assembly" or "System.Type")
-                    {
-                        pattern = memberName == "GetExportedTypes"
-                            ? "Assembly.GetExportedTypes"
-                            : "Assembly.GetType";
-                    }
-                    break;
-                case "CreateInstance":
-
-                    var createReceiver = semanticModel.GetSymbolInfo(memberAccess.Expression);
-                    if (createReceiver.Symbol is INamedTypeSymbol namedType &&namedType.ToDisplayString() == "System.Activator")
-                    {
-                        pattern = "Activator.CreateInstance";
-                    }
-                    break;
-                case "MakeGenericType":
-                    pattern = "MakeGenericType";
-                    break;
-                case "MakeGenericMethod":
-                    pattern = "MakeGenericMethod";
-                    break;
-            }
-
-            if (pattern == null)
-                continue;
-
+            var argumentString = GetFirstStringLiteralArgument(invocation);
             var detailJson = JsonSerializer.Serialize(new{pattern,argument = argumentString ?? ""});
 
             var key = (sourceId, pattern, argumentString ?? "");
@@ -341,6 +295,50 @@ public sealed class ReflectionExtractor
         }
 
         return edges;
+    }
+
+    private static string? ResolveReflectionPattern(MemberAccessExpressionSyntax memberAccess, InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        var memberName = memberAccess.Name.Identifier.Text;
+
+        switch (memberName)
+        {
+            case "GetType" when IsTypeGetType(invocation, semanticModel):
+                return "Type.GetType";
+            case "GetType":
+            case "GetExportedTypes":
+                var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression);
+                if (receiverType.Type != null && receiverType.Type.ToDisplayString() is "System.Reflection.Assembly" or "System.Type")
+                {
+                    return memberName == "GetExportedTypes" ? "Assembly.GetExportedTypes" : "Assembly.GetType";
+                }
+                return null;
+            case "CreateInstance":
+                var createReceiver = semanticModel.GetSymbolInfo(memberAccess.Expression);
+                if (createReceiver.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Activator")
+                {
+                    return "Activator.CreateInstance";
+                }
+                return null;
+            case "MakeGenericType":
+                return "MakeGenericType";
+            case "MakeGenericMethod":
+                return "MakeGenericMethod";
+            default:
+                return null;
+        }
+    }
+
+    private static string? GetFirstStringLiteralArgument(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.ArgumentList.Arguments.Count == 0)
+            return null;
+
+        var firstArg = invocation.ArgumentList.Arguments[0].Expression;
+        if (firstArg is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
+            return lit.Token.ValueText;
+
+        return null;
     }
 
     private static bool IsTypeGetType(InvocationExpressionSyntax invocation, SemanticModel semanticModel)

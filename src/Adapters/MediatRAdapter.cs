@@ -21,8 +21,16 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         if (!hasMediatRReferences)
             return edges;
 
-        var requestTypes = new List<INamedTypeSymbol>();
+        var handlerTypes = CollectHandlerTypes(allTypes);
 
+        foreach (var (handlerType, requestType) in handlerTypes)
+            EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen);
+
+        return edges;
+    }
+
+    private static List<(INamedTypeSymbol HandlerType, INamedTypeSymbol RequestType)> CollectHandlerTypes(List<INamedTypeSymbol> allTypes)
+    {
         var handlerTypes = new List<(INamedTypeSymbol HandlerType, INamedTypeSymbol RequestType)>();
 
         foreach (var type in allTypes)
@@ -33,11 +41,6 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             foreach (var iface in type.AllInterfaces)
             {
                 var ifaceName = iface.OriginalDefinition?.Name;
-
-                if (ifaceName == "IRequest`1" || ifaceName == "IRequest")
-                {
-                    requestTypes.Add(type);
-                }
 
                 if (ifaceName == "IRequestHandler")
                 {
@@ -56,39 +59,40 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             }
         }
 
-        foreach (var (handlerType, requestType) in handlerTypes)
+        return handlerTypes;
+    }
+
+    private static void EmitHandlesEdge(INamedTypeSymbol handlerType, INamedTypeSymbol requestType, string assemblyIdentity, string snapshotId,
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var requestId = MakeSymbolId(requestType, assemblyIdentity);
+        if (requestId == null)
+            return;
+
+        var handleMethod = handlerType.GetMembers()
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault(m => m.Name == "Handle");
+
+        if (handleMethod == null)
+            return;
+
+        var handleMethodId = MakeSymbolId(handleMethod, assemblyIdentity);
+        if (handleMethodId == null)
+            return;
+
+        var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
+        if (seen.Add(key))
         {
-            var requestId = MakeSymbolId(requestType, assemblyIdentity);
-            if (requestId == null)
-                continue;
-
-            var handleMethod = handlerType.GetMembers()
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(m => m.Name == "Handle");
-
-            if (handleMethod == null)
-                continue;
-
-            var handleMethodId = MakeSymbolId(handleMethod, assemblyIdentity);
-            if (handleMethodId == null)
-                continue;
-
-            var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
-            if (seen.Add(key))
+            edges.Add(new EdgeRecord
             {
-                edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = requestId,
-                    TargetSymbolId = handleMethodId,
-                    Kind = EdgeKind.Handles.ToString(),
-                    Provenance = "framework_derived",
-                    SnapshotId = snapshotId,
-                    ExtractorVersion = Version,
-                });
-            }
+                SourceSymbolId = requestId,
+                TargetSymbolId = handleMethodId,
+                Kind = EdgeKind.Handles.ToString(),
+                Provenance = "framework_derived",
+                SnapshotId = snapshotId,
+                ExtractorVersion = "mediatr-v1",
+            });
         }
-
-        return edges;
     }
 
     private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)

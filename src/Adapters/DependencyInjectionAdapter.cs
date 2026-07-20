@@ -83,29 +83,50 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
     private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, ExtractionContext ctx)
     {
-        var containingType = methodSymbol.ContainingType;
-        if (containingType == null)
-            return;
-
-        bool isDiExtension = false;
-        var current = containingType;
-        while (current != null)
-        {
-            if (current.Name is "ServiceCollectionServiceExtensions" or "ExtensionsServiceCollectionExtensions" or "ServiceCollectionDescriptorExtensions")
-            {
-                isDiExtension = true;
-                break;
-            }
-            current = current.BaseType;
-        }
-
-        if (!isDiExtension)
+        if (!IsDependencyInjectionExtensionMethod(methodSymbol))
             return;
 
         var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
         if (sourceId == null)
             return;
 
+        var typeArgs = ResolveRegistrationTypeArgs(invocation, semanticModel);
+        if (typeArgs.Count == 0)
+            return;
+
+        var implTypeId = MakeSymbolId(typeArgs[^1], ctx.AssemblyIdentity);
+        if (implTypeId == null)
+            return;
+
+        var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
+        if (ctx.Seen.Add(key))
+        {
+            ctx.Edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = implTypeId,
+                Kind = EdgeKind.Registers.ToString(),
+                Provenance = "framework_derived",
+                SnapshotId = ctx.SnapshotId,
+                ExtractorVersion = ctx.ExtractorVersion,
+            });
+        }
+    }
+
+    private static bool IsDependencyInjectionExtensionMethod(IMethodSymbol methodSymbol)
+    {
+        var current = methodSymbol.ContainingType;
+        while (current != null)
+        {
+            if (current.Name is "ServiceCollectionServiceExtensions" or "ExtensionsServiceCollectionExtensions" or "ServiceCollectionDescriptorExtensions")
+                return true;
+            current = current.BaseType;
+        }
+        return false;
+    }
+
+    private static List<ITypeSymbol> ResolveRegistrationTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
         var typeArgs = new List<ITypeSymbol>();
 
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess && memberAccess.Name is GenericNameSyntax genericName)
@@ -131,46 +152,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             }
         }
 
-        if (typeArgs.Count >= 2)
-        {
-            var implTypeId = MakeSymbolId(typeArgs[typeArgs.Count - 1], ctx.AssemblyIdentity);
-            if (implTypeId != null)
-            {
-                var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
-                if (ctx.Seen.Add(key))
-                {
-                    ctx.Edges.Add(new EdgeRecord
-                    {
-                        SourceSymbolId = sourceId,
-                        TargetSymbolId = implTypeId,
-                        Kind = EdgeKind.Registers.ToString(),
-                        Provenance = "framework_derived",
-                        SnapshotId = ctx.SnapshotId,
-                        ExtractorVersion = ctx.ExtractorVersion,
-                    });
-                }
-            }
-        }
-        else if (typeArgs.Count == 1)
-        {
-            var implTypeId = MakeSymbolId(typeArgs[0], ctx.AssemblyIdentity);
-            if (implTypeId != null)
-            {
-                var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
-                if (ctx.Seen.Add(key))
-                {
-                    ctx.Edges.Add(new EdgeRecord
-                    {
-                        SourceSymbolId = sourceId,
-                        TargetSymbolId = implTypeId,
-                        Kind = EdgeKind.Registers.ToString(),
-                        Provenance = "framework_derived",
-                        SnapshotId = ctx.SnapshotId,
-                        ExtractorVersion = ctx.ExtractorVersion,
-                    });
-                }
-            }
-        }
+        return typeArgs;
     }
 
 
@@ -201,54 +183,83 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
     
     private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string fallback)
-    {        
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess &&memberAccess.Name is GenericNameSyntax genericName)
+    {
+        var directAssembly = ResolveAssemblyFromGenericTypeArgs(invocation, semanticModel);
+        if (directAssembly != null)
+            return directAssembly;
+
+        if (methodSymbol.Name == "Scan")
         {
-            foreach (var typeArg in genericName.TypeArgumentList.Arguments)
+            var scannedAssembly = ResolveAssemblyFromScanLambda(invocation, semanticModel);
+            if (scannedAssembly != null)
+                return scannedAssembly;
+        }
+
+        return fallback;
+    }
+
+    private static string? ResolveAssemblyFromGenericTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess || memberAccess.Name is not GenericNameSyntax genericName)
+            return null;
+
+        foreach (var typeArg in genericName.TypeArgumentList.Arguments)
+        {
+            var typeInfo = semanticModel.GetTypeInfo(typeArg);
+            if (typeInfo.Type?.ContainingAssembly != null)
+                return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
+        }
+
+        return null;
+    }
+
+    private static string? ResolveAssemblyFromScanLambda(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        foreach (var arg in invocation.ArgumentList.Arguments)
+        {
+            if (arg.Expression is not LambdaExpressionSyntax lambda)
+                continue;
+
+            foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                var assembly = ResolveAssemblyFromAssemblyScanCall(nested, semanticModel);
+                if (assembly != null)
+                    return assembly;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ResolveAssemblyFromAssemblyScanCall(InvocationExpressionSyntax nested, SemanticModel semanticModel)
+    {
+        if (nested.Expression is not MemberAccessExpressionSyntax nestedAccess || nestedAccess.Name is not SimpleNameSyntax nestedName)
+            return null;
+
+        if (nestedName.Identifier.Text != "FromAssemblyOf" && nestedName.Identifier.Text != "FromAssembliesOf")
+            return null;
+
+        if (nestedAccess.Name is GenericNameSyntax nestedGeneric)
+        {
+            foreach (var typeArg in nestedGeneric.TypeArgumentList.Arguments)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeArg);
-
                 if (typeInfo.Type?.ContainingAssembly != null)
                     return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
             }
         }
 
-        if (methodSymbol.Name == "Scan")
+        foreach (var nestedArg in nested.ArgumentList.Arguments)
         {
-            foreach (var arg in invocation.ArgumentList.Arguments)
+            if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
             {
-                if (arg.Expression is LambdaExpressionSyntax lambda)
-                {
-                    foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
-                    {
-                        if (nested.Expression is MemberAccessExpressionSyntax nestedAccess &&nestedAccess.Name is SimpleNameSyntax nestedName &&(nestedName.Identifier.Text == "FromAssemblyOf" ||nestedName.Identifier.Text == "FromAssembliesOf"))
-                        {
-                            if (nestedAccess.Name is GenericNameSyntax nestedGeneric)
-                            {
-                                foreach (var typeArg in nestedGeneric.TypeArgumentList.Arguments)
-                                {
-                                    var typeInfo = semanticModel.GetTypeInfo(typeArg);
-                                    if (typeInfo.Type?.ContainingAssembly != null)
-                                        return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
-                                }
-                            }
-
-                            foreach (var nestedArg in nested.ArgumentList.Arguments)
-                            {
-                                if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
-                                {
-                                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                                    if (typeInfo.Type?.ContainingAssembly != null)
-                                        return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
-                                }
-                            }
-                        }
-                    }
-                }
+                var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
+                if (typeInfo.Type?.ContainingAssembly != null)
+                    return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
             }
         }
 
-        return fallback;
+        return null;
     }
 
     private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, ExtractionContext ctx)

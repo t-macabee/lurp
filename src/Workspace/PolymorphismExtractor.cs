@@ -94,47 +94,52 @@ public sealed class PolymorphismExtractor
             {
                 foreach (var member in iface.GetMembers())
                 {
-                    if (member is not IMethodSymbol and not IPropertySymbol and not IEventSymbol)
-                        continue;
-
-                    var ifaceMemberId = MakeSymbolId(member);
-                    if (ifaceMemberId == null)
-                        continue;
-
-                    var implMember = type.FindImplementationForInterfaceMember(member);
-                    if (implMember == null)
-                        continue;
-
-                    var implMemberId = MakeSymbolId(implMember);
-                    if (implMemberId == null || implMemberId == ifaceMemberId)
-                        continue;
-
-                    var key = (ifaceMemberId, implMemberId, EdgeKind.MayDispatchTo.ToString());
-                    if (!seen.Add(key))
-                        continue;
-
-                    // If the implementing member is declared on *this* type directly
-                    // (rather than inherited from a base), it is compiler-proved.
-                    bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
-                    string provenance = isDirect ? "compiler_proved" : "possible";
-
-                    edges.Add(new EdgeRecord
-                    {
-                        SourceSymbolId = ifaceMemberId,
-                        TargetSymbolId = implMemberId,
-                        Kind = EdgeKind.MayDispatchTo.ToString(),
-                        Provenance = provenance,
-                        SnapshotId = _snapshotId,
-                        ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
-                        SourceDocumentPath = GetDocumentPath(implMember),
-                        SourceStartLine = GetStartLine(implMember),
-                        SourceStartColumn = GetStartColumn(implMember),
-                        SourceEndLine = GetEndLine(implMember),
-                        SourceEndColumn = GetEndColumn(implMember),
-                    });
+                    TryEmitInterfaceDispatchEdge(type, member, edges, seen);
                 }
             }
         }
+    }
+
+    private void TryEmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        if (member is not IMethodSymbol and not IPropertySymbol and not IEventSymbol)
+            return;
+
+        var ifaceMemberId = MakeSymbolId(member);
+        if (ifaceMemberId == null)
+            return;
+
+        var implMember = type.FindImplementationForInterfaceMember(member);
+        if (implMember == null)
+            return;
+
+        var implMemberId = MakeSymbolId(implMember);
+        if (implMemberId == null || implMemberId == ifaceMemberId)
+            return;
+
+        var key = (ifaceMemberId, implMemberId, EdgeKind.MayDispatchTo.ToString());
+        if (!seen.Add(key))
+            return;
+
+        // If the implementing member is declared on *this* type directly
+        // (rather than inherited from a base), it is compiler-proved.
+        bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
+        string provenance = isDirect ? "compiler_proved" : "possible";
+
+        edges.Add(new EdgeRecord
+        {
+            SourceSymbolId = ifaceMemberId,
+            TargetSymbolId = implMemberId,
+            Kind = EdgeKind.MayDispatchTo.ToString(),
+            Provenance = provenance,
+            SnapshotId = _snapshotId,
+            ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
+            SourceDocumentPath = GetDocumentPath(implMember),
+            SourceStartLine = GetStartLine(implMember),
+            SourceStartColumn = GetStartColumn(implMember),
+            SourceEndLine = GetEndLine(implMember),
+            SourceEndColumn = GetEndColumn(implMember),
+        });
     }
 
     // ----------------------------------------------------------------
@@ -153,52 +158,34 @@ public sealed class PolymorphismExtractor
         {
             foreach (var member in type.GetMembers())
             {
-                if (member is IMethodSymbol method && method.IsOverride && method.OverriddenMethod != null)
+                switch (member)
                 {
-                    var root = WalkToRootOverride(method);
-                    var rootId = MakeSymbolId(root);
-                    var overrideId = MakeSymbolId(method);
-                    if (rootId == null || overrideId == null || rootId == overrideId)
-                        continue;
-
-                    var key = (rootId, overrideId, EdgeKind.MayDispatchTo.ToString());
-                    if (!seen.Add(key))
-                        continue;
-
-                    edges.Add(MakeMayDispatchEdge(rootId, overrideId, method, "compiler_proved"));
-                }
-
-                if (member is IPropertySymbol prop && prop.IsOverride && prop.OverriddenProperty != null)
-                {
-                    var root = WalkToRootOverride(prop);
-                    var rootId = MakeSymbolId(root);
-                    var overrideId = MakeSymbolId(prop);
-                    if (rootId == null || overrideId == null || rootId == overrideId)
-                        continue;
-
-                    var key = (rootId, overrideId, EdgeKind.MayDispatchTo.ToString());
-                    if (!seen.Add(key))
-                        continue;
-
-                    edges.Add(MakeMayDispatchEdge(rootId, overrideId, prop, "compiler_proved"));
-                }
-
-                if (member is IEventSymbol evt && evt.IsOverride && evt.OverriddenEvent != null)
-                {
-                    var root = WalkToRootOverride(evt);
-                    var rootId = MakeSymbolId(root);
-                    var overrideId = MakeSymbolId(evt);
-                    if (rootId == null || overrideId == null || rootId == overrideId)
-                        continue;
-
-                    var key = (rootId, overrideId, EdgeKind.MayDispatchTo.ToString());
-                    if (!seen.Add(key))
-                        continue;
-
-                    edges.Add(MakeMayDispatchEdge(rootId, overrideId, evt, "compiler_proved"));
+                    case IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null:
+                        TryEmitOverrideEdge(WalkToRootOverride(method), method, edges, seen);
+                        break;
+                    case IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null:
+                        TryEmitOverrideEdge(WalkToRootOverride(prop), prop, edges, seen);
+                        break;
+                    case IEventSymbol evt when evt.IsOverride && evt.OverriddenEvent != null:
+                        TryEmitOverrideEdge(WalkToRootOverride(evt), evt, edges, seen);
+                        break;
                 }
             }
         }
+    }
+
+    private void TryEmitOverrideEdge(ISymbol root, ISymbol overrideMember, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var rootId = MakeSymbolId(root);
+        var overrideId = MakeSymbolId(overrideMember);
+        if (rootId == null || overrideId == null || rootId == overrideId)
+            return;
+
+        var key = (rootId, overrideId, EdgeKind.MayDispatchTo.ToString());
+        if (!seen.Add(key))
+            return;
+
+        edges.Add(MakeMayDispatchEdge(rootId, overrideId, overrideMember, "compiler_proved"));
     }
 
     // ----------------------------------------------------------------
@@ -233,49 +220,53 @@ public sealed class PolymorphismExtractor
             if (callerId == null)
                 continue;
 
-            var invocations = bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
-
-            foreach (var invocation in invocations)
+            foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
-                var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-                if (symbolInfo.Symbol is IMethodSymbol callee && callee.MethodKind != MethodKind.AnonymousFunction)
-                {
-                    // A "dispatch point" is a method whose runtime target requires
-                    // polymorphic resolution: interface methods, abstract methods,
-                    // and virtual (non-sealed) methods.
-                    bool isDispatchPoint = callee.ContainingType?.TypeKind == TypeKind.Interface
-                        || callee.IsAbstract
-                        || (callee.IsVirtual && !callee.IsSealed);
-
-                    if (!isDispatchPoint)
-                        continue;
-
-                    var calleeId = MakeSymbolId(callee);
-                    if (calleeId == null || calleeId == callerId)
-                        continue;
-
-                    var key = (callerId, calleeId, EdgeKind.StaticallyCalls.ToString());
-                    if (!seen.Add(key))
-                        continue;
-
-                    var loc = GetLocationInfo(invocation.GetLocation());
-                    edges.Add(new EdgeRecord
-                    {
-                        SourceSymbolId = callerId,
-                        TargetSymbolId = calleeId,
-                        Kind = EdgeKind.StaticallyCalls.ToString(),
-                        Provenance = "compiler_proved",
-                        SnapshotId = _snapshotId,
-                        ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,
-                        SourceDocumentPath = loc.path,
-                        SourceStartLine = loc.startLine,
-                        SourceStartColumn = loc.startColumn,
-                        SourceEndLine = loc.endLine,
-                        SourceEndColumn = loc.endColumn,
-                    });
-                }
+                TryEmitStaticCallEdge(invocation, semanticModel, callerId, edges, seen);
             }
         }
+    }
+
+    private void TryEmitStaticCallEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string callerId,
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+        if (symbolInfo.Symbol is not IMethodSymbol callee || callee.MethodKind == MethodKind.AnonymousFunction)
+            return;
+
+        // A "dispatch point" is a method whose runtime target requires
+        // polymorphic resolution: interface methods, abstract methods,
+        // and virtual (non-sealed) methods.
+        bool isDispatchPoint = callee.ContainingType?.TypeKind == TypeKind.Interface
+            || callee.IsAbstract
+            || (callee.IsVirtual && !callee.IsSealed);
+
+        if (!isDispatchPoint)
+            return;
+
+        var calleeId = MakeSymbolId(callee);
+        if (calleeId == null || calleeId == callerId)
+            return;
+
+        var key = (callerId, calleeId, EdgeKind.StaticallyCalls.ToString());
+        if (!seen.Add(key))
+            return;
+
+        var loc = GetLocationInfo(invocation.GetLocation());
+        edges.Add(new EdgeRecord
+        {
+            SourceSymbolId = callerId,
+            TargetSymbolId = calleeId,
+            Kind = EdgeKind.StaticallyCalls.ToString(),
+            Provenance = "compiler_proved",
+            SnapshotId = _snapshotId,
+            ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,
+            SourceDocumentPath = loc.path,
+            SourceStartLine = loc.startLine,
+            SourceStartColumn = loc.startColumn,
+            SourceEndLine = loc.endLine,
+            SourceEndColumn = loc.endColumn,
+        });
     }
 
     // ----------------------------------------------------------------

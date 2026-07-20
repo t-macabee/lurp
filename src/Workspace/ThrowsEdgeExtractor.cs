@@ -24,52 +24,47 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
             if (callerId == null)
                 continue;
 
-            foreach (var throwStmt in bodySyntax.DescendantNodes().OfType<ThrowStatementSyntax>())
+            foreach (var (thrownExpression, location) in EnumerateThrownExpressions(bodySyntax))
             {
-                if (throwStmt.Expression == null)
-                    continue;
-
-                var exceptionType = ResolveThrownType(throwStmt.Expression, semanticModel);
-                if (exceptionType == null)
-                    continue;
-
-                var typeId = context.MakeSymbolId(exceptionType);
-                if (typeId == null)
-                    continue;
-
-                var key = (callerId, typeId, EdgeKind.Throws.ToString());
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = context.GetLocationInfo(throwStmt.GetLocation());
-                edges.Add(context.MakeEdge(callerId, typeId, EdgeKind.Throws.ToString(),
-                    ExtractorConstants.ThrowsExtractor, loc));
-            }
-
-            foreach (var throwExpr in bodySyntax.DescendantNodes().OfType<ThrowExpressionSyntax>())
-            {
-                if (throwExpr.Expression == null)
-                    continue;
-
-                var exceptionType = ResolveThrownType(throwExpr.Expression, semanticModel);
-                if (exceptionType == null)
-                    continue;
-
-                var typeId = context.MakeSymbolId(exceptionType);
-                if (typeId == null)
-                    continue;
-
-                var key = (callerId, typeId, EdgeKind.Throws.ToString());
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = context.GetLocationInfo(throwExpr.GetLocation());
-                edges.Add(context.MakeEdge(callerId, typeId, EdgeKind.Throws.ToString(),
-                    ExtractorConstants.ThrowsExtractor, loc));
+                TryAddThrowEdge(edges, seen, callerId, thrownExpression, location, semanticModel);
             }
         }
 
         return edges;
+    }
+
+    private static IEnumerable<(ExpressionSyntax Expression, Location Location)> EnumerateThrownExpressions(SyntaxNode bodySyntax)
+    {
+        foreach (var throwStmt in bodySyntax.DescendantNodes().OfType<ThrowStatementSyntax>())
+        {
+            if (throwStmt.Expression != null)
+                yield return (throwStmt.Expression, throwStmt.GetLocation());
+        }
+
+        foreach (var throwExpr in bodySyntax.DescendantNodes().OfType<ThrowExpressionSyntax>())
+        {
+            if (throwExpr.Expression != null)
+                yield return (throwExpr.Expression, throwExpr.GetLocation());
+        }
+    }
+
+    private void TryAddThrowEdge(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen,
+        string callerId, ExpressionSyntax thrownExpression, Location location, SemanticModel semanticModel)
+    {
+        var exceptionType = ResolveThrownType(thrownExpression, semanticModel);
+        if (exceptionType == null)
+            return;
+
+        var typeId = context.MakeSymbolId(exceptionType);
+        if (typeId == null)
+            return;
+
+        var key = (callerId, typeId, EdgeKind.Throws.ToString());
+        if (!seen.Add(key))
+            return;
+
+        var loc = context.GetLocationInfo(location);
+        edges.Add(context.MakeEdge(callerId, typeId, EdgeKind.Throws.ToString(), ExtractorConstants.ThrowsExtractor, loc));
     }
 
     private static INamedTypeSymbol? ResolveThrownType(ExpressionSyntax expression, SemanticModel semanticModel)

@@ -30,21 +30,8 @@ namespace Lurp.Workspace
                     continue;
                 }
 
-                List<EdgeRecord> edges;
-                try
-                {
-                    edges = direction switch
-                    {
-                        ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, currentId),
-                        ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
-                        _ => []
-                    };
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
+                if (!TryGetEdges(currentId, direction, out var edges))
                     continue;
-                }
 
                 if (edges.Count == 0 && hopsSoFar.Count > 0)
                 {
@@ -52,43 +39,68 @@ namespace Lurp.Workspace
                     continue;
                 }
 
-                bool anyEdgeFollowed = false;
+                var anyEdgeFollowed = EnqueueNeighbors(queue, edges, direction, allowedEdgeKinds, visited, hopsSoFar, includeSource);
 
-                foreach (var edge in edges)
+                if (!anyEdgeFollowed && hopsSoFar.Count > 0)
                 {
-                    if (allowedEdgeKinds != null && !allowedEdgeKinds.Contains(edge.Kind))
-                        continue;
-
-                    string neighborId = direction switch
-                    {
-                        ImpactDirection.Downstream => edge.TargetSymbolId,
-                        ImpactDirection.Upstream => edge.SourceSymbolId,
-                        _ => throw new InvalidOperationException("Unknown impact direction")
-                    };
-
-                    if (visited.Contains(neighborId))
-                        continue;
-
-                    anyEdgeFollowed = true;
-
-                    var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,sourceDocument: includeSource ? edge.SourceDocumentPath : null,sourceLine: includeSource ? edge.SourceStartLine : null);
-
-                    var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
-                    var newVisited = new HashSet<string>(visited) { neighborId };
-
-                    queue.Enqueue((neighborId, newHops, newVisited));
-                }
-
-                if (!anyEdgeFollowed)
-                {
-                    if (hopsSoFar.Count > 0)
-                    {
-                        results.Add(new ImpactPath(hops: hopsSoFar));
-                    }
+                    results.Add(new ImpactPath(hops: hopsSoFar));
                 }
             }
 
             return results;
+        }
+
+        private bool TryGetEdges(string currentId, ImpactDirection direction, out List<EdgeRecord> edges)
+        {
+            try
+            {
+                edges = direction switch
+                {
+                    ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, currentId),
+                    ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
+                    _ => []
+                };
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
+                edges = [];
+                return false;
+            }
+        }
+
+        private static bool EnqueueNeighbors(Queue<(string currentId, List<ImpactHop> hops, HashSet<string> visited)> queue, List<EdgeRecord> edges,
+            ImpactDirection direction, HashSet<string>? allowedEdgeKinds, HashSet<string> visited, List<ImpactHop> hopsSoFar, bool includeSource)
+        {
+            bool anyEdgeFollowed = false;
+
+            foreach (var edge in edges)
+            {
+                if (allowedEdgeKinds != null && !allowedEdgeKinds.Contains(edge.Kind))
+                    continue;
+
+                string neighborId = direction switch
+                {
+                    ImpactDirection.Downstream => edge.TargetSymbolId,
+                    ImpactDirection.Upstream => edge.SourceSymbolId,
+                    _ => throw new InvalidOperationException("Unknown impact direction")
+                };
+
+                if (visited.Contains(neighborId))
+                    continue;
+
+                anyEdgeFollowed = true;
+
+                var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,sourceDocument: includeSource ? edge.SourceDocumentPath : null,sourceLine: includeSource ? edge.SourceStartLine : null);
+
+                var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
+                var newVisited = new HashSet<string>(visited) { neighborId };
+
+                queue.Enqueue((neighborId, newHops, newVisited));
+            }
+
+            return anyEdgeFollowed;
         }
 
     }
