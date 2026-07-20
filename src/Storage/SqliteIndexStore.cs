@@ -1,5 +1,8 @@
 ﻿namespace Lurp.Storage
 {
+#if CODE_ANALYSIS
+    [SuppressMessage("NDepend", "ND1001", Justification = "Facade that delegates to five inner stores (SnapshotStore, DeclarationStore, EdgeStore, SearchStore, SemanticDiffStore). 51 methods are one-line pass-throughs; extracting per-store interfaces would add pointless indirection.")]
+#endif
     public class SqliteIndexStore : IIndexStore
     {
         private readonly SnapshotStore _snapshotStore;

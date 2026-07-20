@@ -186,7 +186,7 @@ public class MigrationRunnerTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new() { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
             }
         };
 
@@ -251,7 +251,7 @@ public class MigrationRunnerTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new() { DocumentId = "doc1", FilePath = "src/app.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/app.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
             }
         };
         store.SaveSnapshot(original);
@@ -291,7 +291,7 @@ public class MigrationRunnerTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new System.Collections.Generic.List<DocumentVersion>
             {
-                new() { DocumentId = "doc1", FilePath = "src/multi.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/multi.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
             }
         };
         store.SaveSnapshot(original);
@@ -429,7 +429,7 @@ public class MigrationRunnerTests : IDisposable
                 CreatedAtUtc = DateTime.UtcNow,
                 Documents = new List<DocumentVersion>
                 {
-                    new() { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                    new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
                 }
             };
             store.SaveSnapshot(manifest);
@@ -570,8 +570,8 @@ public class MigrationRunnerTests : IDisposable
                 CreatedAtUtc = DateTime.UtcNow,
                 Documents = new List<DocumentVersion>
                 {
-                    new() { DocumentId = "doc-part1", FilePath = "src/part1.cs", ContentHash = "hash-p1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = source1, LineStarts = lineStarts },
-                    new() { DocumentId = "doc-part2", FilePath = "src/part2.cs", ContentHash = "hash-p2", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = source2, LineStarts = lineStarts },
+                    new DocumentVersion(source1) { DocumentId = "doc-part1", FilePath = "src/part1.cs", ContentHash = "hash-p1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+                    new DocumentVersion(source2) { DocumentId = "doc-part2", FilePath = "src/part2.cs", ContentHash = "hash-p2", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
                 }
             };
             store.SaveSnapshot(manifest);
@@ -708,7 +708,7 @@ public class MigrationRunnerTests : IDisposable
                 CreatedAtUtc = DateTime.UtcNow,
                 Documents = new List<DocumentVersion>
                 {
-                    new() { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash-" + relativePath, Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                    new DocumentVersion(sourceBytes) { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash-" + relativePath, Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
                 }
             };
             store.SaveSnapshot(manifest);
@@ -1519,7 +1519,7 @@ class Derived : Base {
                 CreatedAtUtc = DateTime.UtcNow,
                 Documents = new List<DocumentVersion>
                 {
-                    new() { DocumentId = "doc-" + snapshotId, FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                    new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
                 }
             };
             store.SaveSnapshot(manifest);
@@ -1924,7 +1924,7 @@ class Derived : Base {
                 CreatedAtUtc = DateTime.UtcNow,
                 Documents = new List<DocumentVersion>
                 {
-                    new() { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, Content = sourceBytes, LineStarts = lineStarts },
+                    new DocumentVersion(sourceBytes) { DocumentId = "doc-" + relativePath, FilePath = relativePath, ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
                 }
             };
             store.SaveSnapshot(manifest);

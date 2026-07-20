@@ -119,7 +119,7 @@ public sealed class SnapshotManifest
                 lineStarts = entry.LineStarts;
             }
 
-            return new DocumentVersion
+            return new DocumentVersion(content ?? Array.Empty<byte>())
             {
                 DocumentId = docPath,
                 FilePath = docPath,
@@ -127,7 +127,6 @@ public sealed class SnapshotManifest
                 Encoding = encoding,
                 LineStart = lineStarts,
                 CreatedAtUtc = DateTime.MinValue,
-                Content = content ?? Array.Empty<byte>(),
                 LineStarts = lineStarts,
             };
         }).ToList();

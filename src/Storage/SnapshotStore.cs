@@ -1,5 +1,8 @@
 namespace Lurp.Storage;
 
+#if CODE_ANALYSIS
+[SuppressMessage("NDepend", "ND1001", Justification = "Facade that delegates to six inner stores (SnapshotLifecycleStore, SnapshotDocumentStore, SnapshotSymbolStore, SnapshotPruner, SnapshotTimingStore, etc.). 23 methods are one-line pass-throughs to specialized sub-stores.")]
+#endif
 public sealed class SnapshotStore : ISnapshotStore
 {
     private readonly string _dbPath;

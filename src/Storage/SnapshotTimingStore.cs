@@ -33,7 +33,7 @@ internal sealed class SnapshotTimingStore(string dbPath)
             var elapsedMsParam = command.CreateParameter();
             elapsedMsParam.ParameterName = "@elapsedMs";
             command.Parameters.Add(elapsedMsParam);
-            command.Parameters.AddWithValue("@createdAtUtc", DateTime.UtcNow.ToString("O"));
+            command.Parameters.AddWithValue("@createdAtUtc", DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
 
             foreach (var timing in timings)
             {
@@ -76,28 +76,4 @@ internal sealed class SnapshotTimingStore(string dbPath)
         return results;
     }
 
-    internal List<(string SnapshotId, string StepName, long ElapsedMs)> GetLatestTimings(int? limit = null)
-    {
-        var results = new List<(string, string, long)>();
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
-            SELECT t.snapshot_id, t.step_name, t.elapsed_ms
-            FROM snapshot_timings t
-            JOIN snapshots s ON s.snapshot_id = t.snapshot_id
-            ORDER BY s.built_at_utc DESC, t.timing_id
-        ";
-        if (limit.HasValue)
-        {
-            command.CommandText += " LIMIT @limit";
-            command.Parameters.AddWithValue("@limit", limit.Value);
-        }
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            results.Add((reader.GetString(0), reader.GetString(1), reader.GetInt64(2)));
-        }
-        return results;
-    }
 }

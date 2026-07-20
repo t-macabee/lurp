@@ -40,7 +40,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
                 command.Parameters.AddWithValue("@changeType", change.ChangeType);
                 command.Parameters.AddWithValue("@symbolId", change.SymbolId);
                 command.Parameters.AddWithValue("@detailJson", (object?)change.DetailJson ?? DBNull.Value);
-                command.Parameters.AddWithValue("@createdAtUtc", change.CreatedAtUtc.ToString("O"));
+                command.Parameters.AddWithValue("@createdAtUtc", change.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
                 command.ExecuteNonQuery();
             }
 

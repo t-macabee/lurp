@@ -39,14 +39,14 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
 
             foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
-                TryEmitStaticCallEdge(invocation, semanticModel, callerId, edges, seen);
+                EmitStaticCallEdge(invocation, semanticModel, callerId, edges, seen);
             }
         }
 
         return edges;
     }
 
-    private void TryEmitStaticCallEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string callerId,
+    private void EmitStaticCallEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string callerId,
         List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
     {
         var symbolInfo = semanticModel.GetSymbolInfo(invocation);

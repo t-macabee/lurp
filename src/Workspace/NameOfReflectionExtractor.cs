@@ -17,7 +17,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
             if (!IsNameOfInvocation(invocation))
                 continue;
 
-            TryEmitNameOfEdge(invocation, semanticModel, edges, seen);
+            EmitNameOfEdge(invocation, semanticModel, edges, seen);
         }
 
         return edges;
@@ -30,7 +30,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
             && invocation.ArgumentList.Arguments.Count == 1;
     }
 
-    private void TryEmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
     {
         var sourceId = context.GetContainingMemberSymbolId(invocation, semanticModel);
         if (sourceId == null)

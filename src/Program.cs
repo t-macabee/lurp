@@ -1,9 +1,30 @@
-﻿using Lurp.Handlers;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Lurp.Handlers;
 
 namespace Lurp;
 
 public class Program
 {
+    private static readonly Dictionary<string, Action<string[]>> ModeHandlers = new(StringComparer.Ordinal)
+    {
+        ["get-source"] = GetSourceHandler.Run,
+        ["get-symbol"] = GetSymbolHandler.Run,
+        ["search"] = SearchHandler.Run,
+        ["find-symbol"] = FindSymbolHandler.Run,
+        ["index"] = a => IndexHandler.Run(a).GetAwaiter().GetResult(),
+        ["diff"] = DiffHandler.Run,
+        ["impact"] = ImpactHandler.Run,
+        ["context"] = ContextHandler.Run,
+        ["status"] = a => StatusHandler.Run(a).GetAwaiter().GetResult(),
+        ["simulate-rename"] = SimulateRenameHandler.Run,
+        ["simulate-move"] = SimulateMoveHandler.Run,
+        ["simulate-remove"] = SimulateRemoveHandler.Run,
+        ["audit"] = AuditHandler.Run,
+        ["timings"] = TimingsHandler.Run,
+    };
+
     public static void Main(string[] args)
     {
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
@@ -12,29 +33,34 @@ public class Program
             return;
         }
 
-        if (args.Contains("--mode=get-source"))     { GetSourceHandler.Run(args);       return; }
-        if (args.Contains("--mode=get-symbol"))     { GetSymbolHandler.Run(args);       return; }
-        if (args.Contains("--mode=search"))         { SearchHandler.Run(args);          return; }
-        if (args.Contains("--mode=find-symbol"))    { FindSymbolHandler.Run(args);      return; }
-        if (args.Contains("--mode=index"))          { IndexHandler.Run(args).GetAwaiter().GetResult(); return; }
-        if (args.Contains("--mode=diff"))           { DiffHandler.Run(args);            return; }
-        if (args.Contains("--mode=impact"))         { ImpactHandler.Run(args);          return; }
-        if (args.Contains("--mode=context"))        { ContextHandler.Run(args);         return; }
-        if (args.Contains("--mode=status"))         { StatusHandler.Run(args).GetAwaiter().GetResult(); return; }
-        if (args.Contains("--mode=simulate-rename")){ SimulateRenameHandler.Run(args);  return; }
-        if (args.Contains("--mode=simulate-move"))  { SimulateMoveHandler.Run(args);    return; }
-        if (args.Contains("--mode=simulate-remove")){ SimulateRemoveHandler.Run(args);  return; }
-        if (args.Contains("--mode=audit"))          { AuditHandler.Run(args);           return; }
-        if (args.Contains("--mode=timings"))       { TimingsHandler.Run(args);         return; }
+        var modeArg = args.FirstOrDefault(a => a.StartsWith("--mode="));
+        if (modeArg is null)
+        {
+            PrintUnknownModeError();
+            Environment.Exit(1);
+            return;
+        }
 
+        var mode = modeArg["--mode=".Length..];
+        if (ModeHandlers.TryGetValue(mode, out var handler))
+        {
+            handler(args);
+        }
+        else
+        {
+            PrintUnknownModeError();
+            Environment.Exit(1);
+        }
+    }
+
+    private static void PrintUnknownModeError()
+    {
         Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, or --mode=audit.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
         Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
         Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<TypeKind>.");
-
-        Environment.Exit(1);
     }
 
     private static void PrintHelp()

@@ -96,6 +96,10 @@ namespace Lurp.Storage
 
     public class DocumentVersion
     {
+        public DocumentVersion() { }
+
+        public DocumentVersion(byte[]? content) => Content = content;
+
         public string DocumentId { get; init; } = string.Empty;
         public string FilePath { get; init; } = string.Empty;
         public string ContentHash { get; init; } = string.Empty;
@@ -103,7 +107,7 @@ namespace Lurp.Storage
         public string LineStart { get; init; } = string.Empty;
         public DateTime CreatedAtUtc { get; init; }
 
-        public byte[]? Content { get; init; }
+        public byte[]? Content { get; }
         public int ByteCount => Content?.Length ?? 0;
         public string? LineStarts { get; init; }
     }

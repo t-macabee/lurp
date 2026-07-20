@@ -24,13 +24,13 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
                 switch (member)
                 {
                     case IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null:
-                        TryEmitOverrideEdge(WalkToRootOverride(method), method, edges, seen);
+                        EmitOverrideEdge(WalkToRootOverride(method), method, edges, seen);
                         break;
                     case IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null:
-                        TryEmitOverrideEdge(WalkToRootOverride(prop), prop, edges, seen);
+                        EmitOverrideEdge(WalkToRootOverride(prop), prop, edges, seen);
                         break;
                     case IEventSymbol evt when evt.IsOverride && evt.OverriddenEvent != null:
-                        TryEmitOverrideEdge(WalkToRootOverride(evt), evt, edges, seen);
+                        EmitOverrideEdge(WalkToRootOverride(evt), evt, edges, seen);
                         break;
                 }
             }
@@ -39,7 +39,7 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
         return edges;
     }
 
-    private void TryEmitOverrideEdge(ISymbol root, ISymbol overrideMember, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitOverrideEdge(ISymbol root, ISymbol overrideMember, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
     {
         var rootId = context.MakeSymbolId(root);
         var overrideId = context.MakeSymbolId(overrideMember);

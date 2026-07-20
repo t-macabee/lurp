@@ -52,7 +52,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
             command.Parameters.AddWithValue("@workspaceId", manifest.WorkspaceId);
-            command.Parameters.AddWithValue("@builtAtUtc", manifest.CreatedAtUtc.ToString("O"));
+            command.Parameters.AddWithValue("@builtAtUtc", manifest.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
             command.Parameters.AddWithValue("@sdkVersion", manifest.SdkVersion ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@compilerVersion", manifest.CompilerVersion ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@databaseSchemaVersion", (object)DBNull.Value);

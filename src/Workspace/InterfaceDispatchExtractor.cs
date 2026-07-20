@@ -34,7 +34,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
             {
                 foreach (var member in iface.GetMembers())
                 {
-                    TryEmitInterfaceDispatchEdge(type, member, edges, seen);
+                    EmitInterfaceDispatchEdge(type, member, edges, seen);
                 }
             }
         }
@@ -42,7 +42,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         return edges;
     }
 
-    private void TryEmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
     {
         if (member is not IMethodSymbol and not IPropertySymbol and not IEventSymbol)
             return;

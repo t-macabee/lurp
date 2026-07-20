@@ -1,5 +1,8 @@
 namespace Lurp.Storage
 {
+#if CODE_ANALYSIS
+    [SuppressMessage("NDepend", "ND1200", Justification = "Interface defining the full IEdgeStore contract. All 14+ members are required by callers; splitting would force consumers to inject multiple interfaces for a single logical concern.")]
+#endif
     public interface IEdgeStore
     {
         void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);
