@@ -55,13 +55,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsTwelve()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsFifteen()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(12, runner.GetCurrentSchemaVersion());
+        Assert.Equal(15, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(12, runner.GetCurrentSchemaVersion());
+        Assert.Equal(15, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -125,6 +125,7 @@ public class MigrationRunnerTests : IDisposable
         };
 
         store.SaveSnapshot(original);
+        store.MarkSnapshotComplete(snapshotId);
 
         var loaded = store.LoadLatestSnapshot(workspaceId);
 
@@ -297,6 +298,7 @@ public class MigrationRunnerTests : IDisposable
             }
         };
         store.SaveSnapshot(original);
+        store.MarkSnapshotComplete(snapshotId);
 
         var loaded = store.LoadLatestSnapshot(workspaceId);
         Assert.NotNull(loaded);
@@ -345,7 +347,7 @@ public class MigrationRunnerTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(12, runner.GetCurrentSchemaVersion());
+        Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
         using var connection = new SqliteConnection($"Data Source={_dbPath}");
         connection.Open();
@@ -900,7 +902,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -921,7 +923,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1092,10 +1094,10 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
         }
 
         [Fact]
@@ -1532,10 +1534,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1938,10 +1940,10 @@ class Derived : Base {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(12, runner.GetCurrentSchemaVersion());
+            Assert.Equal(15, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -2088,7 +2090,8 @@ class Derived : Base {
             Assert.NotEmpty(returns);
             foreach (var edge in returns)
             {
-                Assert.Contains(":cross_generated", edge.Provenance);
+                Assert.Equal(Provenance.CompilerProved, edge.Provenance);
+                Assert.True(edge.IsCrossGenerated);
             }
         }
 

@@ -178,6 +178,9 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
             }
 
+            store.BuildSearchIndex(snapshotIdStr);
+            store.MarkSnapshotComplete(snapshotIdStr);
+
             Console.WriteLine($"    Snapshot: {snapshotIdStr}");
             return snapshotIdStr;
         }
