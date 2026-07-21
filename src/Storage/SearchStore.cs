@@ -64,25 +64,28 @@ public sealed class SearchStore : ISearchStore
         }
     }
 
-    public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false)
+    public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
         using var connection = CreateConnection();
         using var command = connection.CreateCommand();
 
         command.CommandText = @"
-            SELECT document_path,
-                   highlight(source_fts, 1, '<mark>', '</mark>') AS snippet
+            SELECT source_fts.document_path,
+                   snippet(source_fts, 1, '<mark>', '</mark>', '…', @snippetTokens) AS snippet
             FROM source_fts
-            JOIN documents d ON source_fts.document_path = d.relative_path
-            JOIN document_versions dv ON dv.document_id = d.document_id
-            LEFT JOIN declarations dec ON dec.document_version_id = dv.document_version_id
             WHERE source_fts MATCH @query
               AND source_fts.snapshot_id = @snapshotId
         ";
 
         if (!includeGenerated)
         {
-            command.CommandText += " AND (dec.is_generated IS NULL OR dec.is_generated = 0)";
+            command.CommandText += @" AND NOT EXISTS (
+                SELECT 1 FROM documents d
+                JOIN document_versions dv ON dv.document_id = d.document_id
+                JOIN declarations dec ON dec.document_version_id = dv.document_version_id
+                WHERE d.relative_path = source_fts.document_path
+                  AND dec.is_generated = 1
+            )";
         }
 
         command.CommandText += @"
@@ -93,6 +96,7 @@ public sealed class SearchStore : ISearchStore
         command.Parameters.AddWithValue("@query", query);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit);
+        command.Parameters.AddWithValue("@snippetTokens", snippetTokens);
 
         var results = new List<SourceSearchResult>();
         using var reader = command.ExecuteReader();

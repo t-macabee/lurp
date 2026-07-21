@@ -115,7 +115,7 @@ public static class IndexRunner
         var swManifest = Stopwatch.StartNew();
         Console.Write("Saving snapshot to database... ");
 
-        manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath);
+        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
 
         Console.WriteLine("done.");
         swManifest.Stop();
@@ -137,18 +137,26 @@ public static class IndexRunner
 
                 Console.Write($"  [{projectName}] ");
 
-                var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters, logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+                try
+                {
+                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters, logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
 
-                store.SaveDeclarations(snapshotIdStr, result.Declarations);
-                totalDeclarations += result.Declarations.Count;
+                    store.SaveDeclarations(snapshotIdStr, result.Declarations);
+                    totalDeclarations += result.Declarations.Count;
 
-                store.SaveEdges(snapshotIdStr, result.Edges);
-                totalEdges += result.Edges.Count;
+                    store.SaveEdges(snapshotIdStr, result.Edges);
+                    totalEdges += result.Edges.Count;
 
-                store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
-                totalDiagnostics += result.Diagnostics.Count;
+                    store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
+                    totalDiagnostics += result.Diagnostics.Count;
 
-                Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+                    var skippedSuffix = result.SkippedDeclarations > 0 ? $", {result.SkippedDeclarations} skipped" : "";
+                    Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics{skippedSuffix}.");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"FAILED: {ex.Message}");
+                }
             }
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
@@ -178,6 +186,14 @@ public static class IndexRunner
                 swDiff.Stop();
                 timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));
             }
+
+            // Step: Build FTS search index
+            var swFts = Stopwatch.StartNew();
+            Console.Write("Building search index... ");
+            store.BuildSearchIndex(snapshotIdStr);
+            Console.WriteLine("done.");
+            swFts.Stop();
+            timings.Add(new SnapshotTimingRow("fts_build", swFts.ElapsedMilliseconds, DateTime.UtcNow));
 
             store.MarkSnapshotComplete(snapshotIdStr);
 

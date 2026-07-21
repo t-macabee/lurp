@@ -80,16 +80,13 @@ public sealed class SnapshotManifest
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public void Save(ISnapshotStore snapshotStore, ISearchStore searchStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(ISnapshotStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
         if (snapshotStore == null)
             throw new ArgumentNullException(nameof(snapshotStore));
-        if (searchStore == null)
-            throw new ArgumentNullException(nameof(searchStore));
 
         snapshotStore.SaveSnapshot(ToStorageManifest(contents));
-        searchStore.BuildSearchIndex(SnapshotId.ToString());
 
         if (jsonExportPath != null)
         {

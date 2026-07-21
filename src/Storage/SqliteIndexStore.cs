@@ -114,8 +114,8 @@ namespace Lurp.Storage
         // ── ISearchStore ───────────────────────────────────────────────────
 
         public void BuildSearchIndex(string snapshotId) => _searchStore.BuildSearchIndex(snapshotId);
-        public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false)
-            => _searchStore.SearchSource(query, snapshotId, limit, includeGenerated);
+        public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
+            => _searchStore.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens);
         public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
             => _searchStore.SearchSymbols(query, snapshotId, limit, includeGenerated, kind);
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)

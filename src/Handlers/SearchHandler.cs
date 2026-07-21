@@ -19,12 +19,20 @@ internal static class SearchHandler
         var snapshotArg = GetArgValue(args, "--snapshot=");
         var limitArg = GetArgValue(args, "--limit=");
         var kindArg = GetArgValue(args, "--kind=");
+        var snippetTokensArg = GetArgValue(args, "--snippet-tokens=");
         var includeGenerated = args.Contains("--include-generated");
 
         int limit = 20;
         if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit))
         {
             Console.Error.WriteLine("ERROR: --limit must be an integer.");
+            Environment.Exit(1);
+        }
+
+        int snippetTokens = 64;
+        if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens))
+        {
+            Console.Error.WriteLine("ERROR: --snippet-tokens must be an integer.");
             Environment.Exit(1);
         }
 
@@ -61,7 +69,7 @@ internal static class SearchHandler
             var results = new List<object>();
             if (typeArg == "source" || typeArg == "all")
             {
-                var sourceResults = store.SearchSource(queryArg, snapshotId, limit, includeGenerated);
+                var sourceResults = store.SearchSource(queryArg, snapshotId, limit, includeGenerated, snippetTokens);
                 foreach (var r in sourceResults)
                     results.Add(new { type = "source", documentPath = r.DocumentPath, snippet = r.Snippet });
             }

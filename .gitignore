@@ -10,6 +10,7 @@ obj/
 # local tool configs
 .deepcode/
 opencode.json
+REMEDIATION_TASKS.md
 
 # User-specific files
 *.rsuser

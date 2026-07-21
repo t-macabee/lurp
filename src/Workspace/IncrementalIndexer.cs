@@ -67,7 +67,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         // Step 4: Manifest Creation
         var sw4 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, _store, workspaceInfo.DocumentContents, _jsonExportPath);
+        newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
         Console.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));

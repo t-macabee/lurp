@@ -535,7 +535,7 @@ public class NewType
             var timings = new List<SnapshotTimingRow>();
 
             var swManifest = System.Diagnostics.Stopwatch.StartNew();
-            manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath: null);
+            manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
             swManifest.Stop();
             timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
 

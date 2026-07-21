@@ -143,7 +143,7 @@ public sealed class CleanRebuildEquivalenceTest : IAsyncLifetime, IDisposable
             var manifest = global::Lurp.Workspace.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
             var snapshotIdStr = snapshotId.ToString();
 
-            manifest.Save(store, store, workspaceInfo.DocumentContents, jsonExportPath: null);
+            manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
 
             int totalDeclarations = 0;
             int totalEdges = 0;

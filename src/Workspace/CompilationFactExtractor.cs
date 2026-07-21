@@ -6,19 +6,48 @@ namespace Lurp.Workspace;
 
 public static class CompilationFactExtractor
 {
-    public sealed record ExtractionResult(List<SymbolDeclaration> Declarations, List<EdgeRecord> Edges, List<DiagnosticRecord> Diagnostics);
+    public sealed record ExtractionResult(List<SymbolDeclaration> Declarations, List<EdgeRecord> Edges, List<DiagnosticRecord> Diagnostics, int SkippedDeclarations = 0);
 
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, IReadOnlySet<string>? skipAdapters = null, Action<string>? logWarning = null, Action<string>? logError = null)
     {
-        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId);
+        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning);
 
-        var declarations = symbolExtractor.ExtractAll();
-        var edges = symbolExtractor.ExtractEdges();
+        List<SymbolDeclaration> declarations;
+        int skippedDeclarations = 0;
+        try
+        {
+            var result = symbolExtractor.ExtractAll();
+            declarations = result.Declarations;
+            skippedDeclarations = result.SkippedCount;
+        }
+        catch (Exception ex)
+        {
+            logError?.Invoke($"Symbol extraction failed for project '{projectName}': {ex.Message}");
+            declarations = new List<SymbolDeclaration>();
+        }
+
+        List<EdgeRecord> edges;
+        try
+        {
+            edges = symbolExtractor.ExtractEdges();
+        }
+        catch (Exception ex)
+        {
+            logError?.Invoke($"Edge extraction failed for project '{projectName}': {ex.Message}");
+            edges = new List<EdgeRecord>();
+        }
 
 
         var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId);
 
-        edges.AddRange(memberEdgeExtractor.ExtractAll());
+        try
+        {
+            edges.AddRange(memberEdgeExtractor.ExtractAll());
+        }
+        catch (Exception ex)
+        {
+            logError?.Invoke($"Member edge extraction failed for project '{projectName}': {ex.Message}");
+        }
 
 
         var polyExtractor = new PolymorphismExtractor(compilation, snapshotId);
@@ -51,6 +80,6 @@ public static class CompilationFactExtractor
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
 
-        return new ExtractionResult(declarations, edges, diagnostics);
+        return new ExtractionResult(declarations, edges, diagnostics, skippedDeclarations);
     }
 }

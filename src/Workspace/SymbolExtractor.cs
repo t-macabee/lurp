@@ -10,7 +10,8 @@ public sealed class SymbolExtractor
     public SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
-        string snapshotId)
+        string snapshotId,
+        Action<string>? logWarning = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (documentContents == null) throw new ArgumentNullException(nameof(documentContents));
@@ -19,9 +20,12 @@ public sealed class SymbolExtractor
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
 
         _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId);
+        _logWarning = logWarning;
     }
 
-    public List<SymbolDeclaration> ExtractAll() => new SymbolDeclarationExtractor(_context).ExtractAll();
+    private readonly Action<string>? _logWarning;
+
+    public (List<SymbolDeclaration> Declarations, int SkippedCount) ExtractAll() => new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
 
     public List<EdgeRecord> ExtractEdges() => new SymbolStructuralEdgeExtractor(_context).ExtractEdges();
 }

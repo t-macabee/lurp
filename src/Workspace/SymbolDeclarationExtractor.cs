@@ -6,27 +6,30 @@ using SymKind = Lurp.Storage.IndexedSymbolKind;
 
 namespace Lurp.Workspace;
 
-internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context)
+internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context, Action<string>? logWarning = null)
 {
-    internal List<SymbolDeclaration> ExtractAll()
+    private readonly Action<string>? _logWarning = logWarning;
+
+    internal (List<SymbolDeclaration> Declarations, int SkippedCount) ExtractAll()
     {
         var results = new List<SymbolDeclaration>();
+        var skipped = 0;
 
         foreach (var typeSymbol in SymbolExtractionContext.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
-            ExtractTypeDeclarations(typeSymbol, results);
+            ExtractTypeDeclarations(typeSymbol, results, ref skipped);
         }
 
-        return results;
+        return (results, skipped);
     }
 
-    private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results)
+    private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results, ref int skipped)
     {
-        AddSymbolDeclarations(typeSymbol, results);
+        AddSymbolDeclarations(typeSymbol, results, ref skipped);
 
         foreach (var nestedType in typeSymbol.GetTypeMembers())
         {
-            ExtractTypeDeclarations(nestedType, results);
+            ExtractTypeDeclarations(nestedType, results, ref skipped);
         }
 
         foreach (var member in typeSymbol.GetMembers())
@@ -34,11 +37,11 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             if (member is INamedTypeSymbol)
                 continue;
 
-            AddSymbolDeclarations(member, results);
+            AddSymbolDeclarations(member, results, ref skipped);
         }
     }
 
-    private void AddSymbolDeclarations(ISymbol symbol, List<SymbolDeclaration> results)
+    private void AddSymbolDeclarations(ISymbol symbol, List<SymbolDeclaration> results, ref int skipped)
     {
         var docCommentId = symbol.GetDocumentationCommentId();
         if (string.IsNullOrEmpty(docCommentId))
@@ -53,46 +56,55 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
         {
-            var syntaxNode = syntaxRef.GetSyntax();
-            var syntaxTree = syntaxRef.SyntaxTree;
-
-            var documentId = context.ResolveDocumentId(syntaxTree);
-            if (documentId == null)
-                continue;
-
-            if (!context.DocumentVersions.TryGetValue(documentId.Value, out var versionId))
-                continue;
-
-            if (!context.DocumentContents.TryGetValue(documentId.Value, out var contentInfo))
-                continue;
-
-            var encoding = GetEncoding(contentInfo.Encoding);
-            var sourceText = syntaxTree.GetText();
-            var sourceString = sourceText.ToString();
-
-            var (fullSpan, signatureSpan, bodySpan, nameSpan) = ComputeSpans(syntaxNode, sourceString, encoding);
-
-            var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
-            string? generatorIdentity = null;
-            if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
+            try
             {
-                generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content);
+                var syntaxNode = syntaxRef.GetSyntax();
+                var syntaxTree = syntaxRef.SyntaxTree;
+
+                var documentId = context.ResolveDocumentId(syntaxTree);
+                if (documentId == null)
+                    continue;
+
+                if (!context.DocumentVersions.TryGetValue(documentId.Value, out var versionId))
+                    continue;
+
+                if (!context.DocumentContents.TryGetValue(documentId.Value, out var contentInfo))
+                    continue;
+
+                var encoding = GetEncoding(contentInfo.Encoding);
+                var sourceText = syntaxTree.GetText();
+                var sourceString = sourceText.ToString();
+
+                var (fullSpan, signatureSpan, bodySpan, nameSpan) = ComputeSpans(syntaxNode, sourceString, encoding);
+
+                var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
+                string? generatorIdentity = null;
+                if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
+                {
+                    generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content);
+                }
+
+                results.Add(new SymbolDeclaration
+                {
+                    SymbolId = symbolId,
+                    Kind = kind,
+                    DocumentVersionId = versionId.ToString(),
+                    FullSpan = fullSpan,
+                    SignatureSpan = signatureSpan,
+                    BodySpan = bodySpan,
+                    NameSpan = nameSpan,
+                    IsPartial = isPartial,
+                    MetadataJson = metadataJson,
+                    IsGenerated = isGenerated,
+                    GeneratorIdentity = generatorIdentity,
+                });
             }
-
-            results.Add(new SymbolDeclaration
+            catch (Exception ex)
             {
-                SymbolId = symbolId,
-                Kind = kind,
-                DocumentVersionId = versionId.ToString(),
-                FullSpan = fullSpan,
-                SignatureSpan = signatureSpan,
-                BodySpan = bodySpan,
-                NameSpan = nameSpan,
-                IsPartial = isPartial,
-                MetadataJson = metadataJson,
-                IsGenerated = isGenerated,
-                GeneratorIdentity = generatorIdentity,
-            });
+                var location = syntaxRef.SyntaxTree?.FilePath ?? "unknown";
+                skipped++;
+                _logWarning?.Invoke($"Skipping declaration for '{docCommentId}' at {location}: {ex.Message}");
+            }
         }
     }
 
@@ -169,6 +181,8 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         if (node is BaseTypeDeclarationSyntax typeDecl)
         {
+            if (typeDecl.OpenBraceToken.IsMissing || typeDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+                return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, typeDecl.CloseBraceToken.Span.End, encoding));
             return (body, typeDecl.OpenBraceToken.SpanStart);
@@ -176,6 +190,8 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         if (node is EnumDeclarationSyntax enumDecl)
         {
+            if (enumDecl.OpenBraceToken.IsMissing || enumDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+                return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
             return (body, enumDecl.OpenBraceToken.SpanStart);
@@ -183,6 +199,8 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         if (node is NamespaceDeclarationSyntax nsDecl)
         {
+            if (nsDecl.OpenBraceToken.IsMissing || nsDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+                return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
             return (body, nsDecl.OpenBraceToken.SpanStart);
