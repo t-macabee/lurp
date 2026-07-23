@@ -4,27 +4,19 @@ namespace Lurp.Storage;
 
 public sealed class SearchStore : ISearchStore
 {
-    private readonly string _dbPath;
+    private readonly SqliteConnection _connection;
 
-    public SearchStore(string dbPath)
+    public SearchStore(SqliteConnection connection)
     {
-        _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
-    }
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
     public void BuildSearchIndex(string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             command.CommandText = "DELETE FROM source_fts WHERE snapshot_id = @snapshotId;";
@@ -66,8 +58,7 @@ public sealed class SearchStore : ISearchStore
 
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
 
         command.CommandText = @"
             SELECT source_fts.document_path,
@@ -110,8 +101,7 @@ public sealed class SearchStore : ISearchStore
 
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind
             FROM symbol_fts
@@ -154,8 +144,7 @@ public sealed class SearchStore : ISearchStore
 
     public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
 
         command.CommandText = @"
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
@@ -179,7 +168,7 @@ public sealed class SearchStore : ISearchStore
 
         using var reader = command.ExecuteReader();
         if (reader.Read())
-            return DeclarationStore.ReadSymbolInfo(reader);
+            return DeclarationReadStore.ReadSymbolInfo(reader);
 
         reader.Close();
         command.Parameters.Clear();
@@ -205,7 +194,7 @@ public sealed class SearchStore : ISearchStore
 
         using var reader2 = command.ExecuteReader();
         if (reader2.Read())
-            return DeclarationStore.ReadSymbolInfo(reader2);
+            return DeclarationReadStore.ReadSymbolInfo(reader2);
 
         return null;
     }

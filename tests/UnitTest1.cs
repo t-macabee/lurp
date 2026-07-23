@@ -11,6 +11,7 @@ namespace Lurp.Storage.Tests;
 public class MigrationRunnerTests : IDisposable
 {
     private readonly string _dbPath;
+    private SqliteIndexStore? _store;
 
     public MigrationRunnerTests()
     {
@@ -19,6 +20,7 @@ public class MigrationRunnerTests : IDisposable
 
     public void Dispose()
     {
+        _store?.Dispose();
         SqliteConnection.ClearAllPools();
         if (File.Exists(_dbPath))
             File.Delete(_dbPath);
@@ -99,6 +101,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveAndLoadLatestSnapshot_RoundTripsFields()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -156,6 +159,7 @@ public class MigrationRunnerTests : IDisposable
     public void LoadLatestSnapshot_NoSnapshot_ReturnsNull()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -170,6 +174,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveAndLoad_ContentRoundTrips()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -206,6 +211,7 @@ public class MigrationRunnerTests : IDisposable
     public void GetSource_MissingDocument_ReturnsNull()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -220,6 +226,7 @@ public class MigrationRunnerTests : IDisposable
     public void GetSource_MissingSnapshot_ReturnsNull()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -235,6 +242,7 @@ public class MigrationRunnerTests : IDisposable
     {
 
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -275,6 +283,7 @@ public class MigrationRunnerTests : IDisposable
     {
 
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -312,6 +321,7 @@ public class MigrationRunnerTests : IDisposable
     public void Content_WithNullContent_StoresNull()
     {
         var store = new SqliteIndexStore(_dbPath);
+        _store = store;
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -386,6 +396,7 @@ public class MigrationRunnerTests : IDisposable
     public class SymbolStoreTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public SymbolStoreTests()
         {
@@ -394,17 +405,18 @@ public class MigrationRunnerTests : IDisposable
 
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
+            _store?.Dispose();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
         }
 
         private SqliteIndexStore CreateStore()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
-            store.RunMigrations();
-            return store;
+            _store?.Dispose();
+            _store = new SqliteIndexStore(_dbPath);
+            _store.Open(_dbPath);
+            _store.RunMigrations();
+            return _store;
         }
 
         private static byte[] StringToBytes(string text) => Encoding.UTF8.GetBytes(text);
@@ -672,6 +684,7 @@ public class MigrationRunnerTests : IDisposable
     public class FtsSearchTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public FtsSearchTests()
         {
@@ -680,6 +693,7 @@ public class MigrationRunnerTests : IDisposable
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -687,9 +701,11 @@ public class MigrationRunnerTests : IDisposable
 
         private SqliteIndexStore CreateStore()
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
+            _store = store;
             return store;
         }
 
@@ -942,6 +958,7 @@ public class MigrationRunnerTests : IDisposable
     public class A5OperationalTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public A5OperationalTests()
         {
@@ -950,6 +967,7 @@ public class MigrationRunnerTests : IDisposable
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -957,9 +975,11 @@ public class MigrationRunnerTests : IDisposable
 
         private SqliteIndexStore CreateStore()
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
+            _store = store;
             return store;
         }
 
@@ -1067,6 +1087,7 @@ public class MigrationRunnerTests : IDisposable
     public class B0ExpansionTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public B0ExpansionTests()
         {
@@ -1075,6 +1096,7 @@ public class MigrationRunnerTests : IDisposable
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -1082,9 +1104,11 @@ public class MigrationRunnerTests : IDisposable
 
         private SqliteIndexStore CreateStore()
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
+            _store = store;
             return store;
         }
 
@@ -1484,6 +1508,7 @@ class Derived : Base {
     public class B3SemanticChangesTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public B3SemanticChangesTests()
         {
@@ -1492,6 +1517,7 @@ class Derived : Base {
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -1560,6 +1586,7 @@ class Derived : Base {
         public void SaveAndGetSemanticChanges_RoundTrip()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1618,6 +1645,7 @@ class Derived : Base {
         public void GetSemanticChanges_EmptyList_ReturnsEmpty()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1632,6 +1660,7 @@ class Derived : Base {
         public void SemanticDiffer_SymbolAddedAndRemoved()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1697,6 +1726,7 @@ class Derived : Base {
         public void SemanticDiffer_EdgeAddedAndRemoved()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1743,6 +1773,7 @@ class Derived : Base {
         public void SemanticDiffer_SignatureChangedViaMetadata()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1792,6 +1823,7 @@ class Derived : Base {
         public void SemanticDiffer_SymbolRenamed()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1843,6 +1875,7 @@ class Derived : Base {
         public void SemanticDiffer_EmptyDiff()
         {
             var store = new SqliteIndexStore(_dbPath);
+            _store = store;
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -1888,6 +1921,7 @@ class Derived : Base {
     public class B4GeneratedCodeTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public B4GeneratedCodeTests()
         {
@@ -1896,6 +1930,7 @@ class Derived : Base {
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -1903,9 +1938,11 @@ class Derived : Base {
 
         private SqliteIndexStore CreateStore()
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
+            _store = store;
             return store;
         }
 
@@ -2576,6 +2613,7 @@ public class Foo
     public class B7ImpactTraverserTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public B7ImpactTraverserTests()
         {
@@ -2584,6 +2622,7 @@ public class Foo
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -2591,10 +2630,12 @@ public class Foo
 
         private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
+            _store = store;
             return store;
         }
 
@@ -3056,6 +3097,7 @@ class Source {
     public class C16SimulationTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public C16SimulationTests()
         {
@@ -3064,6 +3106,7 @@ class Source {
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -3071,12 +3114,14 @@ class Source {
 
         private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
+            _store = store;
             return store;
-        }       
+        }
 
         [Fact]
         public void SimulateRename_CallerEdge_ReportsCallerSymbol()
@@ -3214,6 +3259,7 @@ class Source {
     public class C16AuditTests : IDisposable
     {
         private readonly string _dbPath;
+        private SqliteIndexStore? _store;
 
         public C16AuditTests()
         {
@@ -3222,6 +3268,7 @@ class Source {
 
         public void Dispose()
         {
+            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -3229,10 +3276,12 @@ class Source {
 
         private SqliteIndexStore CreateStoreWithEdges(string snapshotId, List<EdgeRecord> edges)
         {
+            _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
+            _store = store;
             return store;
         }
 

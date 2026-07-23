@@ -2,24 +2,16 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class SnapshotSymbolStore(string dbPath)
+internal sealed class SnapshotSymbolStore(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             foreach (var symbolId in symbolIds)
             {
@@ -46,8 +38,7 @@ internal sealed class SnapshotSymbolStore(string dbPath)
 
     internal void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
             SELECT @toSnapshotId, symbol_id, fqn, metadata_json
@@ -61,20 +52,23 @@ internal sealed class SnapshotSymbolStore(string dbPath)
 
     internal void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        var idList = symbolIds as IReadOnlyCollection<string> ?? symbolIds.ToList();
+        if (idList.Count == 0)
+            return;
+
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = @"
                 DELETE FROM snapshot_symbols
                 WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (" + string.Join(", ", symbolIds.Select((_, i) => $"@p{i}")) + @");
+                  AND symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
             ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             int i = 0;
-            foreach (var id in symbolIds)
+            foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
             command.ExecuteNonQuery();
             transaction.Commit();
@@ -88,8 +82,7 @@ internal sealed class SnapshotSymbolStore(string dbPath)
 
     internal List<string> GetSymbolIdsInSnapshot(string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT symbol_id
             FROM snapshot_symbols

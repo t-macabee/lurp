@@ -2,24 +2,16 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class SnapshotTimingStore(string dbPath)
+internal sealed class SnapshotTimingStore(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = @"
                 INSERT INTO snapshot_timings (snapshot_id, step_name, elapsed_ms, created_at_utc)
@@ -54,8 +46,7 @@ internal sealed class SnapshotTimingStore(string dbPath)
     internal List<SnapshotTimingRow> GetTimings(string snapshotId)
     {
         var results = new List<SnapshotTimingRow>();
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT step_name, elapsed_ms, created_at_utc
             FROM snapshot_timings

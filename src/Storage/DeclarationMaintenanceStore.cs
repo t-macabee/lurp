@@ -3,16 +3,9 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class DeclarationMaintenanceStore(string dbPath)
+internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
     {
@@ -20,11 +13,10 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
         if (idList.Count == 0)
             return;
 
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = @"
                 DELETE FROM declarations
@@ -48,18 +40,21 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
 
     internal List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        var idList = documentVersionIds as IReadOnlyCollection<string> ?? documentVersionIds.ToList();
+        if (idList.Count == 0)
+            return [];
+
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT DISTINCT ss.symbol_id
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
             WHERE ss.snapshot_id = @snapshotId
-              AND d.document_version_id IN (" + string.Join(", ", documentVersionIds.Select((_, i) => $"@p{i}")) + @");
+              AND d.document_version_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         int i = 0;
-        foreach (var id in documentVersionIds)
+        foreach (var id in idList)
             command.Parameters.AddWithValue($"@p{i++}", id);
         var results = new List<string>();
         using var reader = command.ExecuteReader();
@@ -70,9 +65,7 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
 
     internal string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
     {
-        using var connection = CreateConnection();
-
-        var (docVersionId, lineStarts) = GetDocumentLineStarts(connection, relativePath, snapshotId);
+        var (docVersionId, lineStarts) = GetDocumentLineStarts(relativePath, snapshotId);
         if (docVersionId == null || lineStarts == null || lineStarts.Length == 0)
             return null;
 
@@ -82,12 +75,12 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
 
         int byteOffset = lineStarts[lineIndex];
 
-        return FindSymbolAtOffset(connection, docVersionId, byteOffset, includeGenerated);
+        return FindSymbolAtOffset(docVersionId, byteOffset, includeGenerated);
     }
 
-    private static (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(SqliteConnection connection, string relativePath, string snapshotId)
+    private (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(string relativePath, string snapshotId)
     {
-        using var getDocCmd = connection.CreateCommand();
+        using var getDocCmd = _connection.CreateCommand();
         getDocCmd.CommandText = @"
             SELECT dv.document_version_id, dv.line_starts
             FROM snapshot_documents sd
@@ -115,9 +108,9 @@ internal sealed class DeclarationMaintenanceStore(string dbPath)
         return (docVersionId, JsonSerializer.Deserialize<int[]>(lineStartsJson));
     }
 
-    private static string? FindSymbolAtOffset(SqliteConnection connection, string docVersionId, int byteOffset, bool includeGenerated)
+    private string? FindSymbolAtOffset(string docVersionId, int byteOffset, bool includeGenerated)
     {
-        using var findCmd = connection.CreateCommand();
+        using var findCmd = _connection.CreateCommand();
         findCmd.CommandText = @"
             SELECT d.symbol_id
             FROM declarations d

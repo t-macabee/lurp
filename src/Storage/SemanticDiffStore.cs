@@ -5,27 +5,19 @@ namespace Lurp.Storage;
 
 public sealed class SemanticDiffStore : ISemanticDiffStore
 {
-    private readonly string _dbPath;
+    private readonly SqliteConnection _connection;
 
-    public SemanticDiffStore(string dbPath)
+    public SemanticDiffStore(SqliteConnection connection)
     {
-        _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
-    }
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
     public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             foreach (var change in changes)
@@ -55,8 +47,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
 
     public List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT change_id, from_snapshot_id, to_snapshot_id,
                    change_type, symbol_id, detail_json, created_at_utc

@@ -2,22 +2,13 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class SnapshotPruner(string dbPath)
+internal sealed class SnapshotPruner(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void PruneOldSnapshots(int keep = 3)
     {
-        using var connection = CreateConnection();
-
-        using var listCmd = connection.CreateCommand();
+        using var listCmd = _connection.CreateCommand();
         listCmd.CommandText = "SELECT DISTINCT workspace_id FROM snapshots;";
         var workspaceIds = new List<string>();
         using (var reader = listCmd.ExecuteReader())
@@ -28,13 +19,13 @@ internal sealed class SnapshotPruner(string dbPath)
 
         foreach (var workspaceId in workspaceIds)
         {
-            PruneWorkspace(connection, workspaceId, keep);
+            PruneWorkspace(workspaceId, keep);
         }
     }
 
-    private static void PruneWorkspace(SqliteConnection connection, string workspaceId, int keep)
+    private void PruneWorkspace(string workspaceId, int keep)
     {
-        using var snapCmd = connection.CreateCommand();
+        using var snapCmd = _connection.CreateCommand();
         snapCmd.CommandText = @"
             SELECT snapshot_id FROM snapshots
             WHERE workspace_id = @workspaceId
@@ -56,10 +47,10 @@ internal sealed class SnapshotPruner(string dbPath)
         if (pruneIds.Count == 0)
             return;
 
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var cmd = connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
 
             foreach (var sid in pruneIds)

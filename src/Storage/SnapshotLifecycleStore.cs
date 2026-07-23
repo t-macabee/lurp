@@ -3,21 +3,13 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class SnapshotLifecycleStore(string dbPath)
+internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             INSERT OR REPLACE INTO workspaces (workspace_id, git_root, solution_path)
             VALUES (@workspaceId, @gitRoot, @solutionPath);
@@ -30,11 +22,10 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal void SaveSnapshot(SnapshotRow manifest)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             command.CommandText = @"
@@ -142,8 +133,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal void MarkSnapshotInProgress(string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = "UPDATE snapshots SET status = 'in_progress' WHERE snapshot_id = @snapshotId;";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
@@ -151,8 +141,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal void MarkSnapshotComplete(string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = "UPDATE snapshots SET status = 'complete' WHERE snapshot_id = @snapshotId;";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
@@ -160,8 +149,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal SnapshotRow? LoadLatestSnapshot(string workspaceId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
                    s.sdk_version, s.compiler_version, s.built_at_utc,
@@ -195,7 +183,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
         var previousSnapshotId = reader.IsDBNull(11) ? null : reader.GetString(11);
 
         var documents = new List<DocumentVersion>();
-        using var docCommand = connection.CreateCommand();
+        using var docCommand = _connection.CreateCommand();
         docCommand.CommandText = @"
             SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding,
                    dv.line_starts
@@ -241,8 +229,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal string? GetLatestSnapshotId(string? workspaceId = null)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
             command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = 'complete' ORDER BY built_at_utc DESC LIMIT 1;";
@@ -258,8 +245,7 @@ internal sealed class SnapshotLifecycleStore(string dbPath)
 
     internal List<string> GetSnapshotIds(string workspaceId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT snapshot_id
             FROM snapshots

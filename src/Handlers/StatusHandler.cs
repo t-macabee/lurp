@@ -44,12 +44,12 @@ internal static class StatusHandler
             var solutionPathArg = GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
-                ReportSnapshotOnly(dbPath, schemaVersion, latestSnapshotId, asJson);
+                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshotId, asJson);
                 return;
             }
 
             var freshness = await CheckCurrentWorkspaceAsync(store, solutionPathArg!);
-            ReportFreshness(dbPath, schemaVersion, latestSnapshotId, freshness, asJson);
+            ReportFreshness(store, dbPath, schemaVersion, latestSnapshotId, freshness, asJson);
         }
         finally
         {
@@ -90,16 +90,13 @@ internal static class StatusHandler
         Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
-    private static void ReportSnapshotOnly(string dbPath, int schemaVersion, string latestSnapshotId, bool asJson)
+    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, string latestSnapshotId, bool asJson)
     {
         if (asJson)
         {
-            var storeForJson = new SqliteIndexStore(dbPath);
-            storeForJson.Open(dbPath);
             List<SnapshotTimingRow>? timings = null;
-            try { timings = storeForJson.GetTimings(latestSnapshotId); }
+            try { timings = store.GetTimings(latestSnapshotId); }
             catch { }
-            finally { storeForJson.Close(); }
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
@@ -118,19 +115,16 @@ internal static class StatusHandler
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
         Console.WriteLine("Freshness: unknown — pass --solution=path or set INDEXER_SOLUTION_PATH to compare against the current workspace.");
-        ShowTimingIfAvailable(dbPath, latestSnapshotId);
+        ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
-    private static void ReportFreshness(string dbPath, int schemaVersion, string latestSnapshotId, WorkspaceFreshness.FreshnessResult freshness, bool asJson)
+    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, string latestSnapshotId, WorkspaceFreshness.FreshnessResult freshness, bool asJson)
     {
         if (asJson)
         {
-            var storeForJson = new SqliteIndexStore(dbPath);
-            storeForJson.Open(dbPath);
             List<SnapshotTimingRow>? timings = null;
-            try { timings = storeForJson.GetTimings(latestSnapshotId); }
+            try { timings = store.GetTimings(latestSnapshotId); }
             catch { }
-            finally { storeForJson.Close(); }
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
@@ -161,17 +155,14 @@ internal static class StatusHandler
             Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
         }
 
-        ShowTimingIfAvailable(dbPath, latestSnapshotId);
+        ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
-    private static void ShowTimingIfAvailable(string dbPath, string snapshotId)
+    private static void ShowTimingIfAvailable(SqliteIndexStore store, string snapshotId)
     {
         try
         {
-            var store = new SqliteIndexStore(dbPath);
-            store.Open(dbPath);
             var timings = store.GetTimings(snapshotId);
-            store.Close();
 
             if (timings.Count == 0) return;
 

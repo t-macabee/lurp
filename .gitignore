@@ -11,6 +11,8 @@ obj/
 .deepcode/
 opencode.json
 REMEDIATION_TASKS.md
+CLAUDE.md
+PHASE4_PROGRESS.md
 
 # User-specific files
 *.rsuser

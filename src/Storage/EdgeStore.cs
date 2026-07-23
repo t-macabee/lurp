@@ -4,27 +4,19 @@ namespace Lurp.Storage;
 
 public sealed class EdgeStore : IEdgeStore
 {
-    private readonly string _dbPath;
+    private readonly SqliteConnection _connection;
 
-    public EdgeStore(string dbPath)
+    public EdgeStore(SqliteConnection connection)
     {
-        _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
-    }
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
     public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             foreach (var edge in edges)
@@ -59,11 +51,10 @@ public sealed class EdgeStore : IEdgeStore
 
     public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             foreach (var diag in diagnostics)
@@ -97,11 +88,10 @@ public sealed class EdgeStore : IEdgeStore
 
     public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
             foreach (var ann in annotations)
@@ -129,8 +119,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         if (symbolId != null)
         {
             command.CommandText = @"
@@ -166,8 +155,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
@@ -186,8 +174,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
@@ -206,8 +193,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
@@ -226,20 +212,23 @@ public sealed class EdgeStore : IEdgeStore
 
     public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
-        using var connection = CreateConnection();
-        using var transaction = connection.BeginTransaction();
+        var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+        if (pathList.Count == 0)
+            return;
+
+        using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = connection.CreateCommand();
+            using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = @"
                 DELETE FROM edges
                 WHERE snapshot_id = @snapshotId
-                  AND source_document_path IN (" + string.Join(", ", documentPaths.Select((_, i) => $"@p{i}")) + @");
+                  AND source_document_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
             ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             int i = 0;
-            foreach (var path in documentPaths)
+            foreach (var path in pathList)
                 command.Parameters.AddWithValue($"@p{i++}", path);
             command.ExecuteNonQuery();
             transaction.Commit();
@@ -257,8 +246,7 @@ public sealed class EdgeStore : IEdgeStore
         if (identityList.Count == 0)
             return;
 
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
@@ -277,8 +265,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated)
             SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
@@ -296,8 +283,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,start_line, start_column, end_line, end_column)
             SELECT @toSnapshotId, project_name, document_path, severity, id, message,
@@ -316,8 +302,7 @@ public sealed class EdgeStore : IEdgeStore
         if (nameList.Count == 0)
             return;
 
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             DELETE FROM diagnostics
             WHERE snapshot_id = @snapshotId
@@ -332,8 +317,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         if (projectName != null)
         {
             command.CommandText = @"
@@ -379,8 +363,7 @@ public sealed class EdgeStore : IEdgeStore
 
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         if (symbolId != null)
         {
             command.CommandText = @"

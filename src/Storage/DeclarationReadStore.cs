@@ -4,21 +4,13 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-internal sealed class DeclarationReadStore(string dbPath)
+internal sealed class DeclarationReadStore(SqliteConnection connection)
 {
-    private readonly string _dbPath = dbPath;
-
-    private SqliteConnection CreateConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        return conn;
-    }
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d
@@ -38,7 +30,7 @@ internal sealed class DeclarationReadStore(string dbPath)
         if (!reader.Read())
             return null;
 
-        return DeclarationStore.ReadSymbolInfo(reader);
+        return ReadSymbolInfo(reader);
     }
 
     internal string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
@@ -68,8 +60,7 @@ internal sealed class DeclarationReadStore(string dbPath)
 
     internal string? GetContainingTypeSource(string symbolId, string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT s.doc_comment_id, s.assembly_identity
             FROM symbols s
@@ -123,8 +114,7 @@ internal sealed class DeclarationReadStore(string dbPath)
 
     private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = $@"
             SELECT dv.content, d.{startCol}, d.{endCol}
             FROM snapshot_symbols ss
@@ -157,8 +147,7 @@ internal sealed class DeclarationReadStore(string dbPath)
 
     private int[]? GetLineStarts(string symbolId, string snapshotId)
     {
-        using var connection = CreateConnection();
-        using var command = connection.CreateCommand();
+        using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT dv.line_starts
             FROM snapshot_symbols ss
@@ -177,6 +166,21 @@ internal sealed class DeclarationReadStore(string dbPath)
 
         var json = (string)result;
         return JsonSerializer.Deserialize<int[]>(json);
+    }
+
+    internal static IndexedSymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
+    {
+        var sid = new SymbolId(docCommentId: reader.GetString(1),
+            assemblyIdentity: reader.GetString(2),
+            fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
+
+        var kindStr = reader.GetString(3);
+        Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind);
+
+        return new IndexedSymbolInfo(symbolId: sid, kind: kind, fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
+            metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
+            declarationCount: reader.GetInt32(6),
+            isPartial: !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
     }
 
     private static int FindLineIndex(int[] lineStarts, int byteOffset)

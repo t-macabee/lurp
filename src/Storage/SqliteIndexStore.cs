@@ -1,131 +1,215 @@
-﻿#if CODE_ANALYSIS
+using Microsoft.Data.Sqlite;
+
+#if CODE_ANALYSIS
 using System.Diagnostics.CodeAnalysis;
 #endif
 
 namespace Lurp.Storage
 {
-#if CODE_ANALYSIS
-    [SuppressMessage("NDepend", "ND1001", Justification = "Facade that delegates to five inner stores (SnapshotStore, DeclarationStore, EdgeStore, SearchStore, SemanticDiffStore). 51 methods are one-line pass-throughs; extracting per-store interfaces would add pointless indirection.")]
-#endif
-    public class SqliteIndexStore : IIndexStore
+    public class SqliteIndexStore : IIndexStore, IDisposable
     {
-        private readonly SnapshotStore _snapshotStore;
-        private readonly DeclarationStore _declarationStore;
-        private readonly EdgeStore _edgeStore;
-        private readonly SearchStore _searchStore;
-        private readonly SemanticDiffStore _semanticDiffStore;
+        private readonly string _dbPath;
+        private SqliteConnection? _connection;
+
+        private SnapshotLifecycleStore? _lifecycle;
+        private SnapshotDocumentStore? _documents;
+        private SnapshotSymbolStore? _symbols;
+        private SnapshotPruner? _pruner;
+        private SnapshotTimingStore? _timings;
+        private DeclarationWriteStore? _declWriter;
+        private DeclarationReadStore? _declReader;
+        private DeclarationMaintenanceStore? _declMaintenance;
+        private EdgeStore? _edgeStore;
+        private SearchStore? _searchStore;
+        private SemanticDiffStore? _semanticDiffStore;
 
         public SqliteIndexStore(string dbPath)
         {
-            _snapshotStore = new SnapshotStore(dbPath);
-            _declarationStore = new DeclarationStore(dbPath);
-            _edgeStore = new EdgeStore(dbPath);
-            _searchStore = new SearchStore(dbPath);
-            _semanticDiffStore = new SemanticDiffStore(dbPath);
+            _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
+        }
+
+        // ── Connection lifecycle ────────────────────────────────────────────
+
+        public bool IsOpen => _connection != null;
+
+        public void Open(string dbPath)
+        {
+            if (_connection != null)
+                return;
+
+            _connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            _connection.Open();
+
+            _lifecycle = new SnapshotLifecycleStore(_connection);
+            _documents = new SnapshotDocumentStore(_connection);
+            _symbols = new SnapshotSymbolStore(_connection);
+            _pruner = new SnapshotPruner(_connection);
+            _timings = new SnapshotTimingStore(_connection);
+            _declWriter = new DeclarationWriteStore(_connection);
+            _declReader = new DeclarationReadStore(_connection);
+            _declMaintenance = new DeclarationMaintenanceStore(_connection);
+            _edgeStore = new EdgeStore(_connection);
+            _searchStore = new SearchStore(_connection);
+            _semanticDiffStore = new SemanticDiffStore(_connection);
+        }
+
+        public void Close()
+        {
+            if (_connection == null)
+                return;
+
+            _connection.Close();
+            _connection.Dispose();
+            _connection = null;
+
+            _lifecycle = null;
+            _documents = null;
+            _symbols = null;
+            _pruner = null;
+            _timings = null;
+            _declWriter = null;
+            _declReader = null;
+            _declMaintenance = null;
+            _edgeStore = null;
+            _searchStore = null;
+            _semanticDiffStore = null;
+        }
+
+        private void EnsureOpen()
+        {
+            if (_connection == null)
+                throw new InvalidOperationException("Store is not open. Call Open() first.");
+        }
+
+        public void Dispose()
+        {
+            Close();
+        }
+
+        // ── Migrations (use their own connection) ──────────────────────────
+
+        public void RunMigrations()
+        {
+            new MigrationRunner(_dbPath).RunMigrations();
+        }
+
+        public int GetCurrentSchemaVersion()
+        {
+            return new MigrationRunner(_dbPath).GetCurrentSchemaVersion();
+        }
+
+        public void ValidateSchema(int expectedVersion)
+        {
+            var actual = GetCurrentSchemaVersion();
+            if (actual != expectedVersion)
+                throw new InvalidOperationException($"Schema version mismatch: expected {expectedVersion}, got {actual}.");
         }
 
         // ── ISnapshotStore ──────────────────────────────────────────────────
 
-        public bool IsOpen => _snapshotStore.IsOpen;
-        public void Open(string dbPath) => _snapshotStore.Open(dbPath);
-        public void Close() => _snapshotStore.Close();
-        public void RunMigrations() => _snapshotStore.RunMigrations();
-        public int GetCurrentSchemaVersion() => _snapshotStore.GetCurrentSchemaVersion();
-        public void ValidateSchema(int expectedVersion) => _snapshotStore.ValidateSchema(expectedVersion);
-
         public void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
-            => _snapshotStore.SaveWorkspace(id, gitRoot, solutionPath, createdAtUtc);
-        public void SaveSnapshot(SnapshotRow manifest) => _snapshotStore.SaveSnapshot(manifest);
-        public void MarkSnapshotInProgress(string snapshotId) => _snapshotStore.MarkSnapshotInProgress(snapshotId);
-        public void MarkSnapshotComplete(string snapshotId) => _snapshotStore.MarkSnapshotComplete(snapshotId);
-        public SnapshotRow? LoadLatestSnapshot(string workspaceId) => _snapshotStore.LoadLatestSnapshot(workspaceId);
-        public string? GetLatestSnapshotId(string? workspaceId = null) => _snapshotStore.GetLatestSnapshotId(workspaceId);
-        public string? GetSource(string relativePath, string snapshotId) => _snapshotStore.GetSource(relativePath, snapshotId);
-        public List<string> GetSnapshotIds(string workspaceId) => _snapshotStore.GetSnapshotIds(workspaceId);
+            { EnsureOpen(); _lifecycle!.SaveWorkspace(id, gitRoot, solutionPath, createdAtUtc); }
+        public void SaveSnapshot(SnapshotRow manifest)
+            { EnsureOpen(); _lifecycle!.SaveSnapshot(manifest); }
+        public void MarkSnapshotInProgress(string snapshotId)
+            { EnsureOpen(); _lifecycle!.MarkSnapshotInProgress(snapshotId); }
+        public void MarkSnapshotComplete(string snapshotId)
+            { EnsureOpen(); _lifecycle!.MarkSnapshotComplete(snapshotId); }
+        public SnapshotRow? LoadLatestSnapshot(string workspaceId)
+            { EnsureOpen(); return _lifecycle!.LoadLatestSnapshot(workspaceId); }
+        public string? GetLatestSnapshotId(string? workspaceId = null)
+            { EnsureOpen(); return _lifecycle!.GetLatestSnapshotId(workspaceId); }
+        public List<string> GetSnapshotIds(string workspaceId)
+            { EnsureOpen(); return _lifecycle!.GetSnapshotIds(workspaceId); }
+        public string? GetSource(string relativePath, string snapshotId)
+            { EnsureOpen(); return _documents!.GetSource(relativePath, snapshotId); }
         public void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)
-            => _snapshotStore.SaveSnapshotDocuments(snapshotId, entries);
+            { EnsureOpen(); _documents!.SaveSnapshotDocuments(snapshotId, entries); }
         public Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)
-            => _snapshotStore.GetDocumentVersionIdsByPath(snapshotId);
+            { EnsureOpen(); return _documents!.GetDocumentVersionIdsByPath(snapshotId); }
         public List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths)
-            => _snapshotStore.GetDocumentVersionIdsForDocuments(snapshotId, documentPaths);
+            { EnsureOpen(); return _documents!.GetDocumentVersionIdsForDocuments(snapshotId, documentPaths); }
         public void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds)
-            => _snapshotStore.SaveSnapshotSymbols(snapshotId, symbolIds);
+            { EnsureOpen(); _symbols!.SaveSnapshotSymbols(snapshotId, symbolIds); }
         public void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
-            => _snapshotStore.CopySnapshotSymbols(fromSnapshotId, toSnapshotId);
+            { EnsureOpen(); _symbols!.CopySnapshotSymbols(fromSnapshotId, toSnapshotId); }
         public void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
-            => _snapshotStore.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds);
-        public List<string> GetSymbolIdsInSnapshot(string snapshotId) => _snapshotStore.GetSymbolIdsInSnapshot(snapshotId);
-        public void PruneOldSnapshots(int keep = 3) => _snapshotStore.PruneOldSnapshots(keep);
+            { EnsureOpen(); _symbols!.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds); }
+        public List<string> GetSymbolIdsInSnapshot(string snapshotId)
+            { EnsureOpen(); return _symbols!.GetSymbolIdsInSnapshot(snapshotId); }
+        public void PruneOldSnapshots(int keep = 3)
+            { EnsureOpen(); _pruner!.PruneOldSnapshots(keep); }
         public void SaveTimings(string snapshotId, IEnumerable<SnapshotTimingRow> timings)
-            => _snapshotStore.SaveTimings(snapshotId, timings);
+            { EnsureOpen(); _timings!.SaveTimings(snapshotId, timings); }
         public List<SnapshotTimingRow> GetTimings(string snapshotId)
-            => _snapshotStore.GetTimings(snapshotId);
+            { EnsureOpen(); return _timings!.GetTimings(snapshotId); }
 
         // ── IDeclarationStore ──────────────────────────────────────────────
 
         public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations)
-            => _declarationStore.SaveDeclarations(snapshotId, declarations);
+            { EnsureOpen(); _declWriter!.SaveDeclarations(snapshotId, declarations); }
         public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
-            => _declarationStore.GetSymbolInfo(symbolId, snapshotId);
+            { EnsureOpen(); return _declReader!.GetSymbolInfo(symbolId, snapshotId); }
         public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
-            => _declarationStore.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated);
+            { EnsureOpen(); return _declReader!.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated); }
         public string? GetContainingTypeSource(string symbolId, string snapshotId)
-            => _declarationStore.GetContainingTypeSource(symbolId, snapshotId);
+            { EnsureOpen(); return _declReader!.GetContainingTypeSource(symbolId, snapshotId); }
         public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines)
-            => _declarationStore.GetSurroundingLines(symbolId, snapshotId, contextLines);
+            { EnsureOpen(); return _declReader!.GetSurroundingLines(symbolId, snapshotId, contextLines); }
         public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
-            => _declarationStore.DeleteDeclarationsByDocumentVersionIds(documentVersionIds);
+            { EnsureOpen(); _declMaintenance!.DeleteDeclarationsByDocumentVersionIds(documentVersionIds); }
         public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
-            => _declarationStore.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds);
+            { EnsureOpen(); return _declMaintenance!.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds); }
         public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
-            => _declarationStore.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated);
+            { EnsureOpen(); return _declMaintenance!.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated); }
 
         // ── IEdgeStore ─────────────────────────────────────────────────────
 
         public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
-            => _edgeStore.SaveEdges(snapshotId, edges);
+            { EnsureOpen(); _edgeStore!.SaveEdges(snapshotId, edges); }
         public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
-            => _edgeStore.SaveDiagnostics(snapshotId, diagnostics);
+            { EnsureOpen(); _edgeStore!.SaveDiagnostics(snapshotId, diagnostics); }
         public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
-            => _edgeStore.SaveAnnotations(snapshotId, annotations);
+            { EnsureOpen(); _edgeStore!.SaveAnnotations(snapshotId, annotations); }
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
-            => _edgeStore.GetEdges(snapshotId, symbolId);
+            { EnsureOpen(); return _edgeStore!.GetEdges(snapshotId, symbolId); }
         public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
-            => _edgeStore.GetDiagnostics(snapshotId, projectName);
+            { EnsureOpen(); return _edgeStore!.GetDiagnostics(snapshotId, projectName); }
         public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
-            => _edgeStore.GetAnnotations(snapshotId, symbolId);
+            { EnsureOpen(); return _edgeStore!.GetAnnotations(snapshotId, symbolId); }
         public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
-            => _edgeStore.GetEdgesByKind(snapshotId, kind);
+            { EnsureOpen(); return _edgeStore!.GetEdgesByKind(snapshotId, kind); }
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
-            => _edgeStore.GetIncomingEdges(snapshotId, symbolId);
+            { EnsureOpen(); return _edgeStore!.GetIncomingEdges(snapshotId, symbolId); }
         public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
-            => _edgeStore.GetOutgoingEdges(snapshotId, symbolId);
+            { EnsureOpen(); return _edgeStore!.GetOutgoingEdges(snapshotId, symbolId); }
         public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-            => _edgeStore.DeleteEdgesByDocumentPaths(snapshotId, documentPaths);
+            { EnsureOpen(); _edgeStore!.DeleteEdgesByDocumentPaths(snapshotId, documentPaths); }
         public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
-            => _edgeStore.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities);
+            { EnsureOpen(); _edgeStore!.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities); }
         public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
-            => _edgeStore.CopyEdgesToSnapshot(fromSnapshotId, toSnapshotId);
+            { EnsureOpen(); _edgeStore!.CopyEdgesToSnapshot(fromSnapshotId, toSnapshotId); }
         public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
-            => _edgeStore.CopySnapshotDiagnostics(fromSnapshotId, toSnapshotId);
+            { EnsureOpen(); _edgeStore!.CopySnapshotDiagnostics(fromSnapshotId, toSnapshotId); }
         public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
-            => _edgeStore.DeleteDiagnosticsByProjectNames(snapshotId, projectNames);
+            { EnsureOpen(); _edgeStore!.DeleteDiagnosticsByProjectNames(snapshotId, projectNames); }
 
         // ── ISearchStore ───────────────────────────────────────────────────
 
-        public void BuildSearchIndex(string snapshotId) => _searchStore.BuildSearchIndex(snapshotId);
+        public void BuildSearchIndex(string snapshotId)
+            { EnsureOpen(); _searchStore!.BuildSearchIndex(snapshotId); }
         public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
-            => _searchStore.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens);
+            { EnsureOpen(); return _searchStore!.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens); }
         public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
-            => _searchStore.SearchSymbols(query, snapshotId, limit, includeGenerated, kind);
+            { EnsureOpen(); return _searchStore!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind); }
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
-            => _searchStore.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated);
+            { EnsureOpen(); return _searchStore!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
 
         // ── ISemanticDiffStore ─────────────────────────────────────────────
 
         public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
-            => _semanticDiffStore.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes);
+            { EnsureOpen(); _semanticDiffStore!.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes); }
         public List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId)
-            => _semanticDiffStore.GetSemanticChanges(fromSnapshotId, toSnapshotId);
+            { EnsureOpen(); return _semanticDiffStore!.GetSemanticChanges(fromSnapshotId, toSnapshotId); }
     }
 }
