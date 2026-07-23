@@ -31,6 +31,8 @@ namespace Lurp.Storage
 
         void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
 
+        void DeleteOrphanEdges(string snapshotId);
+
         void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors);
     }
 }

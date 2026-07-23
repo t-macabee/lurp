@@ -179,6 +179,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
             }
 
+            store.DeleteOrphanEdges(snapshotIdStr);
             store.BuildSearchIndex(snapshotIdStr);
             store.MarkSnapshotComplete(snapshotIdStr);
 
@@ -545,20 +546,14 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         File.WriteAllText(widgetPath, """
             namespace Library;
 
-            public class Widget
+            public class WidgetBase
             {
                 public string Name { get; set; } = "";
+                public string GetLabel() => Name;
+            }
 
-                public string GetLabel()
-                {
-                    return Name;
-                }
-
-                // Added method — forces the Library document to change
-                public int GetNameLength()
-                {
-                    return Name.Length;
-                }
+            public class Widget : WidgetBase
+            {
             }
             """);
     }

@@ -444,4 +444,5 @@ FodyWeavers.xsd
 .output/
 .deepcode/
 .deepcodeignore
+.qwenignore
 NDependOut/

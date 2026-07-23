@@ -96,11 +96,14 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
             // Step 6b: Prune symbols that were in changed documents' old versions
             // but are no longer present after re-extraction
-            PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
+            var prunedSymbolIds = PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
 
             // Compute the set of symbol IDs that need their FTS entries refreshed:
-            // all symbols currently declared in the changed documents after re-extraction.
+            // all symbols currently declared in the changed documents after re-extraction,
+            // plus any symbols that were pruned (their stale FTS rows must be deleted).
             var changedSymbolIds = ComputeChangedSymbolIds(newSnapshotIdStr, changedPaths);
+            foreach (var id in prunedSymbolIds)
+                changedSymbolIds.Add(id);
 
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
             totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, changedSymbolIds, affectedProjects, timings);
@@ -242,15 +245,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return (totalDecl, totalEdge, totalDiag);
     }
 
-    private void PruneRemovedSymbols(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
+    private List<string> PruneRemovedSymbols(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
     {
         if (oldDocVersionIdSet.Count == 0)
-            return;
+            return [];
 
         // Get symbols that were in the old document versions
         var oldSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIdSet);
         if (oldSymbolIds.Count == 0)
-            return;
+            return [];
 
         // After re-extraction, look up new document version IDs for the changed paths
         var pathToNewVersion = _store.GetDocumentVersionIdsByPath(newSnapshotIdStr);
@@ -260,7 +263,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                 .Select(p => pathToNewVersion[p]));
 
         if (newDocVersionIdSet.Count == 0)
-            return;
+            return [];
 
         // Get symbols that are in the new document versions
         var newSymbolIds = new HashSet<string>(
@@ -273,7 +276,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             Console.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
             _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
             Console.WriteLine("done.");
+            return removedSymbolIds;
         }
+
+        return [];
     }
 
     private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
@@ -286,6 +292,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw7.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw7.ElapsedMilliseconds, DateTime.UtcNow));
+
+        // Step 7b: Remove edges targeting symbols not declared in this snapshot
+        _store.DeleteOrphanEdges(newSnapshotIdStr);
 
         // Step 8: FTS Rebuild (incremental) + Diff
         var sw8 = System.Diagnostics.Stopwatch.StartNew();

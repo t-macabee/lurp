@@ -294,6 +294,33 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         }
     }
 
+    // ── Test 7: FullIndex_Has_No_Orphan_Edge_Targets ─────────────────────
+    // Cross-project edges must point only at live symbols in the same snapshot.
+    // If an edge target is not present in snapshot_symbols, the edge is orphaned —
+    // a sign that the refresher or extractor produced a stale target id.
+
+    [Fact]
+    public async Task FullIndex_Has_No_Orphan_Edge_Targets()
+    {
+        IntegrationHarness.EnsureMSBuild();
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+
+        using var conn = new SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+
+        var orphanCount = CountFromSql(conn,
+            @"SELECT COUNT(DISTINCT target_symbol_id) FROM edges
+              WHERE source_document_path IS NOT NULL
+                AND snapshot_id = @id
+                AND target_symbol_id NOT IN
+                    (SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @id)",
+            snapshotId);
+
+        Assert.Equal(0, orphanCount);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private static int CountFromSql(SqliteConnection conn, string sql, string snapshotId)

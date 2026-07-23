@@ -188,6 +188,9 @@ public static class IndexRunner
                 timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));
             }
 
+            // Step: Remove edges targeting symbols not declared in this snapshot
+            store.DeleteOrphanEdges(snapshotIdStr);
+
             // Step: Build FTS search index
             var swFts = Stopwatch.StartNew();
             Console.Write("Building search index... ");
