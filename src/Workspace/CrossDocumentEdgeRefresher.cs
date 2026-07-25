@@ -98,9 +98,9 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         foreach (var projectPaths in perProjectAffectedPaths.Values)
         {
             foreach (var path in projectPaths)
-                allAffectedPaths.Add(path);
+                allAffectedPaths.Add(GetRelativePath(path, _gitRoot));
         }
-        _store.DeleteEdgesByDocumentPaths(newSnapshotId, affectedDocPaths);
+        _store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
 
         var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames);
         var crossDocAssemblyIdentities = crossDocCompilations.Values

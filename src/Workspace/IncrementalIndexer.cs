@@ -278,8 +278,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                 .Where(p => pathToNewVersion.ContainsKey(p))
                 .Select(p => pathToNewVersion[p]));
 
+        // If no new document versions exist for any changed path (all changed
+        // documents were deleted), every old symbol must be removed from the snapshot.
         if (newDocVersionIdSet.Count == 0)
-            return [];
+        {
+            Console.Write($"Pruning {oldSymbolIds.Count} removed symbols (all documents deleted)... ");
+            _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, oldSymbolIds);
+            Console.WriteLine("done.");
+            return oldSymbolIds;
+        }
 
         // Get symbols that are in the new document versions
         var newSymbolIds = new HashSet<string>(
