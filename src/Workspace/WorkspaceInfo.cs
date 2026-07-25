@@ -80,7 +80,7 @@ public sealed class WorkspaceInfo
                 var docId = new DocumentId(relPath);
 
                 var bytes = File.ReadAllBytes(document.FilePath);
-                var hash = DocumentVersionId.Compute(bytes);
+                var hash = DocumentVersionId.Compute(docId, bytes);
                 var encoding = DetectEncoding(bytes);
                 var lineStarts = ComputeLineStarts(bytes);
 

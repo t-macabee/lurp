@@ -120,7 +120,7 @@ public sealed class SnapshotManifest
             {
                 DocumentId = docPath,
                 FilePath = docPath,
-                ContentHash = kvp.Value.ToString(),
+                ContentHash = kvp.Value.Hash,
                 Encoding = encoding,
                 LineStart = lineStarts,
                 CreatedAtUtc = DateTime.MinValue,
@@ -162,7 +162,7 @@ public sealed class SnapshotManifest
         foreach (var doc in storage.Documents)
         {
             var docId = new DocumentId(doc.FilePath);
-            var versionId = new DocumentVersionId(doc.ContentHash);
+            var versionId = new DocumentVersionId(doc.FilePath, doc.ContentHash);
             documentVersions[docId] = versionId;
         }
 

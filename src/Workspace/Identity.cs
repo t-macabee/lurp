@@ -70,12 +70,28 @@ public readonly record struct DocumentId
 public readonly record struct DocumentVersionId
 {
 
+    public string DocumentPath { get; }
+
     public string Hash { get; }
+
+    public DocumentVersionId(string documentPath, string hash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hash);
+        DocumentPath = (documentPath ?? "").Replace('\\', '/');
+        Hash = hash;
+    }
 
     public DocumentVersionId(string hash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hash);
+        DocumentPath = "";
         Hash = hash;
+    }
+
+    public static DocumentVersionId Compute(DocumentId documentId, byte[] data)
+    {
+        var hash = SHA256.HashData(data);
+        return new DocumentVersionId(documentId.RelativePath, Hex(hash));
     }
 
     public static DocumentVersionId Compute(byte[] data)
@@ -93,7 +109,7 @@ public readonly record struct DocumentVersionId
         return new DocumentVersionId(Hex(hash));
     }
 
-    public override string ToString() => Hash;
+    public override string ToString() => $"{DocumentPath}:{Hash}";
 
     private static string Hex(byte[] bytes)
         => Convert.ToHexStringLower(bytes);

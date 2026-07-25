@@ -94,6 +94,7 @@ namespace Lurp.Storage
                 new Migration_013_ClearDefaultProjects(),
                 new Migration_014_AddCrossGeneratedFlag(),
                 new Migration_015_FixSnapshotStatusDefault(),
+                new Migration_016_RecomposeDocumentVersionId(),
             ];
     }
 }

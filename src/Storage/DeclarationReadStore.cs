@@ -119,8 +119,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             SELECT dv.content, d.{startCol}, d.{endCol}
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             WHERE ss.snapshot_id = @snapshotId
+              AND sd.snapshot_id = @snapshotId
               AND ss.symbol_id = @symbolId
         ";
 
@@ -152,8 +154,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             SELECT dv.line_starts
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             WHERE ss.snapshot_id = @snapshotId
+              AND sd.snapshot_id = @snapshotId
               AND ss.symbol_id = @symbolId
             LIMIT 1;
         ";

@@ -103,7 +103,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                     INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts);
                 ";
                 command.Parameters.Clear();
-                command.Parameters.AddWithValue("@documentVersionId", doc.ContentHash);
+                command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId + ":" + doc.ContentHash);
                 command.Parameters.AddWithValue("@documentId", doc.DocumentId);
                 command.Parameters.AddWithValue("@contentHash", doc.ContentHash);
                 command.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
@@ -118,7 +118,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                 ";
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                command.Parameters.AddWithValue("@documentVersionId", doc.ContentHash);
+                command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId + ":" + doc.ContentHash);
                 command.ExecuteNonQuery();
             }
 
