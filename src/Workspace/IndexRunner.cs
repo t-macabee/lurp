@@ -139,6 +139,7 @@ public static class IndexRunner
             int totalDeclarations = 0;
             int totalEdges = 0;
             int totalDiagnostics = 0;
+            var projectErrors = new List<Exception>();
 
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
@@ -167,7 +168,15 @@ public static class IndexRunner
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"FAILED: {ex.Message}");
+                    projectErrors.Add(ex);
                 }
+            }
+
+            if (projectErrors.Count > 0)
+            {
+                throw new AggregateException(
+                    "One or more projects failed during full index.",
+                    projectErrors);
             }
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
