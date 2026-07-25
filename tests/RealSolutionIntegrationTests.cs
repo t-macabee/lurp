@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -166,15 +167,19 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
         var snapshotA = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
 
-        // Pick a symbol from the App project and read its original source
+        // Pick a symbol from GetProductHandler in the App project and read its original source
         string originalSource;
         string symbolId;
         using (var store = IntegrationHarness.OpenReadStore(dbPath))
         {
             var symbols = store.GetSymbolIdsInSnapshot(snapshotA);
-            // Find a symbol from the App project (assembly name "App")
-            symbolId = symbols.FirstOrDefault(s => s.Contains(":App:", StringComparison.Ordinal))
-                ?? symbols.First();
+            // Symbol IDs are "{docCommentId}|{assemblyIdentity}" (see SymbolId.Value in
+            // SymbolModels.cs), e.g. "T:App.GetProductHandler|App, Version=...". Match on
+            // the namespace-qualified type name rather than the assembly identity, whose
+            // display-name format doesn't contain ":App:".
+            symbolId = symbols.FirstOrDefault(s =>
+                s.Contains("App.GetProductHandler", StringComparison.Ordinal))
+                ?? throw new InvalidOperationException("No GetProductHandler symbol found in App");
 
             originalSource = store.GetSymbolSource(symbolId, snapshotA, ViewKind.Declaration)
                 ?? throw new InvalidOperationException($"No source found for symbol {symbolId}");
@@ -192,6 +197,12 @@ public sealed class RealSolutionIntegrationTests : IDisposable
             var oldSource = store.GetSymbolSource(symbolId, snapshotA, ViewKind.Declaration);
             Assert.NotNull(oldSource);
             Assert.Equal(originalSource, oldSource);
+
+            // Snapshot B must return the new mutated source
+            var newSource = store.GetSymbolSource(symbolId, snapshotB, ViewKind.Declaration);
+            Assert.NotNull(newSource);
+            Assert.NotEqual(originalSource, newSource);
+            Assert.Contains("ModifiedWidget", newSource);
         }
     }
 
@@ -321,6 +332,66 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         Assert.Equal(0, orphanCount);
     }
 
+    // ── Test 8: FullIndex_ProjectFailure_LeavesSnapshotInProgress ──────────
+    // Catches D5 (project failures are swallowed, leaving snapshot "complete"
+    // when it should be "in_progress").
+
+    [Fact]
+    public async Task FullIndex_ProjectFailure_LeavesSnapshotInProgress()
+    {
+        IntegrationHarness.EnsureMSBuild();
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+
+        // Create a real store and wrap it in a proxy that throws on
+        // SaveDeclarations — simulates a per-project extraction failure.
+        var innerStore = new SqliteIndexStore(dbPath);
+        innerStore.Open(dbPath);
+        innerStore.RunMigrations();
+
+        var proxy = DispatchProxy.Create<IIndexStore, ThrowingSaveDeclarationsStore>();
+        ((ThrowingSaveDeclarationsStore)(object)proxy).SetInner(innerStore);
+
+        try
+        {
+            var ex = await Assert.ThrowsAsync<AggregateException>(() =>
+                IndexRunner.RunAsync(
+                    proxy,
+                    solutionPath,
+                    outputDir,
+                    skipAdapters: [],
+                    jsonExportPath: null,
+                    strategyArg: "full"));
+
+            Assert.Contains(
+                "One or more projects failed during full index.",
+                ex.Message);
+        }
+        finally
+        {
+            innerStore.Close();
+        }
+
+        // Verify the snapshot stayed in_progress (MarkSnapshotComplete was
+        // never reached).
+        using var conn = new SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT status, workspace_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+        using var reader = cmd.ExecuteReader();
+        Assert.True(reader.Read(), "Expected at least one snapshot row.");
+        var status = reader.GetString(0);
+        var workspaceId = reader.GetString(1);
+
+        Assert.Equal("in_progress", status);
+
+        // LoadLatestSnapshot only returns complete snapshots — must be null.
+        using var readStore = IntegrationHarness.OpenReadStore(dbPath);
+        var latest = readStore.LoadLatestSnapshot(workspaceId);
+        Assert.Null(latest);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private static int CountFromSql(SqliteConnection conn, string sql, string snapshotId)
@@ -344,5 +415,30 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         content = content.Replace("\"Widget\"", "\"ModifiedWidget\"");
 
         File.WriteAllText(handlerPath, content);
+    }
+
+    /// <summary>
+    /// A <see cref="DispatchProxy"/> that delegates every <see cref="IIndexStore"/>
+    /// call to an inner <see cref="SqliteIndexStore"/> except
+    /// <see cref="IIndexStore.SaveDeclarations"/>, which throws. This lets
+    /// integration tests simulate a per-project failure during extraction.
+    /// </summary>
+    private class ThrowingSaveDeclarationsStore : DispatchProxy
+    {
+        private object? _inner;
+
+        public void SetInner(object inner) => _inner = inner;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod != null
+                && targetMethod.Name == nameof(IIndexStore.SaveDeclarations))
+            {
+                throw new InvalidOperationException(
+                    "Injected failure for testing — SaveDeclarations is disabled.");
+            }
+
+            return targetMethod?.Invoke(_inner, args);
+        }
     }
 }

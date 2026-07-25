@@ -116,6 +116,31 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
 
+    // Regression test for PruneRemovedSymbols: when a file is deleted and no
+    // replacement document versions exist (pure-deletion path), the early
+    // return skipped all pruning, leaving stale symbols from the deleted file
+    // in the copied-forward snapshot.
+    [Fact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterFileDeletion()
+    {
+        if (!MSBuildLocator.IsRegistered)
+        {
+            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
+        }
+
+        CreateFileDeletionTestSolution();
+
+        var snapshotA = await RunFullIndexAsync("Index A (full initial)");
+
+        DeleteModelsFile();
+
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental after deletion)");
+
+        var snapshotC = await RunFullIndexAsync("Index C (full rebuild after deletion)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
     private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true)
     {
         Console.WriteLine($"--- {label} ---");
@@ -438,6 +463,72 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             """);
     }
 
+    private void CreateFileDeletionTestSolution()
+    {
+        var projDir = Path.Combine(_testDir, "src", "TestProject");
+        Directory.CreateDirectory(projDir);
+
+        var csprojPath = Path.Combine(projDir, "TestProject.csproj");
+        File.WriteAllText(csprojPath, @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        File.WriteAllText(
+            Path.Combine(projDir, "Calculator.cs"),
+            """
+            namespace TestProject;
+
+            public class Calculator
+            {
+                public int Add(int a, int b)
+                {
+                    return a + b;
+                }
+
+                public int Subtract(int a, int b)
+                {
+                    return a - b;
+                }
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(projDir, "Models.cs"),
+            """
+            namespace TestProject;
+
+            public class User
+            {
+                public string Name { get; set; } = "";
+                public int Age { get; set; }
+            }
+
+            public class Product
+            {
+                public string Id { get; set; } = "";
+                public decimal Price { get; set; }
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, $"""
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/TestProject/TestProject.csproj" />
+              </Folder>
+            </Solution>
+            """);
+    }
+
+    private void DeleteModelsFile()
+    {
+        var modelsPath = Path.Combine(_testDir, "src", "TestProject", "Models.cs");
+        File.Delete(modelsPath);
+    }
+
     // T16a: Regression test for CrossDocumentEdgeRefresher — verifies that
     // when a symbol in ProjectA changes, documents in ProjectB that reference
     // the changed symbol through cross-project edges have their edges
@@ -467,6 +558,118 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
+
+    // T15: Regression test for DocumentVersionId — verifies that two files with
+    // identical byte content stored at different paths receive distinct
+    // version IDs that include the document path, so consumers can tell them
+    // apart and a second full rebuild produces an equivalent snapshot.
+    [Fact]
+    public async Task TwoIdenticalFiles_GetDistinctVersionIds_AndRerunProducesEquivalence()
+    {
+
+        if (!MSBuildLocator.IsRegistered)
+        {
+            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
+        }
+
+        CreateDuplicateContentTestSolution();
+
+        var snapshotA = await RunFullIndexAsync("Index A (full, duplicate content)");
+
+        var store = new SqliteIndexStore(_dbPath);
+        store.Open(_dbPath);
+        try
+        {
+            var versionIdsByPath = store.GetDocumentVersionIdsByPath(snapshotA);
+
+            var path1 = "src/ProjectX/Widget.cs";
+            var path2 = "src/ProjectY/Widget.cs";
+
+            Assert.True(versionIdsByPath.ContainsKey(path1),
+                $"Expected version ID for {path1}");
+            Assert.True(versionIdsByPath.ContainsKey(path2),
+                $"Expected version ID for {path2}");
+            Assert.NotEqual(versionIdsByPath[path1], versionIdsByPath[path2]);
+
+            var source1 = store.GetSource(path1, snapshotA);
+            var source2 = store.GetSource(path2, snapshotA);
+            Assert.NotNull(source1);
+            Assert.NotNull(source2);
+            Assert.Equal(source1, source2);
+            Assert.Contains("class Widget", source1);
+        }
+        finally
+        {
+            store.Close();
+        }
+
+        var snapshotB = await RunFullIndexAsync("Index B (second full, duplicate content)", deleteFirst: false);
+        CompareSnapshotsAreEquivalent(snapshotA, snapshotB);
+    }
+
+    private void CreateDuplicateContentTestSolution()
+    {
+        var projXDir = Path.Combine(_testDir, "src", "ProjectX");
+        Directory.CreateDirectory(projXDir);
+
+        File.WriteAllText(Path.Combine(projXDir, "ProjectX.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        File.WriteAllText(Path.Combine(projXDir, "Widget.cs"), """
+            namespace Widgets;
+
+            public class Widget
+            {
+                public string Name { get; set; } = "";
+
+                public string GetLabel()
+                {
+                    return Name;
+                }
+            }
+            """);
+
+        var projYDir = Path.Combine(_testDir, "src", "ProjectY");
+        Directory.CreateDirectory(projYDir);
+
+        File.WriteAllText(Path.Combine(projYDir, "ProjectY.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+        // Write the same byte content to a different path.
+        File.WriteAllText(Path.Combine(projYDir, "Widget.cs"), """
+            namespace Widgets;
+
+            public class Widget
+            {
+                public string Name { get; set; } = "";
+
+                public string GetLabel()
+                {
+                    return Name;
+                }
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, $"""
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/ProjectX/ProjectX.csproj" />
+                <Project Path="src/ProjectY/ProjectY.csproj" />
+              </Folder>
+            </Solution>
+            """);
+    }
+
 
     private void CreateCrossProjectDependentTestSolution()
     {

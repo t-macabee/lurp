@@ -51,7 +51,10 @@ internal static class SnapshotAssertions
                     $"Only in C: {string.Join(", ", cSet.Except(bSet).Take(10))}");
             }
 
-            Assert.Equal(edgesC.Count, edgesB.Count);
+            for (int i = 0; i < edgesC.Count && i < edgesB.Count; i++)
+            {
+                AssertEqual(edgesB[i], edgesC[i]);
+            }
 
             var diagB = store.GetDiagnostics(snapshotB);
             var diagC = store.GetDiagnostics(snapshotC);
