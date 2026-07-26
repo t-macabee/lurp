@@ -2353,6 +2353,110 @@ class Derived : Base {
             Assert.Contains("Dispose()", signatureChanged.DetailJson!);
             Assert.Contains("IDisposable.Dispose()", signatureChanged.DetailJson!);
         }
+
+        [Fact]
+        public void SemanticDiffer_AttributeAddedOrRemoved()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-023";
+            var toSnapshotId = "snap-b3-024";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "T:Ns.MyClass|asm1";
+
+            // MyClass has [Obsolete]
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-023:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"attributes\": [\"global::System.ObsoleteAttribute\"]}");
+
+            // MyClass has no attributes
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-024:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"attributes\": []}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var attributeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.AttributeChanged);
+            Assert.NotNull(attributeChanged);
+            Assert.Equal(symbolId, attributeChanged.SymbolId);
+        }
+
+        [Fact]
+        public void SemanticDiffer_AttributeArgumentChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-025";
+            var toSnapshotId = "snap-b3-026";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "T:Ns.MyClass|asm1";
+
+            // MyClass has [Obsolete("v1")]
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-025:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"attributes\": [\"global::System.ObsoleteAttribute(\\\"v1\\\")\"]}");
+
+            // MyClass has [Obsolete("v2")]
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-026:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"attributes\": [\"global::System.ObsoleteAttribute(\\\"v2\\\")\"]}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var attributeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.AttributeChanged);
+            Assert.NotNull(attributeChanged);
+            Assert.Equal(symbolId, attributeChanged.SymbolId);
+        }
     }
 
     public class B4GeneratedCodeTests : IDisposable
