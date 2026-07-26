@@ -166,6 +166,53 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
 
+        // Foreign-key enforcement is not enabled on the store connection, so
+        // explicitly reclaim document data that no retained snapshot references.
+        cmd.CommandText = @"
+            DELETE FROM document_versions
+            WHERE document_version_id NOT IN (
+                SELECT DISTINCT document_version_id FROM snapshot_documents
+            );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = @"
+            DELETE FROM documents
+            WHERE document_id NOT IN (
+                SELECT DISTINCT document_id FROM document_versions
+            );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        // A document can outlive the snapshot recorded in last_changed_snapshot_id
+        // when that snapshot is pruned. Repair the pointer to the newest retained
+        // snapshot that still references the document, or leave it null when none
+        // remains.
+        cmd.CommandText = @"
+            UPDATE documents
+            SET last_changed_snapshot_id = (
+                SELECT sd.snapshot_id
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN snapshots s ON s.snapshot_id = sd.snapshot_id
+                WHERE dv.document_id = documents.document_id
+                ORDER BY s.built_at_utc DESC
+                LIMIT 1
+            )
+            WHERE last_changed_snapshot_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM snapshot_documents sd
+                  JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                  WHERE sd.snapshot_id = documents.last_changed_snapshot_id
+                    AND dv.document_id = documents.document_id
+              );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
         cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@sid", snapshotId);
