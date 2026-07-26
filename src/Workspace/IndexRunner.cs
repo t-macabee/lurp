@@ -143,6 +143,8 @@ public static class IndexRunner
 
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
+            var allEdges = new List<EdgeRecord>();
+
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
             {
                 var projectName = project.Name;
@@ -156,8 +158,7 @@ public static class IndexRunner
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
                     totalDeclarations += result.Declarations.Count;
 
-                    store.SaveEdges(snapshotIdStr, result.Edges);
-                    totalEdges += result.Edges.Count;
+                    allEdges.AddRange(result.Edges);
 
                     store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                     totalDiagnostics += result.Diagnostics.Count;
@@ -171,6 +172,10 @@ public static class IndexRunner
                     projectErrors.Add(ex);
                 }
             }
+
+            var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
+            store.SaveEdges(snapshotIdStr, dedupedEdges);
+            totalEdges = dedupedEdges.Count;
 
             if (projectErrors.Count > 0)
             {

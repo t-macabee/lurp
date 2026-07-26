@@ -410,6 +410,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             int totalDeclarations = 0;
             int totalEdges = 0;
             int totalDiagnostics = 0;
+            var allEdges = new List<EdgeRecord>();
 
             foreach (var (project, compilation) in await GetAllAsync(solution))
             {
@@ -423,14 +424,17 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 store.SaveDeclarations(snapshotIdStr, result.Declarations);
                 totalDeclarations += result.Declarations.Count;
 
-                store.SaveEdges(snapshotIdStr, result.Edges);
-                totalEdges += result.Edges.Count;
+                allEdges.AddRange(result.Edges);
 
                 store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                 totalDiagnostics += result.Diagnostics.Count;
 
                 Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
+
+            var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
+            store.SaveEdges(snapshotIdStr, dedupedEdges);
+            totalEdges = dedupedEdges.Count;
 
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
@@ -1068,5 +1072,76 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     private (int SourceRows, int SymbolRows) GetFtsCounts(string snapshotId)
     {
         return SnapshotAssertions.GetFtsCounts(_dbPath, snapshotId);
+    }
+
+    // T4 regression: SaveEdges must not throw SQLite Error 19 when given
+    // duplicate (source, target, kind) triples — e.g. from cross-project
+    // extraction or multiple extractors producing the same relation.
+    [SkippableFact]
+    public void SaveEdges_DeduplicatesSameTripleAcrossProjects()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        var store = new SqliteIndexStore(_dbPath);
+        store.Open(_dbPath);
+        store.RunMigrations();
+
+        try
+        {
+            var snapshotId = "snap-t4-dedup";
+            var edge1 = new EdgeRecord
+            {
+                SourceSymbolId = "T:Lib.IFoo|Lib",
+                TargetSymbolId = "T:Lib.Bar|Lib",
+                Kind = "Implements",
+                Provenance = "compiler_proved",
+                SnapshotId = snapshotId,
+                ExtractorVersion = "v1",
+                SourceDocumentPath = "src/Lib/Foo.cs",
+            };
+            var edge2 = new EdgeRecord
+            {
+                SourceSymbolId = "T:Lib.IFoo|Lib",
+                TargetSymbolId = "T:Lib.Bar|Lib",
+                Kind = "Implements",
+                Provenance = "framework_derived",
+                SnapshotId = snapshotId,
+                ExtractorVersion = "v1",
+                SourceDocumentPath = "src/App/Foo.cs",
+            };
+
+            store.SaveEdges(snapshotId, new[] { edge1, edge2 });
+
+            var stored = store.GetEdges(snapshotId);
+            Assert.Single(stored);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    // T4 regression: EdgeDedup.Deduplicate must keep the highest-provenance
+    // edge when the same (source, target, kind) triple is produced with
+    // different provenance values.
+    [Fact]
+    public void EdgeDedup_KeepsHighestProvenance()
+    {
+        var low = new EdgeRecord
+        {
+            SourceSymbolId = "A", TargetSymbolId = "B", Kind = "Calls",
+            Provenance = "runtime_unknown", ExtractorVersion = "v1",
+        };
+        var high = new EdgeRecord
+        {
+            SourceSymbolId = "A", TargetSymbolId = "B", Kind = "Calls",
+            Provenance = "compiler_proved", ExtractorVersion = "v1",
+        };
+
+        var result = EdgeDedup.Deduplicate(new[] { low, high });
+
+        Assert.Single(result);
+        Assert.Equal("compiler_proved", result[0].Provenance);
     }
 }
