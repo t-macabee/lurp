@@ -78,6 +78,28 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public void Migration017_CreatesUniqueEdgeRelationIndex()
+    {
+        var runner = new MigrationRunner(_dbPath);
+
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA index_info('ux_edges_relation');";
+        using var reader = command.ExecuteReader();
+
+        var columns = new List<string>();
+        while (reader.Read())
+            columns.Add(reader.GetString(2));
+
+        Assert.Equal(
+            ["snapshot_id", "source_symbol_id", "target_symbol_id", "kind"],
+            columns);
+    }
+
+    [Fact]
     public void Migration002_AddsLineStartsColumn()
     {
         var runner = new MigrationRunner(_dbPath);
@@ -1556,6 +1578,50 @@ class Foo {
                 e.Kind == "Calls" &&
                 e.SourceSymbolId.Contains('A') &&
                 e.TargetSymbolId.Contains('B'));
+        }
+
+        [Fact]
+        public void Calls_TwoCallSitesForSameRelation_PersistsOneEdge()
+        {
+            var source = @"
+class Foo {
+    void A() { B(); B(); }
+    void B() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(
+                compilation,
+                CreateDocVersions("test.cs"),
+                new HashSet<DocumentId>(),
+                "snap-call-sites",
+                "/");
+
+            var edges = extractor.ExtractAll()
+                .Where(e => e.Kind == "Calls" && e.SourceSymbolId.Contains("A") && e.TargetSymbolId.Contains("B"))
+                .ToList();
+
+            Assert.Single(edges);
+
+            var dbPath = Path.Combine(Path.GetTempPath(), $"indexer_call_sites_{Guid.NewGuid():N}.db");
+            try
+            {
+                using var store = new SqliteIndexStore(dbPath);
+                store.Open(dbPath);
+                store.RunMigrations();
+                store.SaveEdges("snap-call-sites", edges);
+
+                var persisted = store.GetEdges("snap-call-sites")
+                    .Where(e => e.Kind == "Calls" && e.SourceSymbolId.Contains("A") && e.TargetSymbolId.Contains("B"))
+                    .ToList();
+
+                Assert.Single(persisted);
+            }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                if (File.Exists(dbPath))
+                    File.Delete(dbPath);
+            }
         }
 
         [Fact]
@@ -3929,4 +3995,3 @@ class Source {
         }
     }
 }
-
