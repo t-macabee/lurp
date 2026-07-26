@@ -97,6 +97,7 @@ namespace Lurp.Storage
                 new Migration_016_RecomposeDocumentVersionId(),
                 new Migration_017_UniqueEdgeRelations(),
                 new Migration_018_AddSkippedAdapters(),
+                new Migration_019_SchemaHardening(),
             ];
     }
 }

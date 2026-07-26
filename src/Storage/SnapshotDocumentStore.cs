@@ -38,7 +38,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             foreach (var (docId, versionId) in entries)
             {
                 command.CommandText = @"
-                    INSERT OR REPLACE INTO snapshot_documents (snapshot_id, document_version_id)
+                    INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id)
                     VALUES (@snapshotId, @documentVersionId);
                 ";
                 command.Parameters.Clear();
