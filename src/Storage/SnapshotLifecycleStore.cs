@@ -38,7 +38,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, 'in_progress');
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, 'in_progress');
             ";
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
@@ -51,6 +51,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             command.Parameters.AddWithValue("@extractorVersion", (object?)manifest.ExtractorVersion ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@toolVersion", (object?)manifest.ToolVersion ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@previousSnapshotId", (object?)manifest.PreviousSnapshotId ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", manifest.SkippedAdapters));
             command.ExecuteNonQuery();
 
             if (manifest.Projects.Any())
@@ -147,22 +148,37 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal SnapshotRow? LoadLatestSnapshot(string workspaceId)
+    internal SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
-            SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
-                   s.sdk_version, s.compiler_version, s.built_at_utc,
-                   s.database_schema_version, s.output_schema_version,
-                   s.extractor_version, s.tool_version, s.previous_snapshot_id
-            FROM snapshots s
-            JOIN workspaces w ON w.workspace_id = s.workspace_id
-            WHERE s.workspace_id = @workspaceId
-              AND s.status = 'complete'
-            ORDER BY s.built_at_utc DESC
-            LIMIT 1;
-        ";
-        command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        command.CommandText = string.IsNullOrEmpty(workspaceId)
+            ? @"
+                SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
+                       s.sdk_version, s.compiler_version, s.built_at_utc,
+                       s.database_schema_version, s.output_schema_version,
+                       s.extractor_version, s.tool_version, s.previous_snapshot_id,
+                       s.skipped_adapters
+                FROM snapshots s
+                JOIN workspaces w ON w.workspace_id = s.workspace_id
+                WHERE s.status = 'complete'
+                ORDER BY s.built_at_utc DESC
+                LIMIT 1;
+            "
+            : @"
+                SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
+                       s.sdk_version, s.compiler_version, s.built_at_utc,
+                       s.database_schema_version, s.output_schema_version,
+                       s.extractor_version, s.tool_version, s.previous_snapshot_id,
+                       s.skipped_adapters
+                FROM snapshots s
+                JOIN workspaces w ON w.workspace_id = s.workspace_id
+                WHERE s.workspace_id = @workspaceId
+                  AND s.status = 'complete'
+                ORDER BY s.built_at_utc DESC
+                LIMIT 1;
+            ";
+        if (!string.IsNullOrEmpty(workspaceId))
+            command.Parameters.AddWithValue("@workspaceId", workspaceId);
 
         using var reader = command.ExecuteReader();
         if (!reader.Read())
@@ -181,6 +197,10 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         var extractorVersion = reader.IsDBNull(9) ? null : reader.GetString(9);
         var toolVersion = reader.IsDBNull(10) ? null : reader.GetString(10);
         var previousSnapshotId = reader.IsDBNull(11) ? null : reader.GetString(11);
+        var skippedAdaptersRaw = reader.IsDBNull(12) ? "" : reader.GetString(12);
+        var skippedAdapters = string.IsNullOrEmpty(skippedAdaptersRaw)
+            ? new List<string>()
+            : skippedAdaptersRaw.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
 
         var documents = new List<DocumentVersion>();
         using var docCommand = _connection.CreateCommand();
@@ -227,6 +247,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
             Projects = projects,
+            SkippedAdapters = skippedAdapters,
         };
     }
 

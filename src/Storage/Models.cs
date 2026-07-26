@@ -16,6 +16,7 @@ namespace Lurp.Storage
         public string ToolVersion { get; init; } = string.Empty;
         public string? PreviousSnapshotId { get; init; }
         public List<ProjectRow> Projects { get; init; } = [];
+        public List<string> SkippedAdapters { get; init; } = [];
     }
 
     public sealed class ProjectRow

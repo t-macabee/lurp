@@ -117,7 +117,7 @@ public static class IndexRunner
     private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings = null)
     {
         var snapshotId = SnapshotId.New();
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
+        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 

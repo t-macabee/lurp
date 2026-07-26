@@ -62,7 +62,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
 
         var snapshotId = SnapshotId.New();
         var newSnapshotIdStr = snapshotId.ToString();
-        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId));
+        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters: _skipAdapters);
 
         // Step 4: Manifest Creation
         var sw4 = System.Diagnostics.Stopwatch.StartNew();

@@ -53,7 +53,11 @@ public sealed class SnapshotManifest
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
     public SnapshotId? PreviousSnapshotId { get; init; }
 
-    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace,SnapshotId snapshotId,SnapshotId? previousSnapshotId = null)
+    [JsonPropertyName("completeness")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SnapshotCompleteness? Completeness { get; init; }
+
+    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace,SnapshotId snapshotId,SnapshotId? previousSnapshotId = null,IReadOnlySet<string>? skipAdapters = null)
     {
         return new SnapshotManifest
         {
@@ -71,6 +75,15 @@ public sealed class SnapshotManifest
             ExtractorVersion = VersionConstants.ExtractorVersion,
             ToolVersion = VersionConstants.ToolVersion,
             PreviousSnapshotId = previousSnapshotId,
+            Completeness = new SnapshotCompleteness
+            {
+                GeneratedTreesIncluded = false,
+                SkippedAdapters = skipAdapters != null
+                    ? skipAdapters.OrderBy(x => x, StringComparer.Ordinal).ToList()
+                    : [],
+                ActiveTfms = new Dictionary<string, string>(workspace.TargetFrameworks),
+                ExtractorVersion = VersionConstants.ExtractorVersion,
+            },
         };
     }
 
@@ -153,6 +166,7 @@ public sealed class SnapshotManifest
             ToolVersion = ToolVersion,
             PreviousSnapshotId = PreviousSnapshotId?.ToString(),
             Projects = projects,
+            SkippedAdapters = Completeness?.SkippedAdapters ?? [],
         };
     }
 
@@ -191,6 +205,13 @@ public sealed class SnapshotManifest
             PreviousSnapshotId = storage.PreviousSnapshotId != null
                 ? SnapshotId.Parse(storage.PreviousSnapshotId)
                 : null,
+            Completeness = new SnapshotCompleteness
+            {
+                GeneratedTreesIncluded = false,
+                SkippedAdapters = storage.SkippedAdapters,
+                ActiveTfms = new Dictionary<string, string>(targetFrameworks),
+                ExtractorVersion = storage.ExtractorVersion,
+            },
         };
     }
 

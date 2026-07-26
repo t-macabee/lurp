@@ -120,7 +120,7 @@ namespace Lurp.Storage
             { EnsureOpen(); _lifecycle!.MarkSnapshotInProgress(snapshotId); }
         public void MarkSnapshotComplete(string snapshotId)
             { EnsureOpen(); _lifecycle!.MarkSnapshotComplete(snapshotId); }
-        public SnapshotRow? LoadLatestSnapshot(string workspaceId)
+        public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.LoadLatestSnapshot(workspaceId); }
         public string? GetLatestSnapshotId(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.GetLatestSnapshotId(workspaceId); }

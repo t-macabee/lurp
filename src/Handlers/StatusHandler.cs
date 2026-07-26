@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -34,8 +35,9 @@ internal static class StatusHandler
             store.RunMigrations();
             var schemaVersion = store.GetCurrentSchemaVersion();
 
-            var latestSnapshotId = store.GetLatestSnapshotId();
-            if (latestSnapshotId == null)
+            var latestSnapshot = store.LoadLatestSnapshot();
+            var latestSnapshotId = latestSnapshot?.SnapshotId;
+            if (latestSnapshot == null || latestSnapshotId == null)
             {
                 ReportNeverIndexed(dbPath, asJson, schemaVersion);
                 return;
@@ -44,12 +46,12 @@ internal static class StatusHandler
             var solutionPathArg = GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
-                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshotId, asJson);
+                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson);
                 return;
             }
 
             var freshness = await CheckCurrentWorkspaceAsync(store, solutionPathArg!);
-            ReportFreshness(store, dbPath, schemaVersion, latestSnapshotId, freshness, asJson);
+            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson);
         }
         finally
         {
@@ -90,8 +92,9 @@ internal static class StatusHandler
         Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
-    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, string latestSnapshotId, bool asJson)
+    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson)
     {
+        var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
@@ -107,7 +110,8 @@ internal static class StatusHandler
                 note = "Pass --solution=path or set INDEXER_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-            }, new JsonSerializerOptions { WriteIndented = true }));
+                manifest = SnapshotManifest.FromStorageManifest(latestSnapshot),
+            }, JsonOutputOptions));
             return;
         }
 
@@ -118,8 +122,9 @@ internal static class StatusHandler
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
-    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, string latestSnapshotId, WorkspaceFreshness.FreshnessResult freshness, bool asJson)
+    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson)
     {
+        var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
@@ -141,7 +146,8 @@ internal static class StatusHandler
                 }),
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-            }, new JsonSerializerOptions { WriteIndented = true }));
+                manifest = SnapshotManifest.FromStorageManifest(latestSnapshot),
+            }, JsonOutputOptions));
             return;
         }
 
@@ -178,6 +184,12 @@ internal static class StatusHandler
             // Timings are optional; silently skip on error
         }
     }
+
+    private static readonly JsonSerializerOptions JsonOutputOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
     private static string? GetArgValue(string[] args, string prefix)
     {

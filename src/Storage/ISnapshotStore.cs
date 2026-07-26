@@ -20,7 +20,7 @@ namespace Lurp.Storage
         void SaveSnapshot(SnapshotRow manifest);
         void MarkSnapshotInProgress(string snapshotId);
         void MarkSnapshotComplete(string snapshotId);
-        SnapshotRow? LoadLatestSnapshot(string workspaceId);
+        SnapshotRow? LoadLatestSnapshot(string? workspaceId = null);
         string? GetLatestSnapshotId(string? workspaceId = null);
         string? GetSource(string relativePath, string snapshotId);
         List<string> GetSnapshotIds(string workspaceId);
