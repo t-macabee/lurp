@@ -57,13 +57,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsSixteen()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsCurrent()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(16, runner.GetCurrentSchemaVersion());
+        Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(16, runner.GetCurrentSchemaVersion());
+        Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class MigrationRunnerTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(16, runner.GetCurrentSchemaVersion());
+        Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
         using var connection = new SqliteConnection($"Data Source={_dbPath}");
         connection.Open();
@@ -918,7 +918,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -939,7 +939,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1331,10 +1331,10 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
         }
 
         [Fact]
@@ -1773,10 +1773,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -2190,10 +2190,10 @@ class Derived : Base {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(16, runner.GetCurrentSchemaVersion());
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
