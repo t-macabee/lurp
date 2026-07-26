@@ -12,8 +12,8 @@ obj/
 opencode.json
 REMEDIATION_TASKS.md
 CLAUDE.md
-QWEN.md
 AGENTS.md
+CODEX.MD
 
 # User-specific files
 *.rsuser
@@ -444,7 +444,5 @@ FodyWeavers.xsd
 .codeaudit/
 .output/
 .deepcode/
-.qwen/
 .deepcodeignore
-.qwenignore
 NDependOut/
