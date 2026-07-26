@@ -2099,6 +2099,56 @@ class Derived : Base {
         }
 
         [Fact]
+        public void SemanticDiffer_BaseTypeChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-017";
+            var toSnapshotId = "snap-b3-018";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "T:Ns.MyClass|asm1";
+
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-017:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"base_type\": \"global::Ns.BaseClassA\"}");
+
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.MyClass",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-b3-018:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"base_type\": \"global::Ns.BaseClassB\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var baseTypeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.BaseTypeChanged);
+            Assert.NotNull(baseTypeChanged);
+            Assert.Equal(symbolId, baseTypeChanged.SymbolId);
+        }
+
+        [Fact]
         public void SemanticDiffer_SymbolRenamed()
         {
             var store = new SqliteIndexStore(_dbPath);

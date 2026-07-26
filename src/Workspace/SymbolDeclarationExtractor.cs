@@ -299,6 +299,9 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             metadata["isRecord"] = type.IsRecord;
             metadata["accessibility"] = type.DeclaredAccessibility.ToString();
             metadata["arity"] = type.Arity;
+            metadata["base_type"] = type.TypeKind == TypeKind.Interface || type.BaseType == null
+                ? null
+                : type.BaseType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         }
         else if (symbol is IPropertySymbol prop)
         {
