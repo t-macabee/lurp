@@ -66,14 +66,12 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange()
     {
 
-        if (!MSBuildLocator.IsRegistered)
-        {
-            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-        }
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
 
         var snapshotA = await RunFullIndexAsync("Index A (full initial)");
 
@@ -94,14 +92,12 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     // belonging to re-extracted projects, an untouched project's null-path
     // edges are deleted and never regenerated, causing the incremental
     // snapshot to silently lose edges relative to a full rebuild.
-    [Fact]
+    [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_WhenUnaffectedProjectHasImplicitMembers()
     {
 
-        if (!MSBuildLocator.IsRegistered)
-        {
-            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-        }
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
 
         CreateMultiProjectTestSolution();
 
@@ -120,13 +116,11 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     // replacement document versions exist (pure-deletion path), the early
     // return skipped all pruning, leaving stale symbols from the deleted file
     // in the copied-forward snapshot.
-    [Fact]
+    [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_AfterFileDeletion()
     {
-        if (!MSBuildLocator.IsRegistered)
-        {
-            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-        }
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
 
         CreateFileDeletionTestSolution();
 
@@ -537,14 +531,12 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     // that point at changed ProjectA symbols would be stale (copied forward
     // from the previous snapshot with no re-extraction), and the incremental
     // snapshot would silently diverge from a full rebuild.
-    [Fact]
+    [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_WhenDependentProjectReferencesChangedSymbol()
     {
 
-        if (!MSBuildLocator.IsRegistered)
-        {
-            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-        }
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
 
         CreateCrossProjectDependentTestSolution();
 
@@ -563,14 +555,12 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     // identical byte content stored at different paths receive distinct
     // version IDs that include the document path, so consumers can tell them
     // apart and a second full rebuild produces an equivalent snapshot.
-    [Fact]
+    [SkippableFact]
     public async Task TwoIdenticalFiles_GetDistinctVersionIds_AndRerunProducesEquivalence()
     {
 
-        if (!MSBuildLocator.IsRegistered)
-        {
-            throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-        }
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
 
         CreateDuplicateContentTestSolution();
 
@@ -784,7 +774,3 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     }
 }
 
-internal sealed class SkipException : Exception
-{
-    public SkipException(string message) : base(message) { }
-}

@@ -100,10 +100,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // ── Test 1: FullIndex_Completes_WithNonZeroCounts ──────────────────────
     // Catches C1 (positional record crash) and C2 (FTS built after extraction).
 
-    [Fact]
+    [SkippableFact]
     public async Task FullIndex_Completes_WithNonZeroCounts()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -123,10 +124,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // ── Test 2: Status_AfterFreshIndex_ReportsUpToDate ─────────────────────
     // Catches C5 (snapshot properly marked complete; status path doesn't crash).
 
-    [Fact]
+    [SkippableFact]
     public async Task Status_AfterFreshIndex_ReportsUpToDate()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -159,10 +161,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // ── Test 3: Incremental_PreservesPriorSnapshotSource ───────────────────
     // Catches C4 (old snapshot source overwritten after incremental).
 
-    [Fact]
+    [SkippableFact]
     public async Task Incremental_PreservesPriorSnapshotSource()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         var snapshotA = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -209,10 +212,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // ── Test 4: Incremental_Matches_CleanRebuild_OnFixture ─────────────────
     // Catches C6 and D1 (incremental silently diverges from full rebuild).
 
-    [Fact]
+    [SkippableFact]
     public async Task Incremental_Matches_CleanRebuild_OnFixture()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -236,10 +240,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // ── Test 5: SourceSearch_Returns_Bounded_Distinct_Snippets ─────────────
     // Catches C3 (source search returns duplicates or full-file dumps).
 
-    [Fact]
+    [SkippableFact]
     public async Task SourceSearch_Returns_Bounded_Distinct_Snippets()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -266,10 +271,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // Catches D1 (absolute paths in source_document_path) and
     // D2 (non-canonical provenance values).
 
-    [Fact]
+    [SkippableFact]
     public async Task Edges_Have_No_AbsolutePaths_And_Only_Canonical_Provenance()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -310,10 +316,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // If an edge target is not present in snapshot_symbols, the edge is orphaned —
     // a sign that the refresher or extractor produced a stale target id.
 
-    [Fact]
+    [SkippableFact]
     public async Task FullIndex_Has_No_Orphan_Edge_Targets()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
@@ -336,10 +343,11 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // Catches D5 (project failures are swallowed, leaving snapshot "complete"
     // when it should be "in_progress").
 
-    [Fact]
+    [SkippableFact]
     public async Task FullIndex_ProjectFailure_LeavesSnapshotInProgress()
     {
-        IntegrationHarness.EnsureMSBuild();
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         // Create a real store and wrap it in a proxy that throws on

@@ -100,21 +100,24 @@ public static class IntegrationHarness
     }
 
     /// <summary>
-    /// Guard: throws SkipException when MSBuild is not available.
-    /// Call this at the start of every integration test.
+    /// Returns true when MSBuild is available (registered or registrable).
+    /// Callers should combine with <c>Skip.IfNot()</c> inside a
+    /// <c>[SkippableFact]</c> so the test is skipped — not failed — when
+    /// the environment lacks a .NET SDK.
     /// </summary>
-    public static void EnsureMSBuild()
+    public static bool TryRegisterMSBuild()
     {
-        if (!MSBuildLocator.IsRegistered)
+        if (MSBuildLocator.IsRegistered)
+            return true;
+
+        try
         {
-            try
-            {
-                MSBuildLocator.RegisterDefaults();
-            }
-            catch
-            {
-                throw new SkipException("MSBuild is not available on this system. Cannot run integration test.");
-            }
+            MSBuildLocator.RegisterDefaults();
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 

@@ -66,11 +66,10 @@ public sealed class MeasurementHarness : IAsyncLifetime, IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MeasureAllEditTypes()
     {
-        if (!MSBuildLocator.IsRegistered)
-            throw new SkipException("MSBuild not available.");
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild not available.");
 
         // ── Phase 1: Clean rebuild (baseline) ─────────────────
         _output.WriteLine("");
