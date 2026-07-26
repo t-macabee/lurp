@@ -237,7 +237,59 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         SnapshotAssertions.CompareSnapshotsAreEquivalent(dbPath, snapshotB, snapshotC);
     }
 
-    // ── Test 5: SourceSearch_Returns_Bounded_Distinct_Snippets ─────────────
+    // ── Test 5: Declaration lookup and partial-type contract ───────────────
+    // The public lookup accepts the caller-facing FQN with or without
+    // Roslyn's global:: prefix. A partial type must resolve to one symbol
+    // while retaining one declaration row for each source declaration.
+
+    [SkippableFact]
+    public async Task DeclarationLookup_ResolvesPartialType_AndPreservesBothDeclarations()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+
+        using var store = IntegrationHarness.OpenReadStore(dbPath);
+        var withoutGlobalPrefix = store.ResolveSymbolByFqn("Library.Widget", snapshotId);
+        var withGlobalPrefix = store.ResolveSymbolByFqn("global::Library.Widget", snapshotId);
+
+        Assert.NotNull(withoutGlobalPrefix);
+        Assert.NotNull(withGlobalPrefix);
+        Assert.Equal(withoutGlobalPrefix!.SymbolId.Value, withGlobalPrefix!.SymbolId.Value);
+        Assert.Equal("global::Library.Widget", withoutGlobalPrefix.FullyQualifiedName);
+        Assert.Equal(IndexedSymbolKind.Type, withoutGlobalPrefix.Kind);
+        Assert.Equal(2, withoutGlobalPrefix.DeclarationCount);
+        Assert.True(withoutGlobalPrefix.IsPartial);
+
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT doc.relative_path
+            FROM declarations d
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
+            WHERE d.symbol_id = @symbolId AND sd.snapshot_id = @snapshotId
+            ORDER BY doc.relative_path;";
+        command.Parameters.AddWithValue("@symbolId", withoutGlobalPrefix.SymbolId.Value);
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var declarationPaths = new List<string>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+                declarationPaths.Add(reader.GetString(0));
+        }
+
+        Assert.Equal(2, declarationPaths.Count);
+        Assert.Contains(declarationPaths, path => path.EndsWith("Widget.cs", StringComparison.Ordinal));
+        Assert.Contains(declarationPaths, path => path.EndsWith("Widget.Extra.cs", StringComparison.Ordinal));
+    }
+
+    // ── Test 6: SourceSearch_Returns_Bounded_Distinct_Snippets ─────────────
     // Catches C3 (source search returns duplicates or full-file dumps).
 
     [SkippableFact]
@@ -267,7 +319,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         }
     }
 
-    // ── Test 6: Edges_Have_No_AbsolutePaths_And_Only_Canonical_Provenance ──
+    // ── Test 7: Edges_Have_No_AbsolutePaths_And_Only_Canonical_Provenance ──
     // Catches D1 (absolute paths in source_document_path) and
     // D2 (non-canonical provenance values).
 
@@ -311,7 +363,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         }
     }
 
-    // ── Test 7: FullIndex_Has_No_Orphan_Edge_Targets ─────────────────────
+    // ── Test 8: FullIndex_Has_No_Orphan_Edge_Targets ─────────────────────
     // Cross-project edges must point only at live symbols in the same snapshot.
     // If an edge target is not present in snapshot_symbols, the edge is orphaned —
     // a sign that the refresher or extractor produced a stale target id.
@@ -339,7 +391,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         Assert.Equal(0, orphanCount);
     }
 
-    // ── Test 8: FullIndex_ProjectFailure_LeavesSnapshotInProgress ──────────
+    // ── Test 9: FullIndex_ProjectFailure_LeavesSnapshotInProgress ──────────
     // Catches D5 (project failures are swallowed, leaving snapshot "complete"
     // when it should be "in_progress").
 
