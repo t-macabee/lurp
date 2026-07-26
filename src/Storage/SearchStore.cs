@@ -190,29 +190,46 @@ public sealed class SearchStore : ISearchStore
 
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
+        if (string.IsNullOrWhiteSpace(query) || limit <= 0)
+            return [];
+
+        limit = Math.Max(1, limit);
+        snippetTokens = Math.Max(1, snippetTokens);
+
         using var command = _connection.CreateCommand();
 
         command.CommandText = @"
-            SELECT source_fts.document_path,
-                   snippet(source_fts, 1, '<mark>', '</mark>', '…', @snippetTokens) AS snippet
-            FROM source_fts
-            WHERE source_fts MATCH @query
-              AND source_fts.snapshot_id = @snapshotId
+            WITH matches AS (
+                SELECT source_fts.rowid,
+                       source_fts.rank,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY source_fts.document_path
+                           ORDER BY source_fts.rank
+                       ) AS path_rank
+                FROM source_fts
+                WHERE source_fts MATCH @query
+                  AND source_fts.snapshot_id = @snapshotId
         ";
 
         if (!includeGenerated)
         {
-            command.CommandText += @" AND NOT EXISTS (
-                SELECT 1 FROM documents d
-                JOIN document_versions dv ON dv.document_id = d.document_id
-                JOIN declarations dec ON dec.document_version_id = dv.document_version_id
-                WHERE d.relative_path = source_fts.document_path
-                  AND dec.is_generated = 1
-            )";
+            command.CommandText += @"
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM declarations dec
+                      WHERE dec.document_version_id = source_fts.document_version_id
+                        AND dec.is_generated = 1
+                  )";
         }
 
         command.CommandText += @"
-            ORDER BY rank
+            )
+            SELECT source_fts.document_path,
+                   snippet(source_fts, 1, '<mark>', '</mark>', '…', @snippetTokens) AS snippet
+            FROM source_fts
+            JOIN matches ON matches.rowid = source_fts.rowid
+            WHERE matches.path_rank = 1
+            ORDER BY matches.rank
             LIMIT @limit;
         ";
 

@@ -936,6 +936,75 @@ public class MigrationRunnerTests : IDisposable
         }
 
         [Fact]
+        public void SearchSource_SnapshotIsolation_UsesVersionBoundToRequestedSnapshot()
+        {
+            var store = CreateStore();
+            var snap1 = "snap-fts-iso-version-1";
+            var snap2 = "snap-fts-iso-version-2";
+
+            CreateSnapshotWithContent(store, snap1, "src/shared.cs", "class Shared { string OldMarker = \"old\"; }");
+            store.SaveDeclarations(snap1,
+            [
+                new SymbolDeclaration
+                {
+                    SymbolId = new SymbolId("T:GeneratedShared", "asm1", "GeneratedShared"),
+                    Kind = IndexedSymbolKind.Type,
+                    DocumentVersionId = "doc-src/shared.cs:hash-src/shared.cs",
+                    FullSpan = new DeclarationSpan(0, 10),
+                    SignatureSpan = new DeclarationSpan(0, 10),
+                    BodySpan = new DeclarationSpan(null, null),
+                    NameSpan = new DeclarationSpan(0, 10),
+                    IsGenerated = true,
+                    GeneratorIdentity = "test-generator"
+                }
+            ]);
+            store.BuildSearchIndex(snap1);
+
+            var manifest = new SnapshotRow
+            {
+                SnapshotId = snap2,
+                WorkspaceId = "workspace:///root/proj",
+                GitRoot = "/root",
+                SolutionPath = "/root/proj",
+                SdkVersion = "10.0.301",
+                CompilerVersion = "4.12.0.0",
+                CreatedAtUtc = DateTime.UtcNow,
+                Documents =
+                [
+                    new DocumentVersion(StringToBytes("class Shared { string NewMarker = \"new\"; }"))
+                    {
+                        DocumentId = "doc-shared-v2",
+                        FilePath = "src/shared.cs",
+                        ContentHash = "hash-shared-v2",
+                        Encoding = "utf-8",
+                        LineStart = "[0]",
+                        CreatedAtUtc = DateTime.MinValue,
+                        LineStarts = "[0]"
+                    }
+                ]
+            };
+            store.SaveSnapshot(manifest);
+            store.BuildSearchIndex(snap2);
+
+            Assert.Empty(store.SearchSource("old", snap2));
+            var current = store.SearchSource("new", snap2);
+            Assert.Single(current);
+            Assert.Equal("src/shared.cs", current[0].DocumentPath);
+        }
+
+        [Fact]
+        public void SearchSource_EmptyQueryAndNonPositiveLimit_ReturnEmpty()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-fts-bounds-001";
+            CreateSnapshotWithContent(store, snapshotId, "src/a.cs", "class A { }");
+            store.BuildSearchIndex(snapshotId);
+
+            Assert.Empty(store.SearchSource("", snapshotId));
+            Assert.Empty(store.SearchSource("class", snapshotId, limit: 0));
+        }
+
+        [Fact]
         public void Migration005_CreatesOperationalTables()
         {
             var runner = new MigrationRunner(_dbPath);
