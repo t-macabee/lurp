@@ -103,8 +103,19 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     internal void DeleteSnapshotData(string snapshotId)
     {
-        using var cmd = _connection.CreateCommand();
-        DeleteSnapshotData(cmd, snapshotId);
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.Transaction = transaction;
+            DeleteSnapshotData(cmd, snapshotId);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId)
