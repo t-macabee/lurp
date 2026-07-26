@@ -275,6 +275,16 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
         };
     }
 
+    private static readonly SymbolDisplayFormat SignatureFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints,
+        memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType |
+                        SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeExplicitInterface,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+    );
+
     private static string? BuildMetadataJson(ISymbol symbol)
     {
         var metadata = new Dictionary<string, object?>();
@@ -290,6 +300,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             metadata["accessibility"] = method.DeclaredAccessibility.ToString();
             metadata["arity"] = method.Arity;
             metadata["isExtensionMethod"] = method.IsExtensionMethod;
+            metadata["signature"] = method.ToDisplayString(SignatureFormat);
         }
         else if (symbol is INamedTypeSymbol type)
         {
@@ -313,6 +324,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             metadata["isReadOnly"] = prop.IsReadOnly;
             metadata["isWriteOnly"] = prop.IsWriteOnly;
             metadata["accessibility"] = prop.DeclaredAccessibility.ToString();
+            metadata["signature"] = prop.ToDisplayString(SignatureFormat);
         }
         else if (symbol is IFieldSymbol field)
         {
@@ -331,6 +343,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             metadata["isOverride"] = evt.IsOverride;
             metadata["isStatic"] = evt.IsStatic;
             metadata["accessibility"] = evt.DeclaredAccessibility.ToString();
+            metadata["signature"] = evt.ToDisplayString(SignatureFormat);
         }
 
         return metadata.Count > 0

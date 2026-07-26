@@ -2245,6 +2245,114 @@ class Derived : Base {
 
             Assert.Empty(changes);
         }
+
+        [Fact]
+        public void SemanticDiffer_GenericConstraintChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-019";
+            var toSnapshotId = "snap-b3-020";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.Foo|asm1";
+
+            // T constrained only by class
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-b3-019:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Foo<T>(T) where T : class\"}");
+
+            // Same method, but T now also constrained by new()
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-b3-020:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Foo<T>(T) where T : class, new()\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("where T : class", signatureChanged.DetailJson!);
+            Assert.Contains("where T : class, new()", signatureChanged.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_ExplicitInterfaceImplementationChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-b3-021";
+            var toSnapshotId = "snap-b3-022";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.MyType|asm1";
+
+            // Implicit implementation
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.MyType",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-b3-021:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Dispose()\"}");
+
+            // Explicit interface implementation
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.MyType",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-b3-022:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void IDisposable.Dispose()\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("Dispose()", signatureChanged.DetailJson!);
+            Assert.Contains("IDisposable.Dispose()", signatureChanged.DetailJson!);
+        }
     }
 
     public class B4GeneratedCodeTests : IDisposable
