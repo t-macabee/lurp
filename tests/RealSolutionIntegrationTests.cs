@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Lurp.Storage;
+using Lurp.Queries;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -287,6 +288,59 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         Assert.Equal(2, declarationPaths.Count);
         Assert.Contains(declarationPaths, path => path.EndsWith("Widget.cs", StringComparison.Ordinal));
         Assert.Contains(declarationPaths, path => path.EndsWith("Widget.Extra.cs", StringComparison.Ordinal));
+    }
+
+    [SkippableFact]
+    public async Task FastTravelQuery_NavigatesFromIndexedSpan()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+
+        using var store = IntegrationHarness.OpenReadStore(dbPath);
+        var queries = new FastTravelQueries(store);
+        var target = queries.Navigate("Library/Widget.cs", 6, snapshotId);
+
+        Assert.NotNull(target);
+        Assert.EndsWith("Library/Widget.cs", target!.DocumentPath, StringComparison.Ordinal);
+        Assert.True(target.FullStart < target.FullEnd);
+        Assert.True(target.NameStart < target.NameEnd);
+        var source = queries.GetDocument(target.DocumentPath, snapshotId);
+        Assert.NotNull(source);
+        var sourceBytes = System.Text.Encoding.UTF8.GetBytes(source!);
+        Assert.Contains("Name", System.Text.Encoding.UTF8.GetString(sourceBytes, target.NameStart, target.NameEnd - target.NameStart));
+    }
+
+    [SkippableFact]
+    public async Task NavigateHandler_ReturnsSnapshotBoundTarget()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+
+        var originalOut = Console.Out;
+        var capturedOut = new StringWriter();
+        Console.SetOut(capturedOut);
+        try
+        {
+            Lurp.Handlers.NavigateHandler.Run([
+                $"--output-dir={outputDir}",
+                $"--snapshot={snapshotId}",
+                "--file=Library/Widget.cs",
+                "--line=6",
+            ]);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        var output = capturedOut.ToString();
+        Assert.Contains(snapshotId, output, StringComparison.Ordinal);
+        Assert.Contains("Library/Widget.cs", output, StringComparison.Ordinal);
+        Assert.Contains("Name", output, StringComparison.Ordinal);
     }
 
     // ── Test 6: SourceSearch_Returns_Bounded_Distinct_Snippets ─────────────

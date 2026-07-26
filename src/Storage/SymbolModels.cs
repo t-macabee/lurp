@@ -138,5 +138,14 @@ namespace Lurp.Storage
         public bool IsGenerated { get; init; }
         public string? GeneratorIdentity { get; init; }
     }
+
+    public sealed record NavigationTarget(
+        string SymbolId,
+        string DocumentPath,
+        string DocumentVersionId,
+        int FullStart,
+        int FullEnd,
+        int NameStart,
+        int NameEnd);
 }
 

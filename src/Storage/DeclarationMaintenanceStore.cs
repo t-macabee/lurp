@@ -78,6 +78,46 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         return FindSymbolAtOffset(docVersionId, byteOffset, includeGenerated);
     }
 
+    internal NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
+    {
+        var (docVersionId, lineStarts) = GetDocumentLineStarts(relativePath, snapshotId);
+        if (docVersionId == null || lineStarts == null || lineStarts.Length == 0)
+            return null;
+
+        var lineIndex = Math.Max(0, line - 1);
+        if (lineIndex >= lineStarts.Length)
+            return null;
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT d.symbol_id, d.full_start, d.full_end, d.name_start, d.name_end,
+                   doc.relative_path, d.document_version_id
+            FROM declarations d
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            WHERE sd.snapshot_id = @snapshotId
+              AND d.document_version_id = @docVersionId
+              AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
+              AND d.full_start <= @byteOffset AND d.full_end > @byteOffset";
+        if (!includeGenerated)
+            command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+        command.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@docVersionId", docVersionId);
+        command.Parameters.AddWithValue("@byteOffset", lineStarts[lineIndex]);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        return new NavigationTarget(
+            reader.GetString(0), reader.GetString(5), reader.GetString(6),
+            reader.GetInt32(1), reader.GetInt32(2),
+            reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+            reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+    }
+
     private (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(string relativePath, string snapshotId)
     {
         using var getDocCmd = _connection.CreateCommand();

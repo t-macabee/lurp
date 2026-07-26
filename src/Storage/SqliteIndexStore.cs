@@ -171,6 +171,8 @@ namespace Lurp.Storage
             { EnsureOpen(); return _declMaintenance!.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds); }
         public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
             { EnsureOpen(); return _declMaintenance!.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated); }
+        public NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
+            { EnsureOpen(); return _declMaintenance!.NavigateToLocation(relativePath, line, snapshotId, includeGenerated); }
 
         // ── IEdgeStore ─────────────────────────────────────────────────────
 

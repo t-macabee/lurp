@@ -11,5 +11,6 @@ namespace Lurp.Storage
         void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds);
         List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);
         string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);
+        NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);
     }
 }

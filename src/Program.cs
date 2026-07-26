@@ -13,6 +13,7 @@ public class Program
         ["get-symbol"] = GetSymbolHandler.Run,
         ["search"] = SearchHandler.Run,
         ["find-symbol"] = FindSymbolHandler.Run,
+        ["navigate"] = NavigateHandler.Run,
         ["index"] = a => IndexHandler.Run(a).GetAwaiter().GetResult(),
         ["diff"] = DiffHandler.Run,
         ["impact"] = ImpactHandler.Run,
@@ -57,7 +58,7 @@ public class Program
 
     private static void PrintUnknownModeError()
     {
-        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, --mode=audit, --mode=annotate, or --mode=get-annotations.");
+        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=navigate, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, --mode=audit, --mode=annotate, or --mode=get-annotations.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
@@ -75,6 +76,7 @@ public class Program
         Console.WriteLine("  --mode=get-symbol          Look up symbol metadata.");
         Console.WriteLine("  --mode=search              Full-text search over source and symbols.");
         Console.WriteLine("  --mode=find-symbol         Resolve a symbol by FQN.");
+        Console.WriteLine("  --mode=navigate            Resolve an indexed declaration by file and line.");
         Console.WriteLine("  --mode=diff                Show semantic changes between two snapshots.");
         Console.WriteLine("  --mode=impact              Trace the impact path of a changed symbol.");
         Console.WriteLine("  --mode=context             Assemble a context capsule for a symbol.");
