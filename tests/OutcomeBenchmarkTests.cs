@@ -326,7 +326,7 @@ public sealed class OutcomeBenchmarkTests : IDisposable
     private static string LocateRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current != null && !File.Exists(Path.Combine(current.FullName, "task", "task_list.txt")))
+        while (current != null && !File.Exists(Path.Combine(current.FullName, "Lurp.slnx")))
             current = current.Parent;
         return current?.FullName
             ?? throw new InvalidOperationException("Could not locate repository root for outcome benchmark.");

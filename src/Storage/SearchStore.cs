@@ -276,6 +276,11 @@ public sealed class SearchStore : ISearchStore
 
     public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
     {
+        // Roslyn's FullyQualifiedFormat persists symbol FQNs with a "global::" prefix
+        // (e.g. "global::Outcome.Validation.OrderValidator"), but callers naturally type
+        // FQNs without it. Accept either form transparently.
+        var globalFqn = fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn : $"global::{fqn}";
+
         using var command = _connection.CreateCommand();
 
         command.CommandText = @"
@@ -285,7 +290,7 @@ public sealed class SearchStore : ISearchStore
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             JOIN declarations d ON d.symbol_id = s.symbol_id
-            WHERE ss.fqn = @fqn AND ss.snapshot_id = @snapshotId
+            WHERE (ss.fqn = @fqn OR ss.fqn = @globalFqn) AND ss.snapshot_id = @snapshotId
         ";
 
         if (!includeGenerated)
@@ -296,6 +301,7 @@ public sealed class SearchStore : ISearchStore
         command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
 
         command.Parameters.AddWithValue("@fqn", fqn);
+        command.Parameters.AddWithValue("@globalFqn", globalFqn);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         using var reader = command.ExecuteReader();
@@ -311,7 +317,7 @@ public sealed class SearchStore : ISearchStore
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             JOIN declarations d ON d.symbol_id = s.symbol_id
-            WHERE ss.fqn LIKE @pattern AND ss.snapshot_id = @snapshotId
+            WHERE (ss.fqn LIKE @pattern OR ss.fqn LIKE @globalPattern) AND ss.snapshot_id = @snapshotId
         ";
 
         if (!includeGenerated)
@@ -322,6 +328,7 @@ public sealed class SearchStore : ISearchStore
         command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
 
         command.Parameters.AddWithValue("@pattern", $"{fqn}%");
+        command.Parameters.AddWithValue("@globalPattern", $"{globalFqn}%");
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         using var reader2 = command.ExecuteReader();
