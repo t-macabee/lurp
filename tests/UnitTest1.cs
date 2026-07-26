@@ -57,13 +57,13 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsFifteen()
+    public void RunMigrations_AppliesAllMigrations_SchemaVersionIsSixteen()
     {
         var runner = new MigrationRunner(_dbPath);
 
         runner.RunMigrations();
 
-        Assert.Equal(15, runner.GetCurrentSchemaVersion());
+        Assert.Equal(16, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class MigrationRunnerTests : IDisposable
         runner.RunMigrations();
         runner.RunMigrations();
 
-        Assert.Equal(15, runner.GetCurrentSchemaVersion());
+        Assert.Equal(16, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class MigrationRunnerTests : IDisposable
 
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
-        Assert.Equal(15, runner.GetCurrentSchemaVersion());
+        Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
         using var connection = new SqliteConnection($"Data Source={_dbPath}");
         connection.Open();
@@ -463,7 +463,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "T:TestNs.Foo",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Type,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 33, fullE: 112,
                 sigS: 33, sigE: 54,
                 bodyS: 54, bodyE: 112,
@@ -492,7 +492,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "M:TestNs.Foo.Bar",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 56, fullE: 107,
                 sigS: 56, sigE: 82,
                 bodyS: 82, bodyE: 106,
@@ -517,7 +517,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "T:TestNs.Foo",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Type,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 33, fullE: 112,
                 sigS: 33, sigE: 54,
                 bodyS: 54, bodyE: 112,
@@ -553,7 +553,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "M:TestNs.Foo.AbstractFoo",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 33, fullE: 112,
                 sigS: 33, sigE: 113,
                 bodyS: null, bodyE: null,
@@ -598,7 +598,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = symId,
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-p1",
+                DocumentVersionId = "doc-part1:hash-p1",
                 FullSpan = new DeclarationSpan(0, 29),
                 SignatureSpan = new DeclarationSpan(0, 15),
                 BodySpan = new DeclarationSpan(15, 28),
@@ -610,7 +610,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = symId,
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-p2",
+                DocumentVersionId = "doc-part2:hash-p2",
                 FullSpan = new DeclarationSpan(0, 29),
                 SignatureSpan = new DeclarationSpan(0, 15),
                 BodySpan = new DeclarationSpan(15, 28),
@@ -644,7 +644,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "M:TestNs.Foo.Bar",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 56, fullE: 107,
                 sigS: 56, sigE: 82,
                 bodyS: 82, bodyE: 106,
@@ -668,7 +668,7 @@ public class MigrationRunnerTests : IDisposable
                 docCommentId: "M:TestNs.Foo.Bar",
                 assembly: "assembly1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc1:hash1",
                 fullS: 56, fullE: 107,
                 sigS: 56, sigE: 82,
                 bodyS: 82, bodyE: 106,
@@ -779,7 +779,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = new SymbolId("T:N.Foo", "asm1", "N.Foo"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-src/Foo.cs",
+                DocumentVersionId = "doc-src/Foo.cs:hash-src/Foo.cs",
                 FullSpan = new DeclarationSpan(0, 10),
                 SignatureSpan = new DeclarationSpan(0, 10),
                 BodySpan = new DeclarationSpan(null, null),
@@ -817,7 +817,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = new SymbolId("T:A", "asm1", "A"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-src/a.cs",
+                DocumentVersionId = "doc-src/a.cs:hash-src/a.cs",
                 FullSpan = new DeclarationSpan(0, 10),
                 SignatureSpan = new DeclarationSpan(0, 10),
                 BodySpan = new DeclarationSpan(null, null),
@@ -842,7 +842,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = new SymbolId("T:A", "asm1", "MyNs.A"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-src/a.cs",
+                DocumentVersionId = "doc-src/a.cs:hash-src/a.cs",
                 FullSpan = new DeclarationSpan(0, 10),
                 SignatureSpan = new DeclarationSpan(0, 10),
                 BodySpan = new DeclarationSpan(null, null),
@@ -868,7 +868,7 @@ public class MigrationRunnerTests : IDisposable
             {
                 SymbolId = new SymbolId("T:A", "asm1", "MyNs.MyClass"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash-src/a.cs",
+                DocumentVersionId = "doc-src/a.cs:hash-src/a.cs",
                 FullSpan = new DeclarationSpan(0, 10),
                 SignatureSpan = new DeclarationSpan(0, 10),
                 BodySpan = new DeclarationSpan(null, null),
@@ -918,7 +918,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -939,7 +939,7 @@ public class MigrationRunnerTests : IDisposable
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1331,10 +1331,10 @@ public class MigrationRunnerTests : IDisposable
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
         }
 
         [Fact]
@@ -1773,10 +1773,10 @@ class Derived : Base {
         {
             var runner = new MigrationRunner(_dbPath);
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -1900,7 +1900,7 @@ class Derived : Base {
                     docCommentId: "M:Ns.Foo",
                     assembly: "asm1",
                     kind: IndexedSymbolKind.Method,
-                    docVersionId: "hash1",
+                    docVersionId: "doc-snap-b3-005:hash1",
                     fullS: 0, fullE: 10,
                     sigS: 0, sigE: 5,
                     bodyS: 6, bodyE: 10,
@@ -1915,7 +1915,7 @@ class Derived : Base {
                     docCommentId: "M:Ns.Baz",
                     assembly: "asm1",
                     kind: IndexedSymbolKind.Method,
-                    docVersionId: "hash1",
+                    docVersionId: "doc-snap-b3-006:hash1",
                     fullS: 0, fullE: 10,
                     sigS: 0, sigE: 5,
                     bodyS: 6, bodyE: 10,
@@ -2002,7 +2002,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-011:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2014,7 +2014,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-012:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2052,7 +2052,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-013:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2064,7 +2064,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-014:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2104,7 +2104,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-015:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2115,7 +2115,7 @@ class Derived : Base {
                 docCommentId: "M:Ns.Foo",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
-                docVersionId: "hash1",
+                docVersionId: "doc-snap-b3-016:hash1",
                 fullS: 0, fullE: 10,
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
@@ -2190,10 +2190,10 @@ class Derived : Base {
             var runner = new MigrationRunner(_dbPath);
 
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             runner.RunMigrations();
-            Assert.Equal(15, runner.GetCurrentSchemaVersion());
+            Assert.Equal(16, runner.GetCurrentSchemaVersion());
 
             using var connection = new SqliteConnection($"Data Source={_dbPath}");
             connection.Open();
@@ -2224,7 +2224,7 @@ class Derived : Base {
             {
                 SymbolId = new SymbolId("T:GeneratedClass", "asm1", "GeneratedClass"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash1",
+                DocumentVersionId = "doc-src/Generated.cs:hash1",
                 FullSpan = new DeclarationSpan(0, 44),
                 SignatureSpan = new DeclarationSpan(0, 26),
                 BodySpan = new DeclarationSpan(26, 43),
@@ -2259,7 +2259,7 @@ class Derived : Base {
             {
                 SymbolId = new SymbolId("T:Gen", "asm1", "Gen"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash1",
+                DocumentVersionId = "doc-src/Gen.cs:hash1",
                 FullSpan = new DeclarationSpan(0, 40),
                 SignatureSpan = new DeclarationSpan(0, 20),
                 BodySpan = new DeclarationSpan(21, 39),
@@ -2290,7 +2290,7 @@ class Derived : Base {
             {
                 SymbolId = new SymbolId("T:NormalClass", "asm1", "NormalClass"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash1",
+                DocumentVersionId = "doc-src/Normal.cs:hash1",
                 FullSpan = new DeclarationSpan(0, 20),
                 SignatureSpan = new DeclarationSpan(0, 15),
                 BodySpan = new DeclarationSpan(16, 19),
@@ -2302,7 +2302,7 @@ class Derived : Base {
             {
                 SymbolId = new SymbolId("T:GenClass", "asm1", "GenClass"),
                 Kind = IndexedSymbolKind.Type,
-                DocumentVersionId = "hash1",
+                DocumentVersionId = "doc-src/Normal.cs:hash1",
                 FullSpan = new DeclarationSpan(0, 20),
                 SignatureSpan = new DeclarationSpan(0, 15),
                 BodySpan = new DeclarationSpan(16, 19),
