@@ -1,0 +1,43 @@
+{
+  "benchmark": "lurp-outcome-benchmark",
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "local-validation-change",
+      "starting_symbol": "Outcome.Validation.OrderValidator",
+      "contracts": ["Outcome.Contracts.IOrderValidator"],
+      "tests": ["Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal"],
+      "expected_patch_files": ["Validation/OrderValidator.cs"],
+      "runtime_vectors": [],
+      "edit": {
+        "file": "Validation/OrderValidator.cs",
+        "before": "order.Total > 0",
+        "after": "order.Total >= 0"
+      }
+    },
+    {
+      "id": "handler-dto-modification",
+      "starting_symbol": "Outcome.Application.OrderHandler",
+      "contracts": ["Outcome.Contracts.IOrderHandler", "Outcome.Contracts.IOrderValidator"],
+      "tests": ["Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult"],
+      "expected_patch_files": ["Contracts/OrderContracts.cs", "Application/OrderHandler.cs"],
+      "runtime_vectors": [],
+      "edit": {
+        "files": ["Contracts/OrderContracts.cs", "Application/OrderHandler.cs"]
+      }
+    },
+    {
+      "id": "di-implementation-replacement",
+      "starting_symbol": "Outcome.Composition.ServiceRegistration.Configure",
+      "contracts": [],
+      "tests": ["Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"],
+      "expected_patch_files": ["Composition/ServiceRegistration.cs"],
+      "runtime_vectors": ["runtime:unknown"],
+      "edit": {
+        "file": "Composition/ServiceRegistration.cs",
+        "before": "AddScoped<IOrderValidator, StrictOrderValidator>()",
+        "after": "AddScoped<IOrderValidator, OrderValidator>()"
+      }
+    }
+  ]
+}

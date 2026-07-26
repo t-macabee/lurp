@@ -1,0 +1,41 @@
+{
+  "benchmark": "lurp-outcome-benchmark",
+  "version": 1,
+  "generatedAtUtc": "2026-07-26T20:20:28.2419521Z",
+  "runner": "tests/OutcomeBenchmarkTests.cs",
+  "measures": [
+    "correct starting symbol found",
+    "source retrieved without project exploration",
+    "all constraining contracts included",
+    "affected callers and implementations represented",
+    "relevant tests included",
+    "unknown runtime vectors declared",
+    "irrelevant capsule content",
+    "worker tokens after capsule",
+    "patch avoids unrelated changes",
+    "incremental and clean indexing agree"
+  ],
+  "scenarios": [
+    {
+      "id": "local-validation-change",
+      "status": "blocked",
+      "blocker": "One or more projects failed during full index. (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.)",
+      "failure": "full-index-baseline",
+      "nextAction": "Resolve the T4 relation-uniqueness conflict, then rerun the outcome benchmark."
+    },
+    {
+      "id": "handler-dto-modification",
+      "status": "blocked",
+      "blocker": "One or more projects failed during full index. (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.)",
+      "failure": "full-index-baseline",
+      "nextAction": "Resolve the T4 relation-uniqueness conflict, then rerun the outcome benchmark."
+    },
+    {
+      "id": "di-implementation-replacement",
+      "status": "blocked",
+      "blocker": "One or more projects failed during full index. (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.) (SQLite Error 19: \u0027UNIQUE constraint failed: edges.snapshot_id, edges.source_symbol_id, edges.target_symbol_id, edges.kind\u0027.)",
+      "failure": "full-index-baseline",
+      "nextAction": "Resolve the T4 relation-uniqueness conflict, then rerun the outcome benchmark."
+    }
+  ]
+}
