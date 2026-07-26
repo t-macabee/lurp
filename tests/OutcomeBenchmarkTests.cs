@@ -94,7 +94,7 @@ public sealed class OutcomeBenchmarkTests : IDisposable
         }
 
         var outputPath = Environment.GetEnvironmentVariable("LURP_OUTCOME_BENCHMARK_OUTPUT")
-            ?? Path.Combine(LocateRepositoryRoot(), "task", "benchmark", "runs", "baseline.json");
+            ?? Path.Combine(LocateRepositoryRoot(), "tests", "benchmark-runs", "baseline.json");
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
 
         var evaluation = new
@@ -321,7 +321,7 @@ public sealed class OutcomeBenchmarkTests : IDisposable
     }
 
     private static string LocateFixtureRoot()
-        => Path.Combine(LocateRepositoryRoot(), "task", "benchmark", "fixtures", "OutcomeBenchmark");
+        => Path.Combine(LocateRepositoryRoot(), "tests", "fixtures", "OutcomeBenchmark");
 
     private static string LocateRepositoryRoot()
     {
