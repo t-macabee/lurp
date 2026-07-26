@@ -126,9 +126,49 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotA = await RunFullIndexAsync("Index A (full initial)");
 
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var command = conn.CreateCommand();
+            command.CommandText = @"
+                SELECT COUNT(*)
+                FROM edges
+                WHERE snapshot_id = @snapshotId
+                  AND source_document_path = 'src/TestProject/Models.cs';";
+            command.Parameters.AddWithValue("@snapshotId", snapshotA);
+
+            Assert.True(Convert.ToInt32(command.ExecuteScalar()) > 0,
+                "Precondition: the deleted source file must have an outgoing edge.");
+        }
+
         DeleteModelsFile();
 
         var snapshotB = await RunIncrementalIndexAsync("Index B (incremental after deletion)");
+
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var command = conn.CreateCommand();
+            command.CommandText = @"
+                SELECT COUNT(*)
+                FROM edges e
+                WHERE e.snapshot_id = @snapshotId
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1 FROM snapshot_symbols ss
+                          WHERE ss.snapshot_id = e.snapshot_id
+                            AND ss.symbol_id = e.source_symbol_id
+                      )
+                      OR NOT EXISTS (
+                          SELECT 1 FROM snapshot_symbols ss
+                          WHERE ss.snapshot_id = e.snapshot_id
+                            AND ss.symbol_id = e.target_symbol_id
+                      )
+                  );";
+            command.Parameters.AddWithValue("@snapshotId", snapshotB);
+
+            Assert.Equal(0, Convert.ToInt32(command.ExecuteScalar()));
+        }
 
         var snapshotC = await RunFullIndexAsync("Index C (full rebuild after deletion)", deleteFirst: false);
 
@@ -506,6 +546,11 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 public string Id { get; set; } = "";
                 public decimal Price { get; set; }
             }
+
+            public class ModelFactory
+            {
+                public Calculator CreateCalculator() => new Calculator();
+            }
             """);
 
         File.WriteAllText(_solutionPath, $"""
@@ -773,4 +818,3 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         return SnapshotAssertions.GetFtsCounts(_dbPath, snapshotId);
     }
 }
-

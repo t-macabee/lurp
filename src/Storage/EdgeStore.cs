@@ -422,8 +422,13 @@ public sealed class EdgeStore : IEdgeStore
         command.CommandText = @"
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
-              AND target_symbol_id NOT IN (
-                  SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
+              AND (
+                  source_symbol_id NOT IN (
+                      SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
+                  )
+                  OR target_symbol_id NOT IN (
+                      SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
+                  )
               );
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
