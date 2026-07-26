@@ -14,6 +14,31 @@ namespace Lurp.Storage.Tests;
 /// </summary>
 internal static class SnapshotAssertions
 {
+    private sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
+
+    private sealed record DeclarationSnapshot(
+        string SymbolId,
+        string DocumentPath,
+        int? FullStart,
+        int? FullEnd,
+        int? SignatureStart,
+        int? SignatureEnd,
+        int? BodyStart,
+        int? BodyEnd,
+        int? NameStart,
+        int? NameEnd,
+        bool IsPartial,
+        bool IsGenerated,
+        string? GeneratorIdentity);
+
+    private sealed record SourceFtsSnapshot(string DocumentPath, string Content);
+
+    private sealed record SymbolFtsSnapshot(
+        string SymbolId,
+        string Fqn,
+        string DocCommentId,
+        string Kind);
+
     public static void CompareSnapshotsAreEquivalent(
         string dbPath, string snapshotB, string snapshotC)
     {
@@ -36,6 +61,14 @@ internal static class SnapshotAssertions
                 $"  B count: {symbolsB.Count}, C count: {symbolsC.Count}\n" +
                 $"  Only in B: {string.Join(", ", symbolsB.Except(symbolsC, StringComparer.Ordinal).Take(10))}\n" +
                 $"  Only in C: {string.Join(", ", symbolsC.Except(symbolsB, StringComparer.Ordinal).Take(10))}");
+
+            Assert.Equal(
+                ReadSymbols(dbPath, snapshotC),
+                ReadSymbols(dbPath, snapshotB));
+
+            Assert.Equal(
+                ReadDeclarations(dbPath, snapshotC),
+                ReadDeclarations(dbPath, snapshotB));
 
             var edgesB = store.GetEdges(snapshotB);
             var edgesC = store.GetEdges(snapshotC);
@@ -82,12 +115,141 @@ internal static class SnapshotAssertions
             var ftsCountsC = GetFtsCounts(dbPath, snapshotC);
             Assert.Equal(ftsCountsC.SourceRows, ftsCountsB.SourceRows);
             Assert.Equal(ftsCountsC.SymbolRows, ftsCountsB.SymbolRows);
+
+            Assert.Equal(
+                ReadSourceFts(dbPath, snapshotC),
+                ReadSourceFts(dbPath, snapshotB));
+
+            Assert.Equal(
+                ReadSymbolFts(dbPath, snapshotC),
+                ReadSymbolFts(dbPath, snapshotB));
         }
         finally
         {
             store.Close();
         }
     }
+
+    private static List<SymbolSnapshot> ReadSymbols(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT symbol_id, fqn, metadata_json
+            FROM snapshot_symbols
+            WHERE snapshot_id = @snapshotId
+            ORDER BY symbol_id;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<SymbolSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new SymbolSnapshot(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+
+        return result;
+    }
+
+    private static List<DeclarationSnapshot> ReadDeclarations(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT d.symbol_id, docs.relative_path,
+                   d.full_start, d.full_end,
+                   d.signature_start, d.signature_end,
+                   d.body_start, d.body_end,
+                   d.name_start, d.name_end,
+                   d.is_partial, d.is_generated, d.generator_identity
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents docs ON docs.document_id = dv.document_id
+            JOIN declarations d ON d.document_version_id = sd.document_version_id
+            WHERE sd.snapshot_id = @snapshotId
+            ORDER BY d.symbol_id, docs.relative_path, d.full_start, d.full_end,
+                     d.signature_start, d.signature_end, d.body_start, d.body_end,
+                     d.name_start, d.name_end;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<DeclarationSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new DeclarationSnapshot(
+                reader.GetString(0),
+                reader.GetString(1),
+                ReadNullableInt(reader, 2),
+                ReadNullableInt(reader, 3),
+                ReadNullableInt(reader, 4),
+                ReadNullableInt(reader, 5),
+                ReadNullableInt(reader, 6),
+                ReadNullableInt(reader, 7),
+                ReadNullableInt(reader, 8),
+                ReadNullableInt(reader, 9),
+                reader.GetInt32(10) != 0,
+                reader.GetInt32(11) != 0,
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
+        }
+
+        return result;
+    }
+
+    private static List<SourceFtsSnapshot> ReadSourceFts(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT document_path, content
+            FROM source_fts
+            WHERE snapshot_id = @snapshotId
+            ORDER BY document_path, content;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<SourceFtsSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new SourceFtsSnapshot(reader.GetString(0), reader.GetString(1)));
+        return result;
+    }
+
+    private static List<SymbolFtsSnapshot> ReadSymbolFts(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT symbol_id, fqn, doc_comment_id, kind
+            FROM symbol_fts
+            WHERE snapshot_id = @snapshotId
+            ORDER BY symbol_id, fqn, doc_comment_id, kind;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<SymbolFtsSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new SymbolFtsSnapshot(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3)));
+        }
+        return result;
+    }
+
+    private static int? ReadNullableInt(SqliteDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
 
     public static void NormalizeEdges(List<EdgeRecord> edges)
     {

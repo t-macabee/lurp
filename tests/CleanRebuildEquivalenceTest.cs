@@ -175,6 +175,208 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
 
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterSignatureEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "signature edit",
+            () => CreateSingleProjectSolution(("Calculator.cs", """
+                namespace TestProject;
+
+                public class Calculator
+                {
+                    public int Compute(int value) => value + 1;
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Calculator.cs"),
+                """
+                namespace TestProject;
+
+                public class Calculator
+                {
+                    public long Compute(long value) => value + 1;
+                }
+                """));
+    }
+
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterBodyOnlyEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "body-only edit",
+            () => CreateSingleProjectSolution(("Calculator.cs", """
+                namespace TestProject;
+
+                public class Calculator
+                {
+                    public int Compute(int value) => value + 1;
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Calculator.cs"),
+                """
+                namespace TestProject;
+
+                public class Calculator
+                {
+                    public int Compute(int value) => value + 2;
+                }
+                """));
+    }
+
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterDocumentMove()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "document move",
+            () => CreateSingleProjectSolution(("Original.cs", """
+                namespace TestProject;
+
+                public class MovedType
+                {
+                    public string GetValue() => "original";
+                }
+                """)),
+            () =>
+            {
+                var sourcePath = Path.Combine(_testDir, "src", "TestProject", "Original.cs");
+                var movedDirectory = Path.Combine(_testDir, "src", "TestProject", "Moved");
+                Directory.CreateDirectory(movedDirectory);
+                File.Move(sourcePath, Path.Combine(movedDirectory, "Original.cs"));
+            });
+    }
+
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterPartialClassEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "partial class edit",
+            () => CreateSingleProjectSolution(
+                ("Part1.cs", """
+                namespace TestProject;
+
+                public partial class Widget
+                {
+                    public void First() { }
+                }
+                """),
+                ("Part2.cs", """
+                namespace TestProject;
+
+                public partial class Widget { }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Part2.cs"),
+                """
+                namespace TestProject;
+
+                public partial class Widget
+                {
+                    public void Second() { }
+                }
+                """));
+    }
+
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterBaseAndInterfaceEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "base and interface edit",
+            () => CreateSingleProjectSolution(("Types.cs", """
+                namespace TestProject;
+
+                public class BaseA { }
+                public class BaseB { }
+                public interface IMarker { }
+
+                public class Widget : BaseA { }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Types.cs"),
+                """
+                namespace TestProject;
+
+                public class BaseA { }
+                public class BaseB { }
+                public interface IMarker { }
+
+                public class Widget : BaseB, IMarker { }
+                """));
+    }
+
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterDependencyInjectionRegistrationEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "dependency injection registration edit",
+            () => CreateSingleProjectSolution(("CompositionRoot.cs", """
+                namespace Microsoft.Extensions.DependencyInjection;
+
+                public interface IServiceCollection { }
+
+                public static class ServiceCollectionServiceExtensions
+                {
+                    public static IServiceCollection AddScoped<TService, TImplementation>(
+                        this IServiceCollection services)
+                        where TImplementation : TService => services;
+                }
+                """), ("Services.cs", """
+                using Microsoft.Extensions.DependencyInjection;
+
+                namespace TestProject;
+
+                public interface IService { }
+                public class Service : IService { }
+                public class OtherService : IService { }
+
+                public class CompositionRoot
+                {
+                    public void Configure(IServiceCollection services)
+                    {
+                        services.AddScoped<IService, Service>();
+                    }
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Services.cs"),
+                """
+                using Microsoft.Extensions.DependencyInjection;
+
+                namespace TestProject;
+
+                public interface IService { }
+                public class Service : IService { }
+                public class OtherService : IService { }
+
+                public class CompositionRoot
+                {
+                    public void Configure(IServiceCollection services)
+                    {
+                        services.AddScoped<IService, OtherService>();
+                    }
+                }
+                """));
+    }
+
     private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true)
     {
         Console.WriteLine($"--- {label} ---");
@@ -300,6 +502,23 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         SnapshotAssertions.CompareSnapshotsAreEquivalent(_dbPath, snapshotB, snapshotC);
     }
 
+    private async Task AssertIncrementalMatchesFullRebuildAsync(
+        string scenario,
+        Action createSolution,
+        Action modifySolution)
+    {
+        createSolution();
+
+        var snapshotA = await RunFullIndexAsync($"Index A (full initial, {scenario})");
+        modifySolution();
+        var snapshotB = await RunIncrementalIndexAsync($"Index B (incremental, {scenario})");
+        var snapshotC = await RunFullIndexAsync(
+            $"Index C (full after {scenario})",
+            deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
     private void CreateTestSolution()
     {
 
@@ -374,6 +593,39 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             """);
 
         File.WriteAllText(_solutionPath, $"""
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/TestProject/TestProject.csproj" />
+              </Folder>
+            </Solution>
+            """);
+    }
+
+    private void CreateSingleProjectSolution(params (string Path, string Content)[] files)
+    {
+        var projectDirectory = Path.Combine(_testDir, "src", "TestProject");
+        if (Directory.Exists(projectDirectory))
+            Directory.Delete(projectDirectory, recursive: true);
+        Directory.CreateDirectory(projectDirectory);
+
+        File.WriteAllText(Path.Combine(projectDirectory, "TestProject.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        foreach (var (relativePath, content) in files)
+        {
+            var filePath = Path.Combine(projectDirectory, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+            File.WriteAllText(filePath, content);
+        }
+
+        File.WriteAllText(_solutionPath, """
             <Solution>
               <Folder Name="/src/">
                 <Project Path="src/TestProject/TestProject.csproj" />
