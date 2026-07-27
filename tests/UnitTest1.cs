@@ -1650,6 +1650,48 @@ class Foo {
         }
 
         [Fact]
+        public void Calls_OverloadedBinaryOperator_EmitsCallsEdge()
+        {
+            var source = @"
+class Money
+{
+    public static Money operator +(Money left, Money right) => left;
+
+    public Money Add(Money other) => this + other;
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-operator", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("Add") &&
+                e.TargetSymbolId.Contains("op_Addition"));
+        }
+
+        [Fact]
+        public void Calls_UserDefinedConversion_EmitsCallsEdge()
+        {
+            var source = @"
+class Fraction
+{
+    public static explicit operator int(Fraction value) => 1;
+
+    public int ToInt() => (int)this;
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-conversion", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("ToInt") &&
+                e.TargetSymbolId.Contains("op_Explicit"));
+        }
+
+        [Fact]
         public void Calls_TwoCallSitesForSameRelation_PersistsOneEdge()
         {
             var source = @"

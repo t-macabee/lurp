@@ -204,6 +204,44 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     }
 
     [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "operator and conversion call edit",
+            () => CreateSingleProjectSolution(("Money.cs", """
+                namespace TestProject;
+
+                public sealed class Money
+                {
+                    public static Money operator +(Money left, Money right) => left;
+                    public static explicit operator int(Money value) => 1;
+
+                    public int Convert() => 1;
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Money.cs"),
+                """
+                namespace TestProject;
+
+                public sealed class Money
+                {
+                    public static Money operator +(Money left, Money right) => left;
+                    public static explicit operator int(Money value) => 1;
+
+                    public int Convert()
+                    {
+                        var total = this + this;
+                        return (int)total;
+                    }
+                }
+                """));
+    }
+
+    [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_AfterBodyOnlyEdit()
     {
         Skip.If(!MSBuildLocator.IsRegistered,

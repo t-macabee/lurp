@@ -30,27 +30,48 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
 
             foreach (var invocation in invocations)
             {
-                var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                AddCallEdge(invocation, semanticModel, callerId, edges, seen);
+            }
 
-                if (symbolInfo.Symbol is IMethodSymbol callee && callee.MethodKind != MethodKind.AnonymousFunction)
-                {
-                    var calleeId = context.MakeSymbolId(callee);
+            // Overloaded operators are represented by BinaryExpressionSyntax,
+            // not InvocationExpressionSyntax. Keep built-in operators out of
+            // the graph: only a compiler-resolved operator method is a call.
+            foreach (var binary in bodySyntax.DescendantNodes().OfType<BinaryExpressionSyntax>())
+            {
+                AddCallEdge(binary, semanticModel, callerId, edges, seen);
+            }
 
-                    if (calleeId == null || calleeId == callerId)
-                        continue;
-
-                    var key = (callerId, calleeId, EdgeKind.Calls.ToString());
-
-                    if (!seen.Add(key))
-                        continue;
-
-                    var loc = context.GetLocationInfo(invocation.GetLocation());
-
-                    edges.Add(context.MakeEdge(callerId, calleeId, EdgeKind.Calls.ToString(), ExtractorConstants.CallsExtractor, loc));
-                }
+            // User-defined conversions are represented by CastExpressionSyntax
+            // and resolve to the conversion operator method.
+            foreach (var cast in bodySyntax.DescendantNodes().OfType<CastExpressionSyntax>())
+            {
+                AddCallEdge(cast, semanticModel, callerId, edges, seen);
             }
         }
 
         return edges;
+    }
+
+    private void AddCallEdge(
+        SyntaxNode syntax,
+        SemanticModel semanticModel,
+        string callerId,
+        List<EdgeRecord> edges,
+        HashSet<(string source, string target, string kind)> seen)
+    {
+        if (semanticModel.GetSymbolInfo(syntax).Symbol is not IMethodSymbol callee ||
+            callee.MethodKind == MethodKind.AnonymousFunction)
+            return;
+
+        var calleeId = context.MakeSymbolId(callee);
+        if (calleeId == null || calleeId == callerId)
+            return;
+
+        var kind = EdgeKind.Calls.ToString();
+        if (!seen.Add((callerId, calleeId, kind)))
+            return;
+
+        var location = context.GetLocationInfo(syntax.GetLocation());
+        edges.Add(context.MakeEdge(callerId, calleeId, kind, ExtractorConstants.CallsExtractor, location));
     }
 }
