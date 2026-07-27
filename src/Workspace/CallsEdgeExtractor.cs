@@ -1,5 +1,6 @@
 using Lurp.Storage;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -47,9 +48,70 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             {
                 AddCallEdge(cast, semanticModel, callerId, edges, seen);
             }
+
+            // Indexer access (obj[key]) resolves to the indexer property, not
+            // an accessor method. Emit Reads/Writes edges so consumers can
+            // distinguish indexer binding from ordinary method invocations.
+            foreach (var elementAccess in bodySyntax.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
+            {
+                AddIndexerEdge(elementAccess, semanticModel, callerId, edges, seen);
+            }
         }
 
         return edges;
+    }
+
+    private void AddIndexerEdge(
+        ElementAccessExpressionSyntax elementAccess,
+        SemanticModel semanticModel,
+        string callerId,
+        List<EdgeRecord> edges,
+        HashSet<(string source, string target, string kind)> seen)
+    {
+        if (semanticModel.GetSymbolInfo(elementAccess).Symbol is not IPropertySymbol { IsIndexer: true } indexer)
+            return;
+
+        var indexerId = context.MakeSymbolId(indexer);
+        if (indexerId == null || indexerId == callerId)
+            return;
+
+        var isWrite = IsWriteContext(elementAccess);
+        var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
+
+        if (!seen.Add((callerId, indexerId, kind)))
+            return;
+
+        var location = context.GetLocationInfo(elementAccess.GetLocation());
+        edges.Add(context.MakeEdge(callerId, indexerId, kind, ExtractorConstants.CallsExtractor, location));
+    }
+
+    private static bool IsWriteContext(SyntaxNode node)
+    {
+        if (node.Parent is AssignmentExpressionSyntax assign)
+            return assign.Left == node;
+
+        if (node.Parent is PrefixUnaryExpressionSyntax preUnary &&
+            (preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
+             preUnary.IsKind(SyntaxKind.PreDecrementExpression)))
+        {
+            return preUnary.Operand == node;
+        }
+
+        if (node.Parent is PostfixUnaryExpressionSyntax postUnary &&
+            (postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
+             postUnary.IsKind(SyntaxKind.PostDecrementExpression)))
+        {
+            return postUnary.Operand == node;
+        }
+
+        if (node.Parent is ArgumentSyntax arg &&
+            (arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
+             arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private void AddCallEdge(

@@ -7,6 +7,7 @@ namespace Lurp.Storage
         References,
         Contains,
         Overrides,
+        Hides,
         Calls,
         Constructs,
         Reads,

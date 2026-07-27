@@ -8,6 +8,7 @@ internal static class ExtractorConstants
     internal const string CallsExtractor = "calls-v1";
     internal const string ConstructsExtractor = "constructs-v1";
     internal const string OverridesExtractor = "overrides-v1";
+    internal const string HidesExtractor = "hides-v1";
     internal const string ReadsWritesExtractor = "readswrites-v1";
     internal const string ReturnsExtractor = "returns-v1";
     internal const string ThrowsExtractor = "throws-v1";

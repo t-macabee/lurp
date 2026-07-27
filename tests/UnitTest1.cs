@@ -1272,6 +1272,7 @@ public class MigrationRunnerTests : IDisposable
                 ExtractorConstants.CallsExtractor,
                 ExtractorConstants.ConstructsExtractor,
                 ExtractorConstants.OverridesExtractor,
+                ExtractorConstants.HidesExtractor,
                 ExtractorConstants.ReadsWritesExtractor,
                 ExtractorConstants.ReturnsExtractor,
                 ExtractorConstants.ThrowsExtractor,
@@ -1287,7 +1288,7 @@ public class MigrationRunnerTests : IDisposable
                 "mediatr-v1",
                 "efcore-v1",
                 "serialization-v1",
-                "test-v1",
+                "test-v3",
             };
 
             var registryVersions = new HashSet<string>(ExtractorRegistry.All.Select(e => e.Version));
@@ -1736,6 +1737,78 @@ class Foo {
         }
 
         [Fact]
+        public void Calls_IndexerGetter_EmitsReadsEdge()
+        {
+            var source = @"
+class Wrapper
+{
+    public int this[string key] => key.Length;
+
+    public int GetItem(string key) => this[key];
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-indexer-get", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Reads" &&
+                e.SourceSymbolId.Contains("GetItem") &&
+                e.TargetSymbolId.Contains(".Item("));
+        }
+
+        [Fact]
+        public void Calls_IndexerSetter_EmitsWritesEdge()
+        {
+            var source = @"
+class Box
+{
+    private int _value;
+    public int this[int i] { get => _value; set => _value = value; }
+
+    public void Store(int i, int v) { this[i] = v; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-indexer-set", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Writes" &&
+                e.SourceSymbolId.Contains("Store") &&
+                e.TargetSymbolId.Contains(".Item("));
+        }
+
+        [Fact]
+        public void Calls_IndexerMultipleAccessSites_DeduplicatesByRelation()
+        {
+            var source = @"
+class Bag
+{
+    private int _value;
+    public int this[int i] { get => _value; set => _value = value; }
+
+    public void Use()
+    {
+        var x = this[0];
+        var y = this[1];
+        this[2] = 3;
+        this[3] = 4;
+    }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-indexer-dedup", "/");
+
+            var edges = extractor.ExtractAll()
+                .Where(e => e.SourceSymbolId.Contains("Use") && e.TargetSymbolId.Contains(".Item("))
+                .ToList();
+
+            Assert.Equal(2, edges.Count);
+            Assert.Contains(edges, e => e.Kind == "Reads");
+            Assert.Contains(edges, e => e.Kind == "Writes");
+        }
+
+        [Fact]
         public void Constructs_MethodNewFoo_EmitsConstructsEdge()
         {
             var source = @"
@@ -1776,6 +1849,90 @@ class Derived : Base {
                 e.Kind == "Overrides" &&
                 e.SourceSymbolId.Contains("Derived") &&
                 e.TargetSymbolId.Contains("Base"));
+        }
+
+        [Fact]
+        public void Hides_DerivedHidesBaseMethod_EmitsHidesEdge()
+        {
+            var source = @"
+class Base {
+    public void M() {}
+}
+class Derived : Base {
+    public new void M() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-hides", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Hides" &&
+                e.SourceSymbolId.Contains("Derived") &&
+                e.TargetSymbolId.Contains("Base"));
+        }
+
+        [Fact]
+        public void Hides_DerivedHidesBaseProperty_EmitsHidesEdge()
+        {
+            var source = @"
+class Base {
+    public int P { get; set; }
+}
+class Derived : Base {
+    public new int P { get; set; }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-hides-prop", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "Hides" &&
+                e.SourceSymbolId.Contains("Derived") &&
+                e.TargetSymbolId.Contains("Base"));
+        }
+
+        [Fact]
+        public void Hides_OverloadWithDifferentParams_DoesNotEmitHidesEdge()
+        {
+            // Different parameter count/types = overloading, not hiding
+            var source = @"
+class Base {
+    public void M(int x) {}
+}
+class Derived : Base {
+    public void M(string x) {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-hides-overload", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.DoesNotContain(edges, e => e.Kind == "Hides");
+        }
+
+        [Fact]
+        public void Hides_OverrideDoesNotAlsoEmitHidesEdge()
+        {
+            // An override should emit Overrides, not also Hides
+            var source = @"
+class Base {
+    public virtual void M() {}
+}
+class Derived : Base {
+    public override void M() {}
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-hides-no-double", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e => e.Kind == "Overrides");
+            Assert.DoesNotContain(edges, e =>
+                e.Kind == "Hides" &&
+                e.SourceSymbolId.Contains("Derived.M") &&
+                e.TargetSymbolId.Contains("Base.M"));
         }
 
         [Fact]
