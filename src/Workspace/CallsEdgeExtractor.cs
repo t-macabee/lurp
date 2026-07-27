@@ -135,5 +135,34 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
 
         var location = context.GetLocationInfo(syntax.GetLocation());
         edges.Add(context.MakeEdge(callerId, calleeId, kind, ExtractorConstants.CallsExtractor, location));
+
+        // Extension-method receiver edge: when a method is called with
+        // extension-method syntax (e.g. foo.Bar()), emit a distinct edge from
+        // the receiver type to the extension method so consumers can trace
+        // which concrete types are extended by which methods.
+        if (callee.ReducedFrom != null && syntax is InvocationExpressionSyntax invocation)
+        {
+            var receiverExpr = invocation.Expression is MemberAccessExpressionSyntax ma
+                ? ma.Expression
+                : null;
+
+            if (receiverExpr != null)
+            {
+                var receiverType = semanticModel.GetTypeInfo(receiverExpr).Type;
+                if (receiverType is INamedTypeSymbol receiverNamedType)
+                {
+                    var receiverTypeId = context.MakeSymbolId(receiverNamedType);
+                    if (receiverTypeId != null)
+                    {
+                        var extKind = EdgeKind.ExtensionReceiver.ToString();
+                        if (seen.Add((receiverTypeId, calleeId, extKind)))
+                        {
+                            edges.Add(context.MakeEdge(receiverTypeId, calleeId, extKind,
+                                ExtractorConstants.ExtensionReceiverExtractor, location));
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -1737,6 +1737,69 @@ class Foo {
         }
 
         [Fact]
+        public void Calls_ExtensionMethod_EmitsExtensionReceiverEdge()
+        {
+            var source = @"
+static class Extensions
+{
+    public static void Bar(this Foo foo) {}
+}
+class Foo
+{
+    void A()
+    {
+        this.Bar();
+    }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ext", "/");
+
+            var edges = extractor.ExtractAll();
+
+            // The Calls edge is still emitted (caller -> extension method)
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("A") &&
+                e.TargetSymbolId.Contains("Bar"));
+
+            // The ExtensionReceiver edge goes from receiver type to extension method
+            Assert.Contains(edges, e =>
+                e.Kind == "ExtensionReceiver" &&
+                e.SourceSymbolId.Contains("Foo") &&
+                e.TargetSymbolId.Contains("Bar"));
+        }
+
+        [Fact]
+        public void Calls_ExtensionMethod_StaticCall_NoExtensionReceiverEdge()
+        {
+            var source = @"
+static class Extensions
+{
+    public static void Bar(this Foo foo) {}
+}
+class Foo
+{
+    void A()
+    {
+        Extensions.Bar(this); // static call, not extension syntax
+    }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ext-static", "/");
+
+            var edges = extractor.ExtractAll();
+
+            // The Calls edge is emitted
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("A") &&
+                e.TargetSymbolId.Contains("Bar"));
+
+            // No ExtensionReceiver edge for static-call syntax
+            Assert.DoesNotContain(edges, e => e.Kind == "ExtensionReceiver");
+        }
+
+        [Fact]
         public void Calls_IndexerGetter_EmitsReadsEdge()
         {
             var source = @"

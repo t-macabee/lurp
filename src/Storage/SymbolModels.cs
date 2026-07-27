@@ -8,6 +8,7 @@ namespace Lurp.Storage
         Contains,
         Overrides,
         Hides,
+        ExtensionReceiver,
         Calls,
         Constructs,
         Reads,

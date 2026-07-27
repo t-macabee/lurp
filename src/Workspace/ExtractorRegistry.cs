@@ -24,6 +24,7 @@ internal static class ExtractorRegistry
             ("Constructs",            ExtractorConstants.ConstructsExtractor,            "Object-construction (new) edges"),
             ("Overrides",             ExtractorConstants.OverridesExtractor,             "Method override edges"),
             ("Hides",                 ExtractorConstants.HidesExtractor,                 "Member-hiding (new keyword) edges"),
+            ("ExtensionReceiver",     ExtractorConstants.ExtensionReceiverExtractor,     "Extension-method receiver binding edges"),
             ("ReadsWrites",           ExtractorConstants.ReadsWritesExtractor,           "Field/property read and write edges"),
             ("Returns",               ExtractorConstants.ReturnsExtractor,               "Return-type reference edges"),
             ("Throws",                ExtractorConstants.ThrowsExtractor,                "Thrown-exception type edges"),
