@@ -2424,6 +2424,222 @@ class Derived : Base {
         }
 
         [Fact]
+        public void SemanticDiffer_NullableAnnotationChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-s1-001";
+            var toSnapshotId = "snap-s1-002";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.Foo.Bar|asm1";
+
+            // Parameter is non-nullable string
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo.Bar",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s1-001:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"string Bar(string input)\"}");
+
+            // Same method but parameter is now nullable
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo.Bar",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s1-002:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"string Bar(string? input)\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("string input", signatureChanged.DetailJson!);
+            Assert.Contains("string? input", signatureChanged.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_RefParameterModifierChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-s2-001";
+            var toSnapshotId = "snap-s2-002";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.Foo.Baz|asm1";
+
+            // Parameter passed by value
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo.Baz",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s2-001:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Baz(int value)\"}");
+
+            // Same method but parameter is now ref
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Foo.Baz",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s2-002:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"void Baz(ref int value)\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("int value", signatureChanged.DetailJson!);
+            Assert.Contains("ref int value", signatureChanged.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_OperatorOverloadSignatureChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-s5-001";
+            var toSnapshotId = "snap-s5-002";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.Money.op_Addition|asm1";
+
+            // operator +(Money, Money)
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Money.op_Addition",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s5-001:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"Money operator +(Money a, Money b)\"}");
+
+            // Return type changed to decimal
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Money.op_Addition",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s5-002:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"decimal operator +(Money a, Money b)\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("Money operator", signatureChanged.DetailJson!);
+            Assert.Contains("decimal operator", signatureChanged.DetailJson!);
+        }
+
+        [Fact]
+        public void SemanticDiffer_ConversionOperatorSignatureChanged()
+        {
+            var store = new SqliteIndexStore(_dbPath);
+            _store = store;
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var fromSnapshotId = "snap-s6-001";
+            var toSnapshotId = "snap-s6-002";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var symbolId = "M:Ns.Fraction.op_Explicit~System.Int32|asm1";
+
+            // implicit operator
+            var fromDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Fraction.op_Explicit~System.Int32",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s6-001:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"implicit operator int(Fraction f)\"}");
+
+            // changed to explicit
+            var toDecl = MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Fraction.op_Explicit~System.Int32",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-s6-002:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: "{\"signature\": \"explicit operator int(Fraction f)\"}");
+
+            store.SaveDeclarations(fromSnapshotId, [fromDecl]);
+            store.SaveDeclarations(toSnapshotId, [toDecl]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
+            Assert.NotNull(signatureChanged);
+            Assert.Equal(symbolId, signatureChanged.SymbolId);
+            Assert.Contains("implicit operator", signatureChanged.DetailJson!);
+            Assert.Contains("explicit operator", signatureChanged.DetailJson!);
+        }
+
+        [Fact]
         public void SemanticDiffer_AttributeAddedOrRemoved()
         {
             var store = new SqliteIndexStore(_dbPath);

@@ -9,12 +9,15 @@ obj/
 
 # local tool configs
 .deepcode/
+.kimi-code/
 opencode.json
 REMEDIATION_TASKS.md
 CLAUDE.md
 AGENTS.md
 CODEX.MD
 QWEN.MD
+AGENTS.override.md
+
 
 # User-specific files
 *.rsuser
