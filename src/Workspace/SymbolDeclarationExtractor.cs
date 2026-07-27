@@ -84,7 +84,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
                 string? generatorIdentity = null;
                 if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
                 {
-                    generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content);
+                    generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content, genDocContent.Encoding);
                 }
 
                 results.Add(new SymbolDeclaration
@@ -417,12 +417,13 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
         };
     }
 
-    private static string? DeriveGeneratorIdentity(byte[] content)
+    private static string? DeriveGeneratorIdentity(byte[] content, string encodingName)
     {
-        if (content.Length < 512)
+        if (content.Length == 0)
             return null;
 
-        var headerText = Encoding.UTF8.GetString(content, 0, 512);
+        var headerLength = Math.Min(512, content.Length);
+        var headerText = GetEncoding(encodingName).GetString(content, 0, headerLength);
 
         var generatedCodeAttr = "[GeneratedCode(";
         var attrIndex = headerText.IndexOf(generatedCodeAttr, StringComparison.OrdinalIgnoreCase);

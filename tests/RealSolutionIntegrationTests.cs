@@ -69,6 +69,55 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         return (_dbPath, solutionPath, _testDir);
     }
 
+    /// <summary>
+    /// Same as <see cref="SetupFixture"/>, but injects a real <c>.g.cs</c> file
+    /// into the Library project's source tree (not <c>obj/</c>) before the
+    /// initial commit and build, so generated-code detection (order 11) has
+    /// something in scope to exercise end to end.
+    /// </summary>
+    private (string DbPath, string SolutionPath, string OutputDir) SetupFixtureWithGeneratedFile()
+    {
+        _testDir = Path.Combine(
+            Path.GetTempPath(),
+            $"lurp_real_test_{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(_testDir);
+        _dbPath = Path.Combine(_testDir, "index.db");
+
+        var solutionPath = IntegrationHarness.CopyFixtureToTemp(_testDir);
+
+        var generatedFilePath = Path.Combine(_testDir, "Library", "GeneratedWidgetUser.g.cs");
+        File.WriteAllText(generatedFilePath, GeneratedFileSource);
+
+        RunGitCommand(_testDir, "init");
+        RunGitCommand(_testDir, "config user.email test@test.com");
+        RunGitCommand(_testDir, "config user.name test");
+        RunGitCommand(_testDir, "add -A");
+        RunGitCommand(_testDir, "commit -m init");
+
+        RunDotNetBuild(solutionPath);
+
+        return (_dbPath, solutionPath, _testDir);
+    }
+
+    // Deliberately short (well under 512 bytes) — exercises the fix for
+    // DeriveGeneratorIdentity/IsGeneratedHeader bailing out on short files.
+    private const string GeneratedFileSource = """
+        using System.CodeDom.Compiler;
+
+        namespace Library;
+
+        [GeneratedCode("TestGenerator", "1.0.0")]
+        public class GeneratedWidgetUser
+        {
+            public string UseWidget()
+            {
+                var widget = new Widget();
+                return widget.GetLabel();
+            }
+        }
+        """;
+
     private static void RunGitCommand(string workingDir, string args)
     {
         var psi = new System.Diagnostics.ProcessStartInfo("git", args)
@@ -504,6 +553,77 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         using var readStore = IntegrationHarness.OpenReadStore(dbPath);
         var latest = readStore.LoadLatestSnapshot(workspaceId);
         Assert.Null(latest);
+    }
+
+    // ── Test 10: GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges ────
+    // Order 11 (generated-code provenance): a real .g.cs file living in a
+    // project's source tree (not obj/) must have its declarations marked
+    // is_generated with a derived generator_identity, and edges sourced from
+    // it must be flagged is_cross_generated. This is the bound characterization
+    // test task 10 identified as blocked on the order 11 scope decision.
+
+    [SkippableFact]
+    public async Task GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+        var (dbPath, solutionPath, outputDir) = SetupFixtureWithGeneratedFile();
+
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+
+        using var conn = new SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT d.is_generated, d.generator_identity
+                FROM declarations d
+                JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+                JOIN documents doc ON doc.document_id = dv.document_id
+                JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = @id
+                WHERE doc.relative_path LIKE '%GeneratedWidgetUser.g.cs';";
+            cmd.Parameters.AddWithValue("@id", snapshotId);
+
+            using var reader = cmd.ExecuteReader();
+            var found = false;
+            while (reader.Read())
+            {
+                found = true;
+                Assert.Equal(1L, reader.GetInt64(0));
+                Assert.Equal("TestGenerator", reader.GetString(1));
+            }
+            Assert.True(found, "Expected at least one declaration from the injected generated file.");
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT COUNT(*) FROM edges
+                WHERE snapshot_id = @id
+                  AND kind = 'Calls'
+                  AND source_document_path LIKE '%GeneratedWidgetUser.g.cs'
+                  AND is_cross_generated = 1;";
+            cmd.Parameters.AddWithValue("@id", snapshotId);
+            var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            Assert.True(count > 0, "Expected at least one cross-generated edge sourced from the injected file.");
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            // DeclaresEdgeExtractor previously built its EdgeRecord manually and
+            // never set IsCrossGenerated, unlike every other edge extractor which
+            // goes through MemberEdgeExtractionContext.MakeEdge.
+            cmd.CommandText = @"
+                SELECT COUNT(*) FROM edges
+                WHERE snapshot_id = @id
+                  AND kind = 'Declares'
+                  AND source_document_path LIKE '%GeneratedWidgetUser.g.cs'
+                  AND is_cross_generated = 1;";
+            cmd.Parameters.AddWithValue("@id", snapshotId);
+            var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            Assert.True(count > 0, "Expected the Declares edge sourced from the injected file to be flagged cross-generated.");
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────

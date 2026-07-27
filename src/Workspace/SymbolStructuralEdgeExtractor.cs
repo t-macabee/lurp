@@ -127,7 +127,17 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             SourceStartColumn = loc?.startColumn,
             SourceEndLine = loc?.endLine,
             SourceEndColumn = loc?.endColumn,
+            IsCrossGenerated = IsGeneratedSymbol(sourceSymbol),
         };
+    }
+
+    private bool IsGeneratedSymbol(ISymbol symbol)
+    {
+        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxRef == null)
+            return false;
+        var documentId = context.ResolveDocumentId(syntaxRef.SyntaxTree);
+        return documentId != null && context.GeneratedDocuments.Contains(documentId.Value);
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
