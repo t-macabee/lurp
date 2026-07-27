@@ -5,17 +5,20 @@ namespace Lurp.Workspace
     public sealed class ImpactTraverser
     {
         private readonly IEdgeStore _store;
+        private readonly ISemanticDiffStore? _semanticDiffStore;
         private readonly string _snapshotId;
 
-        public ImpactTraverser(IEdgeStore store, string snapshotId)
+        public ImpactTraverser(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null)
         {
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
+            _semanticDiffStore = semanticDiffStore;
         }
 
         public List<ImpactPath> TraceImpact(string symbolId,ImpactDirection direction,HashSet<string>? allowedEdgeKinds = null,int maxDepth = 10,bool includeSource = true)
         {
             var results = new List<ImpactPath>();
+            var semanticCauses = GetSemanticCauses(symbolId);
 
             var queue = new Queue<(string currentId, List<ImpactHop> hops, HashSet<string> visited)>();
             queue.Enqueue((symbolId, new List<ImpactHop>(), new HashSet<string> { symbolId }));
@@ -26,7 +29,7 @@ namespace Lurp.Workspace
 
                 if (hopsSoFar.Count >= maxDepth)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar,truncated: true,truncationReason: "max depth reached"));
+                    results.Add(new ImpactPath(hops: hopsSoFar,truncated: true,truncationReason: "max depth reached",semanticCauses: semanticCauses));
                     continue;
                 }
 
@@ -35,7 +38,7 @@ namespace Lurp.Workspace
 
                 if (edges.Count == 0 && hopsSoFar.Count > 0)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar));
+                    results.Add(new ImpactPath(hops: hopsSoFar,semanticCauses: semanticCauses));
                     continue;
                 }
 
@@ -43,11 +46,29 @@ namespace Lurp.Workspace
 
                 if (!anyEdgeFollowed && hopsSoFar.Count > 0)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar));
+                    results.Add(new ImpactPath(hops: hopsSoFar,semanticCauses: semanticCauses));
                 }
             }
 
             return results;
+        }
+
+        private List<SemanticChange> GetSemanticCauses(string symbolId)
+        {
+            if (_semanticDiffStore == null)
+                return [];
+
+            try
+            {
+                return _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
+                    .Where(change => change.SymbolId == symbolId)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve semantic changes for snapshot '{_snapshotId}': {ex.Message}");
+                return [];
+            }
         }
 
         private bool TryGetEdges(string currentId, ImpactDirection direction, out List<EdgeRecord> edges)

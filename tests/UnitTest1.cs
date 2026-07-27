@@ -2010,6 +2010,9 @@ class Derived : Base {
             var loaded = store.GetSemanticChanges(fromSnapshotId, toSnapshotId);
             Assert.Equal(2, loaded.Count);
 
+            var changesForSnapshot = store.GetSemanticChangesToSnapshot(toSnapshotId);
+            Assert.Equal(["change-1", "change-2"], changesForSnapshot.Select(change => change.ChangeId));
+
             var change1 = loaded[0];
             Assert.Equal("change-1", change1.ChangeId);
             Assert.Equal(fromSnapshotId, change1.FromSnapshotId);
@@ -2861,7 +2864,10 @@ class Derived : Base {
         ///   IEventSymbol:     returnType, isAbstract, isVirtual, isOverride, isStatic, accessibility,
         ///                     signature, [attributes]
         ///
-        /// CompareMetadata reads: accessibility, signature, base_type, attributes.
+        /// CompareMetadata reads independently-semantic keys: accessibility, signature, base_type,
+        /// interfaces, isRecord, typeKind, declaration/binding modifiers, and attributes.
+        /// returnType and callable arity are intentionally covered by signature; type arity changes
+        /// symbol identity rather than metadata for a common symbol.
         ///
         /// Every consumer key is produced:
         ///   accessibility — all five symbol kinds
@@ -2872,12 +2878,17 @@ class Derived : Base {
         [Fact]
         public void MetadataContract_AllConsumerKeysAreProduced()
         {
-            var consumerKeys = new[] { "accessibility", "signature", "base_type", "attributes" };
+            var consumerKeys = new[]
+            {
+                "accessibility", "signature", "base_type", "interfaces", "isRecord", "typeKind",
+                "isAbstract", "isVirtual", "isOverride", "isStatic", "isAsync", "isExtensionMethod",
+                "isReadOnly", "isWriteOnly", "isConst", "isVolatile", "attributes"
+            };
 
             var methodKeys = new[] { "returnType", "isAbstract", "isVirtual", "isOverride", "isStatic",
                 "isAsync", "accessibility", "arity", "isExtensionMethod", "signature", "attributes" };
             var typeKeys = new[] { "typeKind", "isAbstract", "isStatic", "isRecord", "accessibility",
-                "arity", "base_type", "attributes" };
+                "arity", "base_type", "interfaces", "attributes" };
             var propertyKeys = new[] { "returnType", "isAbstract", "isVirtual", "isOverride", "isStatic",
                 "isReadOnly", "isWriteOnly", "accessibility", "signature", "attributes" };
             var fieldKeys = new[] { "returnType", "isStatic", "isReadOnly", "isConst", "isVolatile",
@@ -2969,6 +2980,45 @@ class Derived : Base {
             var bt = Assert.Single(changes, c => c.ChangeType == ChangeType.BaseTypeChanged);
             Assert.Contains("\"before\":\"global::Ns.BaseClassA\"", bt.DetailJson!);
             Assert.Contains("\"after\":\"global::Ns.BaseClassB\"", bt.DetailJson!);
+        }
+
+        [Fact]
+        public void InterfacesChanged_TypeInterfaceSwitch()
+        {
+            var symbolId = "T:Ns.MyClass|asm1";
+            var fromDecl = MakeDecl(docCommentId: "T:Ns.MyClass", assembly: "asm1", kind: IndexedSymbolKind.NamedType, docVersionId: "doc-snap-mc-interfaces-1:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"typeKind\":\"Class\",\"interfaces\":[\"global::Ns.IOld\"]}");
+            var toDecl = MakeDecl(docCommentId: "T:Ns.MyClass", assembly: "asm1", kind: IndexedSymbolKind.NamedType, docVersionId: "doc-snap-mc-interfaces-2:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"typeKind\":\"Class\",\"interfaces\":[\"global::Ns.INew\"]}");
+
+            var change = Assert.Single(Diff("snap-mc-interfaces-1", "snap-mc-interfaces-2", fromDecl, toDecl), c => c.ChangeType == ChangeType.InterfacesChanged);
+            Assert.Contains("global::Ns.IOld", change.DetailJson!);
+            Assert.Contains("global::Ns.INew", change.DetailJson!);
+        }
+
+        [Fact]
+        public void RecordChanged_TypeRecordStatusSwitch()
+        {
+            var symbolId = "T:Ns.MyClass|asm1";
+            var fromDecl = MakeDecl(docCommentId: "T:Ns.MyClass", assembly: "asm1", kind: IndexedSymbolKind.NamedType, docVersionId: "doc-snap-mc-record-1:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"typeKind\":\"Class\",\"isRecord\":false}");
+            var toDecl = MakeDecl(docCommentId: "T:Ns.MyClass", assembly: "asm1", kind: IndexedSymbolKind.NamedType, docVersionId: "doc-snap-mc-record-2:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"typeKind\":\"Class\",\"isRecord\":true}");
+
+            Assert.Contains(Diff("snap-mc-record-1", "snap-mc-record-2", fromDecl, toDecl), c => c.ChangeType == ChangeType.RecordChanged);
+        }
+
+        [Fact]
+        public void MetadataChanged_MethodModifierSwitch()
+        {
+            var symbolId = "M:Ns.MyClass.Run|asm1";
+            var fromDecl = MakeDecl(docCommentId: "M:Ns.MyClass.Run", assembly: "asm1", kind: IndexedSymbolKind.Method, docVersionId: "doc-snap-mc-modifier-1:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"signature\":\"void Run()\",\"isVirtual\":false}");
+            var toDecl = MakeDecl(docCommentId: "M:Ns.MyClass.Run", assembly: "asm1", kind: IndexedSymbolKind.Method, docVersionId: "doc-snap-mc-modifier-2:hash1", fullS: 0, fullE: 10, sigS: 0, sigE: 5, bodyS: 6, bodyE: 10, nameS: 0, nameE: 5, symbolId: symbolId,
+                metadataJson: "{\"signature\":\"void Run()\",\"isVirtual\":true}");
+
+            var change = Assert.Single(Diff("snap-mc-modifier-1", "snap-mc-modifier-2", fromDecl, toDecl), c => c.ChangeType == ChangeType.MetadataChanged);
+            Assert.Contains("isVirtual", change.DetailJson!);
         }
 
         [Fact]
@@ -3702,7 +3752,8 @@ public class Plain
         public void TestAdapter_FactMethod_EmitsTestedByEdge()
         {
             var source = @"
-using Xunit;
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class FactAttribute : Attribute { }
 
 public class BarTests
 {
@@ -4067,6 +4118,40 @@ public class Foo
             var hop = Assert.Single(path.Hops);
             Assert.Equal("src/A.cs", hop.SourceDocument);
             Assert.Equal(42, hop.SourceLine);
+            store.Close();
+        }
+
+        [Fact]
+        public void TraceImpact_SemanticChanges_ExplainCauseOfDownstreamImpact()
+        {
+            var snapshotId = "snap-b7-semantic-002";
+            var previousSnapshotId = "snap-b7-semantic-001";
+            var changedSymbolId = "M:A|asm1";
+            var store = CreateStoreWithEdges(snapshotId,
+            [
+                new() { SourceSymbolId = changedSymbolId, TargetSymbolId = "M:B|asm1", Kind = "Calls", Provenance = "compiler_proved", SnapshotId = snapshotId, ExtractorVersion = "v1" }
+            ]);
+            store.SaveSemanticChanges(previousSnapshotId, snapshotId,
+            [
+                new SemanticChange
+                {
+                    ChangeId = "semantic-change-001",
+                    FromSnapshotId = previousSnapshotId,
+                    ToSnapshotId = snapshotId,
+                    ChangeType = ChangeType.SignatureChanged,
+                    SymbolId = changedSymbolId,
+                    DetailJson = "{\"before\":\"void A()\",\"after\":\"void A(int value)\"}",
+                    CreatedAtUtc = DateTime.UtcNow
+                }
+            ]);
+            var traverser = new ImpactTraverser(store, snapshotId, store);
+
+            var path = Assert.Single(traverser.TraceImpact(changedSymbolId, ImpactDirection.Downstream));
+
+            var cause = Assert.Single(path.SemanticCauses);
+            Assert.Equal(ChangeType.SignatureChanged, cause.ChangeType);
+            Assert.Equal(changedSymbolId, cause.SymbolId);
+            Assert.Equal(previousSnapshotId, cause.FromSnapshotId);
             store.Close();
         }
     }

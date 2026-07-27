@@ -323,6 +323,23 @@ namespace Lurp.Workspace
                 changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BaseTypeChanged, symbolId, new { before = fromBase, after = toBase }));
             }
 
+            var fromInterfaces = GetMetaArray(fromMeta, "interfaces");
+            var toInterfaces = GetMetaArray(toMeta, "interfaces");
+            if (fromInterfaces != null && toInterfaces != null && !fromInterfaces.SequenceEqual(toInterfaces))
+            {
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.InterfacesChanged, symbolId, new { before = fromInterfaces, after = toInterfaces }));
+            }
+
+            CompareScalarMetadata("isRecord", ChangeType.RecordChanged);
+            foreach (var key in new[]
+            {
+                "typeKind", "isAbstract", "isVirtual", "isOverride", "isStatic", "isAsync",
+                "isExtensionMethod", "isReadOnly", "isWriteOnly", "isConst", "isVolatile"
+            })
+            {
+                CompareScalarMetadata(key, ChangeType.MetadataChanged);
+            }
+
             var fromAttrs = GetMetaArray(fromMeta, "attributes");
             var toAttrs = GetMetaArray(toMeta, "attributes");
             if (fromAttrs != null && toAttrs != null && !fromAttrs.SequenceEqual(toAttrs))
@@ -331,6 +348,18 @@ namespace Lurp.Workspace
             }
 
             return changes;
+
+            void CompareScalarMetadata(string key, string changeType)
+            {
+                if (!fromMeta.TryGetValue(key, out var before) || !toMeta.TryGetValue(key, out var after) ||
+                    before.GetRawText() == after.GetRawText())
+                {
+                    return;
+                }
+
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId,
+                    new { field = key, before, after }));
+            }
         }
 
         private (List<SemanticChange> Changes, int Skipped) CompareSource(string symbolId, string fromSnapshotId, string toSnapshotId)

@@ -47,7 +47,7 @@ internal static class ExtractorRegistry
             ("Serialization",         "serialization-v1",  "Serialization framework edges (JSON/XML contracts)"),
             ("DependencyInjection",   ExtractorConstants.DependencyInjectionExtractor, "Dependency injection container edges"),
 
-            // -- Test adapter (hard-coded in TestAdapter.cs:148) --
-            ("Test",                  "test-v1",           "Test-to-production-code tested-by edges"),
+            // -- Test adapter (hard-coded in TestAdapter.cs) --
+            ("Test",                  "test-v3",           "Test-to-production-code tested-by edges"),
         };
 }

@@ -313,6 +313,10 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             metadata["base_type"] = type.TypeKind == TypeKind.Interface || type.BaseType == null
                 ? null
                 : type.BaseType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata["interfaces"] = type.Interfaces
+                .Select(i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
         }
         else if (symbol is IPropertySymbol prop)
         {

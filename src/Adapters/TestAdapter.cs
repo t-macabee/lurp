@@ -10,7 +10,7 @@ namespace Lurp.Adapters;
 public sealed class TestAdapter : IFrameworkAdapter
 {
     public string Name => "Test";
-    public string Version => "test-v1";
+    public string Version => "test-v3";
 
     private sealed record ExtractionContext(
         string AssemblyIdentity,
@@ -114,7 +114,8 @@ public sealed class TestAdapter : IFrameworkAdapter
                 continue;
 
             var name = attr.AttributeClass.Name;
-            if (name is "Fact" or "Theory" or "Test" or "TestMethod")
+            if (name is "Fact" or "FactAttribute" or "Theory" or "TheoryAttribute" or
+                "Test" or "TestAttribute" or "TestMethod" or "TestMethodAttribute")
                 return true;
 
             var fullName = attr.AttributeClass.ToDisplayString();
@@ -156,7 +157,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 Kind = EdgeKind.TestedBy.ToString(),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = context.SnapshotId,
-                ExtractorVersion = "test-v1",
+                ExtractorVersion = "test-v3",
                 SourceDocumentPath = context.TestDocumentPath,
                 SourceStartLine = context.TestStartLine,
                 SourceStartColumn = context.TestStartColumn,
@@ -200,9 +201,9 @@ public sealed class TestAdapter : IFrameworkAdapter
 
         foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(creation);
-            if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, context);
+            var createdType = semanticModel.GetTypeInfo(creation).Type;
+            if (createdType != null)
+                AddProductionRef(createdType, context);
         }
 
         foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())

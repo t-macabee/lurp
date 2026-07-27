@@ -236,5 +236,7 @@ namespace Lurp.Storage
             { EnsureOpen(); _semanticDiffStore!.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes); }
         public List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId)
             { EnsureOpen(); return _semanticDiffStore!.GetSemanticChanges(fromSnapshotId, toSnapshotId); }
+        public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
+            { EnsureOpen(); return _semanticDiffStore!.GetSemanticChangesToSnapshot(toSnapshotId); }
     }
 }

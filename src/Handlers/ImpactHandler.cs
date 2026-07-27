@@ -68,7 +68,7 @@ internal static class ImpactHandler
                 }
             }
 
-            var traverser = new ImpactTraverser(store, snapshotId);
+            var traverser = new ImpactTraverser(store, snapshotId, store);
             var paths = traverser.TraceImpact(symbolId: symbolArg, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
 
             var json = JsonSerializer.Serialize(new
@@ -82,7 +82,15 @@ internal static class ImpactHandler
                     truncated = p.Truncated,
                     truncation_reason = p.TruncationReason,
                     total_steps = p.TotalSteps,
-                    hops = p.Hops.Select(h => new { source_symbol_id = h.SourceSymbolId, target_symbol_id = h.TargetSymbolId, edge_kind = h.EdgeKind, provenance = h.Provenance, source_document = h.SourceDocument, source_line = h.SourceLine })
+                    hops = p.Hops.Select(h => new { source_symbol_id = h.SourceSymbolId, target_symbol_id = h.TargetSymbolId, edge_kind = h.EdgeKind, provenance = h.Provenance, source_document = h.SourceDocument, source_line = h.SourceLine }),
+                    semantic_causes = p.SemanticCauses.Select(c => new
+                    {
+                        from_snapshot_id = c.FromSnapshotId,
+                        to_snapshot_id = c.ToSnapshotId,
+                        change_type = c.ChangeType,
+                        symbol_id = c.SymbolId,
+                        detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null
+                    })
                 })
             }, new JsonSerializerOptions { WriteIndented = true });
 

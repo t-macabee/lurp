@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
@@ -35,14 +36,16 @@ namespace Lurp.Workspace
         public bool Truncated { get; }
         public string? TruncationReason { get; }
         public int TotalSteps { get; }
+        public List<SemanticChange> SemanticCauses { get; }
 
         [JsonConstructor]
-        public ImpactPath(List<ImpactHop> hops,bool truncated = false,string? truncationReason = null)
+        public ImpactPath(List<ImpactHop> hops,bool truncated = false,string? truncationReason = null,List<SemanticChange>? semanticCauses = null)
         {
             Hops = hops ?? throw new ArgumentNullException(nameof(hops));
             Truncated = truncated;
             TruncationReason = truncationReason;
             TotalSteps = hops.Count;
+            SemanticCauses = semanticCauses ?? [];
         }
     }
 }

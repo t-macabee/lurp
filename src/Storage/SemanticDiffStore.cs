@@ -58,6 +58,26 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
 
+        return ReadChanges(command);
+    }
+
+    public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT change_id, from_snapshot_id, to_snapshot_id,
+                   change_type, symbol_id, detail_json, created_at_utc
+            FROM semantic_changes
+            WHERE to_snapshot_id = @toSnapshotId
+            ORDER BY created_at_utc;
+        ";
+        command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+
+        return ReadChanges(command);
+    }
+
+    private static List<SemanticChange> ReadChanges(SqliteCommand command)
+    {
         var results = new List<SemanticChange>();
         using var reader = command.ExecuteReader();
         while (reader.Read())

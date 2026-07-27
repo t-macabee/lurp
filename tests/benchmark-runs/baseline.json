@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-07-27T11:12:47.1970562Z",
+  "generatedAtUtc": "2026-07-27T18:32:17.7447839Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,7 +26,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 47,
+        "estimatedTokens": 133,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [],
         "content": [
@@ -37,11 +37,27 @@
             "EdgeKind": "Implements",
             "Provenance": "compiler_proved",
             "Relevance": "relevant"
+          },
+          {
+            "Tier": "relevantTests",
+            "Fqn": "global::Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal",
+            "SymbolId": "M:Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "TestedBy",
+            "Provenance": "framework_derived",
+            "Relevance": "relevant"
+          },
+          {
+            "Tier": "relevantTests",
+            "Fqn": "global::Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult",
+            "SymbolId": "M:Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "TestedBy",
+            "Provenance": "framework_derived",
+            "Relevance": "unclassified"
           }
         ],
-        "relevantCount": 1,
+        "relevantCount": 2,
         "irrelevantCount": 0,
-        "unclassifiedCount": 0
+        "unclassifiedCount": 1
       },
       "contracts": {
         "expected": [
@@ -57,11 +73,12 @@
         "expected": [
           "Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal"
         ],
-        "actual": [],
-        "missing": [
-          "Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal"
+        "actual": [
+          "global::Outcome.Tests.ValidationTests.Validate_RejectsZeroTotal",
+          "global::Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult"
         ],
-        "allIncluded": false
+        "missing": [],
+        "allIncluded": true
       },
       "patchScope": {
         "expectedFiles": [
@@ -73,14 +90,14 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "fbfeb6ce11354f87bfba1efae14716de",
-        "fullSnapshot": "d85ee8c58ff74a97a55945b8bde6c0c4",
+        "incrementalSnapshot": "568ec1f947d9452489e84fb13e3e71da",
+        "fullSnapshot": "4fceeca7856141d68877fb72900573bb",
         "equivalent": true,
         "error": null
       },
       "failures": {
         "missingContracts": false,
-        "missingRelevantTests": true,
+        "missingRelevantTests": false,
         "irrelevantCapsuleContent": false,
         "unknownRuntimeVectorsUndeclared": false,
         "incrementalFullDisagreement": false
@@ -96,7 +113,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 79,
+        "estimatedTokens": 124,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [],
         "content": [
@@ -107,9 +124,17 @@
             "EdgeKind": "Implements",
             "Provenance": "compiler_proved",
             "Relevance": "relevant"
+          },
+          {
+            "Tier": "relevantTests",
+            "Fqn": "global::Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult",
+            "SymbolId": "M:Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "TestedBy",
+            "Provenance": "framework_derived",
+            "Relevance": "relevant"
           }
         ],
-        "relevantCount": 1,
+        "relevantCount": 2,
         "irrelevantCount": 0,
         "unclassifiedCount": 0
       },
@@ -130,11 +155,11 @@
         "expected": [
           "Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult"
         ],
-        "actual": [],
-        "missing": [
-          "Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult"
+        "actual": [
+          "global::Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult"
         ],
-        "allIncluded": false
+        "missing": [],
+        "allIncluded": true
       },
       "patchScope": {
         "expectedFiles": [
@@ -148,14 +173,14 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "9baa859c01834acd99cca8e9b12e0be2",
-        "fullSnapshot": "3cef04193dce4d3a8088286d56b5a6e9",
+        "incrementalSnapshot": "6e6f12098daa42b2a79957108f385293",
+        "fullSnapshot": "f2537ee32e8348ff95c0e15b5054ea18",
         "equivalent": true,
         "error": null
       },
       "failures": {
         "missingContracts": true,
-        "missingRelevantTests": true,
+        "missingRelevantTests": false,
         "irrelevantCapsuleContent": false,
         "unknownRuntimeVectorsUndeclared": false,
         "incrementalFullDisagreement": false
@@ -171,7 +196,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 184,
+        "estimatedTokens": 222,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [],
         "content": [
@@ -192,6 +217,14 @@
             "Relevance": "relevant"
           },
           {
+            "Tier": "relevantTests",
+            "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
+            "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "TestedBy",
+            "Provenance": "framework_derived",
+            "Relevance": "unclassified"
+          },
+          {
             "Tier": "secondDegreeContext",
             "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
             "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -202,7 +235,7 @@
         ],
         "relevantCount": 1,
         "irrelevantCount": 0,
-        "unclassifiedCount": 2
+        "unclassifiedCount": 3
       },
       "contracts": {
         "expected": [],
@@ -214,11 +247,11 @@
         "expected": [
           "Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
         ],
-        "actual": [],
-        "missing": [
-          "Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
+        "actual": [
+          "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
         ],
-        "allIncluded": false
+        "missing": [],
+        "allIncluded": true
       },
       "patchScope": {
         "expectedFiles": [
@@ -230,14 +263,14 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "1d4fdc9d06c041c8990a9973bb43ed50",
-        "fullSnapshot": "276ab86450244fbdbe9427857cf947cf",
+        "incrementalSnapshot": "ffbb48fe4388424aa02a6eb68f91bdcf",
+        "fullSnapshot": "5410db43e4d0468485185be19ef72b82",
         "equivalent": true,
         "error": null
       },
       "failures": {
         "missingContracts": false,
-        "missingRelevantTests": true,
+        "missingRelevantTests": false,
         "irrelevantCapsuleContent": false,
         "unknownRuntimeVectorsUndeclared": true,
         "incrementalFullDisagreement": false

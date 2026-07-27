@@ -78,6 +78,9 @@ namespace Lurp.Storage
         public const string AccessibilityChanged = "accessibility_changed";
         public const string SignatureChanged = "signature_changed";
         public const string BaseTypeChanged = "base_type_changed";
+        public const string InterfacesChanged = "interfaces_changed";
+        public const string RecordChanged = "record_changed";
+        public const string MetadataChanged = "metadata_changed";
         public const string EdgeAdded = "edge_added";
         public const string EdgeRemoved = "edge_removed";
         public const string AttributeChanged = "attribute_changed";
