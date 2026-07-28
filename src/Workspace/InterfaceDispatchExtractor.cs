@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -14,6 +15,11 @@ namespace Lurp.Workspace;
 ///   effective implementation (which may be inherited from a base type).
 ///   Then classify provenance: "compiler_proved" if the implementing member
 ///   is declared directly on the type itself, "possible" if inherited.
+///
+/// When the interface is a constructed generic (e.g. IRepository&lt;Customer&gt;),
+/// the concrete type arguments are captured as JSON in the edge's
+/// TypeArgumentsJson field so consumers can distinguish dispatch targets
+/// bound to different type arguments.
 /// </summary>
 internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext context)
 {
@@ -32,9 +38,11 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
 
             foreach (var iface in type.AllInterfaces)
             {
+                var typeArgsJson = GetTypeArgumentsJson(iface);
+
                 foreach (var member in iface.GetMembers())
                 {
-                    EmitInterfaceDispatchEdge(type, member, edges, seen);
+                    EmitInterfaceDispatchEdge(type, member, edges, seen, typeArgsJson);
                 }
             }
         }
@@ -42,7 +50,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         return edges;
     }
 
-    private void EmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, string? typeArgumentsJson)
     {
         if (member is not IMethodSymbol and not IPropertySymbol and not IEventSymbol)
             return;
@@ -68,6 +76,24 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
         string provenance = isDirect ? Provenance.CompilerProved : Provenance.Possible;
 
-        edges.Add(context.MakeMayDispatchEdge(ifaceMemberId, implMemberId, implMember, provenance));
+        edges.Add(context.MakeMayDispatchEdge(ifaceMemberId, implMemberId, implMember, provenance, typeArgumentsJson));
+    }
+
+    /// <summary>
+    /// If the interface is a constructed generic type (e.g. IRepository&lt;Customer&gt;),
+    /// return a JSON array of the concrete type-argument display strings.
+    /// Returns null for non-generic or unconstructed interfaces.
+    /// </summary>
+    private static string? GetTypeArgumentsJson(INamedTypeSymbol iface)
+    {
+        if (!iface.IsGenericType || iface.TypeArguments.IsEmpty)
+            return null;
+
+        // Skip if the interface is the unconstructed generic definition itself
+        if (SymbolEqualityComparer.Default.Equals(iface, iface.ConstructedFrom))
+            return null;
+
+        var args = iface.TypeArguments.Select(a => a.ToDisplayString()).ToArray();
+        return JsonSerializer.Serialize(args);
     }
 }

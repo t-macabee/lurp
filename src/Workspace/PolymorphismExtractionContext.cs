@@ -38,7 +38,7 @@ internal sealed class PolymorphismExtractionContext
         return SymbolIdFactory.Make(symbol, AssemblyIdentity);
     }
 
-    internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance)
+    internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance, string? typeArgumentsJson = null)
     {
         return new EdgeRecord
         {
@@ -53,6 +53,7 @@ internal sealed class PolymorphismExtractionContext
             SourceStartColumn = GetStartColumn(targetSymbol),
             SourceEndLine = GetEndLine(targetSymbol),
             SourceEndColumn = GetEndColumn(targetSymbol),
+            TypeArgumentsJson = typeArgumentsJson,
         };
     }
 

@@ -40,6 +40,7 @@ namespace Lurp.Storage
         public int? SourceEndLine { get; init; }
         public int? SourceEndColumn { get; init; }
         public bool IsCrossGenerated { get; init; }
+        public string? TypeArgumentsJson { get; init; }
     }
 
     public sealed class DiagnosticRecord
