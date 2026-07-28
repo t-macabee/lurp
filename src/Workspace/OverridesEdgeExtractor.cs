@@ -59,62 +59,72 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
             return;
 
         // Only consider members that are NOT overrides (overrides already handled above)
-        if (member is IMethodSymbol method)
+        switch (member)
         {
-            if (method.IsOverride || method.MethodKind == MethodKind.Constructor ||
-                method.MethodKind == MethodKind.StaticConstructor ||
-                method.MethodKind == MethodKind.Destructor)
-                return;
-
-            foreach (var baseMember in baseType.GetMembers(method.Name))
-            {
-                if (baseMember is not IMethodSymbol baseMethod)
-                    continue;
-                if (!IsAccessible(baseMethod, containingType))
-                    continue;
-                if (!ParametersMatch(method, baseMethod))
-                    continue;
-
-                var sourceId = context.MakeSymbolId(method);
-                var targetId = context.MakeSymbolId(baseMethod);
-                if (sourceId == null || targetId == null)
-                    continue;
-
-                var key = (sourceId, targetId, EdgeKind.Hides.ToString());
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = context.GetMemberSourceLocation(method);
-                edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Hides.ToString(),
-                    ExtractorConstants.HidesExtractor, loc));
-            }
+            case IMethodSymbol method:
+                EmitHidesMethodEdges(method, containingType, baseType, edges, seen);
+                break;
+            case IPropertySymbol prop:
+                EmitHidesPropertyEdges(prop, containingType, baseType, edges, seen);
+                break;
         }
-        else if (member is IPropertySymbol prop)
+    }
+
+    private void EmitHidesMethodEdges(IMethodSymbol method, INamedTypeSymbol containingType,
+        INamedTypeSymbol baseType, List<EdgeRecord> edges,
+        HashSet<(string source, string target, string kind)> seen)
+    {
+        if (method.IsOverride || method.MethodKind == MethodKind.Constructor ||
+            method.MethodKind == MethodKind.StaticConstructor ||
+            method.MethodKind == MethodKind.Destructor)
+            return;
+
+        foreach (var baseMember in baseType.GetMembers(method.Name))
         {
-            if (prop.IsOverride)
-                return;
+            if (baseMember is not IMethodSymbol baseMethod)
+                continue;
+            if (!IsAccessible(baseMethod, containingType))
+                continue;
+            if (!ParametersMatch(method, baseMethod))
+                continue;
 
-            foreach (var baseMember in baseType.GetMembers(prop.Name))
-            {
-                if (baseMember is not IPropertySymbol baseProp)
-                    continue;
-                if (!IsAccessible(baseProp, containingType))
-                    continue;
-
-                var sourceId = context.MakeSymbolId(prop);
-                var targetId = context.MakeSymbolId(baseProp);
-                if (sourceId == null || targetId == null)
-                    continue;
-
-                var key = (sourceId, targetId, EdgeKind.Hides.ToString());
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = context.GetMemberSourceLocation(prop);
-                edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Hides.ToString(),
-                    ExtractorConstants.HidesExtractor, loc));
-            }
+            TryEmitHidesEdge(method, baseMethod, edges, seen);
         }
+    }
+
+    private void EmitHidesPropertyEdges(IPropertySymbol prop, INamedTypeSymbol containingType,
+        INamedTypeSymbol baseType, List<EdgeRecord> edges,
+        HashSet<(string source, string target, string kind)> seen)
+    {
+        if (prop.IsOverride)
+            return;
+
+        foreach (var baseMember in baseType.GetMembers(prop.Name))
+        {
+            if (baseMember is not IPropertySymbol baseProp)
+                continue;
+            if (!IsAccessible(baseProp, containingType))
+                continue;
+
+            TryEmitHidesEdge(prop, baseProp, edges, seen);
+        }
+    }
+
+    private void TryEmitHidesEdge(ISymbol sourceSymbol, ISymbol targetSymbol,
+        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    {
+        var sourceId = context.MakeSymbolId(sourceSymbol);
+        var targetId = context.MakeSymbolId(targetSymbol);
+        if (sourceId == null || targetId == null)
+            return;
+
+        var key = (sourceId, targetId, EdgeKind.Hides.ToString());
+        if (!seen.Add(key))
+            return;
+
+        var loc = context.GetMemberSourceLocation(sourceSymbol);
+        edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Hides.ToString(),
+            ExtractorConstants.HidesExtractor, loc));
     }
 
     private static bool IsAccessible(ISymbol baseMember, INamedTypeSymbol derivedType)
