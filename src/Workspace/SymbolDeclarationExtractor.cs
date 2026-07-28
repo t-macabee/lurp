@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
 using SymKind = Lurp.Storage.IndexedSymbolKind;
 
@@ -74,11 +73,11 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
                 if (!context.DocumentContents.TryGetValue(documentId.Value, out var contentInfo))
                     continue;
 
-                var encoding = GetEncoding(contentInfo.Encoding);
+                var encoding = DeclarationSpanComputer.GetEncoding(contentInfo.Encoding);
                 var sourceText = syntaxTree.GetText();
                 var sourceString = sourceText.ToString();
 
-                var (fullSpan, signatureSpan, bodySpan, nameSpan) = ComputeSpans(syntaxNode, sourceString, encoding);
+                var (fullSpan, signatureSpan, bodySpan, nameSpan) = DeclarationSpanComputer.ComputeSpans(syntaxNode, sourceString, encoding);
 
                 var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
                 string? generatorIdentity = null;
@@ -111,141 +110,10 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
         }
     }
 
-    // Computes four byte-offset spans for a declaration node:
-    //   full      — entire syntax node (including trivia/braces)
-    //   signature — from node start up to the body start (or node end if no body)
-    //   body      — the body block (null if no body, e.g. abstract/property)
-    //   name      — the identifier token span
-    // All offsets are converted from char offsets to byte offsets using the document encoding.
-    private static (DeclarationSpan full, DeclarationSpan signature, DeclarationSpan body, DeclarationSpan name)
-        ComputeSpans(SyntaxNode node, string sourceText, Encoding encoding)
-    {
-        var fullCharSpan = node.FullSpan;
-        var fullStart = CharOffsetToByteOffset(sourceText, fullCharSpan.Start, encoding);
-        var fullEnd = CharOffsetToByteOffset(sourceText, fullCharSpan.End, encoding);
-        var full = new DeclarationSpan(fullStart, fullEnd);
-
-        var name = ComputeNameSpan(node, sourceText, encoding, full);
-        var (body, signatureCharEnd) = ComputeBodyAndSignatureEnd(node, sourceText, encoding, fullCharSpan);
-        var signature = new DeclarationSpan(fullStart, CharOffsetToByteOffset(sourceText, signatureCharEnd, encoding));
-
-        return (full, signature, body, name);
-    }
-
-    private static DeclarationSpan ComputeNameSpan(SyntaxNode node, string sourceText, Encoding encoding, DeclarationSpan full)
-    {
-        static SyntaxToken? GetIdentifier(SyntaxNode n) => n switch
-        {
-            BaseTypeDeclarationSyntax t => t.Identifier,
-            MethodDeclarationSyntax m => m.Identifier,
-            ConstructorDeclarationSyntax c => c.Identifier,
-            PropertyDeclarationSyntax p => p.Identifier,
-            EventDeclarationSyntax e => e.Identifier,
-            VariableDeclaratorSyntax v => v.Identifier,
-            EnumMemberDeclarationSyntax em => em.Identifier,
-            _ => null
-        };
-
-        var idToken = GetIdentifier(node);
-        if (idToken != null)
-        {
-            var idStart = CharOffsetToByteOffset(sourceText, idToken.Value.SpanStart, encoding);
-            var idEnd = CharOffsetToByteOffset(sourceText, idToken.Value.Span.End, encoding);
-            return new DeclarationSpan(idStart, idEnd);
-        }
-
-        var tokens = node.ChildTokens().Where(t => t.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IdentifierToken) || t.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.GlobalKeyword)).ToArray();
-        if (tokens.Length > 0)
-        {
-            var firstId = tokens[0];
-            return new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
-        }
-
-        return full;
-    }
-
-    private static (DeclarationSpan Body, int SignatureCharEnd) ComputeBodyAndSignatureEnd(SyntaxNode node, string sourceText, Encoding encoding, Microsoft.CodeAnalysis.Text.TextSpan fullCharSpan)
-    {
-        if (node is MethodDeclarationSyntax method && method.Body != null)
-            return (SpanFromCharSpan(sourceText, method.Body.Span, encoding), method.Body.SpanStart);
-
-        if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
-            return (SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding), methodExpr.ExpressionBody.SpanStart);
-
-        if (node is MethodDeclarationSyntax && node is MethodDeclarationSyntax { Body: null, ExpressionBody: null })
-            return (new DeclarationSpan(null, null), fullCharSpan.End);
-
-        if (node is PropertyDeclarationSyntax prop && prop.AccessorList != null)
-            return (new DeclarationSpan(null, null), fullCharSpan.End);
-
-        if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
-            return (SpanFromCharSpan(sourceText, propExpr.ExpressionBody.Span, encoding), propExpr.ExpressionBody.SpanStart);
-
-        if (node is BaseTypeDeclarationSyntax typeDecl)
-        {
-            if (typeDecl.OpenBraceToken.IsMissing || typeDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
-                return (new DeclarationSpan(null, null), fullCharSpan.End);
-            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, typeDecl.CloseBraceToken.Span.End, encoding));
-            return (body, typeDecl.OpenBraceToken.SpanStart);
-        }
-
-        if (node is EnumDeclarationSyntax enumDecl)
-        {
-            if (enumDecl.OpenBraceToken.IsMissing || enumDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
-                return (new DeclarationSpan(null, null), fullCharSpan.End);
-            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
-            return (body, enumDecl.OpenBraceToken.SpanStart);
-        }
-
-        if (node is NamespaceDeclarationSyntax nsDecl)
-        {
-            if (nsDecl.OpenBraceToken.IsMissing || nsDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
-                return (new DeclarationSpan(null, null), fullCharSpan.End);
-            var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
-            return (body, nsDecl.OpenBraceToken.SpanStart);
-        }
-
-        return (new DeclarationSpan(null, null), fullCharSpan.End);
-    }
-
-    private static DeclarationSpan SpanFromCharSpan(string sourceText, Microsoft.CodeAnalysis.Text.TextSpan charSpan, Encoding encoding)
-    {
-        return new DeclarationSpan(CharOffsetToByteOffset(sourceText, charSpan.Start, encoding),
-            CharOffsetToByteOffset(sourceText, charSpan.End, encoding));
-    }
-
-    private static int CharOffsetToByteOffset(string text, int charOffset, Encoding encoding)
-    {
-        if (charOffset <= 0)
-            return 0;
-        if (charOffset >= text.Length)
-            return encoding.GetByteCount(text);
-
-        return encoding.GetByteCount(text.AsSpan(0, charOffset));
-    }
-
-    private static Encoding GetEncoding(string encodingName)
-    {
-        return encodingName?.ToLowerInvariant() switch
-        {
-            "utf-8" => Encoding.UTF8,
-            "utf-8-bom" => Encoding.UTF8,
-            "utf-16-le" => Encoding.Unicode,
-            "utf-16-be" => Encoding.BigEndianUnicode,
-            _ => Encoding.UTF8,
-        };
-    }
-
     private static string BuildFullyQualifiedName(ISymbol symbol)
     {
         var name = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        // Types already produce a full path like global::Namespace.TypeName.
-        // Members produce just the member name; prepend the containing type's FQN.
         if (symbol is not INamedTypeSymbol && symbol.ContainingType != null)
         {
             var typeFqn = symbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -351,7 +219,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
         }
 
         var attrs = symbol.GetAttributes()
-            .Select(FormatAttribute)
+            .Select(AttributeFormatter.FormatAttribute)
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
         if (attrs.Count > 0)
@@ -362,72 +230,13 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             : null;
     }
 
-    private static string FormatAttribute(AttributeData attr)
-    {
-        var sb = new StringBuilder();
-        sb.Append(attr.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "?");
-
-        var parts = new List<string>();
-
-        foreach (var arg in attr.ConstructorArguments)
-            parts.Add(FormatTypedConstant(arg));
-
-        foreach (var named in attr.NamedArguments)
-            parts.Add($"{named.Key} = {FormatTypedConstant(named.Value)}");
-
-        if (parts.Count > 0)
-        {
-            sb.Append('(');
-            sb.Append(string.Join(", ", parts));
-            sb.Append(')');
-        }
-
-        return sb.ToString();
-    }
-
-    private static string FormatTypedConstant(TypedConstant constant)
-    {
-        if (constant.IsNull)
-            return "null";
-
-        return constant.Kind switch
-        {
-            TypedConstantKind.Primitive => FormatPrimitive(constant.Value),
-            TypedConstantKind.Enum => FormatEnum(constant),
-            TypedConstantKind.Type => $"typeof({((INamedTypeSymbol?)constant.Value)?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "?"})",
-            TypedConstantKind.Array => $"[{string.Join(", ", constant.Values.Select(FormatTypedConstant))}]",
-            _ => constant.ToString() ?? "?"
-        };
-    }
-
-    private static string FormatEnum(TypedConstant constant)
-    {
-        var enumType = constant.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var value = constant.Value;
-        if (enumType != null && value != null)
-            return $"{enumType}.{value}";
-        return constant.ToString() ?? "?";
-    }
-
-    private static string FormatPrimitive(object? value)
-    {
-        return value switch
-        {
-            null => "null",
-            string s => $"\"{s.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"",
-            char c => $"'{c}'",
-            bool b => b ? "true" : "false",
-            _ => FormattableString.Invariant($"{value}")
-        };
-    }
-
     private static string? DeriveGeneratorIdentity(byte[] content, string encodingName)
     {
         if (content.Length == 0)
             return null;
 
         var headerLength = Math.Min(512, content.Length);
-        var headerText = GetEncoding(encodingName).GetString(content, 0, headerLength);
+        var headerText = DeclarationSpanComputer.GetEncoding(encodingName).GetString(content, 0, headerLength);
 
         var generatedCodeAttr = "[GeneratedCode(";
         var attrIndex = headerText.IndexOf(generatedCodeAttr, StringComparison.OrdinalIgnoreCase);
