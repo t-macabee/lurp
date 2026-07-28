@@ -1,8 +1,15 @@
 ﻿using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
+#if CODE_ANALYSIS
+using System.Diagnostics.CodeAnalysis;
+#endif
+
 namespace Lurp.Workspace;
 
+#if CODE_ANALYSIS
+[SuppressMessage("NDepend", "ND1000", Justification = "Pipeline orchestrator for incremental indexing (7+ sequential steps: change detection, extraction, diffing, persistence). Investigation (2026-07-28) found no scattered responsibilities — length tracks step count, not mixed concerns. Review trigger: re-split if a step gains independent branching/looping logic of its own, or if a new step is added that doesn't share the same input/output pipeline shape.")]
+#endif
 public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath = null)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
