@@ -119,50 +119,48 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             foreach (var attr in attrList.Attributes)
             {
                 var attrName = GetAttributeName(attr);
-
-                string? serializedName = null;
-                string? library = null;
-
-                switch (attrName)
-                {
-                    case "JsonPropertyName":
-                        library = "System.Text.Json";
-                        serializedName = GetStringArgument(attr);
-                        break;
-                    case "JsonProperty":
-                        library = "Newtonsoft.Json";
-                        serializedName = GetStringArgument(attr);
-                        break;
-                    case "DataMember":
-                        library = "DataContract";
-                        serializedName = GetNamedArgument(attr, "Name");
-                        break;
-                    case "JsonIgnore":
-                    case "IgnoreDataMember":
-
-                        library = attrName == "JsonIgnore" ? "System.Text.Json" : "DataContract";
-                        break;
-                }
-
-                if (library == null)
+                var classification = ClassifySerializationAttribute(attrName);
+                if (classification == null)
                     continue;
 
-                var detail = new Dictionary<string, string?>
-                {
-                    ["serialized_name"] = serializedName,
-                    ["library"] = library,
-                    ["member_name"] = memberSymbol.Name
-                };
+                var (library, resolveSerializedName) = classification.Value;
+                var serializedName = resolveSerializedName(attr);
 
-                if (targetId != null)
-                {
-                    var key = (memberId, targetId, EdgeKind.References.ToString());
-                    if (ctx.Seen.Add(key))
-                    {
-                        ctx.Edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
-                            ctx, evidenceLocation));
-                    }
-                }
+                EmitSerializationReferenceEdge(memberSymbol, memberId, targetId, library, serializedName, ctx, evidenceLocation);
+            }
+        }
+    }
+
+    private readonly record struct SerializationAttributeClassification(string Library, Func<AttributeSyntax, string?> ResolveSerializedName);
+
+    private static SerializationAttributeClassification? ClassifySerializationAttribute(string attrName) => attrName switch
+    {
+        "JsonPropertyName" => new SerializationAttributeClassification("System.Text.Json", GetStringArgument),
+        "JsonProperty" => new SerializationAttributeClassification("Newtonsoft.Json", GetStringArgument),
+        "DataMember" => new SerializationAttributeClassification("DataContract", attr => GetNamedArgument(attr, "Name")),
+        "JsonIgnore" => new SerializationAttributeClassification("System.Text.Json", IgnoreHasNoSerializedName),
+        "IgnoreDataMember" => new SerializationAttributeClassification("DataContract", IgnoreHasNoSerializedName),
+        _ => null
+    };
+
+    private static string? IgnoreHasNoSerializedName(AttributeSyntax attr) => null;
+
+    private static void EmitSerializationReferenceEdge(ISymbol memberSymbol, string memberId, string? targetId, string library, string? serializedName, ExtractionContext ctx, Location evidenceLocation)
+    {
+        var detail = new Dictionary<string, string?>
+        {
+            ["serialized_name"] = serializedName,
+            ["library"] = library,
+            ["member_name"] = memberSymbol.Name
+        };
+
+        if (targetId != null)
+        {
+            var key = (memberId, targetId, EdgeKind.References.ToString());
+            if (ctx.Seen.Add(key))
+            {
+                ctx.Edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
+                    ctx, evidenceLocation));
             }
         }
     }
