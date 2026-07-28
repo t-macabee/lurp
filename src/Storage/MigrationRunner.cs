@@ -15,7 +15,7 @@ namespace Lurp.Storage
 
         public void RunMigrations()
         {
-            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
             connection.Open();
 
             var currentVersion = GetCurrentSchemaVersion(connection);
@@ -44,7 +44,7 @@ namespace Lurp.Storage
 
         public int GetCurrentSchemaVersion()
         {
-            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
             connection.Open();
             return GetCurrentSchemaVersion(connection);
         }
