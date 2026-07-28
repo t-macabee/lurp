@@ -16,6 +16,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
 
         foreach (var type in allTypes)
         {
@@ -31,41 +32,40 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 if (member is not IMethodSymbol method || method.MethodKind != MethodKind.Ordinary)
                     continue;
 
-                ProcessControllerAction(method, controllerId, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+                ProcessControllerAction(method, controllerId, ctx);
             }
         }
 
         return edges;
     }
 
-    private void ProcessControllerAction(IMethodSymbol method, string controllerId, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
+    private void ProcessControllerAction(IMethodSymbol method, string controllerId, ExtractionContext ctx)
     {
-        var methodId = MakeSymbolId(method, assemblyIdentity);
+        var methodId = MakeSymbolId(method, ctx.AssemblyIdentity);
         if (methodId == null)
             return;
 
         // All edges from this action are anchored to the action method declaration
-        var (path, sl, sc, el, ec) = locationResolver.Resolve(method);
-        var isGenerated = locationResolver.IsGenerated(path);
+        var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(method);
+        var isGenerated = ctx.LocationResolver.IsGenerated(path);
 
         var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
-        if (seen.Add(declaresKey))
-            edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
+        if (ctx.Seen.Add(declaresKey))
+            ctx.Edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
 
         var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
         if (routeTemplate != null)
         {
             var routeSourceId = $"route://{routeTemplate}";
             var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
-            if (seen.Add(routeKey))
-                edges.Add(new EdgeRecord
+            if (ctx.Seen.Add(routeKey))
+                ctx.Edges.Add(new EdgeRecord
                 {
                     SourceSymbolId = routeSourceId,
                     TargetSymbolId = methodId,
                     Kind = EdgeKind.RoutesTo.ToString(),
                     Provenance = Provenance.FrameworkDerived,
-                    SnapshotId = snapshotId,
+                    SnapshotId = ctx.SnapshotId,
                     ExtractorVersion = Version,
                     SourceDocumentPath = path,
                     SourceStartLine = sl,
@@ -78,12 +78,12 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
         if (!method.ReturnsVoid && method.ReturnType != null)
         {
-            var returnTypeId = MakeSymbolId(method.ReturnType, assemblyIdentity);
+            var returnTypeId = MakeSymbolId(method.ReturnType, ctx.AssemblyIdentity);
             if (returnTypeId != null)
             {
                 var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
-                if (seen.Add(retKey))
-                    edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
+                if (ctx.Seen.Add(retKey))
+                    ctx.Edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
             }
         }
 
@@ -93,13 +93,13 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!hasFromServices)
                 continue;
 
-            var paramTypeId = MakeSymbolId(param.Type, assemblyIdentity);
+            var paramTypeId = MakeSymbolId(param.Type, ctx.AssemblyIdentity);
             if (paramTypeId == null)
                 continue;
 
             var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
-            if (seen.Add(refKey))
-                edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), snapshotId, path, sl, sc, el, ec, isGenerated));
+            if (ctx.Seen.Add(refKey))
+                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
         }
     }
 
@@ -132,7 +132,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             parts.Add(classTemplate.TrimStart('/'));
         }
 
-        var methodRoute = action.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is"RouteAttribute" or "Route" or"HttpGetAttribute" or "HttpGet" or"HttpPostAttribute" or "HttpPost" or"HttpPutAttribute" or "HttpPut" or"HttpDeleteAttribute" or "HttpDelete" or"HttpPatchAttribute" or "HttpPatch");
+        var methodRoute = action.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route" or "HttpGetAttribute" or "HttpGet" or "HttpPostAttribute" or "HttpPost" or "HttpPutAttribute" or "HttpPut" or "HttpDeleteAttribute" or "HttpDelete" or "HttpPatchAttribute" or "HttpPatch");
 
         if (methodRoute?.ConstructorArguments.Length > 0 && methodRoute.ConstructorArguments[0].Value is string methodTemplate)
         {

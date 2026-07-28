@@ -17,6 +17,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
 
         foreach (var tree in compilation.SyntaxTrees)
         {
@@ -24,29 +25,27 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
             {
-                ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel,assemblyIdentity, snapshotId, edges, seen, locationResolver);
+                ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel, ctx);
             }
 
             foreach (var field in tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>())
             {
                 foreach (var variable in field.Declaration.Variables)
                 {
-                    ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel,assemblyIdentity, snapshotId, edges, seen, locationResolver);
+                    ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel, ctx);
                 }
             }
 
             foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
-                ProcessJsonSerializableType(typeDecl, semanticModel, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+                ProcessJsonSerializableType(typeDecl, semanticModel, ctx);
             }
         }
 
         return edges;
     }
 
-    private static void ProcessJsonSerializableType(TypeDeclarationSyntax typeDecl, SemanticModel semanticModel,
-        string assemblyIdentity, string snapshotId, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen,
-        EdgeLocationResolver locationResolver)
+    private static void ProcessJsonSerializableType(TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, ExtractionContext ctx)
     {
         foreach (var attrList in typeDecl.AttributeLists)
         {
@@ -69,20 +68,20 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     if (typeSymbol == null)
                         continue;
 
-                    var sourceId = MakeSymbolId(typeSymbol, assemblyIdentity);
-                    var targetId = MakeSymbolId(serializableType, assemblyIdentity);
+                    var sourceId = MakeSymbolId(typeSymbol, ctx.AssemblyIdentity);
+                    var targetId = MakeSymbolId(serializableType, ctx.AssemblyIdentity);
                     if (sourceId != null && targetId != null)
                     {
                         var key = (sourceId, targetId, EdgeKind.References.ToString());
-                        if (seen.Add(key))
-                            edges.Add(MakeEdge(sourceId, targetId, EdgeKind.References.ToString(), snapshotId, locationResolver, typeDecl.GetLocation()));
+                        if (ctx.Seen.Add(key))
+                            ctx.Edges.Add(MakeEdge(sourceId, targetId, EdgeKind.References.ToString(), ctx, typeDecl.GetLocation()));
                     }
                 }
             }
         }
     }
 
-    private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode,SyntaxList<AttributeListSyntax> attributeLists,SemanticModel semanticModel,string assemblyIdentity,string snapshotId,List<EdgeRecord> edges,HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
+    private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode, SyntaxList<AttributeListSyntax> attributeLists, SemanticModel semanticModel, ExtractionContext ctx)
     {
 
         ISymbol? memberSymbol = memberNode switch
@@ -95,7 +94,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberSymbol == null)
             return;
 
-        var memberId = MakeSymbolId(memberSymbol, assemblyIdentity);
+        var memberId = MakeSymbolId(memberSymbol, ctx.AssemblyIdentity);
         if (memberId == null)
             return;
 
@@ -109,7 +108,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         string? targetId = null;
         if (memberType is INamedTypeSymbol namedType)
         {
-            targetId = MakeSymbolId(namedType, assemblyIdentity);
+            targetId = MakeSymbolId(namedType, ctx.AssemblyIdentity);
         }
 
         // Resolve location from the syntax node (property/field decl) — the evidence site
@@ -158,10 +157,10 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 if (targetId != null)
                 {
                     var key = (memberId, targetId, EdgeKind.References.ToString());
-                    if (seen.Add(key))
+                    if (ctx.Seen.Add(key))
                     {
-                        edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
-                            snapshotId, locationResolver, evidenceLocation));
+                        ctx.Edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
+                            ctx, evidenceLocation));
                     }
                 }
             }
@@ -182,7 +181,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (attr.ArgumentList?.Arguments.Count > 0)
         {
             var arg = attr.ArgumentList.Arguments[0];
-            if (arg.Expression is LiteralExpressionSyntax literal &&literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (arg.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return literal.Token.ValueText;
             }
@@ -197,7 +196,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
         foreach (var arg in attr.ArgumentList.Arguments)
         {
-            if (arg.NameEquals?.Name.Identifier.Text == argumentName &&arg.Expression is LiteralExpressionSyntax literal &&literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (arg.NameEquals?.Name.Identifier.Text == argumentName && arg.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return literal.Token.ValueText;
             }
@@ -210,10 +209,9 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId,
-        EdgeLocationResolver locationResolver, Location evidenceLocation)
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ExtractionContext ctx, Location evidenceLocation)
     {
-        var (path, sl, sc, el, ec) = locationResolver.Resolve(evidenceLocation);
+        var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(evidenceLocation);
 
         return new EdgeRecord
         {
@@ -221,14 +219,14 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             TargetSymbolId = targetId,
             Kind = kind,
             Provenance = Provenance.FrameworkDerived,
-            SnapshotId = snapshotId,
+            SnapshotId = ctx.SnapshotId,
             ExtractorVersion = "serialization-v1",
             SourceDocumentPath = path,
             SourceStartLine = sl,
             SourceStartColumn = sc,
             SourceEndLine = el,
             SourceEndColumn = ec,
-            IsCrossGenerated = locationResolver.IsGenerated(path),
+            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
         };
     }
 }
