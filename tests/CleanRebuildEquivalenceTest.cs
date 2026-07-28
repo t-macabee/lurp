@@ -457,7 +457,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
                 var result = CompilationFactExtractor.ExtractAll(
                     compilation, workspaceInfo, snapshotIdStr, projectName,
-                    skipAdapters: new HashSet<string>());
+                    new CompilationFactExtractor.ExtractionOptions(new HashSet<string>()));
 
                 store.SaveDeclarations(snapshotIdStr, result.Declarations);
                 totalDeclarations += result.Declarations.Count;

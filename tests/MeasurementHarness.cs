@@ -552,7 +552,7 @@ public class NewType
 
                     var result = CompilationFactExtractor.ExtractAll(
                         compilation, workspaceInfo, snapshotIdStr, projectName,
-                        skipAdapters: new HashSet<string>());
+                        new CompilationFactExtractor.ExtractionOptions(new HashSet<string>()));
 
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
                     totalDecl += result.Declarations.Count;

@@ -8,8 +8,20 @@ public static class CompilationFactExtractor
 {
     public sealed record ExtractionResult(List<SymbolDeclaration> Declarations, List<EdgeRecord> Edges, List<DiagnosticRecord> Diagnostics, int SkippedDeclarations = 0);
 
-    public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, IReadOnlySet<string>? skipAdapters = null, Action<string>? logWarning = null, Action<string>? logError = null, IReadOnlySet<string>? scopeDocuments = null)
+    public sealed record ExtractionOptions(
+        IReadOnlySet<string>? SkipAdapters = null,
+        Action<string>? LogWarning = null,
+        Action<string>? LogError = null,
+        IReadOnlySet<string>? ScopeDocuments = null
+    );
+
+    public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
+        var skipAdapters = options?.SkipAdapters;
+        var logWarning = options?.LogWarning;
+        var logError = options?.LogError;
+        var scopeDocuments = options?.ScopeDocuments;
+
         var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments);
 
         List<SymbolDeclaration> declarations;

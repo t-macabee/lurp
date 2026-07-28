@@ -122,10 +122,11 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (perProjectAffectedPaths.TryGetValue(project.Name, out var projectAffected) && projectAffected.Count > 0)
                 scopeDocs = projectAffected;
 
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, _skipAdapters,
-                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                logError: msg => Console.Error.Write($"  ERROR: {msg} "),
-                scopeDocuments: scopeDocs);
+            var options = new CompilationFactExtractor.ExtractionOptions(_skipAdapters,
+                LogWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
+                ScopeDocuments: scopeDocs);
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             _store.SaveEdges(newSnapshotId, result.Edges);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");

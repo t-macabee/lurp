@@ -153,7 +153,8 @@ public static class IndexRunner
 
                 try
                 {
-                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, skipAdapters, logWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), logError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+                    var options = new CompilationFactExtractor.ExtractionOptions(skipAdapters, LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
 
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
                     totalDeclarations += result.Declarations.Count;

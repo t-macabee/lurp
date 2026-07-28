@@ -232,10 +232,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             }
 
             Console.Write($"  [{projectName}] ");
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, _skipAdapters,
-                logWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                logError: msg => Console.Error.Write($"  ERROR: {msg} "),
-                scopeDocuments: scopeDocs);
+            var options = new CompilationFactExtractor.ExtractionOptions(_skipAdapters,
+                LogWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
+                LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
+                ScopeDocuments: scopeDocs);
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
 
             // Filter out edges anchored in unchanged documents within this project.
             // Those edges were already copied forward from the previous snapshot
