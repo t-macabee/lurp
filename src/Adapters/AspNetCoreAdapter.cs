@@ -39,6 +39,8 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return edges;
     }
 
+    private readonly record struct EdgeLocation(string? Path, int? StartLine, int? StartColumn, int? EndLine, int? EndColumn, bool IsGenerated);
+
     private void ProcessControllerAction(IMethodSymbol method, string controllerId, ExtractionContext ctx)
     {
         var methodId = MakeSymbolId(method, ctx.AssemblyIdentity);
@@ -47,46 +49,59 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
         // All edges from this action are anchored to the action method declaration
         var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(method);
-        var isGenerated = ctx.LocationResolver.IsGenerated(path);
+        var loc = new EdgeLocation(path, sl, sc, el, ec, ctx.LocationResolver.IsGenerated(path));
 
         var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
         if (ctx.Seen.Add(declaresKey))
-            ctx.Edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
+            ctx.Edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), ctx.SnapshotId, loc));
 
+        EmitRouteEdge(method, methodId, ctx, loc);
+        EmitReturnTypeEdge(method, methodId, ctx, loc);
+        EmitFromServicesEdges(method, methodId, ctx, loc);
+    }
+
+    private void EmitRouteEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    {
         var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
-        if (routeTemplate != null)
-        {
-            var routeSourceId = $"route://{routeTemplate}";
-            var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
-            if (ctx.Seen.Add(routeKey))
-                ctx.Edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = routeSourceId,
-                    TargetSymbolId = methodId,
-                    Kind = EdgeKind.RoutesTo.ToString(),
-                    Provenance = Provenance.FrameworkDerived,
-                    SnapshotId = ctx.SnapshotId,
-                    ExtractorVersion = Version,
-                    SourceDocumentPath = path,
-                    SourceStartLine = sl,
-                    SourceStartColumn = sc,
-                    SourceEndLine = el,
-                    SourceEndColumn = ec,
-                    IsCrossGenerated = isGenerated,
-                });
-        }
+        if (routeTemplate == null)
+            return;
 
-        if (!method.ReturnsVoid && method.ReturnType != null)
-        {
-            var returnTypeId = MakeSymbolId(method.ReturnType, ctx.AssemblyIdentity);
-            if (returnTypeId != null)
+        var routeSourceId = $"route://{routeTemplate}";
+        var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
+        if (ctx.Seen.Add(routeKey))
+            ctx.Edges.Add(new EdgeRecord
             {
-                var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
-                if (ctx.Seen.Add(retKey))
-                    ctx.Edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
-            }
-        }
+                SourceSymbolId = routeSourceId,
+                TargetSymbolId = methodId,
+                Kind = EdgeKind.RoutesTo.ToString(),
+                Provenance = Provenance.FrameworkDerived,
+                SnapshotId = ctx.SnapshotId,
+                ExtractorVersion = Version,
+                SourceDocumentPath = loc.Path,
+                SourceStartLine = loc.StartLine,
+                SourceStartColumn = loc.StartColumn,
+                SourceEndLine = loc.EndLine,
+                SourceEndColumn = loc.EndColumn,
+                IsCrossGenerated = loc.IsGenerated,
+            });
+    }
 
+    private void EmitReturnTypeEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    {
+        if (method.ReturnsVoid || method.ReturnType == null)
+            return;
+
+        var returnTypeId = MakeSymbolId(method.ReturnType, ctx.AssemblyIdentity);
+        if (returnTypeId == null)
+            return;
+
+        var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
+        if (ctx.Seen.Add(retKey))
+            ctx.Edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), ctx.SnapshotId, loc));
+    }
+
+    private void EmitFromServicesEdges(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    {
         foreach (var param in method.Parameters)
         {
             var hasFromServices = param.GetAttributes().Any(a => a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
@@ -99,7 +114,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
             var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
             if (ctx.Seen.Add(refKey))
-                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), ctx.SnapshotId, path, sl, sc, el, ec, isGenerated));
+                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), ctx.SnapshotId, loc));
         }
     }
 
@@ -150,8 +165,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId,
-        string? path, int? sl, int? sc, int? el, int? ec, bool isGenerated)
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, EdgeLocation loc)
     {
         return new EdgeRecord
         {
@@ -161,12 +175,12 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             Provenance = Provenance.FrameworkDerived,
             SnapshotId = snapshotId,
             ExtractorVersion = "aspnetcore-v1",
-            SourceDocumentPath = path,
-            SourceStartLine = sl,
-            SourceStartColumn = sc,
-            SourceEndLine = el,
-            SourceEndColumn = ec,
-            IsCrossGenerated = isGenerated,
+            SourceDocumentPath = loc.Path,
+            SourceStartLine = loc.StartLine,
+            SourceStartColumn = loc.StartColumn,
+            SourceEndLine = loc.EndLine,
+            SourceEndColumn = loc.EndColumn,
+            IsCrossGenerated = loc.IsGenerated,
         };
     }
 
