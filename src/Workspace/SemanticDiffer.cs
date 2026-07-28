@@ -6,6 +6,37 @@ namespace Lurp.Workspace
 
     public class SemanticDiffer
     {
+        private enum MetadataComparisonKind { String, Array, Scalar }
+
+        private readonly record struct MetadataComparisonEntry(
+            string Key,
+            string ChangeType,
+            MetadataComparisonKind Kind);
+
+        private static readonly MetadataComparisonEntry[] MetadataComparisons =
+        [
+            new("accessibility", ChangeType.AccessibilityChanged, MetadataComparisonKind.String),
+            new("signature", ChangeType.SignatureChanged, MetadataComparisonKind.String),
+            new("base_type", ChangeType.BaseTypeChanged, MetadataComparisonKind.String),
+            new("interfaces", ChangeType.InterfacesChanged, MetadataComparisonKind.Array),
+            new("isRecord", ChangeType.RecordChanged, MetadataComparisonKind.Scalar),
+            new("typeKind", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isAbstract", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isVirtual", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isOverride", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isStatic", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isAsync", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isExtensionMethod", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isReadOnly", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isWriteOnly", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isConst", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("isVolatile", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new("attributes", ChangeType.AttributeChanged, MetadataComparisonKind.Array)
+        ];
+
+        // Intentionally excluded from comparison (captured by signature):
+        // - returnType: included in signature for methods, properties, events
+        // - arity: generic type parameter count included in signature
         private readonly ISnapshotStore _snapshotStore;
         private readonly IDeclarationStore _declarationStore;
         private readonly IEdgeStore _edgeStore;
@@ -243,52 +274,43 @@ namespace Lurp.Workspace
                 ? []
                 : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? [];
 
-            var fromAcc = GetMetaString(fromMeta, "accessibility");
-            var toAcc = GetMetaString(toMeta, "accessibility");
-            if (fromAcc != null && toAcc != null && fromAcc != toAcc)
+            foreach (var entry in MetadataComparisons)
             {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AccessibilityChanged, symbolId, new { before = fromAcc, after = toAcc }));
-            }
-
-            var fromSig = GetMetaString(fromMeta, "signature");
-            var toSig = GetMetaString(toMeta, "signature");
-            if (fromSig != null && toSig != null && fromSig != toSig)
-            {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SignatureChanged, symbolId, new { before = fromSig, after = toSig }));
-            }
-
-            var fromBase = GetMetaString(fromMeta, "base_type");
-            var toBase = GetMetaString(toMeta, "base_type");
-            if (fromBase != null && toBase != null && fromBase != toBase)
-            {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BaseTypeChanged, symbolId, new { before = fromBase, after = toBase }));
-            }
-
-            var fromInterfaces = GetMetaArray(fromMeta, "interfaces");
-            var toInterfaces = GetMetaArray(toMeta, "interfaces");
-            if (fromInterfaces != null && toInterfaces != null && !fromInterfaces.SequenceEqual(toInterfaces))
-            {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.InterfacesChanged, symbolId, new { before = fromInterfaces, after = toInterfaces }));
-            }
-
-            CompareScalarMetadata("isRecord", ChangeType.RecordChanged);
-            foreach (var key in new[]
-            {
-                "typeKind", "isAbstract", "isVirtual", "isOverride", "isStatic", "isAsync",
-                "isExtensionMethod", "isReadOnly", "isWriteOnly", "isConst", "isVolatile"
-            })
-            {
-                CompareScalarMetadata(key, ChangeType.MetadataChanged);
-            }
-
-            var fromAttrs = GetMetaArray(fromMeta, "attributes");
-            var toAttrs = GetMetaArray(toMeta, "attributes");
-            if (fromAttrs != null && toAttrs != null && !fromAttrs.SequenceEqual(toAttrs))
-            {
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.AttributeChanged, symbolId, new { before = fromAttrs, after = toAttrs }));
+                switch (entry.Kind)
+                {
+                    case MetadataComparisonKind.String:
+                        CompareStringMetadata(entry.Key, entry.ChangeType);
+                        break;
+                    case MetadataComparisonKind.Array:
+                        CompareArrayMetadata(entry.Key, entry.ChangeType);
+                        break;
+                    case MetadataComparisonKind.Scalar:
+                        CompareScalarMetadata(entry.Key, entry.ChangeType);
+                        break;
+                }
             }
 
             return changes;
+
+            void CompareStringMetadata(string key, string changeType)
+            {
+                var from = GetMetaString(fromMeta, key);
+                var to = GetMetaString(toMeta, key);
+                if (from != null && to != null && from != to)
+                {
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId, new { before = from, after = to }));
+                }
+            }
+
+            void CompareArrayMetadata(string key, string changeType)
+            {
+                var from = GetMetaArray(fromMeta, key);
+                var to = GetMetaArray(toMeta, key);
+                if (from != null && to != null && !from.SequenceEqual(to))
+                {
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId, new { before = from, after = to }));
+                }
+            }
 
             void CompareScalarMetadata(string key, string changeType)
             {
