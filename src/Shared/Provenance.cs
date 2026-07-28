@@ -1,4 +1,4 @@
-namespace Lurp.Workspace;
+namespace Lurp.Shared;
 
 /// <summary>
 /// Canonical evidence-grade vocabulary for edges.

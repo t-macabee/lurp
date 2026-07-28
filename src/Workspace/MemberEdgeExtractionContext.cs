@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -8,7 +9,10 @@ namespace Lurp.Workspace;
 internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
 {
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-    private readonly EdgeLocationResolver _locationResolver = new(documentVersions, generatedDocuments, gitRoot);
+    private readonly EdgeLocationResolver _locationResolver = new(
+        documentVersions.Keys.Select(static id => id.ToString()),
+        generatedDocuments.Select(static id => id.ToString()),
+        gitRoot);
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
     internal EdgeLocationResolver LocationResolver => _locationResolver;

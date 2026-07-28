@@ -1,4 +1,4 @@
-using Lurp.Workspace;
+using Lurp.Shared;
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;

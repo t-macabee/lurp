@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Lurp.Shared;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
 

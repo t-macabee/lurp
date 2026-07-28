@@ -1,4 +1,5 @@
 using Lurp.Adapters;
+using Lurp.Shared;
 using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
@@ -80,7 +81,10 @@ public static class CompilationFactExtractor
 
         var adapters = AdapterRegistry.GetAdapters(skipAdapters);
 
-        var locationResolver = new EdgeLocationResolver(workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, gitRoot);
+        var locationResolver = new EdgeLocationResolver(
+            workspaceInfo.Documents.Keys.Select(static id => id.ToString()),
+            workspaceInfo.GeneratedDocuments.Select(static id => id.ToString()),
+            gitRoot);
 
         foreach (var adapter in adapters)
         {

@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
-using Lurp.Workspace;
+using Lurp.Shared;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -35,7 +35,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var ctx = new ExtractionContext(
             AssemblyIdentity: compilation.Assembly.Identity.GetDisplayName(),
             SnapshotId: snapshotId,
-            ExtractorVersion: ExtractorConstants.DependencyInjectionExtractor,
+            ExtractorVersion: Version,
             Edges: edges,
             Seen: seen,
             LocationResolver: locationResolver

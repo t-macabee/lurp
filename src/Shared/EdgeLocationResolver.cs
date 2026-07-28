@@ -1,20 +1,27 @@
 using Microsoft.CodeAnalysis;
 
-namespace Lurp.Workspace;
+namespace Lurp.Shared;
 
 public sealed class EdgeLocationResolver
 {
-    private readonly IReadOnlyDictionary<DocumentId, DocumentVersionId> _documentVersions;
-    private readonly IReadOnlySet<DocumentId> _generatedDocuments;
+    private readonly IReadOnlyList<string> _documentPaths;
+    private readonly IReadOnlySet<string> _generatedDocumentPaths;
     private readonly string _gitRoot;
 
     public EdgeLocationResolver(
-        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
-        IReadOnlySet<DocumentId> generatedDocuments,
+        IEnumerable<string> documentPaths,
+        IEnumerable<string> generatedDocumentPaths,
         string gitRoot)
     {
-        _documentVersions = documentVersions ?? throw new ArgumentNullException(nameof(documentVersions));
-        _generatedDocuments = generatedDocuments ?? throw new ArgumentNullException(nameof(generatedDocuments));
+        ArgumentNullException.ThrowIfNull(documentPaths);
+        ArgumentNullException.ThrowIfNull(generatedDocumentPaths);
+
+        _documentPaths = documentPaths
+            .Select(static path => path.Replace('\\', '/'))
+            .ToArray();
+        _generatedDocumentPaths = generatedDocumentPaths
+            .Select(static path => path.Replace('\\', '/'))
+            .ToHashSet(StringComparer.Ordinal);
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     }
 
@@ -42,11 +49,9 @@ public sealed class EdgeLocationResolver
         if (string.IsNullOrEmpty(path))
             return false;
 
-        var docId = new DocumentId(path);
-        if (_generatedDocuments.Contains(docId))
-            return true;
-
         var normalized = path.Replace('\\', '/');
+        if (_generatedDocumentPaths.Contains(normalized))
+            return true;
 
         if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
             normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
@@ -71,9 +76,8 @@ public sealed class EdgeLocationResolver
 
         var normalized = filePath.Replace('\\', '/');
 
-        foreach (var docId in _documentVersions.Keys)
+        foreach (var docPath in _documentPaths)
         {
-            var docPath = docId.ToString().Replace('\\', '/');
             if (docPath == normalized || docPath.EndsWith("/" + normalized, StringComparison.Ordinal) ||
                 normalized.EndsWith("/" + docPath, StringComparison.Ordinal))
             {
@@ -86,6 +90,9 @@ public sealed class EdgeLocationResolver
         if (!Path.IsPathRooted(filePath))
             return normalized;
 
-        return DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
+        var normalizedRoot = Path.GetFullPath(_gitRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var root = normalizedRoot + Path.DirectorySeparatorChar;
+        return Path.GetRelativePath(root, filePath).Replace('\\', '/');
     }
 }

@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace Lurp.Workspace;
+namespace Lurp.Shared;
 
 internal static class SymbolIdFactory
 {

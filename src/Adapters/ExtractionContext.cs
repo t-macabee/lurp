@@ -1,5 +1,5 @@
 using Lurp.Storage;
-using Lurp.Workspace;
+using Lurp.Shared;
 
 namespace Lurp.Adapters;
 

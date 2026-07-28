@@ -1,4 +1,5 @@
 ﻿using Lurp.Adapters;
+using Lurp.Shared;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -3747,8 +3748,8 @@ namespace Xunit {
         private static EdgeLocationResolver CreateTestLocationResolver()
         {
             return new EdgeLocationResolver(
-                new Dictionary<DocumentId, DocumentVersionId>(),
-                new HashSet<DocumentId>(),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
                 ".");
         }
 
