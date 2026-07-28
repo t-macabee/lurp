@@ -184,6 +184,32 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         if (!reader.Read())
             return null;
 
+        var row = ReadSnapshotRow(reader);
+        var documents = ReadDocumentVersions(row.SnapshotId);
+        var projects = LoadProjects(row.SnapshotId);
+
+        return new SnapshotRow
+        {
+            SnapshotId = row.SnapshotId,
+            WorkspaceId = row.WorkspaceId,
+            GitRoot = row.GitRoot,
+            SolutionPath = row.SolutionPath,
+            SdkVersion = row.SdkVersion,
+            CompilerVersion = row.CompilerVersion,
+            CreatedAtUtc = row.CreatedAtUtc,
+            Documents = documents,
+            DatabaseSchemaVersion = row.DatabaseSchemaVersion,
+            OutputSchemaVersion = row.OutputSchemaVersion,
+            ExtractorVersion = row.ExtractorVersion,
+            ToolVersion = row.ToolVersion,
+            PreviousSnapshotId = row.PreviousSnapshotId,
+            Projects = projects,
+            SkippedAdapters = row.SkippedAdapters,
+        };
+    }
+
+    private static SnapshotRow ReadSnapshotRow(SqliteDataReader reader)
+    {
         var snapshotId = reader.GetString(0);
         var workspaceIdStr = reader.GetString(1);
         var gitRoot = reader.GetString(2);
@@ -202,35 +228,6 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ? new List<string>()
             : skippedAdaptersRaw.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-        var documents = new List<DocumentVersion>();
-        using var docCommand = _connection.CreateCommand();
-        docCommand.CommandText = @"
-            SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding,
-                   dv.line_starts
-            FROM snapshot_documents sd
-            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
-            JOIN documents d ON d.document_id = dv.document_id
-            WHERE sd.snapshot_id = @snapshotId;
-        ";
-        docCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        using var docReader = docCommand.ExecuteReader();
-        while (docReader.Read())
-        {
-            var lineStarts = docReader.IsDBNull(4) ? "" : docReader.GetString(4);
-            documents.Add(new DocumentVersion
-            {
-                DocumentId = docReader.GetString(0),
-                FilePath = docReader.GetString(1),
-                ContentHash = docReader.GetString(2),
-                Encoding = docReader.IsDBNull(3) ? "" : docReader.GetString(3),
-                LineStart = lineStarts,
-                CreatedAtUtc = DateTime.MinValue,
-            });
-        }
-
-        var projects = LoadProjects(snapshotId);
-
         return new SnapshotRow
         {
             SnapshotId = snapshotId,
@@ -240,15 +237,45 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             SdkVersion = sdkVersion ?? "",
             CompilerVersion = compilerVersion ?? "",
             CreatedAtUtc = builtAtUtc,
-            Documents = documents,
             DatabaseSchemaVersion = databaseSchemaVersion,
             OutputSchemaVersion = outputSchemaVersion,
             ExtractorVersion = extractorVersion ?? "",
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
-            Projects = projects,
             SkippedAdapters = skippedAdapters,
         };
+    }
+
+    private List<DocumentVersion> ReadDocumentVersions(string snapshotId)
+    {
+        var documents = new List<DocumentVersion>();
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding,
+                   dv.line_starts
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents d ON d.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId;
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var lineStarts = reader.IsDBNull(4) ? "" : reader.GetString(4);
+            documents.Add(new DocumentVersion
+            {
+                DocumentId = reader.GetString(0),
+                FilePath = reader.GetString(1),
+                ContentHash = reader.GetString(2),
+                Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                LineStart = lineStarts,
+                CreatedAtUtc = DateTime.MinValue,
+            });
+        }
+
+        return documents;
     }
 
     private List<ProjectRow> LoadProjects(string snapshotId)
