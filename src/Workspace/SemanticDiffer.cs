@@ -19,6 +19,19 @@ namespace Lurp.Workspace
 
         public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId)
         {
+            return ComputeDiffInternal(fromSnapshotId, toSnapshotId, changedSymbolIds: null);
+        }
+
+        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds)
+        {
+            if (changedSymbolIds.Count == 0)
+                return ([], 0);
+
+            return ComputeDiffInternal(fromSnapshotId, toSnapshotId, changedSymbolIds);
+        }
+
+        private (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiffInternal(string fromSnapshotId, string toSnapshotId, HashSet<string>? changedSymbolIds)
+        {
             var changes = new List<SemanticChange>();
             int skippedComparisons = 0;
 
@@ -30,157 +43,85 @@ namespace Lurp.Workspace
 
             foreach (var symbolId in toSymbols)
             {
+                if (changedSymbolIds != null && !changedSymbolIds.Contains(symbolId))
+                    continue;
                 if (!fromSet.Contains(symbolId))
-                {
                     changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolAdded, symbolId, new { symbol_id = symbolId }));
-                }
             }
 
             foreach (var symbolId in fromSymbols)
             {
-                if (!toSet.Contains(symbolId))
-                {
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRemoved, symbolId, new { symbol_id = symbolId }));
-                }
-            }
-
-            var common = fromSet.Intersect(toSet).ToList();
-
-            foreach (var symbolId in common)
-            {
-                var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
-                var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
-
-                if (fromInfo == null || toInfo == null)
-                {
-                    skippedComparisons++;
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
-                        new { reason = $"Symbol info missing: from={(fromInfo == null ? "missing" : "present")}, to={(toInfo == null ? "missing" : "present")}" }));
+                if (changedSymbolIds != null && !changedSymbolIds.Contains(symbolId))
                     continue;
-                }
-
-                if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
-                    fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
-                {
-                    var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
-                    var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
-                    var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
-                    var toContainer = GetContainer(toInfo.FullyQualifiedName);
-
-                    if (fromSimple != toSimple)
-                    {
-                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
-                    }
-
-                    if (fromContainer != toContainer)
-                    {
-                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = fromContainer, after = toContainer }));
-                    }
-                }
-
-                var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
-                changes.AddRange(metaChanges);
-
-                var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
-                changes.AddRange(sourceChanges);
-                skippedComparisons += sourceSkipped;
+                if (!toSet.Contains(symbolId))
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRemoved, symbolId, new { symbol_id = symbolId }));
             }
 
-            // Heuristic rename detection: match symbol_removed + symbol_added
-            // pairs with the same simple name and kind but different DocCommentIds.
+            var common = fromSet.Intersect(toSet);
+            if (changedSymbolIds != null)
+                common = common.Where(id => changedSymbolIds.Contains(id));
+            var commonList = common.ToList();
+
+            foreach (var symbolId in commonList)
+            {
+                var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromSnapshotId, toSnapshotId);
+                changes.AddRange(symbolChanges);
+                skippedComparisons += symbolSkipped;
+            }
+
             DetectRenames(changes, fromSnapshotId, toSnapshotId);
 
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
             var toEdges = _edgeStore.GetEdges(toSnapshotId);
+
+            if (changedSymbolIds != null)
+            {
+                fromEdges = fromEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId)).ToList();
+                toEdges = toEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId)).ToList();
+            }
 
             DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
 
             return (changes, skippedComparisons);
         }
 
-        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds)
+        private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, string fromSnapshotId, string toSnapshotId)
         {
             var changes = new List<SemanticChange>();
             int skippedComparisons = 0;
 
-            if (changedSymbolIds.Count == 0)
+            var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
+            var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
+
+            if (fromInfo == null || toInfo == null)
+            {
+                skippedComparisons++;
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
+                    new { reason = $"Symbol info missing: from={(fromInfo == null ? "missing" : "present")}, to={(toInfo == null ? "missing" : "present")}" }));
                 return (changes, skippedComparisons);
-
-            var fromSymbols = GetSymbolIdsInSnapshot(fromSnapshotId);
-            var toSymbols = GetSymbolIdsInSnapshot(toSnapshotId);
-
-            var fromSet = new HashSet<string>(fromSymbols);
-            var toSet = new HashSet<string>(toSymbols);
-
-            // Only consider symbols in the changed neighborhood
-            foreach (var symbolId in toSymbols)
-            {
-                if (!changedSymbolIds.Contains(symbolId))
-                    continue;
-                if (!fromSet.Contains(symbolId))
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolAdded, symbolId, new { symbol_id = symbolId }));
             }
 
-            foreach (var symbolId in fromSymbols)
+            if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
+                fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
             {
-                if (!changedSymbolIds.Contains(symbolId))
-                    continue;
-                if (!toSet.Contains(symbolId))
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRemoved, symbolId, new { symbol_id = symbolId }));
+                var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
+                var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
+                var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
+                var toContainer = GetContainer(toInfo.FullyQualifiedName);
+
+                if (fromSimple != toSimple)
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
+
+                if (fromContainer != toContainer)
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = fromContainer, after = toContainer }));
             }
 
-            var common = fromSet.Intersect(toSet).Where(id => changedSymbolIds.Contains(id)).ToList();
+            var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
+            changes.AddRange(metaChanges);
 
-            foreach (var symbolId in common)
-            {
-                var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
-                var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
-
-                if (fromInfo == null || toInfo == null)
-                {
-                    skippedComparisons++;
-                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.ComparisonUnavailable, symbolId,
-                        new { reason = $"Symbol info missing: from={(fromInfo == null ? "missing" : "present")}, to={(toInfo == null ? "missing" : "present")}" }));
-                    continue;
-                }
-
-                if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
-                    fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
-                {
-                    var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
-                    var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
-                    var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
-                    var toContainer = GetContainer(toInfo.FullyQualifiedName);
-
-                    if (fromSimple != toSimple)
-                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
-
-                    if (fromContainer != toContainer)
-                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = fromContainer, after = toContainer }));
-                }
-
-                var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
-                changes.AddRange(metaChanges);
-
-                var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
-                changes.AddRange(sourceChanges);
-                skippedComparisons += sourceSkipped;
-            }
-
-            // Heuristic rename detection: match symbol_removed + symbol_added
-            // pairs with the same simple name and kind but different DocCommentIds.
-            DetectRenames(changes, fromSnapshotId, toSnapshotId);
-
-            // Edge diff scoped to changed-symbol neighborhood:
-            // only consider edges where source or target is in changedSymbolIds.
-            var fromEdges = _edgeStore.GetEdges(fromSnapshotId)
-                .Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))
-                .ToList();
-            var toEdges = _edgeStore.GetEdges(toSnapshotId)
-                .Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))
-                .ToList();
-
-            DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
+            var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
+            changes.AddRange(sourceChanges);
+            skippedComparisons += sourceSkipped;
 
             return (changes, skippedComparisons);
         }
