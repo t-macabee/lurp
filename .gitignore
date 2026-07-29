@@ -451,6 +451,8 @@ FodyWeavers.xsd
 .deepcode/
 .deepcodeignore
 NDependOut/
+CoverageResults/
+TestResults/
 
 # Reference-only project tracking (architecture notes, status, roadmap decisions).
 # Load-bearing test fixtures/benchmark data live under tests/, not here.
