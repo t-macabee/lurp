@@ -12,6 +12,7 @@ obj/
 .kimi-code/
 opencode.json
 REMEDIATION_TASKS.md
+NDepend-coverage-sync-mitigation.md
 CLAUDE.md
 AGENTS.md
 CODEX.MD
