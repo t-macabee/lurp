@@ -11,8 +11,11 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            INSERT OR REPLACE INTO workspaces (workspace_id, git_root, solution_path)
-            VALUES (@workspaceId, @gitRoot, @solutionPath);
+            INSERT INTO workspaces (workspace_id, git_root, solution_path)
+            VALUES (@workspaceId, @gitRoot, @solutionPath)
+            ON CONFLICT(workspace_id) DO UPDATE SET
+                git_root = excluded.git_root,
+                solution_path = excluded.solution_path;
         ";
         command.Parameters.AddWithValue("@workspaceId", id);
         command.Parameters.AddWithValue("@gitRoot", gitRoot);
@@ -29,8 +32,11 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             command.Transaction = transaction;
 
             command.CommandText = @"
-                INSERT OR REPLACE INTO workspaces (workspace_id, git_root, solution_path)
-                VALUES (@workspaceId, @gitRoot, @solutionPath);
+                INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                VALUES (@workspaceId, @gitRoot, @solutionPath)
+                ON CONFLICT(workspace_id) DO UPDATE SET
+                    git_root = excluded.git_root,
+                    solution_path = excluded.solution_path;
             ";
             command.Parameters.AddWithValue("@workspaceId", manifest.WorkspaceId);
             command.Parameters.AddWithValue("@gitRoot", manifest.GitRoot);

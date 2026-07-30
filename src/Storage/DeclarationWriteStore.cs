@@ -31,8 +31,14 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
     private static void SaveOne(SqliteCommand command, string snapshotId, SymbolDeclaration decl)
     {
         command.CommandText = @"
-            INSERT OR REPLACE INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
-            VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind, @metadataJson, @fqn);
+            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
+            VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind, @metadataJson, @fqn)
+            ON CONFLICT(symbol_id) DO UPDATE SET
+                doc_comment_id = excluded.doc_comment_id,
+                assembly_identity = excluded.assembly_identity,
+                kind = excluded.kind,
+                metadata_json = excluded.metadata_json,
+                fqn = excluded.fqn;
         ";
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);

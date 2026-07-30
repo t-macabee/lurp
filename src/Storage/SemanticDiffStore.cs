@@ -23,7 +23,15 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
             foreach (var change in changes)
             {
                 command.CommandText = @"
-                    INSERT OR REPLACE INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id,change_type, symbol_id, detail_json, created_at_utc) VALUES (@changeId, @fromSnapshotId, @toSnapshotId,@changeType, @symbolId, @detailJson, @createdAtUtc);
+                    INSERT INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id, change_type, symbol_id, detail_json, created_at_utc)
+                    VALUES (@changeId, @fromSnapshotId, @toSnapshotId, @changeType, @symbolId, @detailJson, @createdAtUtc)
+                    ON CONFLICT(change_id) DO UPDATE SET
+                        from_snapshot_id = excluded.from_snapshot_id,
+                        to_snapshot_id = excluded.to_snapshot_id,
+                        change_type = excluded.change_type,
+                        symbol_id = excluded.symbol_id,
+                        detail_json = excluded.detail_json,
+                        created_at_utc = excluded.created_at_utc;
                 ";
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@changeId", change.ChangeId);
