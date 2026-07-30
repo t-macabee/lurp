@@ -5008,7 +5008,7 @@ class Source {
                     SignatureSpan = new DeclarationSpan(null, null),
                     BodySpan = new DeclarationSpan(null, null),
                     NameSpan = new DeclarationSpan(null, null),
-                    MetadataJson = metadataJson ?? "{\"accessibility\":\"public\"}"
+                    MetadataJson = metadataJson ?? "{\"accessibility\":\"Public\"}"
                 };
             }).ToList();
             store.SaveDeclarations(snapshotId, declarations);
@@ -5078,7 +5078,7 @@ class Source {
             const string snapId = "snap-c16-aud-004";
             var store = CreateStoreWithEdges(snapId, []);
             CreateStoreWithSymbols(store, snapId, ["M:A|asm"],
-                metadataJson: "{\"accessibility\":\"public\"}");
+                metadataJson: "{\"accessibility\":\"Public\"}");
             var engine = new AuditEngine(store, snapId);
 
             var report = engine.RunAudit(new AuditOptions(["untested-surface"]));
@@ -5101,7 +5101,7 @@ class Source {
             };
             var store = CreateStoreWithEdges(snapId, edges);
             CreateStoreWithSymbols(store, snapId, ["M:A|asm", "M:Test|asm"],
-                metadataJson: "{\"accessibility\":\"public\"}");
+                metadataJson: "{\"accessibility\":\"Public\"}");
             var engine = new AuditEngine(store, snapId);
 
             var report = engine.RunAudit(new AuditOptions(["untested-surface"]));
@@ -5225,6 +5225,23 @@ class Source {
             var report = engine.RunAudit(new AuditOptions(["high-fan-out"], fanOutThreshold: 3));
 
             Assert.DoesNotContain(report.Findings, f => f.Check == "high-fan-out" && f.SymbolId == "M:Lean|asm");
+            store.Close();
+        }
+
+        [Theory]
+        [InlineData("Public")]
+        [InlineData("Internal")]
+        public void RunAudit_RoslynAccessibilityCasing_FlagsUntestedSurface(string accessibility)
+        {
+            const string snapId = "snap-c16-aud-010";
+            var store = CreateStoreWithEdges(snapId, []);
+            CreateStoreWithSymbols(store, snapId, ["M:A|asm"],
+                metadataJson: $"{{\"accessibility\":\"{accessibility}\"}}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["untested-surface"]));
+
+            Assert.Contains(report.Findings, f => f.Check == "untested-surface" && f.SymbolId == "M:A|asm");
             store.Close();
         }
     }

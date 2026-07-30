@@ -135,7 +135,7 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
                 {
                     var acc = accEl.GetString();
 
-                    if (acc is "public" or "internal")
+                    if (acc is "Public" or "Internal")
                     {
                         findings.Add(new AuditFinding(check: "untested-surface", symbolId: symbolId, fqn: info.FullyQualifiedName));
                     }
