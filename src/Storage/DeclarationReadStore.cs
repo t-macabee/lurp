@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -209,6 +210,125 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         if (length == 0)
             return string.Empty;
         return Encoding.UTF8.GetString(content, start, length);
+    }
+
+    private static readonly byte[] DeclaredNamePlaceholder = Encoding.UTF8.GetBytes("<DECLARED_NAME>");
+
+    internal IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(
+        string snapshotId,
+        IReadOnlyCollection<string> symbolIds)
+    {
+        if (symbolIds.Count == 0)
+            return [];
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT s.symbol_id, s.kind, s.assembly_identity, ss.fqn,
+                   d.signature_start, d.signature_end,
+                   d.name_start, d.name_end,
+                   d.body_start, d.body_end,
+                   doc.relative_path, dv.content
+            FROM snapshot_symbols ss
+            JOIN symbols s ON s.symbol_id = ss.symbol_id
+            JOIN declarations d ON d.symbol_id = ss.symbol_id
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+                AND sd.snapshot_id = ss.snapshot_id
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
+            WHERE ss.snapshot_id = @snapshotId
+              AND s.symbol_id IN (@symbolIds)
+              AND (d.is_generated = 0 OR d.is_generated IS NULL)
+            ORDER BY s.symbol_id, doc.relative_path, d.signature_start;
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var paramNames = new List<string>();
+        int idx = 0;
+        foreach (var symbolId in symbolIds)
+        {
+            var paramName = $"@sid{idx++}";
+            paramNames.Add(paramName);
+            command.Parameters.AddWithValue(paramName, symbolId);
+        }
+        command.CommandText = command.CommandText.Replace("@symbolIds", string.Join(",", paramNames));
+
+        var declarationsBySymbol = new Dictionary<string, List<DeclarationFingerprint>>(StringComparer.Ordinal);
+        var symbolMeta = new Dictionary<string, (IndexedSymbolKind Kind, string AssemblyIdentity, string? Fqn)>(StringComparer.Ordinal);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var symbolId = reader.GetString(0);
+            var kindStr = reader.GetString(1);
+            var assemblyIdentity = reader.GetString(2);
+            var fqn = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var sigStart = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4);
+            var sigEnd = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+            var nameStart = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
+            var nameEnd = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7);
+            var bodyStart = reader.IsDBNull(8) ? (int?)null : reader.GetInt32(8);
+            var bodyEnd = reader.IsDBNull(9) ? (int?)null : reader.GetInt32(9);
+            var documentPath = reader.GetString(10);
+            var content = reader.IsDBNull(11) ? null : (byte[])reader[11];
+
+            if (!symbolMeta.ContainsKey(symbolId))
+            {
+                Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind);
+                symbolMeta[symbolId] = (kind, assemblyIdentity, fqn);
+            }
+
+            if (content == null || sigStart == null || sigEnd == null ||
+                nameStart == null || nameEnd == null ||
+                !(sigStart <= nameStart && nameStart <= nameEnd && nameEnd <= sigEnd) ||
+                sigEnd > content.Length)
+            {
+                continue;
+            }
+
+            int beforeLen = nameStart.Value - sigStart.Value;
+            int afterLen = sigEnd.Value - nameEnd.Value;
+            var normalizedSig = new byte[beforeLen + DeclaredNamePlaceholder.Length + afterLen];
+            int pos = 0;
+            Buffer.BlockCopy(content, sigStart.Value, normalizedSig, pos, beforeLen);
+            pos += beforeLen;
+            Buffer.BlockCopy(DeclaredNamePlaceholder, 0, normalizedSig, pos, DeclaredNamePlaceholder.Length);
+            pos += DeclaredNamePlaceholder.Length;
+            if (afterLen > 0)
+            {
+                Buffer.BlockCopy(content, nameEnd.Value, normalizedSig, pos, afterLen);
+            }
+
+            var normalizedSigHash = SHA256.HashData(normalizedSig);
+
+            byte[]? bodyHash = null;
+            if (bodyStart != null && bodyEnd != null && bodyEnd <= content.Length && bodyStart < bodyEnd)
+            {
+                var bodyLen = bodyEnd.Value - bodyStart.Value;
+                bodyHash = SHA256.HashData(content.AsSpan(bodyStart.Value, bodyLen));
+            }
+
+            if (!declarationsBySymbol.TryGetValue(symbolId, out var list))
+            {
+                list = [];
+                declarationsBySymbol[symbolId] = list;
+            }
+            list.Add(new DeclarationFingerprint(documentPath, normalizedSigHash, bodyHash));
+        }
+
+        var results = new List<SymbolTransitionCandidate>();
+        foreach (var symbolId in symbolIds.OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (!symbolMeta.TryGetValue(symbolId, out var meta))
+                continue;
+            if (!declarationsBySymbol.TryGetValue(symbolId, out var decls) || decls.Count == 0)
+                continue;
+
+            decls.Sort((a, b) => string.Compare(a.DocumentPath, b.DocumentPath, StringComparison.Ordinal));
+            results.Add(new SymbolTransitionCandidate(
+                symbolId, meta.Kind, meta.AssemblyIdentity, meta.Fqn, decls));
+        }
+
+        return results;
     }
 
     private static string? DeriveParentTypeDocCommentId(string docCommentId)

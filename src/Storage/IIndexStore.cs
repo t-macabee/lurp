@@ -65,7 +65,7 @@ namespace Lurp.Storage
 #if CODE_ANALYSIS
     [SuppressMessage("NDepend", "ND1200", Justification = "Composite interface that aggregates the five already-segregated store contracts (ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore) for multi-concern orchestrators. Each sub-interface is single-responsibility; this union is the deliberate one-injection-point facade, not an oversized interface.")]
 #endif
-    public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore
+    public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore, ISemanticDiffReadStore
     {
     }
 }

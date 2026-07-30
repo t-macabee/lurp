@@ -2579,11 +2579,12 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
             CreateSnapshotWithDocument(store, fromSnapshotId);
             CreateSnapshotWithDocument(store, toSnapshotId);
 
-            var symbolId = "M:Ns.Foo|asm1";
+            var fromSymbolId = "M:Ns.OldName|asm1";
+            var toSymbolId = "M:Ns.NewName|asm1";
 
             var fromDecl = MakeDecl(
-                symbolId: symbolId,
-                docCommentId: "M:Ns.Foo",
+                symbolId: fromSymbolId,
+                docCommentId: "M:Ns.OldName",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
                 docVersionId: "doc-snap-b3-013:hash1",
@@ -2594,8 +2595,8 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
                 fqn: "Ns.OldName");
 
             var toDecl = MakeDecl(
-                symbolId: symbolId,
-                docCommentId: "M:Ns.Foo",
+                symbolId: toSymbolId,
+                docCommentId: "M:Ns.NewName",
                 assembly: "asm1",
                 kind: IndexedSymbolKind.Method,
                 docVersionId: "doc-snap-b3-014:hash1",
@@ -2613,9 +2614,9 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
 
             var symbolRenamed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
             Assert.NotNull(symbolRenamed);
-            Assert.Equal(symbolId, symbolRenamed.SymbolId);
-            Assert.Contains("before", symbolRenamed.DetailJson!);
-            Assert.Contains("after", symbolRenamed.DetailJson!);
+            Assert.Equal(toSymbolId, symbolRenamed.SymbolId);
+            Assert.Contains(fromSymbolId, symbolRenamed.DetailJson!);
+            Assert.Contains(toSymbolId, symbolRenamed.DetailJson!);
         }
 
         [Fact]

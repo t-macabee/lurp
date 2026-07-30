@@ -233,6 +233,11 @@ namespace Lurp.Storage
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
             { EnsureOpen(); return _searchStore!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
 
+        // ── ISemanticDiffReadStore ─────────────────────────────────────────
+
+        public IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(string snapshotId, IReadOnlyCollection<string> symbolIds)
+            { EnsureOpen(); return _declReader!.LoadTransitionCandidates(snapshotId, symbolIds); }
+
         // ── ISemanticDiffStore ─────────────────────────────────────────────
 
         public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)

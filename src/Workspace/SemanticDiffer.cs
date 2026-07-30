@@ -45,13 +45,13 @@ namespace Lurp.Workspace
         // - returnType: included in signature for methods, properties, events
         // - arity: generic type parameter count included in signature
         private readonly ISnapshotStore _snapshotStore;
-        private readonly IDeclarationStore _declarationStore;
+        private readonly ISemanticDiffReadStore _readStore;
         private readonly IEdgeStore _edgeStore;
 
-        public SemanticDiffer(ISnapshotStore snapshotStore, IDeclarationStore declarationStore, IEdgeStore edgeStore)
+        public SemanticDiffer(ISnapshotStore snapshotStore, ISemanticDiffReadStore readStore, IEdgeStore edgeStore)
         {
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
-            _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
+            _readStore = readStore ?? throw new ArgumentNullException(nameof(readStore));
             _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
         }
 
@@ -107,7 +107,7 @@ namespace Lurp.Workspace
                 skippedComparisons += symbolSkipped;
             }
 
-            DetectRenames(changes, fromSnapshotId, toSnapshotId);
+            MatchTransitions(changes, fromSnapshotId, toSnapshotId);
 
             var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
             var toEdges = _edgeStore.GetEdges(toSnapshotId);
@@ -128,8 +128,8 @@ namespace Lurp.Workspace
             var changes = new List<SemanticChange>();
             int skippedComparisons = 0;
 
-            var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
-            var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
+            var fromInfo = _readStore.GetSymbolInfo(symbolId, fromSnapshotId);
+            var toInfo = _readStore.GetSymbolInfo(symbolId, toSnapshotId);
 
             if (fromInfo == null || toInfo == null)
             {
@@ -142,10 +142,10 @@ namespace Lurp.Workspace
             if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
                 fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
             {
-                var fromSimple = GetSimpleName(fromInfo.FullyQualifiedName);
-                var toSimple = GetSimpleName(toInfo.FullyQualifiedName);
-                var fromContainer = GetContainer(fromInfo.FullyQualifiedName);
-                var toContainer = GetContainer(toInfo.FullyQualifiedName);
+                var fromSimple = GetSimpleNameFromFqn(fromInfo.FullyQualifiedName);
+                var toSimple = GetSimpleNameFromFqn(toInfo.FullyQualifiedName);
+                var fromContainer = GetContainerFromFqn(fromInfo.FullyQualifiedName);
+                var toContainer = GetContainerFromFqn(toInfo.FullyQualifiedName);
 
                 if (fromSimple != toSimple)
                     changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
@@ -164,80 +164,58 @@ namespace Lurp.Workspace
             return (changes, skippedComparisons);
         }
 
-        private void DetectRenames(List<SemanticChange> changes, string fromSnapshotId, string toSnapshotId)
+        private void MatchTransitions(List<SemanticChange> changes, string fromSnapshotId, string toSnapshotId)
         {
-            var removed = changes.Where(c => c.ChangeType == ChangeType.SymbolRemoved).ToList();
-            var added = changes.Where(c => c.ChangeType == ChangeType.SymbolAdded).ToList();
+            var removedIds = changes
+                .Where(c => c.ChangeType == ChangeType.SymbolRemoved)
+                .Select(c => c.SymbolId)
+                .ToList();
+            var addedIds = changes
+                .Where(c => c.ChangeType == ChangeType.SymbolAdded)
+                .Select(c => c.SymbolId)
+                .ToList();
 
-            if (removed.Count == 0 || added.Count == 0)
+            if (removedIds.Count == 0 || addedIds.Count == 0)
                 return;
 
-            var removedBySimpleName = new Dictionary<string, List<(SemanticChange Change, IndexedSymbolInfo? Info)>>(StringComparer.Ordinal);
-            foreach (var change in removed)
+            var removedCandidates = _readStore.LoadTransitionCandidates(fromSnapshotId, removedIds);
+            var addedCandidates = _readStore.LoadTransitionCandidates(toSnapshotId, addedIds);
+
+            var resolution = SymbolTransitionMatcher.MatchTransitions(removedCandidates, addedCandidates);
+
+            foreach (var transition in resolution.Transitions)
             {
-                var info = _declarationStore.GetSymbolInfo(change.SymbolId, fromSnapshotId);
-                var simpleName = GetSimpleName(info?.FullyQualifiedName);
-                if (string.IsNullOrEmpty(simpleName))
-                    continue;
-
-                if (!removedBySimpleName.TryGetValue(simpleName, out var list))
+                var detail = new
                 {
-                    list = [];
-                    removedBySimpleName[simpleName] = list;
-                }
-                list.Add((change, info));
-            }
+                    previous_symbol_id = transition.PreviousSymbolId,
+                    current_symbol_id = transition.CurrentSymbolId,
+                    previous_fqn = transition.PreviousFullyQualifiedName,
+                    current_fqn = transition.CurrentFullyQualifiedName,
+                    transition_kind = transition.Kind.ToString()
+                };
 
-            var addedBySimpleName = new Dictionary<string, List<(SemanticChange Change, IndexedSymbolInfo? Info)>>(StringComparer.Ordinal);
-            foreach (var change in added)
-            {
-                var info = _declarationStore.GetSymbolInfo(change.SymbolId, toSnapshotId);
-                var simpleName = GetSimpleName(info?.FullyQualifiedName);
-                if (string.IsNullOrEmpty(simpleName))
-                    continue;
-
-                if (!addedBySimpleName.TryGetValue(simpleName, out var list))
+                switch (transition.Kind)
                 {
-                    list = [];
-                    addedBySimpleName[simpleName] = list;
-                }
-                list.Add((change, info));
-            }
-
-            var matchedRemoved = new HashSet<string>();
-            var matchedAdded = new HashSet<string>();
-
-            foreach (var (simpleName, removedList) in removedBySimpleName)
-            {
-                if (!addedBySimpleName.TryGetValue(simpleName, out var addedList))
-                    continue;
-
-                foreach (var removedEntry in removedList)
-                {
-                    if (removedEntry.Info == null || matchedRemoved.Contains(removedEntry.Change.SymbolId))
-                        continue;
-
-                    foreach (var addedEntry in addedList)
-                    {
-                        if (addedEntry.Info == null || matchedAdded.Contains(addedEntry.Change.SymbolId))
-                            continue;
-
-                        if (removedEntry.Info.Kind == addedEntry.Info.Kind)
-                        {
-                            changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed,
-                                removedEntry.Change.SymbolId,
-                                new { before = removedEntry.Info.FullyQualifiedName, after = addedEntry.Info.FullyQualifiedName }));
-                            matchedRemoved.Add(removedEntry.Change.SymbolId);
-                            matchedAdded.Add(addedEntry.Change.SymbolId);
-                            break;
-                        }
-                    }
+                    case SymbolTransitionKind.Rename:
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolRenamed, transition.CurrentSymbolId, detail));
+                        break;
+                    case SymbolTransitionKind.Move:
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolMoved, transition.CurrentSymbolId, detail));
+                        break;
+                    case SymbolTransitionKind.RenameAndMove:
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolRenamed, transition.CurrentSymbolId, detail));
+                        changes.Add(MakeChange(fromSnapshotId, toSnapshotId,
+                            ChangeType.SymbolMoved, transition.CurrentSymbolId, detail));
+                        break;
                 }
             }
 
             changes.RemoveAll(c =>
-                (c.ChangeType == ChangeType.SymbolRemoved && matchedRemoved.Contains(c.SymbolId)) ||
-                (c.ChangeType == ChangeType.SymbolAdded && matchedAdded.Contains(c.SymbolId)));
+                (c.ChangeType == ChangeType.SymbolRemoved && resolution.ConsumedRemovedIds.Contains(c.SymbolId)) ||
+                (c.ChangeType == ChangeType.SymbolAdded && resolution.ConsumedAddedIds.Contains(c.SymbolId)));
         }
 
         private void DiffEdges(List<EdgeRecord> fromEdges, List<EdgeRecord> toEdges, string fromSnapshotId, string toSnapshotId, List<SemanticChange> changes)
@@ -336,8 +314,8 @@ namespace Lurp.Workspace
         {
             var changes = new List<SemanticChange>();
 
-            var fromSig = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
-            var toSig = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
+            var fromSig = _readStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
+            var toSig = _readStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
 
             if (fromSig == null || toSig == null)
             {
@@ -349,8 +327,8 @@ namespace Lurp.Workspace
                 return (changes, 1);
             }
 
-            var fromBody = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
-            var toBody = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
+            var fromBody = _readStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
+            var toBody = _readStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
 
             if (fromSig == toSig)
             {
@@ -363,14 +341,14 @@ namespace Lurp.Workspace
             return (changes, 0);
         }
 
-        private static string GetSimpleName(string? fqn)
+        private static string GetSimpleNameFromFqn(string? fqn)
         {
             if (string.IsNullOrEmpty(fqn)) return string.Empty;
             var idx = fqn.LastIndexOf('.');
             return idx < 0 ? fqn : fqn.Substring(idx + 1);
         }
 
-        private static string GetContainer(string? fqn)
+        private static string GetContainerFromFqn(string? fqn)
         {
             if (string.IsNullOrEmpty(fqn)) return string.Empty;
             var idx = fqn.LastIndexOf('.');
