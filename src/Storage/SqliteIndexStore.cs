@@ -220,10 +220,13 @@ namespace Lurp.Storage
 
         // ── ISearchStore ───────────────────────────────────────────────────
 
+        /// <inheritdoc/>
         public void BuildSearchIndex(string snapshotId)
             { EnsureOpen(); _searchStore!.BuildSearchIndex(snapshotId); }
+        /// <inheritdoc/>
         public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
             { EnsureOpen(); _searchStore!.BuildSearchIndex(snapshotId, changedDocumentPaths, changedSymbolIds); }
+        /// <inheritdoc/>
         public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
             { EnsureOpen(); _searchStore!.CopySearchIndexToSnapshot(fromSnapshotId, toSnapshotId); }
         public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)

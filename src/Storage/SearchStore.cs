@@ -11,6 +11,7 @@ public sealed class SearchStore : ISearchStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
+    /// <inheritdoc/>
     public void BuildSearchIndex(string snapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -56,6 +57,7 @@ public sealed class SearchStore : ISearchStore
         }
     }
 
+    /// <inheritdoc/>
     public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -91,6 +93,7 @@ public sealed class SearchStore : ISearchStore
         }
     }
 
+    /// <inheritdoc/>
     public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
     {
         if (changedDocumentPaths.Count == 0 && changedSymbolIds.Count == 0)

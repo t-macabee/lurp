@@ -229,6 +229,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
 
         _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+
+        // Mandatory incremental seed: copy every FTS row from the previous
+        // snapshot into the new snapshot so the subsequent refresh in
+        // RebuildSearchIndex only needs to delete and re-insert the changed
+        // document/symbol subset.
         _store.CopySearchIndexToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 

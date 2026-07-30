@@ -217,6 +217,9 @@ public static class IndexRunner
             store.DeleteOrphanEdges(snapshotIdStr);
 
             // Step: Build FTS search index
+            // Preconditions: declarations, document/symbol snapshot membership,
+            // semantic diff, and orphan cleanup are all persisted. Full FTS must
+            // finish before MarkSnapshotComplete below.
             var swFts = Stopwatch.StartNew();
             Console.Write("Building search index... ");
             store.BuildSearchIndex(snapshotIdStr);
