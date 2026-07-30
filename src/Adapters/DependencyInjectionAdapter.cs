@@ -195,6 +195,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceEndLine = el,
                 SourceEndColumn = ec,
                 IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                TargetNodeKind = GraphNodeKind.Convention,
             });
         }
     }
@@ -309,6 +310,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceEndLine = el,
                 SourceEndColumn = ec,
                 IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                TargetNodeKind = GraphNodeKind.RuntimePlaceholder,
             });
         }
     }

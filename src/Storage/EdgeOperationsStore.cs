@@ -19,8 +19,30 @@ internal sealed class EdgeOperationsStore
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
+            using var nodeCmd = _connection.CreateCommand();
+            nodeCmd.Transaction = transaction;
+            nodeCmd.CommandText = @"
+                INSERT INTO graph_nodes (node_id, node_kind)
+                VALUES (@nodeId, @nodeKind)
+                ON CONFLICT(node_id) DO UPDATE SET node_kind = excluded.node_kind;
+            ";
+            var nodeIdParam = nodeCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
+            var nodeKindParam = nodeCmd.Parameters.Add(new SqliteParameter("@nodeKind", null));
+
+            using var memberCmd = _connection.CreateCommand();
+            memberCmd.Transaction = transaction;
+            memberCmd.CommandText = @"
+                INSERT OR IGNORE INTO snapshot_graph_nodes (snapshot_id, node_id)
+                VALUES (@snapshotId, @nodeId);
+            ";
+            var memberSnapshotParam = memberCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+            var memberNodeParam = memberCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
+
             foreach (var edge in edges)
             {
+                RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.SourceSymbolId, edge.SourceNodeKind);
+                RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.TargetSymbolId, edge.TargetNodeKind);
+
                 command.CommandText = @"
                     INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson);
                 ";
@@ -48,6 +70,22 @@ internal sealed class EdgeOperationsStore
             transaction.Rollback();
             throw;
         }
+    }
+
+    private static void RegisterGraphNode(
+        SqliteCommand nodeCmd, SqliteParameter nodeIdParam, SqliteParameter nodeKindParam,
+        SqliteCommand memberCmd, SqliteParameter memberNodeParam,
+        string nodeId, GraphNodeKind? kind)
+    {
+        if (kind == null)
+            return;
+
+        nodeIdParam.Value = nodeId;
+        nodeKindParam.Value = kind.Value.ToString();
+        nodeCmd.ExecuteNonQuery();
+
+        memberNodeParam.Value = nodeId;
+        memberCmd.ExecuteNonQuery();
     }
 
     public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
@@ -232,21 +270,33 @@ internal sealed class EdgeOperationsStore
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();
+
+        using var memberCmd = _connection.CreateCommand();
+        memberCmd.CommandText = @"
+            INSERT OR IGNORE INTO snapshot_graph_nodes (snapshot_id, node_id)
+            SELECT @toSnapshotId, node_id
+            FROM snapshot_graph_nodes
+            WHERE snapshot_id = @fromSnapshotId;
+        ";
+        memberCmd.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+        memberCmd.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        memberCmd.ExecuteNonQuery();
     }
 
     public void DeleteOrphanEdges(string snapshotId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = @"
+            WITH valid_ids(id) AS (
+                SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
+                UNION
+                SELECT node_id FROM snapshot_graph_nodes WHERE snapshot_id = @snapshotId
+            )
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND (
-                  source_symbol_id NOT IN (
-                      SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
-                  )
-                  OR target_symbol_id NOT IN (
-                      SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
-                  )
+                  source_symbol_id NOT IN (SELECT id FROM valid_ids)
+                  OR target_symbol_id NOT IN (SELECT id FROM valid_ids)
               );
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);

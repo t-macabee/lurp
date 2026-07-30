@@ -124,7 +124,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         [
             "edges", "diagnostics", "annotations", "snapshot_symbols",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
-            "snapshot_timings",
+            "snapshot_timings", "snapshot_graph_nodes",
         ];
 
         foreach (var table in tables)
@@ -209,6 +209,15 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                   WHERE sd.snapshot_id = documents.last_changed_snapshot_id
                     AND dv.document_id = documents.document_id
               );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = @"
+            DELETE FROM graph_nodes
+            WHERE node_id NOT IN (
+                SELECT DISTINCT node_id FROM snapshot_graph_nodes
+            );
         ";
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();

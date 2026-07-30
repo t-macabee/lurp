@@ -1,0 +1,291 @@
+using Microsoft.Data.Sqlite;
+
+namespace Lurp.Storage.Tests;
+
+public sealed class GraphNodeMembershipTests : IDisposable
+{
+    private readonly string _dbPath = Path.Combine(
+        Path.GetTempPath(), $"indexer_gnm_{Guid.NewGuid():N}.db");
+    private SqliteIndexStore? _store;
+
+    public void Dispose()
+    {
+        _store?.Dispose();
+        SqliteConnection.ClearAllPools();
+        if (File.Exists(_dbPath))
+            File.Delete(_dbPath);
+    }
+
+    private SqliteIndexStore CreateStore()
+    {
+        _store?.Dispose();
+        _store = new SqliteIndexStore(_dbPath);
+        _store.Open(_dbPath);
+        _store.RunMigrations();
+        return _store;
+    }
+
+    private T Scalar<T>(string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (T)Convert.ChangeType(command.ExecuteScalar()!, typeof(T));
+    }
+
+    private void SaveSnapshotWithSymbols(SqliteIndexStore store, string snapshotId, params string[] symbolIds)
+    {
+        store.SaveSnapshot(new SnapshotRow
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = "workspace:///gnm",
+            GitRoot = "/gnm",
+            SolutionPath = "/gnm/test.sln",
+            SdkVersion = "10.0.301",
+            CompilerVersion = "4.12.0.0",
+            CreatedAtUtc = DateTime.UtcNow,
+            Documents = [],
+        });
+        if (symbolIds.Length > 0)
+        {
+            using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+            connection.Open();
+            using var pragma = connection.CreateCommand();
+            pragma.CommandText = "PRAGMA foreign_keys = OFF;";
+            pragma.ExecuteNonQuery();
+
+            using var command = connection.CreateCommand();
+            foreach (var symbolId in symbolIds)
+            {
+                command.CommandText = @"
+                    INSERT OR IGNORE INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+                    VALUES (@snapshotId, @symbolId, @symbolId, NULL);
+                ";
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("@snapshotId", snapshotId);
+                command.Parameters.AddWithValue("@symbolId", symbolId);
+                command.ExecuteNonQuery();
+            }
+        }
+    }
+
+    [Fact]
+    public void Migration_021_ReachesSchemaVersion21()
+    {
+        var store = CreateStore();
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1;";
+        var version = Convert.ToInt32(command.ExecuteScalar());
+        Assert.Equal(21, version);
+    }
+
+    [Fact]
+    public void SaveEdges_WithSyntheticNodeKind_RegistersGraphNodesAndMembership()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-register";
+        SaveSnapshotWithSymbols(store, snapshotId, "T:Ns.Controller|asm1");
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "route://api/values",
+                TargetSymbolId = "T:Ns.Controller|asm1",
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SourceNodeKind = GraphNodeKind.Route,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Controller|asm1",
+                TargetSymbolId = "convention:assembly_scan:MyLib",
+                Kind = "Registers",
+                Provenance = "convention",
+                TargetNodeKind = GraphNodeKind.Convention,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Controller|asm1",
+                TargetSymbolId = "runtime:unknown",
+                Kind = "Registers",
+                Provenance = "runtime_unknown",
+                TargetNodeKind = GraphNodeKind.RuntimePlaceholder,
+            },
+        ]);
+
+        Assert.Equal(3, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
+        Assert.Equal(3, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snapshotId}';"));
+        Assert.Equal(1, Scalar<long>(
+            "SELECT COUNT(*) FROM graph_nodes WHERE node_id = 'route://api/values' AND node_kind = 'Route';"));
+        Assert.Equal(1, Scalar<long>(
+            "SELECT COUNT(*) FROM graph_nodes WHERE node_id = 'convention:assembly_scan:MyLib' AND node_kind = 'Convention';"));
+        Assert.Equal(1, Scalar<long>(
+            "SELECT COUNT(*) FROM graph_nodes WHERE node_id = 'runtime:unknown' AND node_kind = 'RuntimePlaceholder';"));
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_RegisteredSyntheticEndpoints_PreservesOnlyRegisteredEdges()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-orphan";
+        var knownSymbol = "T:Ns.Controller|asm1";
+        SaveSnapshotWithSymbols(store, snapshotId, knownSymbol);
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "route://api/values",
+                TargetSymbolId = knownSymbol,
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SourceNodeKind = GraphNodeKind.Route,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = knownSymbol,
+                TargetSymbolId = "convention:assembly_scan:MyLib",
+                Kind = "Registers",
+                Provenance = "convention",
+                TargetNodeKind = GraphNodeKind.Convention,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = knownSymbol,
+                TargetSymbolId = "runtime:unknown",
+                Kind = "Registers",
+                Provenance = "runtime_unknown",
+                TargetNodeKind = GraphNodeKind.RuntimePlaceholder,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = knownSymbol,
+                TargetSymbolId = "T:Ns.Missing|asm2",
+                Kind = "Calls",
+                Provenance = "roslyn",
+            },
+        ]);
+
+        store.DeleteOrphanEdges(snapshotId);
+
+        var edges = store.GetEdges(snapshotId);
+        Assert.Equal(3, edges.Count);
+        Assert.Contains(edges, e => e.Kind == "RoutesTo" && e.SourceSymbolId == "route://api/values");
+        Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId == "convention:assembly_scan:MyLib");
+        Assert.Contains(edges, e => e.Kind == "Registers" && e.TargetSymbolId == "runtime:unknown");
+        Assert.DoesNotContain(edges, e => e.TargetSymbolId == "T:Ns.Missing|asm2");
+    }
+
+    [Fact]
+    public void CopyEdgesToSnapshot_SyntheticMembership_PreservesCleanupValidity()
+    {
+        var store = CreateStore();
+        var sourceSnapshot = "snap-gnm-source";
+        var targetSnapshot = "snap-gnm-target";
+        var knownSymbol = "T:Ns.Controller|asm1";
+
+        SaveSnapshotWithSymbols(store, sourceSnapshot, knownSymbol);
+        SaveSnapshotWithSymbols(store, targetSnapshot, knownSymbol);
+
+        store.SaveEdges(sourceSnapshot,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "route://api/values",
+                TargetSymbolId = knownSymbol,
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SourceNodeKind = GraphNodeKind.Route,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = knownSymbol,
+                TargetSymbolId = "convention:assembly_scan:MyLib",
+                Kind = "Registers",
+                Provenance = "convention",
+                TargetNodeKind = GraphNodeKind.Convention,
+            },
+        ]);
+
+        store.CopyEdgesToSnapshot(sourceSnapshot, targetSnapshot);
+
+        store.DeleteOrphanEdges(targetSnapshot);
+
+        var edges = store.GetEdges(targetSnapshot);
+        Assert.Equal(2, edges.Count);
+        Assert.Contains(edges, e => e.Kind == "RoutesTo");
+        Assert.Contains(edges, e => e.Kind == "Registers");
+
+        Assert.Equal(2, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{targetSnapshot}';"));
+    }
+
+    [Fact]
+    public void DeleteSnapshotData_LastSyntheticMembership_RemovesGlobalNode()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-prune";
+        var knownSymbol = "T:Ns.Controller|asm1";
+
+        SaveSnapshotWithSymbols(store, snapshotId, knownSymbol);
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "route://api/values",
+                TargetSymbolId = knownSymbol,
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SourceNodeKind = GraphNodeKind.Route,
+            },
+        ]);
+
+        Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
+        Assert.Equal(1, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snapshotId}';"));
+
+        store.DeleteSnapshotData(snapshotId);
+
+        Assert.Equal(0, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snapshotId}';"));
+        Assert.Equal(0, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
+    }
+
+    [Fact]
+    public void DeleteSnapshotData_RetainedSnapshotKeepsGlobalNode()
+    {
+        var store = CreateStore();
+        var snap1 = "snap-gnm-keep1";
+        var snap2 = "snap-gnm-keep2";
+        var knownSymbol = "T:Ns.Controller|asm1";
+
+        SaveSnapshotWithSymbols(store, snap1, knownSymbol);
+        SaveSnapshotWithSymbols(store, snap2, knownSymbol);
+
+        var edge = new EdgeRecord
+        {
+            SourceSymbolId = "route://api/values",
+            TargetSymbolId = knownSymbol,
+            Kind = "RoutesTo",
+            Provenance = "framework_derived",
+            SourceNodeKind = GraphNodeKind.Route,
+        };
+
+        store.SaveEdges(snap1, [edge]);
+        store.SaveEdges(snap2, [edge]);
+
+        store.DeleteSnapshotData(snap1);
+
+        Assert.Equal(0, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snap1}';"));
+        Assert.Equal(1, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snap2}';"));
+        Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
+    }
+}

@@ -26,6 +26,13 @@ namespace Lurp.Storage
         public List<string> References { get; init; } = [];
     }
 
+    public enum GraphNodeKind
+    {
+        Route,
+        Convention,
+        RuntimePlaceholder,
+    }
+
     public sealed class EdgeRecord
     {
         public string SourceSymbolId { get; init; } = string.Empty;
@@ -41,6 +48,8 @@ namespace Lurp.Storage
         public int? SourceEndColumn { get; init; }
         public bool IsCrossGenerated { get; init; }
         public string? TypeArgumentsJson { get; init; }
+        public GraphNodeKind? SourceNodeKind { get; init; }
+        public GraphNodeKind? TargetNodeKind { get; init; }
     }
 
     public sealed class DiagnosticRecord

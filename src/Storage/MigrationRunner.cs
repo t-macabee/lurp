@@ -99,6 +99,7 @@ namespace Lurp.Storage
                 new Migration_018_AddSkippedAdapters(),
                 new Migration_019_SchemaHardening(),
                 new Migration_020_EdgeTypeArguments(),
+                new Migration_021_GraphNodeMembership(),
             ];
     }
 }

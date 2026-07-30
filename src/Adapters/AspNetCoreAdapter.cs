@@ -83,6 +83,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 SourceEndLine = loc.EndLine,
                 SourceEndColumn = loc.EndColumn,
                 IsCrossGenerated = loc.IsGenerated,
+                SourceNodeKind = GraphNodeKind.Route,
             });
     }
 
