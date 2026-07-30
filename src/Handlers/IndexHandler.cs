@@ -5,7 +5,7 @@ namespace Lurp.Handlers;
 
 internal static class IndexHandler
 {
-    public static async Task Run(string[] args)
+    public static async Task Run(string[] args, CancellationToken cancellationToken = default)
     {
         var solutionPathArg = GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
@@ -58,7 +58,7 @@ internal static class IndexHandler
 
         try
         {
-            await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg);
+            await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg, cancellationToken);
         }
         finally
         {

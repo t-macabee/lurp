@@ -14,6 +14,7 @@ internal static class CompilationHelper
             if (compilation == null)
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during full extraction.");
             yield return (project, compilation);
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 

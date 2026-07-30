@@ -9,7 +9,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     private readonly string _gitRoot = gitRoot;
     private readonly HashSet<string> _skipAdapters = skipAdapters;
 
-    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths)
+    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, CancellationToken cancellationToken)
     {
         var affectedPaths = FindAffectedDocPaths(previousSnapshotId, changedPaths);
         if (affectedPaths.Count == 0)
@@ -19,7 +19,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (affectedProjectNames.Count == 0)
             return 0;
 
-        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths);
+        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
     }
 
     private HashSet<string> FindAffectedDocPaths(string previousSnapshotId, HashSet<string> changedPaths)
@@ -67,7 +67,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return affectedProjectNames;
     }
 
-    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths)
+    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths, CancellationToken cancellationToken)
     {
         // Compute per-project affected absolute paths for scoped re-extraction
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -101,7 +101,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         }
         _store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
 
-        var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames);
+        var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames, cancellationToken);
         var crossDocAssemblyIdentities = crossDocCompilations.Values
             .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
         _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
@@ -125,6 +125,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 LogWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
                 LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
                 ScopeDocuments: scopeDocs);
+            cancellationToken.ThrowIfCancellationRequested();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             result.EnsureRequiredSuccess();
             _store.SaveEdges(newSnapshotId, result.Edges);
@@ -134,14 +135,15 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return totalEdges;
     }
 
-    private static async Task<Dictionary<string, Compilation>> LoadCompilationsAsync(Solution solution, HashSet<string> projectNames)
+    private static async Task<Dictionary<string, Compilation>> LoadCompilationsAsync(Solution solution, HashSet<string> projectNames, CancellationToken cancellationToken)
     {
         var compilations = new Dictionary<string, Compilation>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
         {
             if (!projectNames.Contains(project.Name))
                 continue;
-            var compilation = await project.GetCompilationAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during cross-document edge refresh.");
             compilations[project.Name] = compilation;

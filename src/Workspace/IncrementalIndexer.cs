@@ -45,8 +45,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
     //   7. Refresh cross-document edges for documents that reference changed symbols.
     //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
-    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest)
+    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
         var timings = new List<SnapshotTimingRow>();
@@ -71,6 +72,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         }
 
         // Step 1: Change Detection
+        cancellationToken.ThrowIfCancellationRequested();
         var sw1 = System.Diagnostics.Stopwatch.StartNew();
         var (changedDocs, changedPaths) = _changeDetector.DetectAndLogChanges(workspaceInfo, previousRichManifest);
         sw1.Stop();
@@ -80,6 +82,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
 
         // Step 2: Affected Project Resolution
+        cancellationToken.ThrowIfCancellationRequested();
         var sw2 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Identifying affected projects... ");
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, changedPaths);
@@ -91,8 +94,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         timings.Add(new SnapshotTimingRow("affected_project_resolution", sw2.ElapsedMilliseconds, DateTime.UtcNow));
 
         // Step 3: Compilation Load
+        cancellationToken.ThrowIfCancellationRequested();
         var sw3 = System.Diagnostics.Stopwatch.StartNew();
-        var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects);
+        var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects, cancellationToken);
         sw3.Stop();
         timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -101,6 +105,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters: _skipAdapters);
 
         // Step 4: Manifest Creation
+        cancellationToken.ThrowIfCancellationRequested();
         var sw4 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Saving new snapshot manifest... ");
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
@@ -115,12 +120,14 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         try
         {
             // Step 5: Stale-Data Removal
+            cancellationToken.ThrowIfCancellationRequested();
             var sw5 = System.Diagnostics.Stopwatch.StartNew();
             PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, changedPaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
 
             // Step 6: Re-extraction
+            cancellationToken.ThrowIfCancellationRequested();
             var sw6 = System.Diagnostics.Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
                 ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, changedPaths);
@@ -129,6 +136,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
             // Step 6b: Prune symbols that were in changed documents' old versions
             // but are no longer present after re-extraction
+            cancellationToken.ThrowIfCancellationRequested();
             var prunedSymbolIds = PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
 
             // Compute the set of symbol IDs that need their FTS entries refreshed:
@@ -155,7 +163,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 Changes: changeScope);
 
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
-            totalEdges += await FinalizeSnapshotAsync(finalizationContext, timings);
+            cancellationToken.ThrowIfCancellationRequested();
+            totalEdges += await FinalizeSnapshotAsync(finalizationContext, timings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -182,7 +191,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics);
     }
 
-    private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects)
+    private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
     {
         Console.Write("Loading compilations for affected projects... ");
         var result = new Dictionary<string, Compilation>(StringComparer.Ordinal);
@@ -190,7 +199,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         {
             if (!affectedProjects.Contains(project.Name))
                 continue;
-            var compilation = await project.GetCompilationAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
             result[project.Name] = compilation;
@@ -350,28 +360,32 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return [];
     }
 
-    private async Task<int> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
+    private async Task<int> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
         // Phase order is load-bearing: reverse refresh → orphan cleanup → FTS → semantic diff → complete.
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Step 7: Cross-doc Edge Refresh
-        var crossDocEdgesProcessed = await RefreshCrossDocumentEdgesAsync(context, timings);
+        var crossDocEdgesProcessed = await RefreshCrossDocumentEdgesAsync(context, timings, cancellationToken);
 
         // Step 7b: Remove edges targeting symbols not declared in this snapshot
+        cancellationToken.ThrowIfCancellationRequested();
         _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
 
         // Step 8a: FTS Rebuild (incremental)
         RebuildSearchIndex(context, timings);
 
         // Step 8b: Semantic diff persistence
+        cancellationToken.ThrowIfCancellationRequested();
         ComputeAndPersistSemanticChanges(context, timings);
 
         // Completion must be last — all preceding phases must succeed.
+        cancellationToken.ThrowIfCancellationRequested();
         _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
         return crossDocEdgesProcessed;
     }
 
-    private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
+    private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Updating cross-document edges... ");
@@ -379,7 +393,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var crossDocEdgesProcessed = await refresher.RefreshAsync(
             context.Solution, context.Workspace,
             context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId,
-            (HashSet<string>)context.Changes.ChangedPaths);
+            (HashSet<string>)context.Changes.ChangedPaths, cancellationToken);
         Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));

@@ -8,8 +8,10 @@ namespace Lurp.Workspace;
 
 public static class IndexRunner
 {
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg)
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!MSBuildLocator.IsRegistered)
         {
             var instances = MSBuildLocator.RegisterDefaults();
@@ -33,7 +35,7 @@ public static class IndexRunner
 
         using var workspace = MSBuildWorkspace.Create();
 
-        var solution = await workspace.OpenSolutionAsync(solutionPath);
+        var solution = await workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
 
         Console.WriteLine($"done ({solution.Projects.Count()} projects).");
         swSolutionLoad.Stop();
@@ -62,7 +64,7 @@ public static class IndexRunner
                 try
                 {
                     var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath);
-                    var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
+                    var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
 
                     Console.WriteLine();
                     Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
@@ -99,7 +101,7 @@ public static class IndexRunner
                 new SnapshotTimingRow("solution_load", swSolutionLoad.ElapsedMilliseconds, DateTime.UtcNow),
                 new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings);
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken);
         }
 
         Console.Write("Pruning old snapshots... ");
@@ -114,7 +116,7 @@ public static class IndexRunner
         Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings = null)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken)
     {
         var snapshotId = SnapshotId.New();
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
@@ -145,8 +147,9 @@ public static class IndexRunner
             var swExtract = Stopwatch.StartNew();
             var allEdges = new List<EdgeRecord>();
 
-            await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution))
+            await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution, cancellationToken))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;
 
                 Console.Write($"  [{projectName}] ");
@@ -166,6 +169,10 @@ public static class IndexRunner
                     totalDiagnostics += result.Diagnostics.Count;
 
                     Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -199,6 +206,7 @@ public static class IndexRunner
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
                 // Step: Semantic Diff
+                cancellationToken.ThrowIfCancellationRequested();
                 var swDiff = Stopwatch.StartNew();
                 Console.WriteLine();
                 Console.Write("Computing semantic diff from previous snapshot... ");
@@ -214,6 +222,7 @@ public static class IndexRunner
             }
 
             // Step: Remove edges targeting symbols not declared in this snapshot
+            cancellationToken.ThrowIfCancellationRequested();
             store.DeleteOrphanEdges(snapshotIdStr);
 
             // Step: Build FTS search index
@@ -227,6 +236,7 @@ public static class IndexRunner
             swFts.Stop();
             timings.Add(new SnapshotTimingRow("fts_build", swFts.ElapsedMilliseconds, DateTime.UtcNow));
 
+            cancellationToken.ThrowIfCancellationRequested();
             store.MarkSnapshotComplete(snapshotIdStr);
 
             // Persist all timings
