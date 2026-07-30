@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 
@@ -28,106 +29,10 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-
-            command.CommandText = @"
-                INSERT INTO workspaces (workspace_id, git_root, solution_path)
-                VALUES (@workspaceId, @gitRoot, @solutionPath)
-                ON CONFLICT(workspace_id) DO UPDATE SET
-                    git_root = excluded.git_root,
-                    solution_path = excluded.solution_path;
-            ";
-            command.Parameters.AddWithValue("@workspaceId", manifest.WorkspaceId);
-            command.Parameters.AddWithValue("@gitRoot", manifest.GitRoot);
-            command.Parameters.AddWithValue("@solutionPath", manifest.SolutionPath);
-            command.ExecuteNonQuery();
-
-            command.CommandText = @"
-                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, 'in_progress');
-            ";
-            command.Parameters.Clear();
-            command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-            command.Parameters.AddWithValue("@workspaceId", manifest.WorkspaceId);
-            command.Parameters.AddWithValue("@builtAtUtc", manifest.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
-            command.Parameters.AddWithValue("@sdkVersion", manifest.SdkVersion ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@compilerVersion", manifest.CompilerVersion ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@databaseSchemaVersion", (object)manifest.DatabaseSchemaVersion);
-            command.Parameters.AddWithValue("@outputSchemaVersion", (object)manifest.OutputSchemaVersion);
-            command.Parameters.AddWithValue("@extractorVersion", (object?)manifest.ExtractorVersion ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@toolVersion", (object?)manifest.ToolVersion ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@previousSnapshotId", (object?)manifest.PreviousSnapshotId ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", manifest.SkippedAdapters));
-            command.ExecuteNonQuery();
-
-            if (manifest.Projects.Any())
-            {
-                foreach (var project in manifest.Projects)
-                {
-                    command.CommandText = @"
-                        INSERT INTO projects (snapshot_id, name, target_framework)
-                        VALUES (@snapshotId, @name, @targetFramework);
-                        SELECT last_insert_rowid();
-                    ";
-                    command.Parameters.Clear();
-                    command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                    command.Parameters.AddWithValue("@name", project.Name);
-                    command.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? (object)DBNull.Value);
-                    var projectId = command.ExecuteScalar();
-
-                    if (project.References.Count > 0 && projectId != null)
-                    {
-                        foreach (var reference in project.References)
-                        {
-                            command.CommandText = @"
-                                INSERT INTO project_references (project_id, referenced_project_name)
-                                VALUES (@projectId, @referencedProjectName);
-                            ";
-                            command.Parameters.Clear();
-                            command.Parameters.AddWithValue("@projectId", (long)projectId);
-                            command.Parameters.AddWithValue("@referencedProjectName", reference);
-                            command.ExecuteNonQuery();
-                        }
-                    }
-                }
-            }
-
-            foreach (var doc in manifest.Documents)
-            {
-                command.CommandText = @"
-                    INSERT INTO documents (document_id, relative_path, last_changed_snapshot_id)
-                    VALUES (@documentId, @relativePath, @snapshotId)
-                    ON CONFLICT(document_id) DO UPDATE SET
-                        last_changed_snapshot_id = excluded.last_changed_snapshot_id;
-                ";
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@documentId", doc.DocumentId);
-                command.Parameters.AddWithValue("@relativePath", doc.FilePath);
-                command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                command.ExecuteNonQuery();
-
-                command.CommandText = @"
-                    INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts);
-                ";
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId + ":" + doc.ContentHash);
-                command.Parameters.AddWithValue("@documentId", doc.DocumentId);
-                command.Parameters.AddWithValue("@contentHash", doc.ContentHash);
-                command.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? (object)DBNull.Value : (object)doc.Encoding);
-                command.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? (object)doc.ByteCount : (object)DBNull.Value);
-                command.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? (object)DBNull.Value : (object)doc.LineStarts);
-                command.ExecuteNonQuery();
-
-                command.CommandText = @"
-                    INSERT INTO snapshot_documents (snapshot_id, document_version_id)
-                    VALUES (@snapshotId, @documentVersionId);
-                ";
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@snapshotId", manifest.SnapshotId);
-                command.Parameters.AddWithValue("@documentVersionId", doc.DocumentId + ":" + doc.ContentHash);
-                command.ExecuteNonQuery();
-            }
+            UpsertWorkspace(manifest, transaction);
+            InsertSnapshotHeader(manifest, transaction);
+            InsertProjectGraph(manifest.SnapshotId, manifest.Projects, transaction);
+            InsertDocumentsAndBindings(manifest.SnapshotId, manifest.Documents, transaction);
 
             transaction.Commit();
         }
@@ -135,6 +40,138 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         {
             transaction.Rollback();
             throw;
+        }
+    }
+
+    private void UpsertWorkspace(SnapshotRow snapshot, SqliteTransaction transaction)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+
+        command.CommandText = @"
+            INSERT INTO workspaces (workspace_id, git_root, solution_path)
+            VALUES (@workspaceId, @gitRoot, @solutionPath)
+            ON CONFLICT(workspace_id) DO UPDATE SET
+                git_root = excluded.git_root,
+                solution_path = excluded.solution_path;
+        ";
+        command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
+        command.Parameters.AddWithValue("@gitRoot", snapshot.GitRoot);
+        command.Parameters.AddWithValue("@solutionPath", snapshot.SolutionPath);
+        command.ExecuteNonQuery();
+    }
+
+    private void InsertSnapshotHeader(SnapshotRow snapshot, SqliteTransaction transaction)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+
+        command.CommandText = @"
+            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, 'in_progress');
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshot.SnapshotId);
+        command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
+        command.Parameters.AddWithValue("@builtAtUtc", snapshot.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@sdkVersion", snapshot.SdkVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@compilerVersion", snapshot.CompilerVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@databaseSchemaVersion", (object)snapshot.DatabaseSchemaVersion);
+        command.Parameters.AddWithValue("@outputSchemaVersion", (object)snapshot.OutputSchemaVersion);
+        command.Parameters.AddWithValue("@extractorVersion", (object?)snapshot.ExtractorVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@toolVersion", (object?)snapshot.ToolVersion ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", snapshot.SkippedAdapters));
+        command.ExecuteNonQuery();
+    }
+
+    private void InsertProjectGraph(string snapshotId, IReadOnlyList<ProjectRow> projects, SqliteTransaction transaction)
+    {
+        if (projects.Count == 0)
+            return;
+
+        using var projectCommand = _connection.CreateCommand();
+        projectCommand.Transaction = transaction;
+        projectCommand.CommandText = @"
+            INSERT INTO projects (snapshot_id, name, target_framework)
+            VALUES (@snapshotId, @name, @targetFramework);
+            SELECT last_insert_rowid();
+        ";
+
+        using var refCommand = _connection.CreateCommand();
+        refCommand.Transaction = transaction;
+        refCommand.CommandText = @"
+            INSERT INTO project_references (project_id, referenced_project_name)
+            VALUES (@projectId, @referencedProjectName);
+        ";
+
+        foreach (var project in projects)
+        {
+            projectCommand.Parameters.Clear();
+            projectCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
+            projectCommand.Parameters.AddWithValue("@name", project.Name);
+            projectCommand.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? (object)DBNull.Value);
+            var projectId = projectCommand.ExecuteScalar();
+
+            if (project.References.Count > 0 && projectId != null)
+            {
+                foreach (var reference in project.References)
+                {
+                    refCommand.Parameters.Clear();
+                    refCommand.Parameters.AddWithValue("@projectId", (long)projectId);
+                    refCommand.Parameters.AddWithValue("@referencedProjectName", reference);
+                    refCommand.ExecuteNonQuery();
+                }
+            }
+        }
+    }
+
+    private void InsertDocumentsAndBindings(string snapshotId, IReadOnlyList<DocumentVersion> documents, SqliteTransaction transaction)
+    {
+        using var docCommand = _connection.CreateCommand();
+        docCommand.Transaction = transaction;
+        docCommand.CommandText = @"
+            INSERT INTO documents (document_id, relative_path, last_changed_snapshot_id)
+            VALUES (@documentId, @relativePath, @snapshotId)
+            ON CONFLICT(document_id) DO UPDATE SET
+                last_changed_snapshot_id = excluded.last_changed_snapshot_id;
+        ";
+
+        using var versionCommand = _connection.CreateCommand();
+        versionCommand.Transaction = transaction;
+        versionCommand.CommandText = @"
+            INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts);
+        ";
+
+        using var bindingCommand = _connection.CreateCommand();
+        bindingCommand.Transaction = transaction;
+        bindingCommand.CommandText = @"
+            INSERT INTO snapshot_documents (snapshot_id, document_version_id)
+            VALUES (@snapshotId, @documentVersionId);
+        ";
+
+        foreach (var doc in documents)
+        {
+            var documentVersionId = doc.DocumentId + ":" + doc.ContentHash;
+
+            docCommand.Parameters.Clear();
+            docCommand.Parameters.AddWithValue("@documentId", doc.DocumentId);
+            docCommand.Parameters.AddWithValue("@relativePath", doc.FilePath);
+            docCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
+            docCommand.ExecuteNonQuery();
+
+            versionCommand.Parameters.Clear();
+            versionCommand.Parameters.AddWithValue("@documentVersionId", documentVersionId);
+            versionCommand.Parameters.AddWithValue("@documentId", doc.DocumentId);
+            versionCommand.Parameters.AddWithValue("@contentHash", doc.ContentHash);
+            versionCommand.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
+            versionCommand.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? (object)DBNull.Value : (object)doc.Encoding);
+            versionCommand.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? (object)doc.ByteCount : (object)DBNull.Value);
+            versionCommand.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? (object)DBNull.Value : (object)doc.LineStarts);
+            versionCommand.ExecuteNonQuery();
+
+            bindingCommand.Parameters.Clear();
+            bindingCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
+            bindingCommand.Parameters.AddWithValue("@documentVersionId", documentVersionId);
+            bindingCommand.ExecuteNonQuery();
         }
     }
 

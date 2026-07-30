@@ -231,6 +231,146 @@ public class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public void SaveSnapshot_WithProjectReferences_RoundTripsAggregate()
+    {
+        var store = new SqliteIndexStore(_dbPath);
+        _store = store;
+        store.Open(_dbPath);
+        store.RunMigrations();
+
+        var snapshotId = "test-snap-roundtrip";
+        var workspaceId = "workspace:///home/user/project/src/sln";
+        var gitRoot = "/home/user/project";
+        var solutionPath = "/home/user/project/src/sln";
+
+        var sourceBytes = System.Text.Encoding.UTF8.GetBytes("class Foo { }\n");
+        var lineStarts = "[0]";
+        var original = new SnapshotRow
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = workspaceId,
+            GitRoot = gitRoot,
+            SolutionPath = solutionPath,
+            SdkVersion = "10.0.301",
+            CompilerVersion = "4.12.0.0",
+            CreatedAtUtc = new DateTime(2026, 7, 30, 12, 0, 0, DateTimeKind.Utc),
+            Projects = new System.Collections.Generic.List<ProjectRow>
+            {
+                new()
+                {
+                    Name = "CoreLib",
+                    TargetFramework = "net9.0",
+                    References = new System.Collections.Generic.List<string> { "DomainLib" },
+                },
+            },
+            Documents = new System.Collections.Generic.List<DocumentVersion>
+            {
+                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+            },
+        };
+
+        store.SaveSnapshot(original);
+        store.MarkSnapshotComplete(snapshotId);
+
+        var loaded = store.LoadLatestSnapshot(workspaceId);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(snapshotId, loaded!.SnapshotId);
+        Assert.Single(loaded.Projects);
+        var project = loaded.Projects[0];
+        Assert.Equal("CoreLib", project.Name);
+        Assert.Equal("net9.0", project.TargetFramework);
+        Assert.Single(project.References);
+        Assert.Equal("DomainLib", project.References[0]);
+        Assert.Single(loaded.Documents);
+        Assert.Equal("src/Foo.cs", loaded.Documents[0].FilePath);
+
+        store.Close();
+    }
+
+    [Fact]
+    public void SaveSnapshot_WhenSnapshotDocumentInsertFails_RollsBackEntireAggregate()
+    {
+        var store = new SqliteIndexStore(_dbPath);
+        _store = store;
+        store.Open(_dbPath);
+        store.RunMigrations();
+
+        // Install a trigger that fires on the late snapshot_documents insert and raises an error.
+        using (var setupConn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            setupConn.Open();
+            using var cmd = setupConn.CreateCommand();
+            cmd.CommandText = @"
+                CREATE TRIGGER test_fail_snapshot_documents
+                BEFORE INSERT ON snapshot_documents
+                BEGIN
+                    SELECT RAISE(ABORT, 'test induced failure');
+                END;
+            ";
+            cmd.ExecuteNonQuery();
+            setupConn.Close();
+        }
+
+        var snapshotId = "test-snap-rollback";
+        var workspaceId = "workspace:///rollback/proj";
+        var sourceBytes = System.Text.Encoding.UTF8.GetBytes("class Bar { }\n");
+        var lineStarts = "[0]";
+
+        var manifest = new SnapshotRow
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = workspaceId,
+            GitRoot = "/rollback",
+            SolutionPath = "/rollback/proj",
+            SdkVersion = "10.0.301",
+            CompilerVersion = "4.12.0.0",
+            CreatedAtUtc = DateTime.UtcNow,
+            Projects = new System.Collections.Generic.List<ProjectRow>
+            {
+                new() { Name = "ProjA", TargetFramework = "net9.0", References = new System.Collections.Generic.List<string>() },
+            },
+            Documents = new System.Collections.Generic.List<DocumentVersion>
+            {
+                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/Bar.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+            },
+        };
+
+        var ex = Assert.ThrowsAny<Exception>(() => store.SaveSnapshot(manifest));
+        Assert.Contains("test induced failure", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Verify that no rows from any aggregate remain.
+        using var verifyConn = new SqliteConnection($"Data Source={_dbPath}");
+        verifyConn.Open();
+        Assert.Equal(0, CountRows(verifyConn, "snapshots", $"snapshot_id = '{snapshotId}'"));
+        Assert.Equal(0, CountRows(verifyConn, "projects", "1=1"));
+        Assert.Equal(0, CountRows(verifyConn, "project_references", "1=1"));
+        Assert.Equal(0, CountRows(verifyConn, "documents", "1=1"));
+        Assert.Equal(0, CountRows(verifyConn, "document_versions", "1=1"));
+        Assert.Equal(0, CountRows(verifyConn, "snapshot_documents", "1=1"));
+        verifyConn.Close();
+
+        // Drop the trigger so subsequent tests are not affected.
+        using (var dropConn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            dropConn.Open();
+            using var dropCmd = dropConn.CreateCommand();
+            dropCmd.CommandText = "DROP TRIGGER IF EXISTS test_fail_snapshot_documents;";
+            dropCmd.ExecuteNonQuery();
+            dropConn.Close();
+        }
+
+        store.Close();
+    }
+
+    private static int CountRows(SqliteConnection conn, string table, string where)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM {table} WHERE {where};";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    [Fact]
     public void GetSource_MissingDocument_ReturnsNull()
     {
         var store = new SqliteIndexStore(_dbPath);
