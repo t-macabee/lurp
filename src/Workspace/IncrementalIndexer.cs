@@ -41,6 +41,25 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
         var timings = new List<SnapshotTimingRow>();
 
+        // Step 0: Configuration freshness check — must run before document change
+        // detection so that config-only changes (SDK, compiler, TFM, project graph,
+        // extractor version) trigger a full rebuild even when no document changed.
+        var configMismatches = WorkspaceFreshness.GetFullRebuildMismatches(workspaceInfo, previousRichManifest);
+        if (configMismatches.Count > 0)
+            throw new FullRebuildRequiredException(configMismatches);
+
+        _store.UpsertExtractors(ExtractorRegistry.All);
+        if (_store.HasStaleExtractorVersions(previousSnapshotId))
+        {
+            throw new FullRebuildRequiredException(
+            [
+                new SnapshotMismatch(MismatchKind.VersionChanged,
+                    "Extractor version staleness detected — some edges in the previous snapshot reference extractor versions not in the current registry.",
+                    Document: null,
+                    Detail: null)
+            ]);
+        }
+
         // Step 1: Change Detection
         var sw1 = System.Diagnostics.Stopwatch.StartNew();
         var (changedDocs, changedPaths) = _changeDetector.DetectAndLogChanges(workspaceInfo, previousRichManifest);
@@ -79,21 +98,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
-        // Populate extractor registry (idempotent — no-op on re-runs)
-        _store.UpsertExtractors(ExtractorRegistry.All);
-
-        // Check for stale extractor versions in the previous snapshot before
-        // copy-forward.  If any edge carries an extractor_version not present
-        // in the current registry, the copied-forward data would be stale and
-        // a full rebuild is required.
-        if (_store.HasStaleExtractorVersions(previousSnapshotId))
-        {
-            _store.DeleteSnapshotData(newSnapshotIdStr);
-            throw new InvalidOperationException(
-                "Extractor version staleness detected — some edges in the previous snapshot " +
-                "reference extractor versions not in the current registry. Full rebuild required.");
-        }
-
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;
@@ -125,7 +129,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                 changedSymbolIds.Add(id);
 
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
-            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, changedSymbolIds, affectedProjects, timings);
+            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, changedSymbolIds, timings);
         }
         catch (Exception ex)
         {
@@ -315,13 +319,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return [];
     }
 
-    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds, HashSet<string> affectedProjects, List<SnapshotTimingRow> timings)
+    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds, List<SnapshotTimingRow> timings)
     {
         // Step 7: Cross-doc Edge Refresh
         var sw7 = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Updating cross-document edges... ");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        var crossDocEdgesProcessed = await refresher.RefreshAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, affectedProjects);
+        var crossDocEdgesProcessed = await refresher.RefreshAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths);
         Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw7.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw7.ElapsedMilliseconds, DateTime.UtcNow));

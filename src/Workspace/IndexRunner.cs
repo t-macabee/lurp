@@ -84,9 +84,9 @@ public static class IndexRunner
                     Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
                     return;
                 }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("Extractor version staleness"))
+                catch (FullRebuildRequiredException ex)
                 {
-                    Console.WriteLine($"Stale extractor versions detected. Falling back to full rebuild.");
+                    Console.WriteLine($"Full rebuild required: {ex.Message}");
                     strategy = "full";
                 }
             }

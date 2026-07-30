@@ -9,13 +9,13 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     private readonly string _gitRoot = gitRoot;
     private readonly HashSet<string> _skipAdapters = skipAdapters;
 
-    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> alreadyProcessedProjects)
+    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths)
     {
         var affectedPaths = FindAffectedDocPaths(previousSnapshotId, changedPaths);
         if (affectedPaths.Count == 0)
             return 0;
 
-        var affectedProjectNames = ResolveProjectNames(solution, affectedPaths, alreadyProcessedProjects);
+        var affectedProjectNames = ResolveProjectNames(solution, affectedPaths);
         if (affectedProjectNames.Count == 0)
             return 0;
 
@@ -45,7 +45,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return affectedPaths;
     }
 
-    private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths, HashSet<string> alreadyProcessedProjects)
+    private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)
     {
         Console.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
 
@@ -64,7 +64,6 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             }
         }
 
-        affectedProjectNames.ExceptWith(alreadyProcessedProjects);
         return affectedProjectNames;
     }
 

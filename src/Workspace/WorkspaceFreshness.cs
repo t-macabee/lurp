@@ -49,6 +49,17 @@ public static class WorkspaceFreshness
             StoredWorkspaceId: stored.WorkspaceId);
     }
 
+    public static IReadOnlyList<SnapshotMismatch> GetFullRebuildMismatches(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var mismatches = new List<SnapshotMismatch>();
+        mismatches.AddRange(CheckWorkspaceIdentity(current, stored));
+        mismatches.AddRange(CheckSdkAndCompiler(current, stored));
+        mismatches.AddRange(CheckTargetFrameworks(current, stored));
+        mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckExtractorVersion(current, stored));
+        return mismatches;
+    }
+
     private static IEnumerable<SnapshotMismatch> CheckWorkspaceIdentity(WorkspaceInfo current, SnapshotManifest stored)
     {
         if (current.Id.Value != stored.WorkspaceId.Value)

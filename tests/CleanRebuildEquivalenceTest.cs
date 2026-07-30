@@ -504,39 +504,50 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         store.Open(_dbPath);
         store.RunMigrations();
 
+        using var workspace = MSBuildWorkspace.Create();
+        workspace.RegisterWorkspaceFailedHandler(args =>
+        {
+            Console.Error.WriteLine($"  [Workspace] {args.Diagnostic.Kind}: {args.Diagnostic.Message}");
+        });
+
+        var solution = await workspace.OpenSolutionAsync(_solutionPath);
+        var gitRoot = _testDir;
+        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+
+        var previousManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
+
+        if (previousManifest == null)
+            throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
+
+        var incrementalIndexer = new IncrementalIndexer(
+            store, gitRoot, _solutionPath, _testDir,
+            skipAdapters: [],
+            jsonExportPath: null);
+
+        string? fallbackLabel = null;
         try
         {
-            using var workspace = MSBuildWorkspace.Create();
-            workspace.RegisterWorkspaceFailedHandler(args =>
-            {
-                Console.Error.WriteLine($"  [Workspace] {args.Diagnostic.Kind}: {args.Diagnostic.Message}");
-            });
-
-            var solution = await workspace.OpenSolutionAsync(_solutionPath);
-            var gitRoot = _testDir;
-            var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
-
-            var previousManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
-
-            if (previousManifest == null)
-                throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
-
-            var incrementalIndexer = new IncrementalIndexer(
-                store, gitRoot, _solutionPath, _testDir,
-                skipAdapters: [],
-                jsonExportPath: null);
-
             var result = await incrementalIndexer.RunIncrementalAsync(
                 solution, workspaceInfo, previousManifest);
 
             Console.WriteLine($"    New snapshot: {result.NewSnapshotId}");
             return result.NewSnapshotId;
         }
+        catch (FullRebuildRequiredException ex)
+        {
+            Console.WriteLine($"    Full rebuild required: {ex.Message}");
+            fallbackLabel = label + " (fallback)";
+        }
         finally
         {
             store.PruneOldSnapshots(keep: 3);
             store.Close();
         }
+
+        if (fallbackLabel != null)
+            return await RunFullIndexAsync(fallbackLabel, deleteFirst: false);
+
+        throw new InvalidOperationException("Unreachable");
     }
 
     private void CompareSnapshotsAreEquivalent(string snapshotB, string snapshotC)
@@ -1110,6 +1121,154 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     private (int SourceRows, int SymbolRows) GetFtsCounts(string snapshotId)
     {
         return SnapshotAssertions.GetFtsCounts(_dbPath, snapshotId);
+    }
+
+    // Task 3 regression: same-project two-document convergence — when a
+    // declaration in one file changes and an unchanged caller in the same
+    // project references it, the cross-document edge refresher must
+    // re-extract the unchanged caller's edges so the incremental snapshot
+    // matches a clean rebuild.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_WhenSameProjectSignatureChanges()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        CreateSingleProjectSolution(
+            ("Calculator.cs", """
+                namespace TestProject;
+
+                public class Calculator
+                {
+                    public int Add(int a, int b)
+                    {
+                        return a + b;
+                    }
+                }
+                """),
+            ("Service.cs", """
+                namespace TestProject;
+
+                public class Service
+                {
+                    private readonly Calculator _calculator;
+
+                    public Service()
+                    {
+                        _calculator = new Calculator();
+                    }
+
+                    public int Compute(int x, int y)
+                    {
+                        return _calculator.Add(x, y);
+                    }
+                }
+                """));
+
+        var snapshotA = await RunFullIndexAsync("Index A (full initial, same-project)");
+
+        // Change only Calculator.Add's signature — Service.cs is untouched
+        // but its edges referencing Calculator.Add must be refreshed.
+        File.WriteAllText(
+            Path.Combine(_testDir, "src", "TestProject", "Calculator.cs"),
+            """
+            namespace TestProject;
+
+            public class Calculator
+            {
+                public int Add(int a, int b, int c)
+                {
+                    return a + b + c;
+                }
+            }
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, same-project signature change)");
+
+        var snapshotC = await RunFullIndexAsync("Index C (full after same-project change)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
+    // Task 3 regression: configuration-only change (project reference added)
+    // must not return the previous snapshot — it must fall back to a full
+    // rebuild and produce a result equivalent to a clean rebuild.
+    [SkippableFact]
+    public async Task IncrementalIndex_ConfigOnlyProjectReferenceChange_FallsBackToEquivalentFullRebuild()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        // Create a solution with two independent projects (no reference)
+        var projADir = Path.Combine(_testDir, "src", "ProjectA");
+        Directory.CreateDirectory(projADir);
+        File.WriteAllText(Path.Combine(projADir, "ProjectA.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+        File.WriteAllText(Path.Combine(projADir, "Foo.cs"), """
+            namespace ProjectA;
+
+            public class Foo
+            {
+                public string Bar() => "bar";
+            }
+            """);
+
+        var projBDir = Path.Combine(_testDir, "src", "ProjectB");
+        Directory.CreateDirectory(projBDir);
+        File.WriteAllText(Path.Combine(projBDir, "ProjectB.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+        File.WriteAllText(Path.Combine(projBDir, "Baz.cs"), """
+            namespace ProjectB;
+
+            public class Baz
+            {
+                public int Value() => 42;
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, """
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/ProjectA/ProjectA.csproj" />
+                <Project Path="src/ProjectB/ProjectB.csproj" />
+              </Folder>
+            </Solution>
+            """);
+
+        var snapshotA = await RunFullIndexAsync("Index A (full initial, no project ref)");
+
+        // Now add a project reference from ProjectB to ProjectA — no source
+        // files change, only the project graph configuration.
+        File.WriteAllText(Path.Combine(projBDir, "ProjectB.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\ProjectA\ProjectA.csproj"" />
+  </ItemGroup>
+</Project>");
+
+        // Incremental must detect the project-reference change and fall back
+        // to a full rebuild rather than returning the previous snapshot.
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, config-only change — should fallback)");
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        var snapshotC = await RunFullIndexAsync("Index C (full after config change)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
 
     // T4 regression: SaveEdges must not throw SQLite Error 19 when given
