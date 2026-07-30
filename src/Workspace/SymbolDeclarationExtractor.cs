@@ -16,26 +16,25 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 {
     private readonly Action<string>? _logWarning = logWarning;
 
-    internal (List<SymbolDeclaration> Declarations, int SkippedCount) ExtractAll()
+    internal List<SymbolDeclaration> ExtractAll()
     {
         var results = new List<SymbolDeclaration>();
-        var skipped = 0;
 
         foreach (var typeSymbol in SymbolExtractionContext.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
-            ExtractTypeDeclarations(typeSymbol, results, ref skipped);
+            ExtractTypeDeclarations(typeSymbol, results);
         }
 
-        return (results, skipped);
+        return results;
     }
 
-    private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results, ref int skipped)
+    private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results)
     {
-        AddSymbolDeclarations(typeSymbol, results, ref skipped);
+        AddSymbolDeclarations(typeSymbol, results);
 
         foreach (var nestedType in typeSymbol.GetTypeMembers())
         {
-            ExtractTypeDeclarations(nestedType, results, ref skipped);
+            ExtractTypeDeclarations(nestedType, results);
         }
 
         foreach (var member in typeSymbol.GetMembers())
@@ -43,11 +42,11 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             if (member is INamedTypeSymbol)
                 continue;
 
-            AddSymbolDeclarations(member, results, ref skipped);
+            AddSymbolDeclarations(member, results);
         }
     }
 
-    private void AddSymbolDeclarations(ISymbol symbol, List<SymbolDeclaration> results, ref int skipped)
+    private void AddSymbolDeclarations(ISymbol symbol, List<SymbolDeclaration> results)
     {
         var docCommentId = symbol.GetDocumentationCommentId();
         if (string.IsNullOrEmpty(docCommentId))
@@ -62,58 +61,49 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
         {
-            try
+            var syntaxNode = syntaxRef.GetSyntax();
+            var syntaxTree = syntaxRef.SyntaxTree;
+
+            if (!context.IsInScope(syntaxTree))
+                continue;
+
+            var documentId = context.ResolveDocumentId(syntaxTree);
+            if (documentId == null)
+                continue;
+
+            if (!context.DocumentVersions.TryGetValue(documentId.Value, out var versionId))
+                continue;
+
+            if (!context.DocumentContents.TryGetValue(documentId.Value, out var contentInfo))
+                continue;
+
+            var encoding = DeclarationSpanComputer.GetEncoding(contentInfo.Encoding);
+            var sourceText = syntaxTree.GetText();
+            var sourceString = sourceText.ToString();
+
+            var (fullSpan, signatureSpan, bodySpan, nameSpan) = DeclarationSpanComputer.ComputeSpans(syntaxNode, sourceString, encoding);
+
+            var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
+            string? generatorIdentity = null;
+            if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
             {
-                var syntaxNode = syntaxRef.GetSyntax();
-                var syntaxTree = syntaxRef.SyntaxTree;
-
-                if (!context.IsInScope(syntaxTree))
-                    continue;
-
-                var documentId = context.ResolveDocumentId(syntaxTree);
-                if (documentId == null)
-                    continue;
-
-                if (!context.DocumentVersions.TryGetValue(documentId.Value, out var versionId))
-                    continue;
-
-                if (!context.DocumentContents.TryGetValue(documentId.Value, out var contentInfo))
-                    continue;
-
-                var encoding = DeclarationSpanComputer.GetEncoding(contentInfo.Encoding);
-                var sourceText = syntaxTree.GetText();
-                var sourceString = sourceText.ToString();
-
-                var (fullSpan, signatureSpan, bodySpan, nameSpan) = DeclarationSpanComputer.ComputeSpans(syntaxNode, sourceString, encoding);
-
-                var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
-                string? generatorIdentity = null;
-                if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
-                {
-                    generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content, genDocContent.Encoding);
-                }
-
-                results.Add(new SymbolDeclaration
-                {
-                    SymbolId = symbolId,
-                    Kind = kind,
-                    DocumentVersionId = versionId.ToString(),
-                    FullSpan = fullSpan,
-                    SignatureSpan = signatureSpan,
-                    BodySpan = bodySpan,
-                    NameSpan = nameSpan,
-                    IsPartial = isPartial,
-                    MetadataJson = metadataJson,
-                    IsGenerated = isGenerated,
-                    GeneratorIdentity = generatorIdentity,
-                });
+                generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content, genDocContent.Encoding);
             }
-            catch (Exception ex)
+
+            results.Add(new SymbolDeclaration
             {
-                var location = syntaxRef.SyntaxTree?.FilePath ?? "unknown";
-                skipped++;
-                _logWarning?.Invoke($"Skipping declaration for '{docCommentId}' at {location}: {ex.Message}");
-            }
+                SymbolId = symbolId,
+                Kind = kind,
+                DocumentVersionId = versionId.ToString(),
+                FullSpan = fullSpan,
+                SignatureSpan = signatureSpan,
+                BodySpan = bodySpan,
+                NameSpan = nameSpan,
+                IsPartial = isPartial,
+                MetadataJson = metadataJson,
+                IsGenerated = isGenerated,
+                GeneratorIdentity = generatorIdentity,
+            });
         }
     }
 

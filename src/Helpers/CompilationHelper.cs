@@ -11,8 +11,9 @@ internal static class CompilationHelper
             cancellationToken.ThrowIfCancellationRequested();
             var compilation = await project.GetCompilationAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (compilation != null)
-                yield return (project, compilation);
+            if (compilation == null)
+                throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during full extraction.");
+            yield return (project, compilation);
         }
     }
 

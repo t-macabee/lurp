@@ -127,6 +127,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
                 ScopeDocuments: scopeDocs);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
+            result.EnsureRequiredSuccess();
             _store.SaveEdges(newSnapshotId, result.Edges);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
@@ -142,8 +143,9 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (!projectNames.Contains(project.Name))
                 continue;
             var compilation = await project.GetCompilationAsync();
-            if (compilation != null)
-                compilations[project.Name] = compilation;
+            if (compilation == null)
+                throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during cross-document edge refresh.");
+            compilations[project.Name] = compilation;
         }
         return compilations;
     }

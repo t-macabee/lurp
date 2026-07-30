@@ -161,8 +161,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             if (!affectedProjects.Contains(project.Name))
                 continue;
             var compilation = await project.GetCompilationAsync();
-            if (compilation != null)
-                result[project.Name] = compilation;
+            if (compilation == null)
+                throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
+            result[project.Name] = compilation;
         }
         Console.WriteLine($"done ({result.Count} compilations).");
         return result;
@@ -244,6 +245,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
                 LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
                 ScopeDocuments: scopeDocs);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
+            result.EnsureRequiredSuccess();
 
             // Filter out edges anchored in unchanged documents within this project.
             // Those edges were already copied forward from the previous snapshot
@@ -334,17 +336,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         Console.WriteLine("done.");
 
         Console.Write("Computing semantic diff from previous snapshot... ");
-        try
-        {
-            var differ = new SemanticDiffer(_store, _store, _store);
-            var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr, changedPaths, changedSymbolIds);
-            _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
-            Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"WARNING: Semantic diff failed: {ex.Message}");
-        }
+        var differ = new SemanticDiffer(_store, _store, _store);
+        var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr, changedPaths, changedSymbolIds);
+        _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
+        Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         sw8.Stop();
         timings.Add(new SnapshotTimingRow("fts_rebuild_and_diff", sw8.ElapsedMilliseconds, DateTime.UtcNow));
 

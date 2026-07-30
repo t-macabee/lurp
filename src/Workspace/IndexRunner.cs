@@ -155,6 +155,7 @@ public static class IndexRunner
                 {
                     var options = new CompilationFactExtractor.ExtractionOptions(skipAdapters, LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
                     var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
+                    result.EnsureRequiredSuccess();
 
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
                     totalDeclarations += result.Declarations.Count;
@@ -164,8 +165,7 @@ public static class IndexRunner
                     store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                     totalDiagnostics += result.Diagnostics.Count;
 
-                    var skippedSuffix = result.SkippedDeclarations > 0 ? $", {result.SkippedDeclarations} skipped" : "";
-                    Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics{skippedSuffix}.");
+                    Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
                 }
                 catch (Exception ex)
                 {

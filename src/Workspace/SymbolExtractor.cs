@@ -26,7 +26,7 @@ public sealed class SymbolExtractor
 
     private readonly Action<string>? _logWarning;
 
-    public (List<SymbolDeclaration> Declarations, int SkippedCount) ExtractAll() => new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
+    public List<SymbolDeclaration> ExtractAll() => new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
 
     public List<EdgeRecord> ExtractEdges() => new SymbolStructuralEdgeExtractor(_context).ExtractEdges();
 }
