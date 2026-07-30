@@ -16,6 +16,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
         // TestAdapter records TestedBy as production -> test. A method anchor may
         // not be the exact production symbol recorded by the adapter, but its
         // upstream callers still identify the test method that exercises it.
+        // Hop.SourceSymbolId is the upstream production caller; AddTestsFor queries
+        // its outgoing TestedBy edges and collects target test IDs.
         var allowedKinds = new HashSet<string> { EdgeKind.Calls.ToString() };
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
         var paths = traverser.TraceImpact(
@@ -27,7 +29,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
         foreach (var path in paths)
         {
             foreach (var hop in path.Hops)
-                AddTestIfCovered(hop.SourceSymbolId);
+                AddTestsFor(hop.SourceSymbolId);
         }
 
         return results;
@@ -49,20 +51,6 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
                 {
                     results.Add(item);
                 }
-            }
-        }
-
-        void AddTestIfCovered(string candidateTestSymbolId)
-        {
-            var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, candidateTestSymbolId);
-            var testEdge = incomingEdges.FirstOrDefault(edge => edge.Kind == EdgeKind.TestedBy.ToString());
-            if (testEdge == null || !seen.Add(candidateTestSymbolId))
-                return;
-
-            var item = context.BuildCapsuleItem(candidateTestSymbolId, testEdge.Kind, testEdge.Provenance);
-            if (item != null)
-            {
-                results.Add(item);
             }
         }
     }

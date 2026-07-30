@@ -113,8 +113,10 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
     private List<AuditFinding> FindUntestedSurface(List<string> allSymbolIds, Dictionary<string, IndexedSymbolInfo?> cache)
     {
         var findings = new List<AuditFinding>();
+        // TestedBy direction is production -> test, so the covered set is built from
+        // SourceSymbolId (the production symbol that has at least one test).
         var covered = _store.GetEdgesByKind(_snapshotId, "TestedBy")
-            .Select(e => e.TargetSymbolId)
+            .Select(e => e.SourceSymbolId)
             .ToHashSet();
 
         foreach (var symbolId in allSymbolIds)

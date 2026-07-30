@@ -4931,8 +4931,8 @@ class Source {
             var edges = new List<EdgeRecord>
             {
                 new() {
-                    SourceSymbolId = "M:FooTest|asm",
-                    TargetSymbolId = "M:B|asm",
+                    SourceSymbolId = "M:B|asm",
+                    TargetSymbolId = "M:FooTest|asm",
                     Kind = "TestedBy",
                 }
             };
@@ -5035,8 +5035,8 @@ class Source {
             var edges = new List<EdgeRecord>
             {
                 new() {
-                    SourceSymbolId = "M:Test|asm",
-                    TargetSymbolId = "M:A|asm",
+                    SourceSymbolId = "M:A|asm",
+                    TargetSymbolId = "M:Test|asm",
                     Kind = "TestedBy",
                 }
             };
@@ -5094,8 +5094,8 @@ class Source {
             var edges = new List<EdgeRecord>
             {
                 new() {
-                    SourceSymbolId = "M:Test|asm",
-                    TargetSymbolId = "M:A|asm",
+                    SourceSymbolId = "M:A|asm",
+                    TargetSymbolId = "M:Test|asm",
                     Kind = "TestedBy",
                 }
             };

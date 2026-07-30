@@ -144,12 +144,14 @@ public sealed class SimulationEngine
             }
         }
 
-        // 3. TestedBy (tests that would lose their target)
-        var testedBy = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
+        // 3. TestedBy (tests that would lose their production anchor)
+        // Edge direction is production -> test, so query outgoing edges from the
+        // removed production symbol and report the target test method.
+        var testedBy = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId)
             .Where(e => e.Kind == "TestedBy");
         foreach (var edge in testedBy)
         {
-            var key = edge.SourceSymbolId;
+            var key = edge.TargetSymbolId;
             if (!allItems.ContainsKey(key))
             {
                 var info = _declarationStore.GetSymbolInfo(key, _snapshotId);

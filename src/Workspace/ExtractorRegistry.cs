@@ -50,6 +50,6 @@ internal static class ExtractorRegistry
             ("DependencyInjection",   ExtractorConstants.DependencyInjectionExtractor, "Dependency injection container edges"),
 
             // -- Test adapter (hard-coded in TestAdapter.cs) --
-            ("Test",                  "test-v3",           "Test-to-production-code tested-by edges"),
+            ("Test",                  "test-v3",           "Production-to-test tested-by edges"),
         };
 }

@@ -153,17 +153,20 @@ namespace Lurp.Workspace
 
         private void PopulateSuggestedVerification(ContextCapsule capsule)
         {
-            var incomingEdges = _edgeStore.GetIncomingEdges(_snapshotId, _symbolId.Value);
+            // TestedBy direction is production -> test. Query outgoing edges from the
+            // anchor production symbol and collect targets as suggested tests.
+            var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, _symbolId.Value);
 
-            foreach (var edge in incomingEdges)
+            foreach (var edge in outgoingEdges)
             {
                 if (edge.Kind != EdgeKind.TestedBy.ToString())
                     continue;
 
-                var testInfo = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
-                var testName = testInfo?.FullyQualifiedName ?? edge.SourceSymbolId;
+                var testId = edge.TargetSymbolId;
+                var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
+                var testName = testInfo?.FullyQualifiedName ?? testId;
 
-                capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: edge.SourceSymbolId, testName: testName, description: $"Run '{testName}' to verify correctness after modifications."));
+                capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: testId, testName: testName, description: $"Run '{testName}' to verify correctness after modifications."));
             }
         }
     }
