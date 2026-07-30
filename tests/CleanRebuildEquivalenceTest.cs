@@ -520,8 +520,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
 
         var incrementalIndexer = new IncrementalIndexer(
-            store, gitRoot, _solutionPath, _testDir,
-            skipAdapters: [],
+            store, gitRoot, [],
             jsonExportPath: null);
 
         string? fallbackLabel = null;

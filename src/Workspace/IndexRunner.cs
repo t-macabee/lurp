@@ -61,7 +61,7 @@ public static class IndexRunner
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, solutionPath, outputDir, skipAdapters, jsonExportPath);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest);
 
                     Console.WriteLine();

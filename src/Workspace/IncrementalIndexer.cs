@@ -10,16 +10,26 @@ namespace Lurp.Workspace;
 #if CODE_ANALYSIS
 [SuppressMessage("NDepend", "ND1000", Justification = "Pipeline orchestrator for incremental indexing (7+ sequential steps: change detection, extraction, diffing, persistence). Investigation (2026-07-28) found no scattered responsibilities — length tracks step count, not mixed concerns. Review trigger: re-split if a step gains independent branching/looping logic of its own, or if a new step is added that doesn't share the same input/output pipeline shape.")]
 #endif
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath = null)
+public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-    private readonly string _solutionPath = solutionPath ?? throw new ArgumentNullException(nameof(solutionPath));
-    private readonly string _outputDir = outputDir ?? throw new ArgumentNullException(nameof(outputDir));
     private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly string? _jsonExportPath = jsonExportPath;
 
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot);
+
+    private sealed record IncrementalChangeScope(
+        IReadOnlySet<string> ChangedPaths,
+        IReadOnlySet<string> PreviousChangedSymbolIds,
+        IReadOnlySet<string> DiffAndSearchSymbolIds,
+        IReadOnlySet<string> AffectedProjects);
+
+    private sealed record SnapshotFinalizationContext(
+        Solution Solution,
+        WorkspaceInfo Workspace,
+        SnapshotPair Snapshots,
+        IncrementalChangeScope Changes);
 
     public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted)
     {
@@ -128,8 +138,24 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
             foreach (var id in prunedSymbolIds)
                 changedSymbolIds.Add(id);
 
+            // Build the change scope once so downstream phases share the same sets.
+            var previousChangedSymbolIds = new HashSet<string>(oldDocVersionIds.SelectMany(
+                vid => _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, [vid])));
+            var diffAndSearchSymbolIds = new HashSet<string>(changedSymbolIds);
+            var changeScope = new IncrementalChangeScope(
+                ChangedPaths: new HashSet<string>(changedPaths),
+                PreviousChangedSymbolIds: previousChangedSymbolIds,
+                DiffAndSearchSymbolIds: diffAndSearchSymbolIds,
+                AffectedProjects: new HashSet<string>(affectedProjects));
+
+            var finalizationContext = new SnapshotFinalizationContext(
+                Solution: solution,
+                Workspace: workspaceInfo,
+                Snapshots: new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
+                Changes: changeScope);
+
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
-            totalEdges += await FinalizeSnapshotAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths, changedSymbolIds, timings);
+            totalEdges += await FinalizeSnapshotAsync(finalizationContext, timings);
         }
         catch (Exception ex)
         {
@@ -319,36 +345,70 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, string
         return [];
     }
 
-    private async Task<int> FinalizeSnapshotAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotIdStr, string previousSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds, List<SnapshotTimingRow> timings)
+    private async Task<int> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
     {
+        // Phase order is load-bearing: reverse refresh → orphan cleanup → FTS → semantic diff → complete.
+
         // Step 7: Cross-doc Edge Refresh
-        var sw7 = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Updating cross-document edges... ");
-        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        var crossDocEdgesProcessed = await refresher.RefreshAsync(solution, workspaceInfo, newSnapshotIdStr, previousSnapshotId, changedPaths);
-        Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
-        sw7.Stop();
-        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw7.ElapsedMilliseconds, DateTime.UtcNow));
+        var crossDocEdgesProcessed = await RefreshCrossDocumentEdgesAsync(context, timings);
 
         // Step 7b: Remove edges targeting symbols not declared in this snapshot
-        _store.DeleteOrphanEdges(newSnapshotIdStr);
+        _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
 
-        // Step 8: FTS Rebuild (incremental) + Diff
-        var sw8 = System.Diagnostics.Stopwatch.StartNew();
+        // Step 8a: FTS Rebuild (incremental)
+        RebuildSearchIndex(context, timings);
+
+        // Step 8b: Semantic diff persistence
+        ComputeAndPersistSemanticChanges(context, timings);
+
+        // Completion must be last — all preceding phases must succeed.
+        _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
+        return crossDocEdgesProcessed;
+    }
+
+    private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.Write("Updating cross-document edges... ");
+        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
+        var crossDocEdgesProcessed = await refresher.RefreshAsync(
+            context.Solution, context.Workspace,
+            context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId,
+            (HashSet<string>)context.Changes.ChangedPaths);
+        Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
+        sw.Stop();
+        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));
+        return crossDocEdgesProcessed;
+    }
+
+    private void RebuildSearchIndex(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Rebuilding FTS5 search index (incremental)... ");
-        _store.BuildSearchIndex(newSnapshotIdStr, changedPaths, changedSymbolIds);
+        // Changed/deleted path and symbol sets are final; FTS must finish before MarkSnapshotComplete.
+        _store.BuildSearchIndex(
+            context.Snapshots.ToSnapshotId,
+            (HashSet<string>)context.Changes.ChangedPaths,
+            (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
         Console.WriteLine("done.");
+        sw.Stop();
+        timings.Add(new SnapshotTimingRow("fts_build", sw.ElapsedMilliseconds, DateTime.UtcNow));
+    }
 
+    private void ComputeAndPersistSemanticChanges(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         Console.Write("Computing semantic diff from previous snapshot... ");
         var differ = new SemanticDiffer(_store, _store, _store);
-        var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousSnapshotId, newSnapshotIdStr, changedPaths, changedSymbolIds);
-        _store.SaveSemanticChanges(previousSnapshotId, newSnapshotIdStr, diffChanges);
+        var (diffChanges, skippedComparisons) = differ.ComputeDiff(
+            context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId,
+            (HashSet<string>)context.Changes.ChangedPaths,
+            (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
+        _store.SaveSemanticChanges(
+            context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId, diffChanges);
         Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
-        sw8.Stop();
-        timings.Add(new SnapshotTimingRow("fts_rebuild_and_diff", sw8.ElapsedMilliseconds, DateTime.UtcNow));
-
-        _store.MarkSnapshotComplete(newSnapshotIdStr);
-        return crossDocEdgesProcessed;
+        sw.Stop();
+        timings.Add(new SnapshotTimingRow("semantic_diff", sw.ElapsedMilliseconds, DateTime.UtcNow));
     }
 
     private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)

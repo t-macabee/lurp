@@ -39,6 +39,11 @@ internal static class SnapshotAssertions
         string DocCommentId,
         string Kind);
 
+    private sealed record SemanticChangeSnapshot(
+        string ChangeType,
+        string SymbolId,
+        string? DetailJson);
+
     public static void CompareSnapshotsAreEquivalent(
         string dbPath, string snapshotB, string snapshotC)
     {
@@ -123,6 +128,22 @@ internal static class SnapshotAssertions
             Assert.Equal(
                 ReadSymbolFts(dbPath, snapshotC),
                 ReadSymbolFts(dbPath, snapshotB));
+
+            // Semantic changes: compare ordinally sorted (ChangeType, SymbolId, canonical DetailJson)
+            // projections, deliberately excluding ChangeId, FromSnapshotId, ToSnapshotId, and CreatedAtUtc
+            // which differ between otherwise equivalent runs.
+            // Only compare when both snapshots have the same number of semantic changes from the same
+            // from_snapshot_id. Incremental-vs-full runs and first-run vs subsequent runs legitimately
+            // differ in change count or from_snapshot, so they skip this check.
+            var changesB = ReadSemanticChanges(dbPath, snapshotB);
+            var changesC = ReadSemanticChanges(dbPath, snapshotC);
+            if (changesB.Count == changesC.Count && changesB.Count > 0)
+            {
+                var fromB = GetSemanticDiffFromSnapshot(dbPath, snapshotB);
+                var fromC = GetSemanticDiffFromSnapshot(dbPath, snapshotC);
+                if (fromB != null && fromB == fromC)
+                    Assert.Equal(changesC, changesB);
+            }
         }
         finally
         {
@@ -246,6 +267,51 @@ internal static class SnapshotAssertions
                 reader.GetString(3)));
         }
         return result;
+    }
+
+    private static List<SemanticChangeSnapshot> ReadSemanticChanges(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT change_type, symbol_id, detail_json
+            FROM semantic_changes
+            WHERE to_snapshot_id = @snapshotId
+            ORDER BY change_type, symbol_id, detail_json;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<SemanticChangeSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new SemanticChangeSnapshot(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Return the from_snapshot_id for semantic_changes targeting the given snapshot,
+    /// or null if none exist. Used to decide whether semantic_changes are comparable.
+    /// </summary>
+    private static string? GetSemanticDiffFromSnapshot(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT DISTINCT from_snapshot_id
+            FROM semantic_changes
+            WHERE to_snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = command.ExecuteScalar();
+        return result as string;
     }
 
     private static int? ReadNullableInt(SqliteDataReader reader, int ordinal) =>

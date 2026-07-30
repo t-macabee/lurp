@@ -623,8 +623,7 @@ public class NewType
                 throw new InvalidOperationException("No previous snapshot found.");
 
             var incrementalIndexer = new IncrementalIndexer(
-                store, gitRoot, _solutionPath, _testDir,
-                skipAdapters: [],
+                store, gitRoot, [],
                 jsonExportPath: null);
 
             var result = await incrementalIndexer.RunIncrementalAsync(
