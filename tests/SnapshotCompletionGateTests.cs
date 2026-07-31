@@ -116,7 +116,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
         RunGitCommand(_testDir!, "commit -m change");
 
         // Step 3: Use a proxy that throws on SaveSemanticChanges.
-        var innerStore = new SqliteIndexStore(dbPath);
+        using var innerStore = new SqliteIndexStore(dbPath);
         innerStore.Open(dbPath);
         innerStore.RunMigrations();
 
@@ -133,8 +133,6 @@ public sealed class SnapshotCompletionGateTests : IDisposable
                 strategyArg: "incremental"));
 
         Assert.Contains("SaveSemanticChanges", ex.Message);
-
-        innerStore.Close();
 
         // Step 4: Verify no new complete snapshot was created.
         using var conn = new SqliteConnection($"Data Source={dbPath}");

@@ -422,7 +422,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         if (deleteFirst && File.Exists(_dbPath))
             File.Delete(_dbPath);
 
-        var store = new SqliteIndexStore(_dbPath);
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -492,7 +492,6 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         finally
         {
             store.PruneOldSnapshots(keep: 3);
-            store.Close();
         }
     }
 
@@ -500,7 +499,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     {
         Console.WriteLine($"--- {label} ---");
 
-        var store = new SqliteIndexStore(_dbPath);
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -540,7 +539,6 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         finally
         {
             store.PruneOldSnapshots(keep: 3);
-            store.Close();
         }
 
         if (fallbackLabel != null)
@@ -915,10 +913,10 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotA = await RunFullIndexAsync("Index A (full, duplicate content)");
 
-        var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
-        try
+        using (var store = new SqliteIndexStore(_dbPath))
         {
+            store.Open(_dbPath);
+
             var versionIdsByPath = store.GetDocumentVersionIdsByPath(snapshotA);
 
             var path1 = "src/ProjectX/Widget.cs";
@@ -936,10 +934,6 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             Assert.NotNull(source2);
             Assert.Equal(source1, source2);
             Assert.Contains("class Widget", source1);
-        }
-        finally
-        {
-            store.Close();
         }
 
         var snapshotB = await RunFullIndexAsync("Index B (second full, duplicate content)", deleteFirst: false);
@@ -1279,13 +1273,11 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         Skip.If(!MSBuildLocator.IsRegistered,
             "MSBuild is not available on this system. Cannot run integration test.");
 
-        var store = new SqliteIndexStore(_dbPath);
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
-        try
-        {
-            var snapshotId = "snap-t4-dedup";
+        var snapshotId = "snap-t4-dedup";
             var edge1 = new EdgeRecord
             {
                 SourceSymbolId = "T:Lib.IFoo|Lib",
@@ -1311,11 +1303,6 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
             var stored = store.GetEdges(snapshotId);
             Assert.Single(stored);
-        }
-        finally
-        {
-            store.Close();
-        }
     }
 
     // T4 regression: EdgeDedup.Deduplicate must keep the highest-provenance

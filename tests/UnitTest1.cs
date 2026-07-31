@@ -123,8 +123,7 @@ public class MigrationRunnerTests : IDisposable
     [Fact]
     public void SaveAndLoadLatestSnapshot_RoundTripsFields()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -174,15 +173,12 @@ public class MigrationRunnerTests : IDisposable
         Assert.Equal("doc2", doc2.DocumentId);
         Assert.Equal("src/Utils.cs", doc2.FilePath);
         Assert.Equal("def456", doc2.ContentHash);
-
-        store.Close();
     }
 
     [Fact]
     public void LoadLatestSnapshot_NoSnapshot_ReturnsNull()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -190,14 +186,12 @@ public class MigrationRunnerTests : IDisposable
 
         Assert.Null(result);
 
-        store.Close();
     }
 
     [Fact]
     public void SaveAndLoad_ContentRoundTrips()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -227,14 +221,12 @@ public class MigrationRunnerTests : IDisposable
         Assert.NotNull(source);
         Assert.Equal("using System;\n\nclass Foo { }\n", source);
 
-        store.Close();
     }
 
     [Fact]
     public void SaveSnapshot_WithProjectReferences_RoundTripsAggregate()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -285,14 +277,12 @@ public class MigrationRunnerTests : IDisposable
         Assert.Single(loaded.Documents);
         Assert.Equal("src/Foo.cs", loaded.Documents[0].FilePath);
 
-        store.Close();
     }
 
     [Fact]
     public void SaveSnapshot_WhenSnapshotDocumentInsertFails_RollsBackEntireAggregate()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -360,7 +350,6 @@ public class MigrationRunnerTests : IDisposable
             dropConn.Close();
         }
 
-        store.Close();
     }
 
     private static int CountRows(SqliteConnection conn, string table, string where)
@@ -373,8 +362,7 @@ public class MigrationRunnerTests : IDisposable
     [Fact]
     public void GetSource_MissingDocument_ReturnsNull()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -382,14 +370,12 @@ public class MigrationRunnerTests : IDisposable
 
         Assert.Null(result);
 
-        store.Close();
     }
 
     [Fact]
     public void GetSource_MissingSnapshot_ReturnsNull()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -397,56 +383,54 @@ public class MigrationRunnerTests : IDisposable
 
         Assert.Null(result);
 
-        store.Close();
     }
 
     [Fact]
     public void GetSource_NoRoslyn_ReturnsContentFromSqliteOnly()
     {
-
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
-        store.Open(_dbPath);
-        store.RunMigrations();
-
         var snapshotId = "snap-noroslyn-001";
-        var workspaceId = "workspace:///root/proj";
-        var sourceBytes = System.Text.Encoding.UTF8.GetBytes("console.log('hello');");
-        var lineStarts = "[0,22]";
 
-        var original = new SnapshotRow
+        using (var store = new SqliteIndexStore(_dbPath))
         {
-            SnapshotId = snapshotId,
-            WorkspaceId = workspaceId,
-            GitRoot = "/root",
-            SolutionPath = "/root/proj",
-            SdkVersion = "10.0.301",
-            CompilerVersion = "4.12.0.0",
-            CreatedAtUtc = DateTime.UtcNow,
-            Documents = new System.Collections.Generic.List<DocumentVersion>
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            var workspaceId = "workspace:///root/proj";
+            var sourceBytes = System.Text.Encoding.UTF8.GetBytes("console.log('hello');");
+            var lineStarts = "[0,22]";
+
+            var original = new SnapshotRow
             {
-                new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/app.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
-            }
-        };
-        store.SaveSnapshot(original);
-        store.Close();
+                SnapshotId = snapshotId,
+                WorkspaceId = workspaceId,
+                GitRoot = "/root",
+                SolutionPath = "/root/proj",
+                SdkVersion = "10.0.301",
+                CompilerVersion = "4.12.0.0",
+                CreatedAtUtc = DateTime.UtcNow,
+                Documents = new System.Collections.Generic.List<DocumentVersion>
+                {
+                    new DocumentVersion(sourceBytes) { DocumentId = "doc1", FilePath = "src/app.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+                }
+            };
+            store.SaveSnapshot(original);
+        }
 
-        var reopened = new SqliteIndexStore(_dbPath);
-        reopened.Open(_dbPath);
+        using (var reopened = new SqliteIndexStore(_dbPath))
+        {
+            reopened.Open(_dbPath);
 
-        var source = reopened.GetSource("src/app.cs", snapshotId);
-        Assert.NotNull(source);
-        Assert.Equal("console.log('hello');", source);
-
-        reopened.Close();
+            var source = reopened.GetSource("src/app.cs", snapshotId);
+            Assert.NotNull(source);
+            Assert.Equal("console.log('hello');", source);
+        }
     }
 
     [Fact]
     public void LineStarts_FirstOffsetIsZero()
     {
 
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -477,14 +461,12 @@ public class MigrationRunnerTests : IDisposable
         var doc = loaded!.Documents[0];
         Assert.Equal("[0,6,12,18]", doc.LineStart);
 
-        store.Close();
     }
 
     [Fact]
     public void Content_WithNullContent_StoresNull()
     {
-        var store = new SqliteIndexStore(_dbPath);
-        _store = store;
+        using var store = new SqliteIndexStore(_dbPath);
         store.Open(_dbPath);
         store.RunMigrations();
 
@@ -511,7 +493,6 @@ public class MigrationRunnerTests : IDisposable
         var source = store.GetSource("src/empty.cs", snapshotId);
         Assert.Null(source);
 
-        store.Close();
     }
 
     [Fact]
@@ -2419,8 +2400,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SaveAndGetSemanticChanges_RoundTrip()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2481,8 +2461,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void GetSemanticChanges_EmptyList_ReturnsEmpty()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2496,8 +2475,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_SymbolAddedAndRemoved()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2562,8 +2540,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_EdgeAddedAndRemoved()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2609,8 +2586,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_SignatureChangedViaMetadata()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2659,8 +2635,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_BaseTypeChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2709,8 +2684,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_SymbolRenamed()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2762,8 +2736,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_EmptyDiff()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2808,8 +2781,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_GenericConstraintChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2862,8 +2834,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_ExplicitInterfaceImplementationChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2916,8 +2887,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_NullableAnnotationChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -2970,8 +2940,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_RefParameterModifierChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -3024,8 +2993,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_OperatorOverloadSignatureChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -3078,8 +3046,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_ConversionOperatorSignatureChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -3132,8 +3099,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_AttributeAddedOrRemoved()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -3184,8 +3150,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         [Fact]
         public void SemanticDiffer_AttributeArgumentChanged()
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 
@@ -3277,8 +3242,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
 
         private List<SemanticChange> Diff(string fromSnapId, string toSnapId, SymbolDeclaration fromDecl, SymbolDeclaration toDecl)
         {
-            var store = new SqliteIndexStore(_dbPath);
-            _store = store;
+            using var store = new SqliteIndexStore(_dbPath);
             store.Open(_dbPath);
             store.RunMigrations();
 

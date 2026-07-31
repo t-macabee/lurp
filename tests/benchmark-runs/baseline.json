@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-07-30T16:07:48.0965824Z",
+  "generatedAtUtc": "2026-07-30T22:14:57.1549302Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -90,8 +90,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "8172377da0d6432380c5f30e02d82344",
-        "fullSnapshot": "3a2efe08fe3b43c68e8986237b8665ac",
+        "incrementalSnapshot": "d5cbac3e830c462782eba504ed475227",
+        "fullSnapshot": "a4351025fd9d43f29a2dd25f24a476c6",
         "equivalent": true,
         "error": null
       },
@@ -173,8 +173,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "532d53c708264e6ab8e558fda32174ec",
-        "fullSnapshot": "5fdc3678af47458c83d0a1358aea6ce1",
+        "incrementalSnapshot": "6d68e6919f514106b2dd8301e3922644",
+        "fullSnapshot": "5284100d10ec477eb52d93c3a13ddfa2",
         "equivalent": true,
         "error": null
       },
@@ -196,7 +196,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 222,
+        "estimatedTokens": 184,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [],
         "content": [
@@ -217,14 +217,6 @@
             "Relevance": "relevant"
           },
           {
-            "Tier": "relevantTests",
-            "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
-            "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
-            "EdgeKind": "TestedBy",
-            "Provenance": "framework_derived",
-            "Relevance": "unclassified"
-          },
-          {
             "Tier": "secondDegreeContext",
             "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
             "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -235,7 +227,7 @@
         ],
         "relevantCount": 1,
         "irrelevantCount": 0,
-        "unclassifiedCount": 3
+        "unclassifiedCount": 2
       },
       "contracts": {
         "expected": [],
@@ -247,11 +239,11 @@
         "expected": [
           "Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
         ],
-        "actual": [
-          "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
+        "actual": [],
+        "missing": [
+          "Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices"
         ],
-        "missing": [],
-        "allIncluded": true
+        "allIncluded": false
       },
       "patchScope": {
         "expectedFiles": [
@@ -263,14 +255,14 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "56f4cd9c99544fc8a8a5a5f82468b4e1",
-        "fullSnapshot": "3a70572d1e4141eab55e71f329f0cd29",
+        "incrementalSnapshot": "48f28305ea6647ebada5c55cdb566a00",
+        "fullSnapshot": "edcafd547b8345a6880330ead240cfe3",
         "equivalent": true,
         "error": null
       },
       "failures": {
         "missingContracts": false,
-        "missingRelevantTests": false,
+        "missingRelevantTests": true,
         "irrelevantCapsuleContent": false,
         "unknownRuntimeVectorsUndeclared": true,
         "incrementalFullDisagreement": false

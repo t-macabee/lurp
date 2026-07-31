@@ -188,7 +188,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         // command actually executes, and C5 is about that path not crashing
         // and reporting freshness correctly right after an index run.
         var originalOut = Console.Out;
-        var capturedOut = new StringWriter();
+        using var capturedOut = new StringWriter();
         Console.SetOut(capturedOut);
         try
         {
@@ -370,7 +370,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
 
         var originalOut = Console.Out;
-        var capturedOut = new StringWriter();
+        using var capturedOut = new StringWriter();
         Console.SetOut(capturedOut);
         try
         {
@@ -510,7 +510,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
         // Create a real store and wrap it in a proxy that throws on
         // SaveDeclarations — simulates a per-project extraction failure.
-        var innerStore = new SqliteIndexStore(dbPath);
+        using var innerStore = new SqliteIndexStore(dbPath);
         innerStore.Open(dbPath);
         innerStore.RunMigrations();
 
@@ -534,7 +534,6 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         }
         finally
         {
-            innerStore.Close();
         }
 
         // Verify the snapshot stayed in_progress (MarkSnapshotComplete was

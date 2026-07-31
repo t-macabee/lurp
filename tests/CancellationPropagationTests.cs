@@ -34,7 +34,7 @@ public sealed class CancellationPropagationTests : IDisposable
 
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
-        var store = new SqliteIndexStore(dbPath);
+        using var store = new SqliteIndexStore(dbPath);
         store.Open(dbPath);
         store.RunMigrations();
         store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
@@ -56,7 +56,6 @@ public sealed class CancellationPropagationTests : IDisposable
         }
         finally
         {
-            store.Close();
         }
 
         // Verify no snapshot row was created.
@@ -88,11 +87,11 @@ public sealed class CancellationPropagationTests : IDisposable
         // Step 3: Set up the real store and a proxy that cancels the token
         // when staging (CopyEdgesToSnapshot) is called — this ensures the
         // new snapshot is created before cancellation fires.
-        var innerStore = new SqliteIndexStore(dbPath);
+        using var innerStore = new SqliteIndexStore(dbPath);
         innerStore.Open(dbPath);
         innerStore.RunMigrations();
 
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         var proxy = DispatchProxy.Create<IIndexStore, CancelAtStagingStore>();
         ((CancelAtStagingStore)(object)proxy).SetInner(innerStore, cts);
 
@@ -107,8 +106,6 @@ public sealed class CancellationPropagationTests : IDisposable
                 jsonExportPath: null,
                 strategyArg: "incremental",
                 cancellationToken: cts.Token));
-
-        innerStore.Close();
 
         // Step 5: Verify the previous complete snapshot is still latest
         // and no new complete snapshot was created.
