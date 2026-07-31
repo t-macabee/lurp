@@ -11,6 +11,9 @@ public sealed class SearchStore : ISearchStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
+    private const string ExcludeGeneratedClause = " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+    private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
+
     /// <inheritdoc/>
     public void BuildSearchIndex(string snapshotId)
     {
@@ -315,10 +318,10 @@ public sealed class SearchStore : ISearchStore
 
         if (!includeGenerated)
         {
-            command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            command.CommandText += ExcludeGeneratedClause;
         }
 
-        command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
+        command.CommandText += FqnOrderLimitClause;
 
         command.Parameters.AddWithValue("@fqn", fqn);
         command.Parameters.AddWithValue("@globalFqn", globalFqn);
@@ -342,10 +345,10 @@ public sealed class SearchStore : ISearchStore
 
         if (!includeGenerated)
         {
-            command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
+            command.CommandText += ExcludeGeneratedClause;
         }
 
-        command.CommandText += " ORDER BY ss.fqn LIMIT 1;";
+        command.CommandText += FqnOrderLimitClause;
 
         command.Parameters.AddWithValue("@pattern", $"{fqn}%");
         command.Parameters.AddWithValue("@globalPattern", $"{globalFqn}%");

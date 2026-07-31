@@ -411,7 +411,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
         Console.WriteLine("done.");
         sw.Stop();
-        timings.Add(new SnapshotTimingRow("fts_build", sw.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, sw.ElapsedMilliseconds, DateTime.UtcNow));
     }
 
     private void ComputeAndPersistSemanticChanges(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
@@ -427,7 +427,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId, diffChanges);
         Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         sw.Stop();
-        timings.Add(new SnapshotTimingRow("semantic_diff", sw.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, sw.ElapsedMilliseconds, DateTime.UtcNow));
     }
 
     private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)

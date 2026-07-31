@@ -7,6 +7,11 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
 {
     private readonly SqliteConnection _connection;
 
+    private const string SemanticChangesSelect = @"
+            SELECT change_id, from_snapshot_id, to_snapshot_id,
+                   change_type, symbol_id, detail_json, created_at_utc
+            FROM semantic_changes";
+
     public SemanticDiffStore(SqliteConnection connection)
     {
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
@@ -56,10 +61,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
     public List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
-            SELECT change_id, from_snapshot_id, to_snapshot_id,
-                   change_type, symbol_id, detail_json, created_at_utc
-            FROM semantic_changes
+        command.CommandText = SemanticChangesSelect + @"
             WHERE from_snapshot_id = @fromSnapshotId AND to_snapshot_id = @toSnapshotId
             ORDER BY created_at_utc;
         ";
@@ -72,10 +74,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
     public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
-            SELECT change_id, from_snapshot_id, to_snapshot_id,
-                   change_type, symbol_id, detail_json, created_at_utc
-            FROM semantic_changes
+        command.CommandText = SemanticChangesSelect + @"
             WHERE to_snapshot_id = @toSnapshotId
             ORDER BY created_at_utc;
         ";

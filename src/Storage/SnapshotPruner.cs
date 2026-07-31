@@ -70,7 +70,8 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     internal void DeleteIncompleteSnapshots()
     {
         using var listCmd = _connection.CreateCommand();
-        listCmd.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = 'in_progress';";
+        listCmd.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status;";
+        listCmd.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
         var snapshotIds = new List<string>();
         using (var reader = listCmd.ExecuteReader())
         {

@@ -22,23 +22,23 @@ namespace Lurp.Workspace
 
         private static readonly MetadataComparisonEntry[] MetadataComparisons =
         [
-            new("accessibility", ChangeType.AccessibilityChanged, MetadataComparisonKind.String),
-            new("signature", ChangeType.SignatureChanged, MetadataComparisonKind.String),
-            new("base_type", ChangeType.BaseTypeChanged, MetadataComparisonKind.String),
-            new("interfaces", ChangeType.InterfacesChanged, MetadataComparisonKind.Array),
-            new("isRecord", ChangeType.RecordChanged, MetadataComparisonKind.Scalar),
-            new("typeKind", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isAbstract", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isVirtual", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isOverride", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isStatic", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isAsync", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isExtensionMethod", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isReadOnly", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isWriteOnly", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isConst", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("isVolatile", ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-            new("attributes", ChangeType.AttributeChanged, MetadataComparisonKind.Array)
+            new(SymbolMetadataKeys.Accessibility, ChangeType.AccessibilityChanged, MetadataComparisonKind.String),
+            new(SymbolMetadataKeys.Signature, ChangeType.SignatureChanged, MetadataComparisonKind.String),
+            new(SymbolMetadataKeys.BaseType, ChangeType.BaseTypeChanged, MetadataComparisonKind.String),
+            new(SymbolMetadataKeys.Interfaces, ChangeType.InterfacesChanged, MetadataComparisonKind.Array),
+            new(SymbolMetadataKeys.IsRecord, ChangeType.RecordChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.TypeKind, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsAbstract, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsVirtual, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsOverride, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsStatic, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsAsync, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsExtensionMethod, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsReadOnly, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsWriteOnly, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsConst, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.IsVolatile, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
+            new(SymbolMetadataKeys.Attributes, ChangeType.AttributeChanged, MetadataComparisonKind.Array)
         ];
 
         // Intentionally excluded from comparison (captured by signature):

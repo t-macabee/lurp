@@ -66,7 +66,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         if (routeTemplate == null)
             return;
 
-        var routeSourceId = $"route://{routeTemplate}";
+        var routeSourceId = $"{GraphNodeIds.RoutePrefix}{routeTemplate}";
         var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
         if (ctx.Seen.Add(routeKey))
             ctx.Edges.Add(new EdgeRecord

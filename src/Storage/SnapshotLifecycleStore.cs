@@ -8,16 +8,18 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
-    internal void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
-    {
-        using var command = _connection.CreateCommand();
-        command.CommandText = @"
+    private const string WorkspaceUpsertSql = @"
             INSERT INTO workspaces (workspace_id, git_root, solution_path)
             VALUES (@workspaceId, @gitRoot, @solutionPath)
             ON CONFLICT(workspace_id) DO UPDATE SET
                 git_root = excluded.git_root,
                 solution_path = excluded.solution_path;
         ";
+
+    internal void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = WorkspaceUpsertSql;
         command.Parameters.AddWithValue("@workspaceId", id);
         command.Parameters.AddWithValue("@gitRoot", gitRoot);
         command.Parameters.AddWithValue("@solutionPath", solutionPath);
@@ -48,13 +50,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var command = _connection.CreateCommand();
         command.Transaction = transaction;
 
-        command.CommandText = @"
-            INSERT INTO workspaces (workspace_id, git_root, solution_path)
-            VALUES (@workspaceId, @gitRoot, @solutionPath)
-            ON CONFLICT(workspace_id) DO UPDATE SET
-                git_root = excluded.git_root,
-                solution_path = excluded.solution_path;
-        ";
+        command.CommandText = WorkspaceUpsertSql;
         command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
         command.Parameters.AddWithValue("@gitRoot", snapshot.GitRoot);
         command.Parameters.AddWithValue("@solutionPath", snapshot.SolutionPath);
@@ -67,7 +63,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Transaction = transaction;
 
         command.CommandText = @"
-            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, 'in_progress');
+            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, @status);
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshot.SnapshotId);
         command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
@@ -80,6 +76,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@toolVersion", (object?)snapshot.ToolVersion ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", snapshot.SkippedAdapters));
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
         command.ExecuteNonQuery();
     }
 
@@ -178,7 +175,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
     internal void MarkSnapshotInProgress(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = "UPDATE snapshots SET status = 'in_progress' WHERE snapshot_id = @snapshotId;";
+        command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
     }
@@ -186,7 +184,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
     internal void MarkSnapshotComplete(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = "UPDATE snapshots SET status = 'complete' WHERE snapshot_id = @snapshotId;";
+        command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
     }
@@ -203,7 +202,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                        s.skipped_adapters
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
-                WHERE s.status = 'complete'
+                WHERE s.status = @status
                 ORDER BY s.built_at_utc DESC
                 LIMIT 1;
             "
@@ -216,10 +215,11 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
-                  AND s.status = 'complete'
+                  AND s.status = @status
                 ORDER BY s.built_at_utc DESC
                 LIMIT 1;
             ";
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
         if (!string.IsNullOrEmpty(workspaceId))
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
 
@@ -378,13 +378,14 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = 'complete' ORDER BY built_at_utc DESC LIMIT 1;";
+            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = @status ORDER BY built_at_utc DESC LIMIT 1;";
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
         }
         else
         {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = 'complete' ORDER BY built_at_utc DESC LIMIT 1;";
+            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;";
         }
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
 
         return command.ExecuteScalar() as string;
     }
@@ -396,10 +397,11 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             SELECT snapshot_id
             FROM snapshots
             WHERE workspace_id = @workspaceId
-              AND status = 'complete'
+              AND status = @status
             ORDER BY built_at_utc;
         ";
         command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
 
         var results = new List<string>();
         using var reader = command.ExecuteReader();

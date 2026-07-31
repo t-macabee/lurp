@@ -174,7 +174,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, ctx.AssemblyIdentity);
 
-        var targetId = $"convention:assembly_scan:{assemblyName}";
+        var targetId = $"{GraphNodeIds.AssemblyScanConventionPrefix}{assemblyName}";
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
         if (ctx.Seen.Add(key))
@@ -288,7 +288,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (sourceId == null)
             return;
 
-        const string targetId = "runtime:unknown";
+        const string targetId = GraphNodeIds.RuntimeUnknown;
 
         var key = (sourceId, targetId, EdgeKind.Registers.ToString());
 

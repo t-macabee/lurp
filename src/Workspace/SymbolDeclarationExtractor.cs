@@ -156,63 +156,63 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
 
         if (symbol is IMethodSymbol method)
         {
-            metadata["returnType"] = method.ReturnType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            metadata["isAbstract"] = method.IsAbstract;
-            metadata["isVirtual"] = method.IsVirtual;
-            metadata["isOverride"] = method.IsOverride;
-            metadata["isStatic"] = method.IsStatic;
-            metadata["isAsync"] = method.IsAsync;
-            metadata["accessibility"] = method.DeclaredAccessibility.ToString();
-            metadata["arity"] = method.Arity;
-            metadata["isExtensionMethod"] = method.IsExtensionMethod;
-            metadata["signature"] = method.ToDisplayString(SignatureFormat);
+            metadata[SymbolMetadataKeys.ReturnType] = method.ReturnType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata[SymbolMetadataKeys.IsAbstract] = method.IsAbstract;
+            metadata[SymbolMetadataKeys.IsVirtual] = method.IsVirtual;
+            metadata[SymbolMetadataKeys.IsOverride] = method.IsOverride;
+            metadata[SymbolMetadataKeys.IsStatic] = method.IsStatic;
+            metadata[SymbolMetadataKeys.IsAsync] = method.IsAsync;
+            metadata[SymbolMetadataKeys.Accessibility] = method.DeclaredAccessibility.ToString();
+            metadata[SymbolMetadataKeys.Arity] = method.Arity;
+            metadata[SymbolMetadataKeys.IsExtensionMethod] = method.IsExtensionMethod;
+            metadata[SymbolMetadataKeys.Signature] = method.ToDisplayString(SignatureFormat);
         }
         else if (symbol is INamedTypeSymbol type)
         {
-            metadata["typeKind"] = type.TypeKind.ToString();
-            metadata["isAbstract"] = type.IsAbstract;
-            metadata["isStatic"] = type.IsStatic;
-            metadata["isRecord"] = type.IsRecord;
-            metadata["accessibility"] = type.DeclaredAccessibility.ToString();
-            metadata["arity"] = type.Arity;
-            metadata["base_type"] = type.TypeKind == TypeKind.Interface || type.BaseType == null
+            metadata[SymbolMetadataKeys.TypeKind] = type.TypeKind.ToString();
+            metadata[SymbolMetadataKeys.IsAbstract] = type.IsAbstract;
+            metadata[SymbolMetadataKeys.IsStatic] = type.IsStatic;
+            metadata[SymbolMetadataKeys.IsRecord] = type.IsRecord;
+            metadata[SymbolMetadataKeys.Accessibility] = type.DeclaredAccessibility.ToString();
+            metadata[SymbolMetadataKeys.Arity] = type.Arity;
+            metadata[SymbolMetadataKeys.BaseType] = type.TypeKind == TypeKind.Interface || type.BaseType == null
                 ? null
                 : type.BaseType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            metadata["interfaces"] = type.Interfaces
+            metadata[SymbolMetadataKeys.Interfaces] = type.Interfaces
                 .Select(i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
         }
         else if (symbol is IPropertySymbol prop)
         {
-            metadata["returnType"] = prop.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            metadata["isAbstract"] = prop.IsAbstract;
-            metadata["isVirtual"] = prop.IsVirtual;
-            metadata["isOverride"] = prop.IsOverride;
-            metadata["isStatic"] = prop.IsStatic;
-            metadata["isReadOnly"] = prop.IsReadOnly;
-            metadata["isWriteOnly"] = prop.IsWriteOnly;
-            metadata["accessibility"] = prop.DeclaredAccessibility.ToString();
-            metadata["signature"] = prop.ToDisplayString(SignatureFormat);
+            metadata[SymbolMetadataKeys.ReturnType] = prop.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata[SymbolMetadataKeys.IsAbstract] = prop.IsAbstract;
+            metadata[SymbolMetadataKeys.IsVirtual] = prop.IsVirtual;
+            metadata[SymbolMetadataKeys.IsOverride] = prop.IsOverride;
+            metadata[SymbolMetadataKeys.IsStatic] = prop.IsStatic;
+            metadata[SymbolMetadataKeys.IsReadOnly] = prop.IsReadOnly;
+            metadata[SymbolMetadataKeys.IsWriteOnly] = prop.IsWriteOnly;
+            metadata[SymbolMetadataKeys.Accessibility] = prop.DeclaredAccessibility.ToString();
+            metadata[SymbolMetadataKeys.Signature] = prop.ToDisplayString(SignatureFormat);
         }
         else if (symbol is IFieldSymbol field)
         {
-            metadata["returnType"] = field.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            metadata["isStatic"] = field.IsStatic;
-            metadata["isReadOnly"] = field.IsReadOnly;
-            metadata["isConst"] = field.IsConst;
-            metadata["isVolatile"] = field.IsVolatile;
-            metadata["accessibility"] = field.DeclaredAccessibility.ToString();
+            metadata[SymbolMetadataKeys.ReturnType] = field.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata[SymbolMetadataKeys.IsStatic] = field.IsStatic;
+            metadata[SymbolMetadataKeys.IsReadOnly] = field.IsReadOnly;
+            metadata[SymbolMetadataKeys.IsConst] = field.IsConst;
+            metadata[SymbolMetadataKeys.IsVolatile] = field.IsVolatile;
+            metadata[SymbolMetadataKeys.Accessibility] = field.DeclaredAccessibility.ToString();
         }
         else if (symbol is IEventSymbol evt)
         {
-            metadata["returnType"] = evt.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            metadata["isAbstract"] = evt.IsAbstract;
-            metadata["isVirtual"] = evt.IsVirtual;
-            metadata["isOverride"] = evt.IsOverride;
-            metadata["isStatic"] = evt.IsStatic;
-            metadata["accessibility"] = evt.DeclaredAccessibility.ToString();
-            metadata["signature"] = evt.ToDisplayString(SignatureFormat);
+            metadata[SymbolMetadataKeys.ReturnType] = evt.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            metadata[SymbolMetadataKeys.IsAbstract] = evt.IsAbstract;
+            metadata[SymbolMetadataKeys.IsVirtual] = evt.IsVirtual;
+            metadata[SymbolMetadataKeys.IsOverride] = evt.IsOverride;
+            metadata[SymbolMetadataKeys.IsStatic] = evt.IsStatic;
+            metadata[SymbolMetadataKeys.Accessibility] = evt.DeclaredAccessibility.ToString();
+            metadata[SymbolMetadataKeys.Signature] = evt.ToDisplayString(SignatureFormat);
         }
 
         var attrs = symbol.GetAttributes()
@@ -220,7 +220,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
         if (attrs.Count > 0)
-            metadata["attributes"] = attrs;
+            metadata[SymbolMetadataKeys.Attributes] = attrs;
 
         return metadata.Count > 0
             ? System.Text.Json.JsonSerializer.Serialize(metadata)

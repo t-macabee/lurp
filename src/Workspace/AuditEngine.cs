@@ -31,10 +31,10 @@ public sealed class AuditFinding(string check, string symbolId, string? fqn = nu
     [JsonPropertyName("check")]
     public string Check { get; } = check ?? throw new ArgumentNullException(nameof(check));
 
-    [JsonPropertyName("symbol_id")]
+    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
     public string SymbolId { get; } = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
 
-    [JsonPropertyName("fqn")]
+    [JsonPropertyName(QueryJsonFieldNames.FullyQualifiedName)]
     public string? Fqn { get; } = fqn;
 
     [JsonPropertyName("detail")]
@@ -43,7 +43,7 @@ public sealed class AuditFinding(string check, string symbolId, string? fqn = nu
 
 public sealed class AuditReport(string snapshotId, List<string> checksRun, List<AuditFinding> findings)
 {
-    [JsonPropertyName("snapshot_id")]
+    [JsonPropertyName(QueryJsonFieldNames.SnapshotId)]
     public string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
 
     [JsonPropertyName("checks_run")]
@@ -66,16 +66,16 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
         var allSymbolIds = _store.GetSymbolIdsInSnapshot(_snapshotId);
         var symbolInfoCache = new Dictionary<string, IndexedSymbolInfo?>();
 
-        if (options.Checks.Contains("dead-symbol", StringComparer.OrdinalIgnoreCase))
+        if (options.Checks.Contains(AuditCheckNames.DeadSymbol, StringComparer.OrdinalIgnoreCase))
             findings.AddRange(FindDeadSymbols(allSymbolIds, symbolInfoCache));
 
-        if (options.Checks.Contains("untested-surface", StringComparer.OrdinalIgnoreCase))
+        if (options.Checks.Contains(AuditCheckNames.UntestedSurface, StringComparer.OrdinalIgnoreCase))
             findings.AddRange(FindUntestedSurface(allSymbolIds, symbolInfoCache));
 
-        if (options.Checks.Contains("unregistered-impl", StringComparer.OrdinalIgnoreCase))
+        if (options.Checks.Contains(AuditCheckNames.UnregisteredImplementation, StringComparer.OrdinalIgnoreCase))
             findings.AddRange(FindUnregisteredImplementations(symbolInfoCache));
 
-        if (options.Checks.Contains("high-fan-out", StringComparer.OrdinalIgnoreCase))
+        if (options.Checks.Contains(AuditCheckNames.HighFanOut, StringComparer.OrdinalIgnoreCase))
             findings.AddRange(FindHighFanOut(allSymbolIds, options.FanOutThreshold, symbolInfoCache));
 
         return new AuditReport(_snapshotId, checksRun, findings);
@@ -103,7 +103,7 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
             if (!relevant.Any())
             {
                 var info = GetInfo(symbolId, cache);
-                findings.Add(new AuditFinding(check: "dead-symbol", symbolId: symbolId, fqn: info?.FullyQualifiedName));
+                findings.Add(new AuditFinding(check: AuditCheckNames.DeadSymbol, symbolId: symbolId, fqn: info?.FullyQualifiedName));
             }
         }
 
@@ -115,7 +115,7 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
         var findings = new List<AuditFinding>();
         // TestedBy direction is production -> test, so the covered set is built from
         // SourceSymbolId (the production symbol that has at least one test).
-        var covered = _store.GetEdgesByKind(_snapshotId, "TestedBy")
+        var covered = _store.GetEdgesByKind(_snapshotId, EdgeKind.TestedBy.ToString())
             .Select(e => e.SourceSymbolId)
             .ToHashSet();
 
@@ -133,13 +133,13 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
             {
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(info.MetadataJson);
 
-                if (metadata != null && metadata.TryGetValue("accessibility", out var accEl))
+                if (metadata != null && metadata.TryGetValue(SymbolMetadataKeys.Accessibility, out var accEl))
                 {
                     var acc = accEl.GetString();
 
                     if (acc is "Public" or "Internal")
                     {
-                        findings.Add(new AuditFinding(check: "untested-surface", symbolId: symbolId, fqn: info.FullyQualifiedName));
+                        findings.Add(new AuditFinding(check: AuditCheckNames.UntestedSurface, symbolId: symbolId, fqn: info.FullyQualifiedName));
                     }
                 }
             }
@@ -166,7 +166,7 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
             if (!registered.Contains(edge.SourceSymbolId))
             {
                 var info = GetInfo(edge.SourceSymbolId, cache);
-                findings.Add(new AuditFinding(check: "unregistered-impl", symbolId: edge.SourceSymbolId, fqn: info?.FullyQualifiedName, detail: $"implements {edge.TargetSymbolId}"));
+                findings.Add(new AuditFinding(check: AuditCheckNames.UnregisteredImplementation, symbolId: edge.SourceSymbolId, fqn: info?.FullyQualifiedName, detail: $"implements {edge.TargetSymbolId}"));
             }
         }
 
@@ -185,7 +185,7 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
             if (callCount > fanOutThreshold)
             {
                 var info = GetInfo(symbolId, cache);
-                fanOutFindings.Add((new AuditFinding(check: "high-fan-out", symbolId: symbolId, fqn: info?.FullyQualifiedName, detail: callCount.ToString()),
+                fanOutFindings.Add((new AuditFinding(check: AuditCheckNames.HighFanOut, symbolId: symbolId, fqn: info?.FullyQualifiedName, detail: callCount.ToString()),
                     callCount));
             }
         }

@@ -14,6 +14,7 @@ public sealed class WorkspaceInfo
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(false, true);
     private static readonly Encoding Utf16Le = new UnicodeEncoding(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true);
     private static readonly Encoding Utf16Be = new UnicodeEncoding(bigEndian: true, byteOrderMark: false, throwOnInvalidBytes: true);
+    private const string UnknownValue = "unknown";
 
     public WorkspaceId Id { get; }
 
@@ -252,12 +253,12 @@ public sealed class WorkspaceInfo
             return instances
                 .OrderByDescending(i => i.Version)
                 .FirstOrDefault()?.Version.ToString()
-                ?? "unknown";
+                ?? UnknownValue;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"WARNING: Failed to detect MSBuild SDK version: {ex.Message}");
-            return "unknown";
+            return UnknownValue;
         }
     }
 
@@ -269,7 +270,7 @@ public sealed class WorkspaceInfo
         {
             if (project.FilePath == null || !File.Exists(project.FilePath))
             {
-                map[project.Name] = "unknown";
+                map[project.Name] = UnknownValue;
                 continue;
             }
 
@@ -277,7 +278,7 @@ public sealed class WorkspaceInfo
             {
                 var doc = XDocument.Load(project.FilePath);
                 var root = doc.Root;
-                if (root == null) { map[project.Name] = "unknown"; continue; }
+                if (root == null) { map[project.Name] = UnknownValue; continue; }
 
                 XNamespace ns = root.GetDefaultNamespace();
 
@@ -293,12 +294,12 @@ public sealed class WorkspaceInfo
                     .Select(e => e.Value.Trim())
                     .FirstOrDefault();
 
-                map[project.Name] = tf ?? "unknown";
+                map[project.Name] = tf ?? UnknownValue;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"WARNING: Failed to parse project file '{project.FilePath}' for TargetFramework: {ex.Message}");
-                map[project.Name] = "unknown";
+                map[project.Name] = UnknownValue;
             }
         }
 

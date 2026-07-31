@@ -4,10 +4,10 @@ namespace Lurp.Workspace;
 
 public sealed class SimulationItem
 {
-    [JsonPropertyName("symbol_id")]
+    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
     public string SymbolId { get; }
 
-    [JsonPropertyName("fqn")]
+    [JsonPropertyName(QueryJsonFieldNames.FullyQualifiedName)]
     public string? Fqn { get; }
 
     [JsonPropertyName("edge_kind")]
@@ -34,10 +34,10 @@ public sealed class SimulationReport
     [JsonPropertyName("simulation_type")]
     public string SimulationType { get; }
 
-    [JsonPropertyName("symbol_id")]
+    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
     public string SymbolId { get; }
 
-    [JsonPropertyName("snapshot_id")]
+    [JsonPropertyName(QueryJsonFieldNames.SnapshotId)]
     public string SnapshotId { get; }
 
     [JsonPropertyName("affected_count")]
@@ -148,7 +148,7 @@ public sealed class SimulationEngine
         // Edge direction is production -> test, so query outgoing edges from the
         // removed production symbol and report the target test method.
         var testedBy = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId)
-            .Where(e => e.Kind == "TestedBy");
+            .Where(e => e.Kind == EdgeKind.TestedBy.ToString());
         foreach (var edge in testedBy)
         {
             var key = edge.TargetSymbolId;

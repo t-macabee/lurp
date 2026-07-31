@@ -8,6 +8,8 @@ namespace Lurp.Workspace;
 
 public static class IndexRunner
 {
+    private const string FullStrategy = "full";
+    private const string IncrementalStrategy = "incremental";
     public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -23,7 +25,7 @@ public static class IndexRunner
 
         Console.WriteLine($"Strategy: {strategy}");
 
-        if (strategy == "full")
+        if (strategy == FullStrategy)
         {
             Console.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
         }
@@ -50,14 +52,14 @@ public static class IndexRunner
         Console.WriteLine("done.");
         swWorkspaceInfo.Stop();
 
-        if (strategy == "incremental")
+        if (strategy == IncrementalStrategy)
         {
             var previousStorageManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
 
             if (previousStorageManifest == null)
             {
                 Console.WriteLine("No previous snapshot found. Falling back to full index.");
-                strategy = "full";
+                strategy = FullStrategy;
             }
             else
             {
@@ -89,12 +91,12 @@ public static class IndexRunner
                 catch (FullRebuildRequiredException ex)
                 {
                     Console.WriteLine($"Full rebuild required: {ex.Message}");
-                    strategy = "full";
+                    strategy = FullStrategy;
                 }
             }
         }
 
-        if (strategy == "full")
+        if (strategy == FullStrategy)
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
@@ -218,7 +220,7 @@ public static class IndexRunner
 
                 Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
                 swDiff.Stop();
-                timings.Add(new SnapshotTimingRow("semantic_diff", swDiff.ElapsedMilliseconds, DateTime.UtcNow));
+                timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, swDiff.ElapsedMilliseconds, DateTime.UtcNow));
             }
 
             // Step: Remove edges targeting symbols not declared in this snapshot
@@ -234,7 +236,7 @@ public static class IndexRunner
             store.BuildSearchIndex(snapshotIdStr);
             Console.WriteLine("done.");
             swFts.Stop();
-            timings.Add(new SnapshotTimingRow("fts_build", swFts.ElapsedMilliseconds, DateTime.UtcNow));
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds, DateTime.UtcNow));
 
             cancellationToken.ThrowIfCancellationRequested();
             store.MarkSnapshotComplete(snapshotIdStr);
@@ -245,7 +247,7 @@ public static class IndexRunner
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in 'in_progress' state: {ex.Message}");
+            Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in '{SnapshotStatusValues.InProgress}' state: {ex.Message}");
 
             // Try to save whatever timings we have
             try { store.SaveTimings(snapshotIdStr, timings); }
@@ -261,7 +263,7 @@ public static class IndexRunner
         {
             var strategy = strategyArg.ToLowerInvariant();
 
-            if (strategy != "incremental" && strategy != "full")
+            if (strategy != IncrementalStrategy && strategy != FullStrategy)
             {
                 Console.Error.WriteLine("ERROR: --strategy must be 'incremental' or 'full'.");
                 Environment.Exit(1);
@@ -274,9 +276,9 @@ public static class IndexRunner
         if (latestSnapshotId == null)
         {
             Console.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
-            return "full";
+            return FullStrategy;
         }
 
-        return "incremental";
+        return IncrementalStrategy;
     }
 }
