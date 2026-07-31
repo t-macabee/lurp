@@ -8,18 +8,18 @@ internal static class SearchHandler
 {
     public static void Run(string[] args)
     {
-        var queryArg = GetArgValue(args, "--query=");
+        var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg))
         {
             Console.Error.WriteLine("ERROR: --query=<term> is required for --mode=search.");
             Environment.Exit(1);
         }
 
-        var typeArg = GetArgValue(args, "--type=") ?? "all";
-        var snapshotArg = GetArgValue(args, "--snapshot=");
-        var limitArg = GetArgValue(args, "--limit=");
-        var kindArg = GetArgValue(args, "--kind=");
-        var snippetTokensArg = GetArgValue(args, "--snippet-tokens=");
+        var typeArg = HandlerBootstrap.GetArgValue(args, "--type=") ?? "all";
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
+        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
+        var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
+        var snippetTokensArg = HandlerBootstrap.GetArgValue(args, "--snippet-tokens=");
         var includeGenerated = args.Contains("--include-generated");
 
         int limit = 20;
@@ -36,35 +36,15 @@ internal static class SearchHandler
             Environment.Exit(1);
         }
 
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
-            var snapshotId = snapshotArg;
-            if (string.IsNullOrEmpty(snapshotId))
-            {
-                snapshotId = store.GetLatestSnapshotId();
-                if (snapshotId == null)
-                {
-                    Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                    Environment.Exit(1);
-                }
-            }
+            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
             var results = new List<object>();
             if (typeArg == "source" || typeArg == "all")
@@ -88,10 +68,5 @@ internal static class SearchHandler
         {
             store.Close();
         }
-    }
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 }

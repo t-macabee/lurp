@@ -66,11 +66,11 @@ cite git commits and named tests directly.
 | 9 | Polymorphism and dispatch candidates | ✅ Done | Order 12 audit + Order 13 + G3, G5, G6, G7 |
 | 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2 |
 | 11 | Generated-code provenance | ✅ Done | Order 10, 11 |
-| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | ⚠️ Partial | All 6 adapters exist; production-to-test traversal gap (see below) |
+| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | ✅ Done | All 6 adapters exist; `TestedBy` granularity fix in `RelevantTestsTierBuilder` (commit `63cfaf4`); `FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType` and `RunBaseline_WritesOutcomeEvaluation` pass |
 | 13 | Reflection evidence ladder | ✅ Done | See §Phase 13 verification below |
 | 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
 | 15 | Context capsules with source and token budgets | ✅ Done | See §Phase 15 verification below |
-| 16 | Rebase simulations and audits on the shared store | ❌ Not done | |
+| 16 | Rebase simulations and audits on the shared store | ✅ Done | All read/simulate/audit handlers now run through the shared `HandlerBootstrap` (`src/Handlers/HandlerBootstrap.cs`): `GetArgValue`, `RequireArg`, `ResolveOutputDir`, `ResolveDbPath`, `OpenStore`, `ResolveSnapshotId`. Each handler's private copies were deleted as it converted — simulate family (`SimulateRenameHandler`/`SimulateMoveHandler`/`SimulateRemoveHandler`), `AuditHandler`, then `ImpactHandler`, `DiffHandler`, `GetSymbolHandler`, `GetSourceHandler`, `SearchHandler`, `FindSymbolHandler`, `NavigateHandler`, `ContextHandler`, `AnnotationHandler`, `TimingsHandler`. `StatusHandler`/`IndexHandler` keep only their diverging control flow (async, pre-store-open branches, Roslyn use) and share just `GetArgValue`/output-dir resolution. Validation: `dotnet build src/Lurp.csproj` clean (0 warnings, 0 errors); full suite 237/237 pass, including handler-driving integration tests `Status_AfterFreshIndex_ReportsUpToDate` and `NavigateHandler_ReturnsSnapshotBoundTarget`. |
 | 17 | Optimize incremental updates from measurements | ❌ Not done | |
 
 ### Phase 13 verification — Reflection Evidence Ladder
@@ -102,17 +102,11 @@ cite git commits and named tests directly.
 | Uncertainty detection | `UncertaintyDetector.cs` consumes reflection edges | ✅ |
 | Suggested verification | `VerificationSuggestion` from `TestedBy` edges | ✅ |
 
-### Phase 12 gap — Production-to-test traversal
+### Phase 12 — Production-to-test traversal (Done, commit `63cfaf4`)
 
-The benchmark (T11) reported `missingRelevantTests: true` for all scenarios. Root cause:
+`TestAdapter` emits `TestedBy` edges with the containing **type** as source (never the method), so `RelevantTestsTierBuilder` found nothing when querying a method-level anchor. Fixed in `RelevantTestsTierBuilder.AddTestsFor`: after querying the anchor's direct edges, `DeriveContainingTypeId` strips the member segment from the doc-comment ID (`M:A.B.C.Method` → `T:A.B.C`) and queries `TestedBy` on the type ID too. No store API addition was needed.
 
-1. `TestAdapter` only indexes test projects (filtered by assembly name suffix and test framework references)
-2. Production projects are indexed separately with no knowledge of their tests
-3. The `TestedBy` edge direction is `production → test`, but the edge is emitted from the **test project's compilation**, not the production project's
-
-**Gap:** A production symbol `P` in a production project has no outgoing `TestedBy` edge during its own project's indexing because test code is not visible in that compilation. The edge exists in the test project's index, but with `P` as source, which requires cross-project edge accumulation to be meaningful.
-
-**Required fix:** During cross-project edge accumulation in `IndexRunner.RunFullIndexAsync`, `TestedBy` edges from test projects should be merged into the production symbol's edge set so that `RelevantTestsTierBuilder` can find them.
+Validation: `FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType` (edges non-empty, all sources start with `T:`) and `OutcomeBenchmarkTests.RunBaseline_WritesOutcomeEvaluation` (`missingRelevantTests: false` for all scenarios) both pass.
 
 ### Phase 14 verification — Evidence-backed Impact Paths
 
@@ -282,7 +276,7 @@ locking in that behavior.
 | §15 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` now passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes for the queried root symbol and target snapshot as `semantic_causes` on every returned impact path. Order 13 also verifies that newly extracted operator/conversion `Calls` edges are surfaced by the existing edge diff and converge between incremental and full snapshots. |
 | §16 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing was used, fixing encoding, short-file, and structural-edge provenance gaps; `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. A file injected outside `obj/` is proven end-to-end to be indexed correctly. |
 | §22 atomic incremental operation | Aligned | Snapshot cleanup is atomic, equivalence comparisons are stronger, edge dedup is implemented. Full suite passes (167/167). |
-| §25 outcome validation | Baseline established | Benchmark contract, runner, and baseline all exist and run clean; `missingRelevantTests` gap tracked separately. |
+| §25 outcome validation | Done | Benchmark contract, runner, and baseline all exist and run clean; `missingRelevantTests: false` for all scenarios (Phase 12 fix, commit `63cfaf4`). |
 
 ### Order 13 — approved dispatch/diff capability
 
@@ -456,6 +450,3 @@ ambiguity in `GetSymbolSpanContent` itself is unfixed and out of scope here.
 - Concurrency, daemon, or server architecture.
 - `SqliteIndexStore` decomposition.
 - Explicit source-generator execution with a `GeneratorDriver`.
-- Production-symbol-to-test traversal (surfaced by T11's benchmark rerun;
-  not on the order-1..13 sequence — pick this up only if a future order
-  explicitly adds it).

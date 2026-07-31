@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Queries;
+using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
@@ -8,38 +9,22 @@ internal static class NavigateHandler
 {
     public static void Run(string[] args)
     {
-        var file = GetArgValue(args, "--file=");
-        var lineArg = GetArgValue(args, "--line=");
+        var file = HandlerBootstrap.GetArgValue(args, "--file=");
+        var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
         var line = 0;
-        var outputDir = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+        var outputDir = HandlerBootstrap.ResolveOutputDir(args);
         if (string.IsNullOrEmpty(file) || !int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out line) || line < 1)
         {
             Console.Error.WriteLine("ERROR: --file=<relative-path> and positive --line=<number> are required for --mode=navigate.");
             Environment.Exit(1);
         }
-        if (string.IsNullOrEmpty(outputDir))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDir), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDir);
 
-        var store = new Storage.SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
         try
         {
-            var snapshot = GetArgValue(args, "--snapshot=") ?? store.GetLatestSnapshotId();
-            if (snapshot == null)
-            {
-                Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                Environment.Exit(1);
-            }
+            var snapshot = HandlerBootstrap.ResolveSnapshotId(store, HandlerBootstrap.GetArgValue(args, "--snapshot="));
             var target = new FastTravelQueries(store).Navigate(file!, line, snapshot!, args.Contains("--include-generated"));
             if (target == null)
             {
@@ -50,7 +35,4 @@ internal static class NavigateHandler
         }
         finally { store.Close(); }
     }
-
-    private static string? GetArgValue(string[] args, string prefix) =>
-        args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
 }

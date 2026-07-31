@@ -11,14 +11,9 @@ internal static class StatusHandler
 {
     public static async Task Run(string[] args)
     {
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg!), "index.db");
+        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
         var asJson = args.Contains("--json");
 
         if (!File.Exists(dbPath))
@@ -27,8 +22,7 @@ internal static class StatusHandler
             return;
         }
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
@@ -43,7 +37,7 @@ internal static class StatusHandler
                 return;
             }
 
-            var solutionPathArg = GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+            var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson);
@@ -190,9 +184,4 @@ internal static class StatusHandler
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
-    }
 }

@@ -7,45 +7,24 @@ internal static class FindSymbolHandler
 {
     public static void Run(string[] args)
     {
-        var fqnArg = GetArgValue(args, "--fqn=");
+        var fqnArg = HandlerBootstrap.GetArgValue(args, "--fqn=");
         if (string.IsNullOrEmpty(fqnArg))
         {
             Console.Error.WriteLine("ERROR: --fqn=<name> is required for --mode=find-symbol.");
             Environment.Exit(1);
         }
 
-        var snapshotArg = GetArgValue(args, "--snapshot=");
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var includeGenerated = args.Contains("--include-generated");
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
-
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
-            var snapshotId = snapshotArg;
-            if (string.IsNullOrEmpty(snapshotId))
-            {
-                snapshotId = store.GetLatestSnapshotId();
-                if (snapshotId == null)
-                {
-                    Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                    Environment.Exit(1);
-                }
-            }
+            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
             var info = store.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
             if (info == null)
@@ -73,10 +52,5 @@ internal static class FindSymbolHandler
         {
             store.Close();
         }
-    }
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 }

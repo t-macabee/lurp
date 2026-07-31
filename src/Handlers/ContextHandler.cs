@@ -10,21 +10,15 @@ internal static class ContextHandler
 {
     public static void Run(string[] args)
     {
-        var symbolArg = GetArgValue(args, "--symbol=");
-        var fileArg = GetArgValue(args, "--file=");
-        var lineArg = GetArgValue(args, "--line=");
-        var intentArg = GetArgValue(args, "--intent=") ?? "inspect";
-        var budgetArg = GetArgValue(args, "--budget=");
-        var snapshotArg = GetArgValue(args, "--snapshot=");
-        var maxHopsArg = GetArgValue(args, "--max-hops=");
+        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
+        var fileArg = HandlerBootstrap.GetArgValue(args, "--file=");
+        var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
+        var intentArg = HandlerBootstrap.GetArgValue(args, "--intent=") ?? "inspect";
+        var budgetArg = HandlerBootstrap.GetArgValue(args, "--budget=");
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
+        var maxHopsArg = HandlerBootstrap.GetArgValue(args, "--max-hops=");
         var includeGenerated = args.Contains("--include-generated");
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         bool hasSymbol = !string.IsNullOrEmpty(symbolArg);
         bool hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
@@ -39,23 +33,17 @@ internal static class ContextHandler
         var maxHops = ParsePositiveInt(maxHopsArg, 3, "--max-hops");
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg!), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
-            var snapshotId = ResolveSnapshotId(store, snapshotArg);
+            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
             var assemblyOptions = new ContextAssemblyOptions(intent, budget, maxHops, includeGenerated);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions);
-            WriteCapsuleOutput(capsule, outputDirArg!);
+            WriteCapsuleOutput(capsule, outputDirArg);
         }
         finally
         {
@@ -102,21 +90,6 @@ internal static class ContextHandler
         return ln;
     }
 
-    private static string ResolveSnapshotId(SqliteIndexStore store, string? snapshotArg)
-    {
-        if (!string.IsNullOrEmpty(snapshotArg))
-            return snapshotArg;
-
-        var snapshotId = store.GetLatestSnapshotId();
-        if (snapshotId == null)
-        {
-            Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-            Environment.Exit(1);
-        }
-
-        return snapshotId!;
-    }
-
     private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
     {
         var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
@@ -129,10 +102,5 @@ internal static class ContextHandler
         var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
         File.WriteAllText(outputPath, json);
         Console.WriteLine(json);
-    }
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 }

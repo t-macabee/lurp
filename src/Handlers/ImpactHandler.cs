@@ -9,14 +9,14 @@ internal static class ImpactHandler
 {
     public static void Run(string[] args)
     {
-        var symbolArg = GetArgValue(args, "--symbol=");
+        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
             Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
             Environment.Exit(1);
         }
 
-        var directionArg = GetArgValue(args, "--direction=") ?? "downstream";
+        var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
         ImpactDirection direction = directionArg.ToLowerInvariant() switch
         {
             "downstream" => ImpactDirection.Downstream,
@@ -24,8 +24,8 @@ internal static class ImpactHandler
             _ => throw new ArgumentException($"Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.")
         };
 
-        var snapshotArg = GetArgValue(args, "--snapshot=");
-        var maxDepthArg = GetArgValue(args, "--max-depth=");
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
+        var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
         int maxDepth = 10;
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
         {
@@ -33,40 +33,20 @@ internal static class ImpactHandler
             Environment.Exit(1);
         }
 
-        var kindsArg = GetArgValue(args, "--kinds=");
+        var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");
         HashSet<string>? allowedKinds = !string.IsNullOrEmpty(kindsArg)
             ? [.. kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
             : null;
 
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
-            var snapshotId = snapshotArg;
-            if (string.IsNullOrEmpty(snapshotId))
-            {
-                snapshotId = store.GetLatestSnapshotId();
-                if (snapshotId == null)
-                {
-                    Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                    Environment.Exit(1);
-                }
-            }
+            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
             var traverser = new ImpactTraverser(store, snapshotId, store);
             var paths = traverser.TraceImpact(symbolId: symbolArg, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
@@ -100,10 +80,5 @@ internal static class ImpactHandler
         {
             store.Close();
         }
-    }
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 }

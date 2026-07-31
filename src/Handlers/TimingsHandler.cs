@@ -7,16 +7,11 @@ internal static class TimingsHandler
 {
     public static void Run(string[] args)
     {
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg!), "index.db");
+        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
         var asJson = args.Contains("--json");
-        var snapshotId = GetArgValue(args, "--snapshot=");
+        var snapshotId = HandlerBootstrap.GetArgValue(args, "--snapshot=");
 
         if (!File.Exists(dbPath))
         {
@@ -27,8 +22,7 @@ internal static class TimingsHandler
             return;
         }
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
@@ -101,10 +95,5 @@ internal static class TimingsHandler
         }
 
         ShowTimingsForSnapshot(store, latestSnapshotId, asJson);
-    }
-
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 }

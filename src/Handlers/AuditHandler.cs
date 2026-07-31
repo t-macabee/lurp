@@ -9,16 +9,11 @@ internal static class AuditHandler
 {
     public static void Run(string[] args)
     {
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
-        {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
-        }
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var snapshotArg = GetArgValue(args, "--snapshot=");
-        var checksArg = GetArgValue(args, "--checks=") ?? "all";
-        var fanOutThresholdArg = GetArgValue(args, "--fan-out-threshold=");
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
+        var checksArg = HandlerBootstrap.GetArgValue(args, "--checks=") ?? "all";
+        var fanOutThresholdArg = HandlerBootstrap.GetArgValue(args, "--fan-out-threshold=");
 
         int fanOutThreshold = 20;
         if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out fanOutThreshold))
@@ -27,28 +22,13 @@ internal static class AuditHandler
             Environment.Exit(1);
         }
 
-        var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
-        }
+        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        var store = HandlerBootstrap.OpenStore(dbPath);
 
         try
         {
-            var snapshotId = snapshotArg;
-            if (string.IsNullOrEmpty(snapshotId))
-            {
-                snapshotId = store.GetLatestSnapshotId();
-                if (snapshotId == null)
-                {
-                    Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-                    Environment.Exit(1);
-                }
-            }
+            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
             var checks = new HashSet<string>(checksArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), StringComparer.OrdinalIgnoreCase);
             var options = new AuditOptions(checks, fanOutThreshold);
@@ -63,8 +43,4 @@ internal static class AuditHandler
         }
     }
 
-    private static string? GetArgValue(string[] args, string prefix)
-    {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
-    }
 }
