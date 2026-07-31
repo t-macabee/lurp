@@ -1,17 +1,10 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.CodeAnalysis;
 using Lurp.Storage;
 using SymKind = Lurp.Storage.IndexedSymbolKind;
 
-#if CODE_ANALYSIS
-using System.Diagnostics.CodeAnalysis;
-#endif
-
 namespace Lurp.Workspace;
 
-#if CODE_ANALYSIS
-[SuppressMessage("NDepend", "ND1000", Justification = "Handles Roslyn's full symbol-kind surface for declaration extraction; span/attribute helpers were already extracted per remediation task 11 (450 -> 266 lines). Remaining size mirrors Roslyn's API surface (one dispatch branch per symbol kind), not scattered concerns. Review trigger: re-evaluate if a symbol kind's handling grows its own nested branching, or if size regresses back toward the pre-task-11 baseline.")]
-#endif
 internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context, Action<string>? logWarning = null)
 {
     private readonly Action<string>? _logWarning = logWarning;

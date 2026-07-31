@@ -1,16 +1,9 @@
 ﻿using Lurp.Storage;
 using System.Text.Json;
 
-#if CODE_ANALYSIS
-using System.Diagnostics.CodeAnalysis;
-#endif
-
 namespace Lurp.Workspace
 {
 
-#if CODE_ANALYSIS
-    [SuppressMessage("NDepend", "ND1000", Justification = "Full/scoped semantic diff engine: symbol/edge diffing, rename detection, and the contract-driven metadata comparison table (task 10). Task 7 already consolidated the two ComputeDiff overloads into one internal path, removing ~70 duplicated lines; remaining size reflects the diff domain (rename heuristics, 17-key metadata table, edge diff), not duplication. Review trigger: re-split if a new diff concern (e.g. a second comparison table) is added without a natural seam, or if size grows materially beyond this remediation's baseline.")]
-#endif
     public class SemanticDiffer
     {
         private enum MetadataComparisonKind { String, Array, Scalar }

@@ -1,14 +1,7 @@
-using Microsoft.Data.Sqlite;
-
-#if CODE_ANALYSIS
-using System.Diagnostics.CodeAnalysis;
-#endif
+﻿using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage
 {
-#if CODE_ANALYSIS
-    [SuppressMessage("NDepend", "ND1001", Justification = "Instance-method facade over SnapshotLifecycleStore, SnapshotDocumentStore, SnapshotSymbolStore, EdgeStore, SearchStore, etc. Source audit (2026-07-28) confirms zero static methods; ND1001's 'too many static methods' finding does not match this type. Review trigger: re-verify on the next NDepend run against fresh binaries, and drop this suppression if the finding still doesn't reproduce or if new methods stop delegating to a specialized store.")]
-#endif
     public class SqliteIndexStore : IIndexStore, IDisposable
     {
         private readonly string _dbPath;

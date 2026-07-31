@@ -51,6 +51,88 @@ cite git commits and named tests directly.
 | 12 — Phase 9/10 gap audit | Done | Evidence-backed backlog of uncovered polymorphism/dispatch and structured-diff cases (see §Order 12 findings below). Four characterization tests added proving `SignatureFormat` string comparison already catches nullable annotations, ref/out/in modifiers, operator overloads, and conversion operator changes. Full suite: 179/179 pass. |
 | 13 — Phase 9/10 implementation | Done | `CallsEdgeExtractor` now records compiler-resolved overloaded binary operators and user-defined cast conversions as canonical `Calls` edges; contracts `Calls_OverloadedBinaryOperator_EmitsCallsEdge` / `Calls_UserDefinedConversion_EmitsCallsEdge`, semantic edge-diff regression `SemanticDiffer_EdgeAddedAndRemoved`, and convergence test `IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit` pass. |
 
+## Architecture Phase completion status (§23 roadmap)
+
+| Phase | Description | Status | Evidence |
+|---|---|---|---|
+| 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `MigrationRunner` |
+| 2 | Workspace, snapshot, document, and configuration identities | ✅ Done | Order 4 |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 21 migrations |
+| 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
+| 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
+| 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6 |
+| 7 | Migrate dirty state, fingerprints, diagnostics, and existing facts | ✅ Done | Order 7 |
+| 8 | Typed member-level semantic edges | ✅ Done | Order 8 decision + Order 13 + G1-G7 |
+| 9 | Polymorphism and dispatch candidates | ✅ Done | Order 12 audit + Order 13 + G3, G5, G6, G7 |
+| 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2 |
+| 11 | Generated-code provenance | ✅ Done | Order 10, 11 |
+| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | ⚠️ Partial | All 6 adapters exist; production-to-test traversal gap (see below) |
+| 13 | Reflection evidence ladder | ✅ Done | See §Phase 13 verification below |
+| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
+| 15 | Context capsules with source and token budgets | ✅ Done | See §Phase 15 verification below |
+| 16 | Rebase simulations and audits on the shared store | ❌ Not done | |
+| 17 | Optimize incremental updates from measurements | ❌ Not done | |
+
+### Phase 13 verification — Reflection Evidence Ladder
+
+**Architecture §18 requirements:**
+
+| Requirement | Edge Kind | Extractor | Tests |
+|---|---|---|---|
+| `typeof(T)` type reference | `ReflectionTypeRef` | `TypeOfReflectionExtractor` | `TypeOf_EmitsReflectionTypeRefEdge` |
+| `nameof` member reference | `ReflectionMemberRef` | `NameOfReflectionExtractor` | `NameOf_EmitsReflectionMemberRefEdge` |
+| String literal matching known name | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` | `StringLiteral_MatchingTypeName_EmitsNameCandidateEdge` |
+| Runtime-unknown reflection target | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
+
+- All extractors in `src/Workspace/`
+- Registered in `ExtractorRegistry` as `"reflection-v1"`
+- 9 unit tests in `UnitTest1.cs` lines 4580-4748
+- Integrated with `UncertaintyDetector` for capsule uncertainty reporting
+
+### Phase 15 verification — Context Capsules
+
+**Architecture §20 requirements:**
+
+| Requirement | Implementation | Status |
+|---|---|---|
+| CLI entry point | `ContextHandler.cs` | ✅ |
+| Tier-based assembly | `ContextAssembler.cs` with `IContextTierBuilder` | ✅ |
+| Token budgeting | `Budget` parameter, `EstimateTokens`, truncation tracking | ✅ |
+| Intent-based ordering | `ContextIntent.Inspect/Modify/Diagnose` | ✅ |
+| Uncertainty detection | `UncertaintyDetector.cs` consumes reflection edges | ✅ |
+| Suggested verification | `VerificationSuggestion` from `TestedBy` edges | ✅ |
+
+### Phase 12 gap — Production-to-test traversal
+
+The benchmark (T11) reported `missingRelevantTests: true` for all scenarios. Root cause:
+
+1. `TestAdapter` only indexes test projects (filtered by assembly name suffix and test framework references)
+2. Production projects are indexed separately with no knowledge of their tests
+3. The `TestedBy` edge direction is `production → test`, but the edge is emitted from the **test project's compilation**, not the production project's
+
+**Gap:** A production symbol `P` in a production project has no outgoing `TestedBy` edge during its own project's indexing because test code is not visible in that compilation. The edge exists in the test project's index, but with `P` as source, which requires cross-project edge accumulation to be meaningful.
+
+**Required fix:** During cross-project edge accumulation in `IndexRunner.RunFullIndexAsync`, `TestedBy` edges from test projects should be merged into the production symbol's edge set so that `RelevantTestsTierBuilder` can find them.
+
+### Phase 14 verification — Evidence-backed Impact Paths
+
+**Architecture §19 completion condition:**
+
+> An agent can see why a code location is considered affected and inspect the exact source at every hop.
+
+| Requirement | Implementation | Status |
+|---|---|---|
+| Path representation | `ImpactPath` with `List<ImpactHop>` | ✅ |
+| Hop details | `SourceSymbolId`, `TargetSymbolId`, `EdgeKind`, `Provenance`, `SourceDocument`, `SourceLine` | ✅ |
+| Direction control | `ImpactDirection.Upstream/Downstream` | ✅ |
+| Depth limiting | `maxDepth` parameter | ✅ |
+| Edge filtering | `allowedEdgeKinds` parameter | ✅ |
+| Cycle detection | `visited` set per path | ✅ |
+| Truncation explanation | `Truncated`, `TruncationReason` | ✅ |
+| Semantic causes | `SemanticCauses` attached via `ISemanticDiffStore` | ✅ |
+
+Tests: `B7ImpactTraverserTests` (13 tests), `SemanticRenameIntegrationTests` integration
+
 Order 4's scope was narrowed by an audit before its D1–D5 sub-tasks were
 written: immutable document versions already existed de facto (T12 below),
 and "snapshot-scoped document identity" as literally worded in `task.txt`
@@ -346,48 +428,6 @@ Revisit conditions (unchanged from original postponement):
 - A NuGet source-generator package is added to any project in the workspace.
 - A generated file appears outside `obj/` that carries meaningful symbols
   not already surfaced by the existing header-based detection.
-
-## NDepend remediation track (separate from T1–T12 / order 1–13)
-
-The 13-task NDepend quality-gate remediation list lives in
-`task/NDepend-Investigation-Report.md`; progress is tracked in
-`task/NDepend-Remediation-Report.md`, not here. As of 2026-07-28 all 13 tasks
-are complete, including Task 13 (quality-gate calibration): ND1400/ND1401
-(architectural cycle) and coverage rules remain blocking with no threshold
-changes; four intentionally-large/Roslyn-dispatch-shaped symbols
-(`SqliteIndexStore`, `IncrementalIndexer`, `SemanticDiffer`,
-`SymbolDeclarationExtractor`) carry narrow `[SuppressMessage("NDepend", ...)]`
-exceptions with rationale and review triggers, following the pre-existing
-`IEdgeStore` (ND1200) precedent. `src/Lurp.csproj` now defines
-`CODE_ANALYSIS` (previously only `Lurp.Storage.csproj` did), so those
-attributes compile into IL.
-
-### Coverage pipeline remediation (post-Task-13, 2026-07-30)
-
-T1 probe (commit `9afd385`) confirmed that `coverlet.collector` produces
-genuine OpenCover (`<CoverageSession>` root, 68.06% sequence coverage) when
-invoked with `--collect:"XPlat Code Coverage;Format=opencover"`. The pipeline
-was realigned:
-
-- Coverage collected to `CoverageResults/` (isolated from `TestResults/`)
-- XML schema validated before flattening (fails on wrong root element)
-- Missing coverage file now fails the build instead of warning and continuing
-- NDepend filter aligned to `*.opencover.xml`; configuration changed to
-  `RELEASE|AnyCPU` (matching the test build); redundant Debug rebuild removed
-- `CoverletOutputFormat` MSBuild property (dead with the collector approach)
-  removed; `coverage-exclusion-experiment.runsettings` reference removed
-
-**Remaining open items (blocked until a new NDepend run against this pipeline):**
-- `baselines/Lurp-baseline.ndar` does not exist; regenerate after first clean
-  run and commit it so NDepend has a stable comparison point.
-- 20 "new" issues in the last run are expected to mostly evaporate once NDepend
-  compares against a real baseline (not "most recent analysis").
-- Persistent critical findings that survive re-baselining: ND1003 on
-  `SemanticDiffer.DetectRenames` and `SnapshotLifecycleStore.SaveSnapshot`,
-  ND1004 on `IncrementalIndexer.FinalizeSnapshotAsync` — either split these
-  methods or add explicit, justified method-level suppressions.
-- Handler test coverage: 14 of 16 handlers at 0%; `Program.Main` at 0%.
-  This is real debt driving the `Lurp.Handlers` E debt rating.
 
 ### Source encoding normalization (2026-07-30)
 

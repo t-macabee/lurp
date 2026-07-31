@@ -14,7 +14,3 @@ agent before it proposes or implements a change.
 The reference documents are not a task queue. Compare the trust kernel and
 architecture, then inspect the relevant current code, tests, and repository
 state. Treat the live repository as the final authority for what exists.
-
-Completed NDepend reports and other historical working notes are kept outside
-the repository in the dated Desktop archive so they do not compete with the
-current source and reference material.

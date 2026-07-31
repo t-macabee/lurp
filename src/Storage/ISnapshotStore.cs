@@ -1,12 +1,5 @@
-#if CODE_ANALYSIS
-using System.Diagnostics.CodeAnalysis;
-#endif
-
-namespace Lurp.Storage
+﻿namespace Lurp.Storage
 {
-#if CODE_ANALYSIS
-    [SuppressMessage("NDepend", "ND1200", Justification = "Interface defining the full ISnapshotStore contract. All 20+ members are required by callers; splitting would force consumers to inject multiple interfaces for a single logical concern.")]
-#endif
     public interface ISnapshotStore
     {
         void Open(string dbPath);

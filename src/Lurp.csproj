@@ -7,9 +7,6 @@
     <Nullable>enable</Nullable>
     <Version>1.1.0</Version>
     <DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
-    <!-- Enables [SuppressMessage("NDepend", ...)] attributes to compile into IL so NDepend honors them.
-         Defined in all configs so suppressions apply whether NDepend analyzes Debug or Release. -->
-    <DefineConstants>$(DefineConstants);CODE_ANALYSIS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

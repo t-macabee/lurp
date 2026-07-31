@@ -450,9 +450,6 @@ FodyWeavers.xsd
 .output/
 .deepcode/
 .deepcodeignore
-NDependOut/
-CoverageResults/
-TestResults/
 
 # Root-level .NET build output is reproducible and must not be committed.
 /bin/
