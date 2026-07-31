@@ -2,7 +2,7 @@
 <NDepend AppName="Lurp" Platform="DotNet" FileWrittenByProductVersion="2026.1.6.9800">
   <OutputDir KeepXmlFiles="False">.\NDependOut</OutputDir>
   <IDEFiles>
-    <IDEFile FilePath=".\Lurp.slnx" Filters="-test" Configuration="RELEASE|AnyCPU">
+    <IDEFile FilePath=".\Lurp.slnx" Filters="-test" Configuration="DEBUG|AnyCPU">
       <RootDirResolvingInfo Enabled="False" Hints="Debug|bin|.bin|b|AnyCPU|x64|x86|v*.*|net*" TimeOut="10">
         <RootDir>.</RootDir>
       </RootDirResolvingInfo>
@@ -16,9 +16,9 @@
   <ZipSourceFiles>True</ZipSourceFiles>
   <ForceReturnZeroExitCode>False</ForceReturnZeroExitCode>
   <Report Kind="0" SectionsEnabled="110591" XslPath="" DefaultTheme="dark" Flags="4455424" NbItemsToUnfold="3" NbItemsPerRule="20" MaxNbSourceFiles="2000" />
-  <BuildComparisonSetting ProjectMode="CurrentProject" BuildMode="BuildFileToCompareWith" ProjectFileToCompareWith="" BuildFileToCompareWith="baselines\Lurp-baseline.ndar" NDaysAgo="30" />
-  <BaselineInUISetting ProjectMode="CurrentProject" BuildMode="BuildFileToCompareWith" ProjectFileToCompareWith="" BuildFileToCompareWith="baselines\Lurp-baseline.ndar" NDaysAgo="" />
-  <CoverageFiles CoverageDir="./TestResults" CoverageDirFilter="*.opencover.xml" UncoverableAttribute="CoverageExcludeAttribute" CoverageExclusionFile="" />
+  <BuildComparisonSetting ProjectMode="CurrentProject" BuildMode="MostRecentAnalysisResultAvailable" ProjectFileToCompareWith="" BuildFileToCompareWith="" NDaysAgo="30" />
+  <BaselineInUISetting ProjectMode="CurrentProject" BuildMode="MostRecentAnalysisResultAvailable" ProjectFileToCompareWith="" BuildFileToCompareWith="" NDaysAgo="30" />
+  <CoverageFiles CoverageDir=".\TestResults" CoverageDirFilter="*.opencover.xml" UncoverableAttribute="CoverageExcludeAttribute" CoverageExclusionFile="" />
   <TrendMetrics UseCustomLog="False" LogRecurrence="3" LogLabel="2" UseCustomDir="False" CustomDir="">
     <Chart Name="Size" ShowInReport="True">
       <Serie MetricName="# Lines of Code" MetricUnit="Loc" Color="#FF00BFFF" ChartType="Line" ScaleExp="0" />
