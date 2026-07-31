@@ -454,7 +454,8 @@ NDependOut/
 CoverageResults/
 TestResults/
 
-# Reference-only project tracking (architecture notes, status, roadmap decisions).
-# Load-bearing test fixtures/benchmark data live under tests/, not here.
-task/
+# Root-level .NET build output is reproducible and must not be committed.
+/bin/
+/obj/
+
 .aider*
