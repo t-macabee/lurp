@@ -511,7 +511,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         // Create a real store and wrap it in a proxy that throws on
         // SaveDeclarations — simulates a per-project extraction failure.
         using var innerStore = new SqliteIndexStore(dbPath);
-        innerStore.Open(dbPath);
+        innerStore.Open();
         innerStore.RunMigrations();
 
         var proxy = DispatchProxy.Create<IIndexStore, ThrowingSaveDeclarationsStore>();

@@ -305,7 +305,7 @@ public sealed class OutcomeBenchmarkTests : IDisposable
         string dbPath, string solutionPath, string outputDir, string strategy)
     {
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         try
         {

@@ -17,7 +17,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var allTypes = GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
+        var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
         var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
 
         ExtractDbContextMappings(compilation, allTypes, ctx);
@@ -268,25 +268,5 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
     {
         return SymbolIdFactory.Make(symbol, assemblyIdentity);
-    }
-
-    private static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)
-    {
-        var types = new List<INamedTypeSymbol>();
-        CollectTypes(ns, types);
-        return types;
-    }
-
-    private static void CollectTypes(INamespaceSymbol ns, List<INamedTypeSymbol> types)
-    {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            types.Add(type);
-            foreach (var nested in type.GetTypeMembers())
-                types.Add(nested);
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-            CollectTypes(childNs, types);
     }
 }

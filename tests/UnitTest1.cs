@@ -12,7 +12,6 @@ namespace Lurp.Storage.Tests;
 public class MigrationRunnerTests : IDisposable
 {
     private readonly string _dbPath;
-    private SqliteIndexStore? _store;
 
     public MigrationRunnerTests()
     {
@@ -21,7 +20,6 @@ public class MigrationRunnerTests : IDisposable
 
     public void Dispose()
     {
-        _store?.Dispose();
         SqliteConnection.ClearAllPools();
         if (File.Exists(_dbPath))
             File.Delete(_dbPath);
@@ -124,7 +122,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveAndLoadLatestSnapshot_RoundTripsFields()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "test-snap-001";
@@ -179,7 +177,7 @@ public class MigrationRunnerTests : IDisposable
     public void LoadLatestSnapshot_NoSnapshot_ReturnsNull()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var result = store.LoadLatestSnapshot("workspace:///nonexistent");
@@ -192,7 +190,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveAndLoad_ContentRoundTrips()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "snap-content-001";
@@ -227,7 +225,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveSnapshot_WithProjectReferences_RoundTripsAggregate()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "test-snap-roundtrip";
@@ -283,7 +281,7 @@ public class MigrationRunnerTests : IDisposable
     public void SaveSnapshot_WhenSnapshotDocumentInsertFails_RollsBackEntireAggregate()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         // Install a trigger that fires on the late snapshot_documents insert and raises an error.
@@ -363,7 +361,7 @@ public class MigrationRunnerTests : IDisposable
     public void GetSource_MissingDocument_ReturnsNull()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var result = store.GetSource("nonexistent.cs", "snap-none");
@@ -376,7 +374,7 @@ public class MigrationRunnerTests : IDisposable
     public void GetSource_MissingSnapshot_ReturnsNull()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var result = store.GetSource("src/Foo.cs", "non-existent-snapshot");
@@ -392,7 +390,7 @@ public class MigrationRunnerTests : IDisposable
 
         using (var store = new SqliteIndexStore(_dbPath))
         {
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var workspaceId = "workspace:///root/proj";
@@ -418,7 +416,7 @@ public class MigrationRunnerTests : IDisposable
 
         using (var reopened = new SqliteIndexStore(_dbPath))
         {
-            reopened.Open(_dbPath);
+            reopened.Open();
 
             var source = reopened.GetSource("src/app.cs", snapshotId);
             Assert.NotNull(source);
@@ -431,7 +429,7 @@ public class MigrationRunnerTests : IDisposable
     {
 
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "snap-linestarts-001";
@@ -467,7 +465,7 @@ public class MigrationRunnerTests : IDisposable
     public void Content_WithNullContent_StoresNull()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "snap-nullcontent-001";
@@ -558,7 +556,7 @@ public class MigrationRunnerTests : IDisposable
         {
             _store?.Dispose();
             _store = new SqliteIndexStore(_dbPath);
-            _store.Open(_dbPath);
+            _store.Open();
             _store.RunMigrations();
             return _store;
         }
@@ -847,7 +845,7 @@ public class MigrationRunnerTests : IDisposable
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;
@@ -1190,7 +1188,7 @@ public class MigrationRunnerTests : IDisposable
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;
@@ -1319,7 +1317,7 @@ public class MigrationRunnerTests : IDisposable
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;
@@ -1533,7 +1531,7 @@ public class MigrationRunnerTests : IDisposable
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;
@@ -1816,7 +1814,7 @@ class Foo {
             using var store = new SqliteIndexStore(dbPath);
             try
             {
-                store.Open(dbPath);
+                store.Open();
                 store.RunMigrations();
                 store.SaveBindingIncompleteness("snap-incomplete-metadata", records);
 
@@ -1924,7 +1922,7 @@ class Foo {
             try
             {
                 using var store = new SqliteIndexStore(dbPath);
-                store.Open(dbPath);
+                store.Open();
                 store.RunMigrations();
                 store.SaveEdges("snap-call-sites", edges);
 
@@ -2407,7 +2405,6 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
     public class B3SemanticChangesTests : IDisposable
     {
         private readonly string _dbPath;
-        private SqliteIndexStore? _store;
 
         public B3SemanticChangesTests()
         {
@@ -2416,7 +2413,6 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
 
         public void Dispose()
         {
-            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -2485,7 +2481,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SaveAndGetSemanticChanges_RoundTrip()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-001";
@@ -2546,7 +2542,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void GetSemanticChanges_EmptyList_ReturnsEmpty()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-003";
@@ -2560,7 +2556,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_SymbolAddedAndRemoved()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-005";
@@ -2625,7 +2621,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_EdgeAddedAndRemoved()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-009";
@@ -2679,7 +2675,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
             string expectedChangeType)
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             const string fromSnapshotId = "snap-edge-payload-from";
@@ -2729,7 +2725,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_SignatureChangedViaMetadata()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-011";
@@ -2778,7 +2774,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_BaseTypeChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-017";
@@ -2827,7 +2823,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_SymbolRenamed()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-013";
@@ -2879,7 +2875,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_EmptyDiff()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-015";
@@ -2924,7 +2920,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_GenericConstraintChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-019";
@@ -2977,7 +2973,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_ExplicitInterfaceImplementationChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-021";
@@ -3030,7 +3026,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_NullableAnnotationChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-s1-001";
@@ -3083,7 +3079,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_RefParameterModifierChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-s2-001";
@@ -3136,7 +3132,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_OperatorOverloadSignatureChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-s5-001";
@@ -3189,7 +3185,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_ConversionOperatorSignatureChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-s6-001";
@@ -3242,7 +3238,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_AttributeAddedOrRemoved()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-023";
@@ -3293,7 +3289,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         public void SemanticDiffer_AttributeArgumentChanged()
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             var fromSnapshotId = "snap-b3-025";
@@ -3344,7 +3340,6 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
     public class MetadataContractTests : IDisposable
     {
         private readonly string _dbPath;
-        private SqliteIndexStore? _store;
 
         public MetadataContractTests()
         {
@@ -3353,7 +3348,6 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
 
         public void Dispose()
         {
-            _store?.Dispose();
             SqliteConnection.ClearAllPools();
             if (File.Exists(_dbPath))
                 File.Delete(_dbPath);
@@ -3385,7 +3379,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         private List<SemanticChange> Diff(string fromSnapId, string toSnapId, SymbolDeclaration fromDecl, SymbolDeclaration toDecl)
         {
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
 
             CreateSnapshotWithDocument(store, fromSnapId);
@@ -3692,7 +3686,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;
@@ -4394,7 +4388,7 @@ public class Foo
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
             _store = store;
@@ -4912,7 +4906,7 @@ class Source {
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
             _store = store;
@@ -5074,7 +5068,7 @@ class Source {
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             store.SaveEdges(snapshotId, edges);
             _store = store;
@@ -5374,7 +5368,7 @@ class Source {
         {
             _store?.Dispose();
             var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             store.RunMigrations();
             _store = store;
             return store;

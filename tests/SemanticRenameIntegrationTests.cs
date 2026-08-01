@@ -83,7 +83,7 @@ public class SemanticRenameIntegrationTests : IDisposable
     {
         var store = new SqliteIndexStore(_dbPath);
         _store = store;
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var fromSnapshotId = "snap-ren-from";
@@ -129,7 +129,7 @@ public class SemanticRenameIntegrationTests : IDisposable
     {
         var store = new SqliteIndexStore(_dbPath);
         _store = store;
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var fromSnapshotId = "snap-mov-from";
@@ -172,7 +172,7 @@ public class SemanticRenameIntegrationTests : IDisposable
     {
         var store = new SqliteIndexStore(_dbPath);
         _store = store;
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var fromSnapshotId = "snap-sig-from";
@@ -217,7 +217,7 @@ public class SemanticRenameIntegrationTests : IDisposable
     {
         var store = new SqliteIndexStore(_dbPath);
         _store = store;
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var fromSnapshotId = "snap-amb-from";
@@ -269,7 +269,7 @@ public class SemanticRenameIntegrationTests : IDisposable
     {
         var store = new SqliteIndexStore(_dbPath);
         _store = store;
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var fromSnapshotId = "snap-imp-from";

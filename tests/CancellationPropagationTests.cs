@@ -35,7 +35,7 @@ public sealed class CancellationPropagationTests : IDisposable
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         using var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
 
@@ -88,7 +88,7 @@ public sealed class CancellationPropagationTests : IDisposable
         // when staging (CopyEdgesToSnapshot) is called — this ensures the
         // new snapshot is created before cancellation fires.
         using var innerStore = new SqliteIndexStore(dbPath);
-        innerStore.Open(dbPath);
+        innerStore.Open();
         innerStore.RunMigrations();
 
         using var cts = new CancellationTokenSource();

@@ -513,7 +513,7 @@ public class NewType
             File.Delete(_dbPath);
 
         var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         try
@@ -603,7 +603,7 @@ public class NewType
         _output.WriteLine($"--- {label} ---");
 
         var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         try
@@ -646,7 +646,7 @@ public class NewType
     private List<SnapshotTimingRow> ReadTimings(string snapshotId)
     {
         var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         try
         {
             return store.GetTimings(snapshotId);

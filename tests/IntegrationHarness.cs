@@ -94,7 +94,7 @@ public static class IntegrationHarness
     public static SqliteIndexStore OpenReadStore(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         return store;
     }
@@ -124,7 +124,7 @@ public static class IntegrationHarness
     private static SqliteIndexStore CreateAndOpenStore(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         return store;
     }

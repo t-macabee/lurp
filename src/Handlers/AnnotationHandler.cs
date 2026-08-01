@@ -8,7 +8,7 @@ internal static class AnnotationHandler
     public static void RunAnnotate(string[] args)
     {
         var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=annotate.");
-        var kindArg = HandlerBootstrap.RequireArg(args, "--kind=", "ERROR: --kind=<kind> is required for --mode=annotate.");
+        var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
         var valueArg = HandlerBootstrap.RequireArg(args, "--value=", "ERROR: --value=<text> is required for --mode=annotate.");
 
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);

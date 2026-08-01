@@ -5,43 +5,11 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
 
-internal sealed class PolymorphismExtractionContext
+internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 {
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
-    private readonly string _gitRoot;
-
     internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
+        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness)
     {
-        Compilation = compilation;
-        SnapshotId = snapshotId;
-        _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-        AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        ScopeDocuments = scopeDocuments;
-        Incompleteness = incompleteness;
-    }
-
-    internal Compilation Compilation { get; }
-    internal string SnapshotId { get; }
-    internal string AssemblyIdentity { get; }
-    internal IReadOnlySet<string>? ScopeDocuments { get; }
-    internal BindingIncompletenessCollector? Incompleteness { get; }
-
-    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
-        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
-
-    internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
-    {
-        if (!_semanticModelCache.TryGetValue(syntaxTree, out var model))
-        {
-            model = Compilation.GetSemanticModel(syntaxTree);
-            _semanticModelCache[syntaxTree] = model;
-        }
-        return model;
-    }
-
-    internal string? MakeSymbolId(ISymbol symbol)
-    {
-        return SymbolIdFactory.Make(symbol, AssemblyIdentity);
     }
 
     internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance, string? typeArgumentsJson = null)
@@ -108,22 +76,6 @@ internal sealed class PolymorphismExtractionContext
             return null;
         var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
         return span.EndLinePosition.Character;
-    }
-
-    internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
-        GetLocationInfo(Location location)
-    {
-        if (location == null || !location.IsInSource)
-            return (null, null, null, null, null);
-
-        var lineSpan = location.GetLineSpan();
-        var filePath = location.SourceTree?.FilePath;
-        var relativePath = string.IsNullOrEmpty(filePath) ? null : DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
-        return (relativePath,
-                lineSpan.StartLinePosition.Line,
-                lineSpan.StartLinePosition.Character,
-                lineSpan.EndLinePosition.Line,
-                lineSpan.EndLinePosition.Character);
     }
 
     internal bool IsTypeInScope(INamedTypeSymbol typeSymbol)

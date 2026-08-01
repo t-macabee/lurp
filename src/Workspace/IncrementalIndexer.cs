@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null)
+public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
@@ -277,7 +277,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _store.SaveBindingIncompleteness(newSnapshotIdStr, result.BindingIncompleteness);
             foreach (var measurement in result.Measurements)
             {
-                Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                if (verbose)
+                    Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
             }
 
             Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");

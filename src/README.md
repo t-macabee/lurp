@@ -80,7 +80,7 @@ Full-text search over source text and symbols.
 | `--query=<term>` | Yes | Search term. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). |
-| `--kind=<kind>` | No | Filter symbol results by kind (e.g. `Class`, `Method`). |
+| `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
 | `--limit=<n>` | No | Max results per scope (default: 20). |
 | `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
@@ -272,13 +272,13 @@ Run static analysis checks on the index.
 Attach a user-authored annotation to a symbol.
 
 ```
---mode=annotate --symbol=<id> --kind=<kind> --value=<text> --output-dir=<path> [options]
+--mode=annotate --symbol=<id> --annotation-kind=<kind> --value=<text> --output-dir=<path> [options]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to annotate. |
-| `--kind=<kind>` | Yes | Annotation kind. |
+| `--annotation-kind=<kind>` | Yes | Annotation kind. |
 | `--value=<text>` | Yes | Annotation value. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
@@ -318,7 +318,7 @@ The following modes from earlier versions have been replaced:
 
 | Old mode | Replacement |
 |---|---|
-| `--mode=discover` | `--mode=search --type=symbol --kind=<TypeKind>` |
+| `--mode=discover` | `--mode=search --type=symbol --kind=<SymbolKind>` |
 | `--mode=structure` | `--mode=context --intent=inspect` |
 | `--mode=fingerprint` | No direct replacement; use `--mode=get-symbol --view=metadata`. |
 | `--mode=who-references` | `--mode=impact --direction=upstream` |

@@ -451,6 +451,13 @@ FodyWeavers.xsd
 .deepcode/
 .deepcodeignore
 
+# Repomix export and ad-hoc indexer output — source-bearing, not durable artifacts.
+repomix-output.xml
+test-output/
+
+# One-off generated audit report — not a durable reference doc (see its own auditor note).
+docs/reference/AUDIT_FINDINGS.md
+
 # Root-level .NET build output is reproducible and must not be committed.
 /bin/
 /obj/

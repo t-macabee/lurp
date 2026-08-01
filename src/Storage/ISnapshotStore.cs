@@ -2,7 +2,7 @@
 {
     public interface ISnapshotStore
     {
-        void Open(string dbPath);
+        void Open();
         void Close();
         bool IsOpen { get; }
         void RunMigrations();

@@ -50,7 +50,7 @@ public sealed class SchemaStabilityTests : IDisposable
     public void UnknownPersistedSymbolKind_DeserializesAsUnknown()
     {
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
         using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
         {

@@ -75,7 +75,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         if (indexerId == null || indexerId == callerId)
             return;
 
-        var isWrite = IsWriteContext(elementAccess);
+        var isWrite = elementAccess.IsWriteContext();
         var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
 
         if (!seen.Add((callerId, indexerId, kind)))
@@ -83,35 +83,6 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
 
         var location = context.GetLocationInfo(elementAccess.GetLocation());
         edges.Add(context.MakeEdge(callerId, indexerId, kind, ExtractorConstants.CallsExtractor, location));
-    }
-
-    private static bool IsWriteContext(SyntaxNode node)
-    {
-        if (node.Parent is AssignmentExpressionSyntax assign)
-            return assign.Left == node;
-
-        if (node.Parent is PrefixUnaryExpressionSyntax preUnary &&
-            (preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
-             preUnary.IsKind(SyntaxKind.PreDecrementExpression)))
-        {
-            return preUnary.Operand == node;
-        }
-
-        if (node.Parent is PostfixUnaryExpressionSyntax postUnary &&
-            (postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
-             postUnary.IsKind(SyntaxKind.PostDecrementExpression)))
-        {
-            return postUnary.Operand == node;
-        }
-
-        if (node.Parent is ArgumentSyntax arg &&
-            (arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
-             arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)))
-        {
-            return true;
-        }
-
-        return false;
     }
 
     private void AddCallEdge(

@@ -49,7 +49,7 @@ internal static class HandlerBootstrap
     public static SqliteIndexStore OpenStore(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         return store;
     }
 

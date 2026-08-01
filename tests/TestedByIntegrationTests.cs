@@ -51,7 +51,7 @@ public sealed class TestedByIntegrationTests : IDisposable
 
         // Run a full index
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         string snapshotId;
         try

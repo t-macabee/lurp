@@ -423,7 +423,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             File.Delete(_dbPath);
 
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         try
@@ -501,7 +501,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         Console.WriteLine($"--- {label} ---");
 
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         using var workspace = MSBuildWorkspace.Create();
@@ -999,7 +999,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         using (var store = new SqliteIndexStore(_dbPath))
         {
-            store.Open(_dbPath);
+            store.Open();
 
             // The refresh writes into a real snapshot, so the target snapshot
             // must exist as a well-formed header row before any per-snapshot
@@ -1047,7 +1047,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             var workspaceInfo = new WorkspaceInfo(solution, _testDir);
 
             using var store = new SqliteIndexStore(_dbPath);
-            store.Open(_dbPath);
+            store.Open();
             var refresher = new CrossDocumentEdgeRefresher(store, _testDir, []);
             var changedPaths = new HashSet<string> { "src/Library/Widget.cs" };
 
@@ -1083,7 +1083,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         using (var store = new SqliteIndexStore(_dbPath))
         {
-            store.Open(_dbPath);
+            store.Open();
 
             var versionIdsByPath = store.GetDocumentVersionIdsByPath(snapshotA);
 
@@ -1442,7 +1442,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             "MSBuild is not available on this system. Cannot run integration test.");
 
         using var store = new SqliteIndexStore(_dbPath);
-        store.Open(_dbPath);
+        store.Open();
         store.RunMigrations();
 
         var snapshotId = "snap-t4-dedup";

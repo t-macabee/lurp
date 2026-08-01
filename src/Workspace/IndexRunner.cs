@@ -10,7 +10,7 @@ public static class IndexRunner
 {
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default)
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -65,7 +65,7 @@ public static class IndexRunner
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
 
                     Console.WriteLine();
@@ -103,7 +103,7 @@ public static class IndexRunner
                 new SnapshotTimingRow("solution_load", swSolutionLoad.ElapsedMilliseconds, DateTime.UtcNow),
                 new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken);
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose);
         }
 
         Console.Write("Pruning old snapshots... ");
@@ -118,7 +118,7 @@ public static class IndexRunner
         Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose)
     {
         var snapshotId = SnapshotId.New();
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
@@ -172,7 +172,8 @@ public static class IndexRunner
                     store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
                     foreach (var measurement in result.Measurements)
                     {
-                        Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                        if (verbose)
+                            Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
                     }
 
                     Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");

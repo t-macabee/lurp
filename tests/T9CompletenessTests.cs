@@ -148,7 +148,7 @@ public sealed class T9CompletenessTests
     private static SqliteIndexStore OpenStore(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
         store.RunMigrations();
         return store;
     }

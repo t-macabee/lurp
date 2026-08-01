@@ -30,12 +30,12 @@ namespace Lurp.Storage
 
         public bool IsOpen => _connection != null;
 
-        public void Open(string dbPath)
+        public void Open()
         {
             if (_connection != null)
                 return;
 
-            _connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=False");
+            _connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath};Pooling=False");
             _connection.Open();
 
             _lifecycle = new SnapshotLifecycleStore(_connection);

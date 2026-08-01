@@ -50,7 +50,7 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                 if (memberId == null)
                     continue;
 
-                bool isWrite = IsWriteContext(access);
+                bool isWrite = access.IsWriteContext();
                 var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
                 var seenSet = isWrite ? seenWrites : seenReads;
 
@@ -66,29 +66,4 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
         return edges;
     }
 
-    private static bool IsWriteContext(SyntaxNode node)
-    {
-        if (node.Parent is AssignmentExpressionSyntax assign)
-            return assign.Left == node;
-
-        if (node.Parent is PrefixUnaryExpressionSyntax preUnary && (preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
-             preUnary.IsKind(SyntaxKind.PreDecrementExpression)))
-        {
-            return preUnary.Operand == node;
-        }
-
-        if (node.Parent is PostfixUnaryExpressionSyntax postUnary && (postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
-             postUnary.IsKind(SyntaxKind.PostDecrementExpression)))
-        {
-            return postUnary.Operand == node;
-        }
-
-        if (node.Parent is ArgumentSyntax arg && (arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
-             arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)))
-        {
-            return true;
-        }
-
-        return false;
-    }
 }

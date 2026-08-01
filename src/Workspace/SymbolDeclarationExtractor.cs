@@ -13,7 +13,7 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
     {
         var results = new List<SymbolDeclaration>();
 
-        foreach (var typeSymbol in SymbolExtractionContext.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in ExtractionContextBase.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
             ExtractTypeDeclarations(typeSymbol, results);
         }

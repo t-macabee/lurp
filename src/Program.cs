@@ -7,28 +7,31 @@ namespace Lurp;
 
 public class Program
 {
-    private static readonly Dictionary<string, Action<string[]>> ModeHandlers = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Func<string[], Task>> ModeHandlers = new(StringComparer.Ordinal)
     {
-        ["get-source"] = GetSourceHandler.Run,
-        ["get-symbol"] = GetSymbolHandler.Run,
-        ["search"] = SearchHandler.Run,
-        ["find-symbol"] = FindSymbolHandler.Run,
-        ["navigate"] = NavigateHandler.Run,
-        ["index"] = a => IndexHandler.Run(a).GetAwaiter().GetResult(),
-        ["diff"] = DiffHandler.Run,
-        ["impact"] = ImpactHandler.Run,
-        ["context"] = ContextHandler.Run,
-        ["status"] = a => StatusHandler.Run(a).GetAwaiter().GetResult(),
-        ["simulate-rename"] = SimulateRenameHandler.Run,
-        ["simulate-move"] = SimulateMoveHandler.Run,
-        ["simulate-remove"] = SimulateRemoveHandler.Run,
-        ["audit"] = AuditHandler.Run,
-        ["timings"] = TimingsHandler.Run,
-        ["annotate"] = AnnotationHandler.RunAnnotate,
-        ["get-annotations"] = AnnotationHandler.RunGetAnnotations,
+        ["get-source"] = Sync(GetSourceHandler.Run),
+        ["get-symbol"] = Sync(GetSymbolHandler.Run),
+        ["search"] = Sync(SearchHandler.Run),
+        ["find-symbol"] = Sync(FindSymbolHandler.Run),
+        ["navigate"] = Sync(NavigateHandler.Run),
+        ["index"] = a => IndexHandler.Run(a),
+        ["diff"] = Sync(DiffHandler.Run),
+        ["impact"] = Sync(ImpactHandler.Run),
+        ["context"] = Sync(ContextHandler.Run),
+        ["status"] = StatusHandler.Run,
+        ["simulate-rename"] = Sync(SimulateRenameHandler.Run),
+        ["simulate-move"] = Sync(SimulateMoveHandler.Run),
+        ["simulate-remove"] = Sync(SimulateRemoveHandler.Run),
+        ["audit"] = Sync(AuditHandler.Run),
+        ["timings"] = Sync(TimingsHandler.Run),
+        ["annotate"] = Sync(AnnotationHandler.RunAnnotate),
+        ["get-annotations"] = Sync(AnnotationHandler.RunGetAnnotations),
     };
 
-    public static void Main(string[] args)
+    private static Func<string[], Task> Sync(Action<string[]> handler)
+        => args => { handler(args); return Task.CompletedTask; };
+
+    public static async Task Main(string[] args)
     {
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
         {
@@ -47,7 +50,7 @@ public class Program
         var mode = modeArg["--mode=".Length..];
         if (ModeHandlers.TryGetValue(mode, out var handler))
         {
-            handler(args);
+            await handler(args);
         }
         else
         {
@@ -63,7 +66,7 @@ public class Program
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
         Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
-        Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<TypeKind>.");
+        Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<SymbolKind>.");
     }
 
     private static void PrintHelp()
@@ -89,6 +92,20 @@ public class Program
         Console.WriteLine("  --mode=annotate            Attach a user-authored annotation to a symbol.");
         Console.WriteLine("  --mode=get-annotations     Retrieve annotations for a symbol.");
         Console.WriteLine();
+        Console.WriteLine("SEARCH (--mode=search)");
+        Console.WriteLine("  Required:");
+        Console.WriteLine("    --query=<term>       Search term.");
+        Console.WriteLine("    --output-dir=<path>  Directory where index.db is stored.");
+        Console.WriteLine("  Options:");
+        Console.WriteLine("    --type=<all|source|symbol>");
+        Console.WriteLine("                         Search scope (default: all).");
+        Console.WriteLine("    --kind=<SymbolKind>  Filter symbol results by Roslyn SymbolKind");
+        Console.WriteLine("                         (e.g. \"Type\", \"Method\", \"Field\", \"Property\").");
+        Console.WriteLine("    --limit=<n>          Max results per scope (default: 20).");
+        Console.WriteLine("    --snippet-tokens=<n> Token window for source snippets (default: 64).");
+        Console.WriteLine("    --snapshot=<id>      Snapshot to search (default: latest).");
+        Console.WriteLine("    --include-generated  Include source-generated symbols.");
+        Console.WriteLine();
         Console.WriteLine("INDEXING (--mode=index)");
         Console.WriteLine("  Required:");
         Console.WriteLine("    --solution=<path>     Path to the .sln or .slnx file.");
@@ -108,6 +125,7 @@ public class Program
         Console.WriteLine("                 'incremental' on subsequent runs.");
         Console.WriteLine();
         Console.WriteLine("    --output-json=<path>  Also write the snapshot manifest as JSON.");
+        Console.WriteLine("    --verbose             Emit per-extractor [measure] timing lines to stderr.");
         Console.WriteLine("    --skip-adapter=<name> Skip a named framework adapter.");
         Console.WriteLine("                          Valid: ASP.NET Core, Dependency Injection,");
         Console.WriteLine("                                 MediatR, EF Core, Serialization, Test.");
@@ -135,7 +153,7 @@ public class Program
         Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --symbol=<id>         The symbol ID to annotate or query.");
-        Console.WriteLine("    --kind=<kind>         Annotation kind (annotate only, required).");
+        Console.WriteLine("    --annotation-kind=<kind>  Annotation kind (annotate only, required).");
         Console.WriteLine("    --value=<text>        Annotation value (annotate only, required).");
         Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
         Console.WriteLine();

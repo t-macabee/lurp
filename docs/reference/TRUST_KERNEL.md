@@ -175,10 +175,54 @@ the resulting database all resolve correctly.
 Same test run also confirmed `search --kind=` filters on Roslyn's coarse
 `SymbolKind` (`"Type"`, `"Method"`, `"Field"`, ...), not the finer
 `TypeKind` (`"Class"`, `"Interface"`, `"Struct"`, ...) that only lives in
-`metadata_json`. `--kind` for `--mode=search` isn't in `--help` output at
-all (only the unrelated `--mode=annotate --kind=` is documented), so
-`--kind=Class` finding nothing isn't a regression — it's an undocumented
-filter behaving as coded. Left as-is; not a correctness bug.
+`metadata_json`. The `--mode=search --kind=<SymbolKind>` flag is now
+documented in both `--help` (SEARCH section) and `src/README.md`, and the
+annotate flag was renamed to `--annotation-kind` to remove the semantic
+collision (task-list #31/#32/#44).
+
+### Audit remediation — build fix and duplicate-helper consolidation (2026-08-01)
+
+Closes the remaining actionable items from `docs/reference/AUDIT_FINDINGS.md`
+(#3, #13, #18, #19, #23, #25 partially scoped out, #31/#32/#34/#44 — see
+above). `FluentMigrator.Runner` and `System.Security.Cryptography.Xml` were
+removed from all three `.csproj` files (unused, source of the MSB3270
+warning); `SqliteIndexStore.Open(string)`'s dead parameter was dropped in
+favor of `Open()`; `Program.Main` is now `async Task Main` awaiting the
+handler delegates instead of blocking with `.GetAwaiter().GetResult()`; the
+`[measure]` extractor timing lines are now gated behind `--verbose`.
+
+Duplicate-helper consolidation (#18) was left mid-refactor with a build
+break: `PolymorphismExtractionContext.GetLocationInfo` was defined twice
+(CS0111) after `ExtractionContextBase` was introduced to hold the shared
+`GetOrCreateSemanticModel`/`GetLocationInfo`/`GetNamespaceTypeMembers`
+logic — both copies in `PolymorphismExtractionContext` were dead weight
+since the base class already provides it; removed. The last outstanding
+duplicate, `IsWriteContext` (identical bodies in `ReadsWritesEdgeExtractor`
+and `CallsEdgeExtractor`), was extracted to
+`SyntaxNodeExtensions.IsWriteContext(this SyntaxNode)` in
+`src/Workspace/SyntaxNodeExtensions.cs`. `dotnet build Lurp.slnx` now
+reports 0 errors, 0 warnings.
+
+`GitIgnoreMatcher`↔`WorkspaceInfo` and the
+`CompilationFactExtractor`/`CrossDocumentEdgeRefresher`/`IncrementalIndexer`/
+`IndexRunner` "cycle" flagged by `tokensave_circular` (#17) were checked
+against actual source references: in both cases the dependency is
+one-directional (`WorkspaceInfo` → `GitIgnoreMatcher`;
+`CrossDocumentEdgeRefresher`/`IncrementalIndexer`/`IndexRunner` →
+`CompilationFactExtractor`, never the reverse). No real reference cycle
+exists — `tokensave_circular`'s file-level detector is a false positive
+here (confirmed by grep, not by trusting the tool's own output alone), so
+no refactor was made.
+
+`repomix-output.xml` and `test-output/` (source-bearing artifacts from
+external-fixture indexing, audit #9) were added to `.gitignore`.
+
+Not done in this pass (left as open, low-priority recommendations):
+per-row `INSERT OR IGNORE` batching in `EdgeOperationsStore`/
+`SnapshotLifecycleStore` (#25) and a dedicated CLI-dispatch/exit-code test
+class for `Program.Main`/`HandlerBootstrap` (#45) — both require new test
+or perf work beyond the in-flight refactor, not a completion of something
+already started.
 
 ### Phase 14 verification — Evidence-backed Impact Paths
 

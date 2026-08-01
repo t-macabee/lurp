@@ -50,7 +50,7 @@ internal static class SnapshotAssertions
         Assert.NotEqual(snapshotB, snapshotC);
 
         var store = new SqliteIndexStore(dbPath);
-        store.Open(dbPath);
+        store.Open();
 
         try
         {

@@ -27,7 +27,7 @@ public sealed class TestedByContractTests : IDisposable
     {
         _store?.Dispose();
         _store = new SqliteIndexStore(_dbPath);
-        _store.Open(_dbPath);
+        _store.Open();
         _store.RunMigrations();
         return _store;
     }

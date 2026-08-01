@@ -38,7 +38,7 @@ public sealed class TestAdapter : IFrameworkAdapter
 
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
-        foreach (var type in GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
+        foreach (var type in AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
         {
             foreach (var member in type.GetMembers())
             {
@@ -183,13 +183,6 @@ public sealed class TestAdapter : IFrameworkAdapter
         return model;
     }
 
-    private static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)
-    {
-        var types = new List<INamedTypeSymbol>();
-        CollectTypes(ns, types);
-        return types;
-    }
-
     private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, ExtractionContext context)
     {
         foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
@@ -212,18 +205,5 @@ public sealed class TestAdapter : IFrameworkAdapter
             if (symbolInfo.Symbol != null)
                 AddProductionRef(symbolInfo.Symbol, context);
         }
-    }
-
-    private static void CollectTypes(INamespaceSymbol ns, List<INamedTypeSymbol> types)
-    {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            types.Add(type);
-            foreach (var nested in type.GetTypeMembers())
-                types.Add(nested);
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-            CollectTypes(childNs, types);
     }
 }

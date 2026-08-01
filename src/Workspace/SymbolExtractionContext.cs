@@ -50,20 +50,4 @@ internal sealed class SymbolExtractionContext(
 
         return null;
     }
-
-    internal static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
-    {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            yield return type;
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            foreach (var type in GetNamespaceTypeMembers(childNs))
-            {
-                yield return type;
-            }
-        }
-    }
 }

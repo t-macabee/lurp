@@ -112,7 +112,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
         {
             using (var store = new SqliteIndexStore(dbPath))
             {
-                store.Open(dbPath);
+                store.Open();
                 store.RunMigrations();
 
                 var workspaceId = "workspace:///prune-test";
@@ -277,7 +277,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
 
         // Step 3: Use a proxy that throws on SaveSemanticChanges.
         using var innerStore = new SqliteIndexStore(dbPath);
-        innerStore.Open(dbPath);
+        innerStore.Open();
         innerStore.RunMigrations();
 
         var proxy = DispatchProxy.Create<IIndexStore, ThrowingSemanticDiffStore>();
