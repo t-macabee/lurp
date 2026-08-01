@@ -480,7 +480,10 @@ get symbol → retrieve stored span
 
 Use SQLite FTS5 for:
 
-- identifier fragments;
+- identifier fragments — any case-insensitive substring of a symbol's fully qualified name. Whole
+  tokens, camel-case segments, and prefixes all qualify: a query of `Service` matches
+  `CourseService`. Implemented as whole-token FTS5 matching with a substring fallback when no
+  whole token matches;
 - source literals;
 - route strings;
 - attributes;

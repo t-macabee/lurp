@@ -154,6 +154,8 @@ public static class IndexRunner
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
             var swExtract = Stopwatch.StartNew();
             var allEdges = new List<EdgeRecord>();
+            var blindProjects = new List<string>();
+            var extractedProjects = 0;
 
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution, cancellationToken))
             {
@@ -161,6 +163,19 @@ public static class IndexRunner
                 var projectName = project.Name;
 
                 Console.Write($"  [{projectName}] ");
+
+                // A blind compilation yields declarations with almost no edges. Indexing
+                // it would publish that emptiness as a proved absence of callers, so the
+                // project is recorded as unreadable and skipped instead.
+                if (WorkspaceLoadGate.Classify(compilation) == CompilationReadability.Blind)
+                {
+                    blindProjects.Add(projectName);
+                    store.SaveBindingIncompleteness(
+                        snapshotIdStr,
+                        WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
+                    Console.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
+                    continue;
+                }
 
                 try
                 {
@@ -182,6 +197,8 @@ public static class IndexRunner
                             Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
                     }
 
+                    extractedProjects++;
+
                     Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
                 }
                 catch (OperationCanceledException)
@@ -190,8 +207,24 @@ public static class IndexRunner
                 }
                 catch (Exception ex)
                 {
+                    // A failing project is isolated rather than fatal: discarding the
+                    // siblings that extracted cleanly would cost the whole solution for
+                    // one unreadable project. The failure is recorded against this
+                    // project's documents so capsules anchored there report unresolved
+                    // rather than empty.
                     Console.Error.WriteLine($"FAILED: {ex.Message}");
                     projectErrors.Add(ex);
+                    blindProjects.Add(projectName);
+                    try
+                    {
+                        store.SaveBindingIncompleteness(
+                            snapshotIdStr,
+                            WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
+                    }
+                    catch (Exception recordEx)
+                    {
+                        Console.Error.WriteLine($"WARNING: Failed to record unreadable project '{projectName}': {recordEx.Message}");
+                    }
                 }
             }
 
@@ -199,11 +232,21 @@ public static class IndexRunner
             store.SaveEdges(snapshotIdStr, dedupedEdges);
             totalEdges = dedupedEdges.Count;
 
-            if (projectErrors.Count > 0)
+            // Hard stop only when nothing was readable. There is no lit ground to stand
+            // on, so every capsule the snapshot could serve would be an empty graph
+            // presented as fact.
+            if (extractedProjects == 0 && blindProjects.Count > 0)
             {
-                throw new AggregateException(
-                    "One or more projects failed during full index.",
-                    projectErrors);
+                throw new WorkspaceUnreadableException(WorkspaceLoadGate.DescribeRemediation(blindProjects));
+            }
+
+            if (projectErrors.Count > 0 || blindProjects.Count > 0)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"WARNING: {blindProjects.Count} of {blindProjects.Count + extractedProjects} project(s) were unreadable and are excluded from the graph:");
+                foreach (var name in blindProjects.OrderBy(static name => name, StringComparer.Ordinal))
+                    Console.Error.WriteLine($"  - {name}");
+                Console.Error.WriteLine("Capsules anchored in those projects report 'unresolved', not 'empty'.");
             }
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
@@ -259,7 +302,12 @@ public static class IndexRunner
         }
         catch (Exception ex)
         {
-            var reasonCode = ex is OperationCanceledException ? "cancelled" : "full_index_failure";
+            var reasonCode = ex switch
+            {
+                OperationCanceledException => "cancelled",
+                WorkspaceUnreadableException => "workspace_unreadable",
+                _ => "full_index_failure",
+            };
             try { store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message); }
             catch { }
             Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");

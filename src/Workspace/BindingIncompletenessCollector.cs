@@ -11,6 +11,26 @@ internal static class BindingIncompletenessReason
     internal const string UnsupportedSyntax = "unsupported_syntax";
     internal const string FilteredExternal = "filtered_external";
     internal const string ExtractorFailure = "extractor_failure";
+
+    /// <summary>The whole project failed to load or extract; no binding over it was observable.</summary>
+    internal const string ProjectUnreadable = "project_unreadable";
+
+    /// <summary>
+    /// Reasons under which a missing relation proves nothing, because the relation was
+    /// never observable. Excludes <see cref="FilteredExternal"/>: there the target was
+    /// resolved and is knowably outside the snapshot, which is an explained absence
+    /// rather than an unknown one.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> UnobservableReasons =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            AmbiguousOverload,
+            CompilerError,
+            UnresolvedMetadata,
+            UnsupportedSyntax,
+            ExtractorFailure,
+            ProjectUnreadable,
+        };
 }
 
 internal sealed class BindingIncompletenessCollector(string projectName, string gitRoot)

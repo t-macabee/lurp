@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Lurp.Handlers;
+using Lurp.Workspace;
 
 namespace Lurp;
 
@@ -50,7 +51,18 @@ public class Program
         var mode = modeArg["--mode=".Length..];
         if (ModeHandlers.TryGetValue(mode, out var handler))
         {
-            await handler(args);
+            try
+            {
+                await handler(args);
+            }
+            catch (WorkspaceUnreadableException ex)
+            {
+                // A diagnosed refusal, not a crash. The operator needs the remediation
+                // and an exit code, not a stack trace into Lurp's internals.
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                Environment.Exit(2);
+            }
         }
         else
         {

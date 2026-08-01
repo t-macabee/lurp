@@ -54,13 +54,18 @@ namespace Lurp.Workspace
                 Budget = Budget,
             };
 
-            var tiers = GetTierBuilders(context);
-            var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget, EstimateTokens(anchor.Source));
-            capsule.EstimatedTokens = runningTotal;
-
             var bindingIncompleteness = EdgeStore is IBindingIncompletenessStore bindingStore
                 ? bindingStore.GetBindingIncompleteness(SnapshotId)
                 : [];
+
+            // Whether the anchor sits in a region where bindings were lost decides how an
+            // empty tier is reported. Resolved here so the budgeter can label emptiness
+            // as "unresolved" rather than as a proved "empty".
+            var anchorBindingIsIncomplete = AnchorRegionHasLostBindings(anchor, bindingIncompleteness);
+
+            var tiers = GetTierBuilders(context);
+            var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget, EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
+            capsule.EstimatedTokens = runningTotal;
 
             PopulateContractSections(capsule, bindingIncompleteness);
 
@@ -85,6 +90,14 @@ namespace Lurp.Workspace
             capsule.InclusionReasons["relevantTests"] = "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
             capsule.InclusionReasons["secondDegreeContext"] = "Bounded upstream paths within the requested hop limit.";
             capsule.InclusionReasons["surroundingSource"] = "Sibling declarations sharing the anchor's containing declaration.";
+
+            if (AnchorRegionHasLostBindings(capsule.Anchor, bindingIncompleteness))
+            {
+                capsule.InclusionReasons["omittedTiers.unresolved"] =
+                    "Bindings were lost over the anchor's documents, so an omitted tier marked "
+                  + "'unresolved' means the relation could not be observed. It is NOT evidence that "
+                  + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
+            }
 
             var traverser = new ImpactTraverser(EdgeStore, SnapshotId);
             capsule.IncomingPaths.AddRange(traverser.TraceImpact(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops));
@@ -145,8 +158,10 @@ namespace Lurp.Workspace
             {
                 // AffectedPublicSurfaces is not a budgeter tier, so record its
                 // emptiness through the same reason-coded omission channel the
-                // budgeter uses for empty tiers.
-                capsule.OmittedTiers.Add(new TruncationEntry("affectedPublicSurfaces", "empty"));
+                // budgeter uses for empty tiers, including the same proved-absence
+                // versus unobservable-region distinction.
+                var reason = AnchorRegionHasLostBindings(capsule.Anchor, bindingIncompleteness) ? "unresolved" : "empty";
+                capsule.OmittedTiers.Add(new TruncationEntry("affectedPublicSurfaces", reason));
             }
 
             if (EdgeStore is IBindingIncompletenessStore)
@@ -302,6 +317,36 @@ namespace Lurp.Workspace
             return (text ?? string.Empty).Length / 4;
         }
 
+        /// <summary>
+        /// True when any document the anchor is declared in lost bindings during
+        /// extraction. In that region an absent relation is unobservable rather than
+        /// absent, so nothing may report it as a proved emptiness.
+        /// </summary>
+        internal static bool AnchorRegionHasLostBindings(
+            CapsuleAnchor anchor, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness)
+        {
+            if (bindingIncompleteness.Count == 0)
+                return false;
+
+            var anchorDocuments = anchor.Locations
+                .Select(static location => location.DocumentPath)
+                .Where(static path => !string.IsNullOrEmpty(path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (anchorDocuments.Count == 0)
+                return false;
+
+            foreach (var record in bindingIncompleteness)
+            {
+                if (!BindingIncompletenessReason.UnobservableReasons.Contains(record.Reason))
+                    continue;
+                if (record.DocumentPath != null && anchorDocuments.Contains(record.DocumentPath))
+                    return true;
+            }
+
+            return false;
+        }
+
         public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options)
         {
             if (!string.IsNullOrEmpty(lookup.SymbolArg))
@@ -380,18 +425,24 @@ namespace Lurp.Workspace
 
     internal static class ContextBudgeter
     {
-        internal static int Apply(ContextCapsule capsule, IEnumerable<IContextTierBuilder> tiers, int budget, int runningTotal)
+        internal static int Apply(ContextCapsule capsule, IEnumerable<IContextTierBuilder> tiers, int budget, int runningTotal, bool anchorBindingIsIncomplete = false)
         {
             var truncatedCategories = new List<string>();
             var omittedTiers = new List<TruncationEntry>();
             var budgetExhausted = runningTotal > budget;
+
+            // An empty tier carries one of two very different meanings, and collapsing
+            // them is what lets a capsule assert "nothing calls this" when the truth is
+            // "the compiler could not tell". "empty" is a proved absence and consumers
+            // may act on it; "unresolved" is an unobservable region and proves nothing.
+            var emptyReason = anchorBindingIsIncomplete ? "unresolved" : "empty";
 
             foreach (var tier in tiers)
             {
                 var items = tier.Build();
                 if (items.Count == 0)
                 {
-                    omittedTiers.Add(new TruncationEntry(tier.Name, "empty"));
+                    omittedTiers.Add(new TruncationEntry(tier.Name, emptyReason));
                     continue;
                 }
                 if (budgetExhausted)

@@ -119,6 +119,269 @@ Closed capsule decisions:
 - No generated anchor narrative: architecture §24 keeps deterministic structured facts canonical. Consumer-authored prose is not stored as fact; source-authored XML documentation remains retrievable source evidence.
 - Architectural constraints come from snapshot annotations and repeatable caller `--constraint` input. No second JSON authority was added.
 
+### Compiler-language-version fidelity — restore the evaluated language version (2026-08-01)
+
+Closes task #1 of `docs/reference/CONTEXT_CAPSULE_COMPLETENESS_AUDIT.md`.
+`IndexRunner` opened every solution with `MSBuildWorkspace.Create()` and took the
+parse options straight from `OpenSolutionAsync`. When MSBuild evaluation of a
+project fails (observed on the external `eNote` solution, whose SDK-style
+projects declare no `<TargetFramework>` and no `<LangVersion>`, so even
+`dotnet build` fails with "Invalid framework identifier ''"), MSBuildWorkspace
+silently falls back to **C# 7.3** parse options — not the project's evaluated
+language version. The eNote snapshot therefore compiled C# 10+ source as C# 7.3:
+914 CS8370 diagnostics, `CourseService.cs` at `compiler_error: 190`, and
+semantic edges that depend on modern syntax binding were suppressed.
+
+`LanguageVersionRecovery.Apply` (`src/Workspace/LanguageVersionRecovery.cs`) now
+runs immediately after `OpenSolutionAsync` and derives each affected project's
+effective language version from its own inputs instead of the fallback: an
+explicit `<LangVersion>` property is authoritative (parsed from the project
+file), an SDK-style project with no explicit `LangVersion` uses the SDK default
+(`latest` → `LanguageVersion.LatestMajor`), and non-SDK projects are left at
+their correct C# 7.3 default. Projects whose parse options are already correct
+are untouched, so healthy solutions are unaffected. The corrected `Solution` is
+used by both the full and incremental index paths (and therefore by
+`CrossDocumentEdgeRefresher`).
+
+Regression fixture `tests/fixtures/LanguageVersionFallback/` reproduces the
+mismatch: `Modern/` is an SDK-style project with no `TargetFramework` (MSBuild
+evaluation fails → fallback) and modern C# source; `ExplicitLang/` pins
+`LangVersion=9.0` to prove explicit versions are honored, never clobbered.
+`LanguageVersionFallback_ModernSyntax_NoCs8370_And_ControllerCallsBind` fails
+without the fix (CS8370 present) and passes with it: the snapshot is `complete`,
+**0 CS8370**, and `InstructorCourseController.GetMyCourses/GetById →
+ICourseService.GetPagedForInstructorAsync/GetByIdForInstructorAsync` persist as
+`compiler_proved` `Calls` edges.
+
+Re-indexing `eNote.sln` (snapshot `ae1b3254...`): all 7 projects recovered to
+C# 14, **CS8370 914 → 0**, `CourseService.cs` `compiler_error` 190 → 1, and the
+controller constructors now bind a `References` edge to `ICourseService`. The
+controller→interface *method* calls still do not bind for eNote — that is the
+separate, genuinely-broken cross-project reference resolution (no TFM →
+`ResolvePackageAssets` fails → no metadata references), honestly surfaced via
+`binding_incompleteness` (`unresolved_metadata`/`filtered_external`), not a
+language-version defect; the fixture proves the calls-persist path in a
+workspace whose references are resolvable.
+
+Validation: `dotnet build Lurp.slnx` clean (0 warnings, 0 errors);
+`LanguageVersionRegressionTests` 1/1, `RealSolutionIntegrationTests` +
+`T9CompletenessTests` + `OutcomeBenchmarkTests` 16/16, `CleanRebuildEquivalenceTest`
++ `CliDispatchTests` 7/7.
+
+### Capsule budget truthfulness and enforceability (2026-08-01)
+
+Closes task #3 of `docs/reference/CONTEXT_CAPSULE_COMPLETENESS_AUDIT.md`.
+Previously `estimatedTokens` counted only anchor + tier-item source, and
+`incomingPaths`/`outgoingPaths`/`topology`/`completeness.binding_incompleteness`
+were appended after the budget was applied, untoken-counted and untruncated: an
+eNote CourseService capsule serialized to ~1 MB while reporting
+`estimatedTokens = 1466` under `--budget=4000`.
+
+- `CapsuleBudgetEnforcer` (`src/Workspace/CapsuleBudgetEnforcer.cs`) runs after
+  every section is populated and applies the architecture's greedy priority
+  policy. The budget measures **content**: the source text of the anchor and
+  every capsule item plus the serialized weight of the substantive non-source
+  sections (paths, topology, constraints, completeness, uncertainties,
+  verification, likely change sites, affected public surfaces, inclusion
+  reasons). Per-item identity/provenance framing (symbol ids, fully-qualified
+  names, edge kinds, provenance, coordinates) is navigation metadata and is not
+  counted — this keeps a 4,000-token budget able to hold a type anchor's
+  member-level tiers, which the whole-JSON measure could not (it forced the
+  enforcer to drop `directCallees`, `registeredImplementations`,
+  `surroundingSource`, and `uncertainties` outright). Over-budget capsules
+  first bound the path sections (a `summarized` entry), then bound tier-item
+  source text to a per-item cap (also `summarized`), then clear the
+  lowest-priority sections greedily; every omitted/summarized category is
+  recorded in `omittedTiers` and `truncatedCategories`. The anchor is never
+  dropped; if it alone overflows the budget, that overflow is declared with
+  `budget_exhausted`.
+- `estimatedTokens` is the settled content measure of the exact capsule the
+  handler writes (`ContextCapsuleJson.Serialize`), so it always describes the
+  emitted artifact's content within the requested budget.
+- `CapsuleTopology.Current` is a reference summary (direction, path and hop
+  counts, `"see incomingPaths"`/`"see outgoingPaths"`) instead of a full copy of
+  the path collections; the paths are serialized once under
+  `incomingPaths`/`outgoingPaths`.
+- `SnapshotCompleteness` carries `binding_incompleteness_summary` (a
+  deterministic reason/project rollup) and `binding_incompleteness_total` by
+  default; per-document rows are emitted only behind `--completeness-detail`.
+- CLI: `--completeness-detail` documented in `--help` and `src/README.md`.
+
+Completion criterion verified against the eNote snapshot (`870ebdf6...`, the
+post-language-version re-index): `--budget=4000` emits a 34,095-byte capsule
+with `estimatedTokens = 3549 <= 4000`, `truncated = true`, and — from a type
+anchor — `contracts=1` (ICourseService, `Implements/compiler_proved`),
+`directCallees=6` (Calls + `MayDispatchTo/compiler_proved` dispatch targets),
+`registeredImplementations=7` (all graded `MayDispatchTo/compiler_proved`),
+`surroundingSource=6` (bounded member source), and 4 reason-distinguished
+`binding_incompleteness` uncertainties. Every omitted/summarized category is
+reason-coded (`empty` for genuinely empty tiers, `summarized` for bounded
+content, `budget_exhausted` for cleared sections).
+
+Validation: full suite 275/275 pass. `CapsuleBudgetEnforcerTests` 7/7,
+`ContextBudgeterTests` 2/2, `ContextCapsuleAcceptanceTests` 1/1,
+`OutcomeBenchmarkTests` 1/1 (baseline regenerated with truthful estimates).
+
+### Unreadable-workspace gate and the empty/unresolved distinction (2026-08-01)
+
+Prompted by an inspection of the six capsule sets under `test-output/`. The
+language-version work above (§"Compiler-language-version fidelity") had already
+*diagnosed* the underlying condition for eNote — no TFM → `ResolvePackageAssets`
+fails → no metadata references — but nothing **enforced** it. Lurp continued to
+index reference-less compilations, mark the snapshot `complete`, and serve
+capsules from the resulting near-empty graph.
+
+Measured state of the shipped artifacts before this change:
+
+| Run | Symbols | `Calls` edges | Error diagnostics | Top error |
+|---|---|---|---|---|
+| `music-library-review` | 913 | 85 | 3,177 | CS0518 × 2,293 |
+| `enote-architecture-check` | 2,800 | 387 | 17,010 | CS0518 × 11,104 |
+| `enote-remediation-review` / `enote-validated` | 3,146 | 389 | 16,407 | CS0518 × 11,632 |
+| `fit-rs2-2026` / `-retry` | 1,641 | 52 | 716 | CS0246 × 355 |
+
+CS0518 (`predefined type 'System.Object' is not defined`) is never a source
+defect — it means the compilation had **no corlib**, i.e. MSBuild never handed
+Roslyn a reference set. All six snapshots were nevertheless marked `complete`.
+The concrete harm is the reason code, not the missing edges: `TokenService` in
+`music-library-review` had zero incoming `Calls` edges and its capsule reported
+`directCallers: []` with `omittedTiers` reason **`empty`** — a proved-absence
+claim — when the truth was that no binding over that region was observable.
+
+**Implemented.**
+
+- `WorkspaceLoadGate` (`src/Workspace/WorkspaceLoadGate.cs`) classifies each
+  compilation before extraction. `GetSpecialType(SpecialType.System_Object)
+  .TypeKind == TypeKind.Error` ⇒ `CompilationReadability.Blind`. Blind projects
+  are skipped, and every one of their documents is recorded as
+  `binding_incompleteness` reason `project_unreadable`.
+- `IndexRunner` no longer throws `AggregateException` when any project fails.
+  A failing project is isolated and recorded; its siblings' facts are retained.
+  The hard stop fires **only** when `extractedProjects == 0` — no readable
+  project anywhere — raising `WorkspaceUnreadableException` and marking the
+  snapshot `failed` with reason code `workspace_unreadable`. Previously one bad
+  project in an *n*-project solution discarded all *n*.
+- `BindingIncompletenessReason.UnobservableReasons` names the reasons under
+  which a missing relation proves nothing: `ambiguous_overload`,
+  `compiler_error`, `unresolved_metadata`, `unsupported_syntax`,
+  `extractor_failure`, `project_unreadable`. `filtered_external` is deliberately
+  **excluded** — there the target was resolved and is knowably outside the
+  snapshot, an explained absence rather than an unknown one.
+- `ContextBudgeter.Apply` takes `anchorBindingIsIncomplete` (defaulted, so
+  existing callers and tests are unaffected) and emits `unresolved` instead of
+  `empty` for empty tiers when
+  `ContextAssembler.AnchorRegionHasLostBindings` matches the anchor's documents
+  against the unobservable-reason set. The same distinction is applied to
+  `affectedPublicSurfaces`, and an `inclusionReasons["omittedTiers.unresolved"]`
+  entry states in-band that `unresolved` is not evidence of absence.
+- `Program.Main` catches `WorkspaceUnreadableException` and exits `2` with the
+  remediation text only — a diagnosed refusal, not a stack trace.
+
+**Verification (MusicLibrary, the worst of the six).** Pre-restore the gate
+refuses: `[API] UNREADABLE: no metadata references resolved; skipped.`, snapshot
+`failed (workspace_unreadable)`, exit 2. After `dotnet restore` on the *same*
+solution with the *same* command:
+
+| | before | after |
+|---|---|---|
+| Edges | 1,844 | **4,622** |
+| `Calls` edges | 85 | **113** |
+| Error diagnostics | 3,177 | **0** |
+| Unobservable bindings | 2,056 | **0** (4,189 `filtered_external` only) |
+
+`AccountController.Login` and `.Register` now resolve as callers of
+`ITokenService.CreateToken`. The healthy run carries 4,189 `filtered_external`
+records and still correctly reports `empty`, not `unresolved` — the
+reason-partition is load-bearing and is exercised by that path.
+
+Validation: `dotnet build Lurp.slnx` clean (0 warnings, 0 errors);
+`WorkspaceLoadGateTests` 9/9 and `ContextBudgeterTests` 2/2 pass. Full suite not
+re-run — do that before merging.
+
+#### Open findings for follow-up
+
+1. **Capsules do not resolve callers through `MayDispatchTo` (open).** With a
+   correct graph, a capsule anchored on a *concrete* implementation reports zero
+   callers. Callers bind to the interface member, and the concrete symbol is one
+   `MayDispatchTo` hop away that `DirectCallersTierBuilder` does not walk.
+   Reproduction on the restored MusicLibrary index:
+   `--mode=context --symbol='M:API.Interfaces.ITokenService.CreateToken(API.Entities.AppUser)|…'`
+   returns `directCallers = [AccountController.Register, AccountController.Login]`;
+   `--symbol='M:API.Services.TokenService.CreateToken(API.Entities.AppUser)|…'`
+   returns `[]` with reason `empty`; the type anchor `T:API.Services.TokenService`
+   likewise returns `[]`. The concrete symbol is what callers most often anchor
+   on, so this is the same class of wrong claim as the one closed above, one
+   layer up. Investigate whether `ContextTierContext.EffectiveSymbolIds` is
+   meant to include dispatching interface members, or have the builder walk
+   incoming `MayDispatchTo` edges before tracing `Calls` upstream. **Provenance
+   must not launder**: a caller reached via dispatch is weaker evidence than a
+   direct compiler-resolved call and the capsule item must say so.
+2. **`test-output/` artifacts are stale and pre-fix — do not treat them as
+   current evidence.** Every capsule there was produced from a reference-less
+   compilation that the gate now refuses outright. In particular the 973 KB
+   `enote-architecture-check` CourseService capsule reporting
+   `estimatedTokens = 1466, truncated = false` **predates**
+   `CapsuleBudgetEnforcer` (commit `19aefc8`); the post-fix capsule for the same
+   symbol is `enote-validated` at 34,095 bytes with `estimatedTokens = 3549` and
+   `truncated = true`, exactly as §"Capsule budget truthfulness" records. The
+   budget defect is closed; do not reopen it from these files. Regenerate the
+   folder against restored solutions before using it to judge output quality.
+3. **`ContextBudgeter` tier costing is still source-only.** `EstimateTokens(
+   item.Source)` charges nothing for path-shaped tiers that carry no `Source`.
+   This is no longer observable in emitted capsules because
+   `CapsuleBudgetEnforcer` re-measures the settled artifact afterward and is the
+   authority, but the tier-level greedy-prefix decisions are made on an
+   incomplete measure, so tier *selection* can still be skewed. Low severity,
+   worth tidying when that area is next touched.
+
+### Convention-based DI and helper-mediated test evidence — framework-evidence contract (2026-08-01)
+
+Closes task #5 of `docs/reference/CONTEXT_CAPSULE_COMPLETENESS_AUDIT.md`.
+`DependencyInjectionAdapter` (since commit `a8acd7a`) already carries a
+convention path for Scrutor-style registration: `ProcessConventionCandidate`
+handles `Scan`/`AddClasses`/`AsImplementedInterfaces`/`AsMatchingInterface`/
+`UsingRegistrationStrategy`/`AddAssemblyTypes` and resolves the scanned
+assembly from the `FromAssembliesOf`/`FromAssemblyOf` argument (generic or
+`typeof(T)` form). It emits a `Registers` edge with **`convention`**
+provenance (never `compiler_proved`) targeting `convention:assembly_scan:<assembly>`
+with `TargetNodeKind = Convention`. The audit's snapshot predated this path
+(0 `Registers` edges), which is why the gap was confirmed. The path is now
+locked by focused adapter contract tests:
+
+- `DI_ScrutorScan_FromAssembliesOf_EmitsConventionRegistersEdge` — generic
+  marker form; asserts `Registers` + `Provenance.Convention` +
+  `convention:assembly_scan:TestAssembly` + `GraphNodeKind.Convention`.
+- `DI_ScrutorScan_FromAssembliesOfTypeOf_EmitsConventionRegistersEdge` — the
+  `FromAssembliesOf(typeof(T))` form used by eNote.
+- `DI_ExplicitGeneric_NotCompilerProved` — `AddScoped<,>` emits
+  `framework_derived` (never `compiler_proved`, never a convention node),
+  guarding the provenance distinction the audit required.
+- `ScrutorStubs` minimal fixture (`tests/UnitTest1.cs`) models the selector
+  chain (`Scan` → `FromAssembliesOf` → `AddClasses` → `AsImplementedInterfaces`).
+
+Test-evidence behavior for helper-mediated construction is now **explicitly
+defined** rather than inferred from an empty tier. `TestAdapter` scans
+test-method bodies only; that scope is the product boundary, not a gap:
+
+- `TestAdapter_HelperConstructedService_InvokedInTestBody_EmitsTestedByEdge` —
+  a test that obtains the service from a local non-test helper and invokes a
+  member in the test body **does** produce a `TestedBy` edge (the invocation
+  binds the production type). This is the eNote `CourseEnrollmentServiceTests`
+  pattern; its missing edge in the audit snapshot was caused by the degraded
+  compilation, not by the helper.
+- `TestAdapter_HelperConstructedService_OnlyConstructedInHelper_EmitsNoTestedByEdge` —
+  a test body that only calls the helper and never references the service type
+  emits no edge. This is a declared boundary: construction inside a non-test
+  helper is not evidence the test exercises the service, and `CourseService`
+  itself genuinely has no tests (0 references across all test documents).
+
+No `TestAdapter` extension was made; extending to follow helper bodies would
+over-claim coverage that the audit explicitly ruled out for `CourseService`.
+
+Validation: `dotnet build Lurp.slnx` clean (0 warnings, 0 errors);
+`B5AdapterTests` 20/20, `TestedByContractTests` + `GraphNodeMembershipTests`
+16/16.
+
 ### Rework completion — incremental closure, honesty, and operations (2026-08-01)
 
 - Reverse project invalidation uses `Solution.GetProjectDependencyGraph()` to compute the transitive dependent closure. Edge-sourced document invalidation iterates to a fixed point before extraction.
@@ -243,6 +506,17 @@ evidence) and assert exit code + stdout/stderr: no-args/`--help`/
 `--mode=` flag both exit 1 with `ERROR: Unknown mode`; `--mode=status` and
 `--mode=get-source` with no `--output-dir` both exit 1 mentioning
 `--output-dir`. 7/7 pass.
+
+**Follow-up fix (2026-08-01):** a full-suite run (261 tests, ~7 min under
+parallel load) caught `CliDispatchTests` flaking on the three non-zero-exit
+cases with empty captured `stderr`. Root cause: `Process.WaitForExit(int)`
+can return before the async `OutputDataReceived`/`ErrorDataReceived`
+callbacks finish draining, and fast-exiting error paths lose the race under
+load. Fixed per the documented .NET pattern — call the parameterless
+`WaitForExit()` immediately after the timed overload to block until the
+redirected-stream callbacks flush. Verified with 5 consecutive isolated runs
+(7/7 pass each); the fix addresses the actual race, not just its timing
+window, so it should hold under full-suite parallelism too.
 
 ### Phase 14 verification — Evidence-backed Impact Paths
 
