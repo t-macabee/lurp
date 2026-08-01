@@ -18,6 +18,22 @@ internal sealed class EdgeOperationsStore
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
+            command.CommandText = @"
+                INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson);
+            ";
+            var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+            var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
+            var targetSymbolIdParam = command.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
+            var kindParam = command.Parameters.Add(new SqliteParameter("@kind", null));
+            var provenanceParam = command.Parameters.Add(new SqliteParameter("@provenance", null));
+            var extractorVersionParam = command.Parameters.Add(new SqliteParameter("@extractorVersion", null));
+            var sourceDocumentPathParam = command.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
+            var sourceStartLineParam = command.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
+            var sourceStartColumnParam = command.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
+            var sourceEndLineParam = command.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
+            var sourceEndColumnParam = command.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
+            var isCrossGeneratedParam = command.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
+            var typeArgumentsJsonParam = command.Parameters.Add(new SqliteParameter("@typeArgumentsJson", null));
 
             using var nodeCmd = _connection.CreateCommand();
             nodeCmd.Transaction = transaction;
@@ -43,23 +59,18 @@ internal sealed class EdgeOperationsStore
                 RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.SourceSymbolId, edge.SourceNodeKind);
                 RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.TargetSymbolId, edge.TargetNodeKind);
 
-                command.CommandText = @"
-                    INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson);
-                ";
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@snapshotId", snapshotId);
-                command.Parameters.AddWithValue("@sourceSymbolId", edge.SourceSymbolId);
-                command.Parameters.AddWithValue("@targetSymbolId", edge.TargetSymbolId);
-                command.Parameters.AddWithValue("@kind", edge.Kind);
-                command.Parameters.AddWithValue("@provenance", (object?)edge.Provenance ?? DBNull.Value);
-                command.Parameters.AddWithValue("@extractorVersion", (object?)edge.ExtractorVersion ?? DBNull.Value);
-                command.Parameters.AddWithValue("@sourceDocumentPath", (object?)edge.SourceDocumentPath ?? DBNull.Value);
-                command.Parameters.AddWithValue("@sourceStartLine", (object?)edge.SourceStartLine ?? DBNull.Value);
-                command.Parameters.AddWithValue("@sourceStartColumn", (object?)edge.SourceStartColumn ?? DBNull.Value);
-                command.Parameters.AddWithValue("@sourceEndLine", (object?)edge.SourceEndLine ?? DBNull.Value);
-                command.Parameters.AddWithValue("@sourceEndColumn", (object?)edge.SourceEndColumn ?? DBNull.Value);
-                command.Parameters.AddWithValue("@isCrossGenerated", edge.IsCrossGenerated);
-                command.Parameters.AddWithValue("@typeArgumentsJson", (object?)edge.TypeArgumentsJson ?? DBNull.Value);
+                sourceSymbolIdParam.Value = edge.SourceSymbolId;
+                targetSymbolIdParam.Value = edge.TargetSymbolId;
+                kindParam.Value = edge.Kind;
+                provenanceParam.Value = (object?)edge.Provenance ?? DBNull.Value;
+                extractorVersionParam.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
+                sourceDocumentPathParam.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
+                sourceStartLineParam.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
+                sourceStartColumnParam.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
+                sourceEndLineParam.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
+                sourceEndColumnParam.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
+                isCrossGeneratedParam.Value = edge.IsCrossGenerated;
+                typeArgumentsJsonParam.Value = (object?)edge.TypeArgumentsJson ?? DBNull.Value;
                 command.ExecuteNonQuery();
             }
 

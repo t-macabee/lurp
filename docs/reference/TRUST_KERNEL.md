@@ -214,15 +214,35 @@ exists — `tokensave_circular`'s file-level detector is a false positive
 here (confirmed by grep, not by trusting the tool's own output alone), so
 no refactor was made.
 
-`repomix-output.xml` and `test-output/` (source-bearing artifacts from
-external-fixture indexing, audit #9) were added to `.gitignore`.
+`repomix-output.xml`, `test-output/`, and the one-off
+`docs/reference/AUDIT_FINDINGS.md` report itself were added to `.gitignore`
+(source-bearing/non-durable artifacts, audit #9).
 
-Not done in this pass (left as open, low-priority recommendations):
-per-row `INSERT OR IGNORE` batching in `EdgeOperationsStore`/
-`SnapshotLifecycleStore` (#25) and a dedicated CLI-dispatch/exit-code test
-class for `Program.Main`/`HandlerBootstrap` (#45) — both require new test
-or perf work beyond the in-flight refactor, not a completion of something
-already started.
+### Audit remediation — closing #25 and #45 (2026-08-01)
+
+**#25 (per-row insert perf):** `EdgeOperationsStore.SaveEdges`'s actual
+defect wasn't the per-row loop (SQLite handles that fine inside one
+transaction) — it was that `command.CommandText` was reassigned every
+iteration despite being identical text every time, forcing SQLite to
+re-prepare the same statement for all 20,057 edges on the self-index. Fixed
+by preparing the statement and its parameter objects once outside the loop
+(matching the pattern the same method already used for `nodeCmd`/`memberCmd`)
+and only mutating `.Value` per row inside the loop. `SnapshotLifecycleStore`'s
+insert loops (`InsertDocumentsAndBindings`, `InsertProjectGraph`) were
+checked and already reuse a prepared command with `Parameters.Clear()` per
+row — not the same defect, left as-is. Verified via
+`SqliteUpsertTests`/`SaveEdges`-related tests (9/9 pass) and a full solution
+build (0 errors, 0 warnings).
+
+**#45 (CLI dispatch untested):** added `tests/CliDispatchTests.cs`. Because
+`Program.Main`/`HandlerBootstrap` call `Environment.Exit(1)` directly on
+error paths, an in-process test would kill the test host, so these run the
+built `Lurp.dll` as a subprocess (same approach as the audit's own CLI-smoke
+evidence) and assert exit code + stdout/stderr: no-args/`--help`/
+`--mode=help` all print help and exit 0; `--mode=bogus` and a missing
+`--mode=` flag both exit 1 with `ERROR: Unknown mode`; `--mode=status` and
+`--mode=get-source` with no `--output-dir` both exit 1 mentioning
+`--output-dir`. 7/7 pass.
 
 ### Phase 14 verification — Evidence-backed Impact Paths
 
