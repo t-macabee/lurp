@@ -156,6 +156,30 @@ Closed capsule decisions:
 
 Validation: `FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType` (edges non-empty, all sources start with `T:`) and `OutcomeBenchmarkTests.RunBaseline_WritesOutcomeEvaluation` (`missingRelevantTests: false` for all scenarios) both pass.
 
+### CLI fix — `--mode=index` failed on a fresh nested `--output-dir` (2026-08-01)
+
+External test against `FIT-RS2-2026/eCommerce` (33 declarations, 4 projects)
+found `--mode=index` throwing `SQLite Error 14: unable to open database file`
+whenever `--output-dir` pointed at a directory that did not yet exist (e.g. a
+nested path with no existing parent). `IndexHandler.Run` computed `dbPath`
+and called `HandlerBootstrap.OpenStore` without ever creating `outputDir`;
+every other mode is read-only and correctly fails via `ResolveDbPath`'s
+`File.Exists` check, but indexing is the one mode that must create the
+directory. Fixed in `IndexHandler.cs` by calling
+`Directory.CreateDirectory(outputDir)` before computing `dbPath`. Verified
+manually end-to-end: full index of `FIT-RS2-2026/eCommerce` into a
+previously-nonexistent nested output dir now completes (1654 declarations,
+6453 edges, 1240 diagnostics), and `status`/`search`/`find-symbol` against
+the resulting database all resolve correctly.
+
+Same test run also confirmed `search --kind=` filters on Roslyn's coarse
+`SymbolKind` (`"Type"`, `"Method"`, `"Field"`, ...), not the finer
+`TypeKind` (`"Class"`, `"Interface"`, `"Struct"`, ...) that only lives in
+`metadata_json`. `--kind` for `--mode=search` isn't in `--help` output at
+all (only the unrelated `--mode=annotate --kind=` is documented), so
+`--kind=Class` finding nothing isn't a regression — it's an undocumented
+filter behaving as coded. Left as-is; not a correctness bug.
+
 ### Phase 14 verification — Evidence-backed Impact Paths
 
 **Architecture §19 completion condition:**

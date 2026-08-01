@@ -17,6 +17,7 @@ internal static class IndexHandler
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var outputDir = Path.GetFullPath(outputDirArg);
+        Directory.CreateDirectory(outputDir);
         var dbPath = Path.Combine(outputDir, "index.db");
         var jsonExportPath = HandlerBootstrap.GetArgValue(args, "--output-json=");
 
