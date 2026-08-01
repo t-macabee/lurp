@@ -21,7 +21,25 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
 
         var seen = new HashSet<string>();
+
+        const string directReason =
+            "Bounded upstream dependency within the requested hop limit.";
+        const string dispatchReason =
+            "Upstream dependency reached through interface dispatch. Weaker evidence — "
+          + "the runtime dispatch target may differ from the anchor.";
+
         foreach (var symbolId in effectiveSymbolIds)
+            AddUpstreamNeighbors(symbolId, directReason);
+
+        foreach (var symbolId in effectiveSymbolIds)
+        {
+            foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
+                AddUpstreamNeighbors(dispatchEdge.SourceSymbolId, dispatchReason);
+        }
+
+        return results;
+
+        void AddUpstreamNeighbors(string symbolId, string inclusionReason)
         {
             var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
             foreach (var path in paths)
@@ -36,7 +54,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                         continue;
 
                     var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
-                        "Bounded upstream dependency within the requested hop limit.");
+                        inclusionReason);
                     if (item != null)
                     {
                         results.Add(item);
@@ -44,7 +62,5 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                 }
             }
         }
-
-        return results;
     }
 }

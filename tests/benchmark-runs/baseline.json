@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-01T20:03:29.5993717Z",
+  "generatedAtUtc": "2026-08-01T22:00:28.6285399Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,12 +26,12 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 1649,
+        "estimatedTokens": 1828,
         "truncated": true,
         "unknownRuntimeVectorsDeclared": [
           {
             "RelationshipKind": "binding_incompleteness",
-            "Description": "131 binding(s) in Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "Description": "143 binding(s) in Application, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
             "SymbolIds": [
               "T:Outcome.Validation.OrderValidator|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
             ]
@@ -52,6 +52,14 @@
             "EdgeKind": "Implements",
             "Provenance": "compiler_proved",
             "Relevance": "relevant"
+          },
+          {
+            "Tier": "directCallers",
+            "Fqn": "global::Outcome.Application.OrderHandler.Handle",
+            "SymbolId": "M:Outcome.Application.OrderHandler.Handle(Outcome.Contracts.OrderDto)|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Calls",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
           },
           {
             "Tier": "registeredImplementations",
@@ -78,6 +86,14 @@
             "Relevance": "unclassified"
           },
           {
+            "Tier": "secondDegreeContext",
+            "Fqn": "global::Outcome.Application.OrderHandler.Handle",
+            "SymbolId": "M:Outcome.Application.OrderHandler.Handle(Outcome.Contracts.OrderDto)|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Calls",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
             "Tier": "surroundingSource",
             "Fqn": "global::Outcome.Validation.OrderValidator.Validate",
             "SymbolId": "M:Outcome.Validation.OrderValidator.Validate(Outcome.Contracts.OrderDto)|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -88,7 +104,7 @@
         ],
         "relevantCount": 3,
         "irrelevantCount": 0,
-        "unclassifiedCount": 2
+        "unclassifiedCount": 4
       },
       "contracts": {
         "expected": [
@@ -121,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "05e15354592d47eeb08a3f146f739907",
-        "fullSnapshot": "a50caf30d1a34ef2bf598eb050d67028",
+        "incrementalSnapshot": "63794f1fd8474ad68c0a39d3d9fe4bd3",
+        "fullSnapshot": "ff24c4db2047443b89816d5ed30af070",
         "equivalent": true,
         "error": null
       },
@@ -275,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "53c08af9a78d4d938875c3ed347915d4",
-        "fullSnapshot": "531b8c569f9e47f6b0ed10af43abf145",
+        "incrementalSnapshot": "d0b082d2dcc6465a983ceb36a4230cd7",
+        "fullSnapshot": "e9dc9a8b75374d43907a333e026805f7",
         "equivalent": true,
         "error": null
       },
@@ -372,8 +388,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "9ff857a80c51494b88121e808e959610",
-        "fullSnapshot": "0c508e9ab8a74b03aac1409bb9a852cf",
+        "incrementalSnapshot": "22bd5a2b4c5745958f7d64135761751d",
+        "fullSnapshot": "7bfcace76f8e4caeafdb0bef23df8d24",
         "equivalent": true,
         "error": null
       },

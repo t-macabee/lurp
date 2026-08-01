@@ -28,6 +28,16 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
             .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
             .ToList();
 
+    // For a given concrete symbol, returns the interface/abstract members that
+    // dispatch TO it. An incoming MayDispatchTo edge <source → this symbol>
+    // means "source dispatches to this concrete implementation at runtime".
+    // Tier builders chain this with Calls-upstream traversal to find callers
+    // that reach the anchor through interface dispatch.
+    internal List<EdgeRecord> GetDispatchSourceEdges(string symbolId)
+        => EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
+            .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
+            .ToList();
+
     private IReadOnlyList<string> ComputeEffectiveSymbolIds()
     {
         var ids = new List<string> { SymbolId.Value };

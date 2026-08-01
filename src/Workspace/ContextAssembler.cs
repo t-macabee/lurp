@@ -63,8 +63,17 @@ namespace Lurp.Workspace
             // as "unresolved" rather than as a proved "empty".
             var anchorBindingIsIncomplete = AnchorRegionHasLostBindings(anchor, bindingIncompleteness);
 
+            // Non-tier sections (paths, topology, constraints, completeness
+            // summary, inclusion reasons) are populated after the tier budgeter
+            // runs. Reserve a fraction of the budget so the tier-level
+            // greedy-prefix decisions do not exhaust the budget before those
+            // sections are added — the CapsuleBudgetEnforcer re-measures the
+            // whole artifact afterward, but the tier *selection* quality improves
+            // when the budgeter knows its effective headroom.
+            var nonTierReserve = Math.Min(Budget / 4, 500);
             var tiers = GetTierBuilders(context);
-            var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget, EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
+            var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget - nonTierReserve,
+                EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
             capsule.EstimatedTokens = runningTotal;
 
             PopulateContractSections(capsule, bindingIncompleteness);
