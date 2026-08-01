@@ -256,6 +256,11 @@ public sealed class SearchStore : ISearchStore
 
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
+        if (string.IsNullOrWhiteSpace(query) || limit <= 0)
+            return [];
+
+        limit = Math.Max(1, limit);
+
         using var command = _connection.CreateCommand();
         command.CommandText = @"
             SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind
@@ -282,6 +287,74 @@ public sealed class SearchStore : ISearchStore
         ";
 
         command.Parameters.AddWithValue("@query", query);
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        var results = new List<SymbolSearchResult>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
+                    fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    kind: reader.GetString(3),
+                    docCommentId: reader.GetString(2)));
+            }
+        }
+
+        // Architecture §10 "identifier fragments" contract: the FTS5 unicode61 index
+        // matches whole tokens only (no camel-case split), so a fragment like
+        // "Service" misses "CourseService". When a plain identifier-like term matches
+        // no whole token, fall back to case-insensitive substring matching over fully
+        // qualified names, which subsumes camel-case segments and prefixes.
+        if (results.Count == 0 && IsPlainIdentifierQuery(query))
+        {
+            return SearchSymbolsBySubstring(query, snapshotId, limit, includeGenerated, kind);
+        }
+
+        return results;
+    }
+
+    private static bool IsPlainIdentifierQuery(string query)
+    {
+        foreach (var c in query)
+        {
+            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_'))
+                return false;
+        }
+        return true;
+    }
+
+    private List<SymbolSearchResult> SearchSymbolsBySubstring(string query, string snapshotId, int limit, bool includeGenerated, string? kind)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind
+            FROM snapshot_symbols ss
+            JOIN symbols s ON s.symbol_id = ss.symbol_id
+            LEFT JOIN declarations dec ON s.symbol_id = dec.symbol_id
+            WHERE ss.snapshot_id = @snapshotId
+              AND ss.fqn LIKE @pattern ESCAPE '\'
+        ";
+
+        if (!string.IsNullOrEmpty(kind))
+        {
+            command.CommandText += " AND s.kind = @kind";
+            command.Parameters.AddWithValue("@kind", kind);
+        }
+
+        if (!includeGenerated)
+        {
+            command.CommandText += " AND (dec.is_generated IS NULL OR dec.is_generated = 0)";
+        }
+
+        command.CommandText += @"
+            ORDER BY ss.fqn
+            LIMIT @limit;
+        ";
+
+        var escaped = query.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
+        command.Parameters.AddWithValue("@pattern", $"%{escaped}%");
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit);
 

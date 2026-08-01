@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Lurp.Storage;
 using Lurp.Workspace;
 
@@ -18,6 +16,7 @@ internal static class ContextHandler
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var maxHopsArg = HandlerBootstrap.GetArgValue(args, "--max-hops=");
         var includeGenerated = args.Contains("--include-generated");
+        var includeCompletenessDetail = args.Contains("--completeness-detail");
         var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
         var changeObjective = HandlerBootstrap.GetArgValue(args, "--change-objective=");
         var affectedProjects = GetRepeatableArgs(args, "--affected-project=");
@@ -57,7 +56,7 @@ internal static class ContextHandler
             var assemblyOptions = new ContextAssemblyOptions(
                 intent, budget, maxHops, includeGenerated,
                 scopeArg, affectedProjects, changeObjective, constraints,
-                targetTopology, topologyAnnotations, gitRoot);
+                targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions);
             WriteCapsuleOutput(capsule, outputDirArg);
         }
@@ -108,7 +107,7 @@ internal static class ContextHandler
 
     private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
     {
-        var json = JsonSerializer.Serialize(capsule, new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+        var json = ContextCapsuleJson.Serialize(capsule);
         var safeName = capsule.Anchor.SymbolId
             .Replace('|', '_')
             .Replace(':', '_')

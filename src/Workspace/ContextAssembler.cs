@@ -20,7 +20,8 @@ namespace Lurp.Workspace
         IReadOnlyList<string>? CallerConstraints = null,
         IReadOnlyList<ImpactPath>? TargetTopology = null,
         IReadOnlyList<string>? TopologyAnnotations = null,
-        string? GitRoot = null
+        string? GitRoot = null,
+        bool IncludeCompletenessDetail = false
     );
 
     internal sealed class ContextAssembler
@@ -42,6 +43,7 @@ namespace Lurp.Workspace
         public IReadOnlyList<ImpactPath> TargetTopology { get; init; } = [];
         public IReadOnlyList<string> TopologyAnnotations { get; init; } = [];
         public string? GitRoot { get; init; }
+        public bool IncludeCompletenessDetail { get; init; }
 
         public ContextCapsule Assemble()
         {
@@ -52,18 +54,29 @@ namespace Lurp.Workspace
                 Budget = Budget,
             };
 
-            var runningTotal = ContextBudgeter.Apply(capsule, GetTierBuilders(context), Budget, EstimateTokens(anchor.Source));
+            var tiers = GetTierBuilders(context);
+            var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget, EstimateTokens(anchor.Source));
             capsule.EstimatedTokens = runningTotal;
 
-            PopulateContractSections(capsule);
+            var bindingIncompleteness = EdgeStore is IBindingIncompletenessStore bindingStore
+                ? bindingStore.GetBindingIncompleteness(SnapshotId)
+                : [];
 
-            new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot)
+            PopulateContractSections(capsule, bindingIncompleteness);
+
+            new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
                 .Detect(capsule);
+
+            // The tier budgeter bounds tier item source; this final pass measures the
+            // emitted capsule representation itself and trims/summarizes every
+            // consumer-visible section (paths, topology, completeness, constraints,
+            // uncertainties, verification, ...) against the same estimator.
+            CapsuleBudgetEnforcer.Enforce(capsule, Budget, tiers.Select(static tier => tier.Name).ToList());
 
             return capsule;
         }
 
-        private void PopulateContractSections(ContextCapsule capsule)
+        private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness)
         {
             capsule.InclusionReasons["contracts"] = "Compiler-resolved contracts implemented or overridden by the anchor.";
             capsule.InclusionReasons["directCallees"] = "Direct compiler-resolved calls or constructions made by the anchor.";
@@ -89,8 +102,20 @@ namespace Lurp.Workspace
             var topologyAnnotations = TopologyAnnotations
                 .Select(value => new CapsuleConstraint(value, "caller_supplied"))
                 .ToList();
+
+            // The current topology is the union of incomingPaths and outgoingPaths.
+            // Those collections are serialized once above; the reference summary
+            // preserves the topology meaning (direction, path and hop counts)
+            // without duplicating the path data.
+            var totalHops = capsule.IncomingPaths.Sum(path => path.Hops.Count)
+                + capsule.OutgoingPaths.Sum(path => path.Hops.Count);
             capsule.Topology = new CapsuleTopology(
-                capsule.IncomingPaths.Concat(capsule.OutgoingPaths).ToList(),
+                new CapsuleTopologyReference(
+                    "see incomingPaths",
+                    "see outgoingPaths",
+                    capsule.IncomingPaths.Count,
+                    capsule.OutgoingPaths.Count,
+                    totalHops),
                 TargetTopology.ToList(),
                 topologyAnnotations);
 
@@ -124,15 +149,29 @@ namespace Lurp.Workspace
                 capsule.OmittedTiers.Add(new TruncationEntry("affectedPublicSurfaces", "empty"));
             }
 
-            if (EdgeStore is IBindingIncompletenessStore bindingStore)
+            if (EdgeStore is IBindingIncompletenessStore)
             {
                 capsule.Completeness = new SnapshotCompleteness
                 {
                     ExtractorVersion = VersionConstants.ExtractorVersion,
-                    BindingIncompleteness = bindingStore.GetBindingIncompleteness(SnapshotId),
+                    // Detailed per-document rows are emitted only behind an
+                    // explicit detail option; the default is a deterministic
+                    // reason/project rollup that stays within a bounded size.
+                    BindingIncompleteness = IncludeCompletenessDetail ? bindingIncompleteness.ToList() : [],
+                    BindingIncompletenessSummary = BuildBindingIncompletenessSummary(bindingIncompleteness),
+                    BindingIncompletenessTotal = bindingIncompleteness.Sum(static record => record.Count),
                 };
             }
         }
+
+        internal static List<BindingIncompletenessSummary> BuildBindingIncompletenessSummary(IReadOnlyList<BindingIncompletenessRecord> records)
+            => records
+                .GroupBy(static record => (record.ProjectName, record.Reason))
+                .Select(static group => new BindingIncompletenessSummary(
+                    group.Key.ProjectName, group.Key.Reason, group.Sum(static record => record.Count)))
+                .OrderBy(static summary => summary.ProjectName, StringComparer.Ordinal)
+                .ThenBy(static summary => summary.Reason, StringComparer.Ordinal)
+                .ToList();
 
         private static bool IsPublicSurface(string? metadataJson)
         {
@@ -285,6 +324,7 @@ namespace Lurp.Workspace
                     TargetTopology = options.TargetTopology ?? [],
                     TopologyAnnotations = options.TopologyAnnotations ?? [],
                     GitRoot = options.GitRoot,
+                    IncludeCompletenessDetail = options.IncludeCompletenessDetail,
                 };
                 return assembler.Assemble();
             }
@@ -332,6 +372,7 @@ namespace Lurp.Workspace
                 TargetTopology = options.TargetTopology ?? [],
                 TopologyAnnotations = options.TopologyAnnotations ?? [],
                 GitRoot = options.GitRoot,
+                IncludeCompletenessDetail = options.IncludeCompletenessDetail,
             };
             return resolvedAssembler.Assemble();
         }

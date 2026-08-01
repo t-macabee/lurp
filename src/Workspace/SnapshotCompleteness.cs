@@ -20,4 +20,10 @@ public sealed class SnapshotCompleteness
 
     [JsonPropertyName("binding_incompleteness")]
     public List<BindingIncompletenessRecord> BindingIncompleteness { get; init; } = [];
+
+    [JsonPropertyName("binding_incompleteness_summary")]
+    public List<BindingIncompletenessSummary> BindingIncompletenessSummary { get; init; } = [];
+
+    [JsonPropertyName("binding_incompleteness_total")]
+    public int BindingIncompletenessTotal { get; init; }
 }

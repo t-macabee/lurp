@@ -129,9 +129,23 @@ namespace Lurp.Workspace
         [property: JsonPropertyName("symbolId")] string SymbolId);
 
     internal sealed record CapsuleTopology(
-        [property: JsonPropertyName("current")] List<ImpactPath> Current,
+        [property: JsonPropertyName("current")] CapsuleTopologyReference Current,
         [property: JsonPropertyName("target")] List<ImpactPath> Target,
         [property: JsonPropertyName("annotations")] List<CapsuleConstraint> Annotations);
+
+    // The capsule's current topology is the union of incomingPaths and
+    // outgoingPaths. Those collections are serialized once, in their own
+    // sections; this reference summary preserves the topology meaning without
+    // duplicating the path data.
+    internal sealed record CapsuleTopologyReference(
+        [property: JsonPropertyName("incomingReference")] string IncomingReference,
+        [property: JsonPropertyName("outgoingReference")] string OutgoingReference,
+        [property: JsonPropertyName("incomingPathCount")] int IncomingPathCount,
+        [property: JsonPropertyName("outgoingPathCount")] int OutgoingPathCount,
+        [property: JsonPropertyName("totalHopCount")] int TotalHopCount)
+    {
+        public static CapsuleTopologyReference Empty { get; } = new("", "", 0, 0, 0);
+    }
 
     internal sealed class UncertaintyEntry
     {
@@ -228,7 +242,7 @@ namespace Lurp.Workspace
         public List<CapsuleItem> AffectedPublicSurfaces { get; init; } = [];
 
         [JsonPropertyName("topology")]
-        public CapsuleTopology Topology { get; set; } = new([], [], []);
+        public CapsuleTopology Topology { get; set; } = new(CapsuleTopologyReference.Empty, [], []);
 
         [JsonPropertyName("completeness")]
         public SnapshotCompleteness? Completeness { get; set; }
@@ -258,5 +272,20 @@ namespace Lurp.Workspace
         {
             Anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
         }
+    }
+
+    // Canonical serializer for the emitted capsule representation. The budget
+    // enforcer measures this exact serialization and the handler writes it, so
+    // estimatedTokens always describes the artifact that is actually emitted.
+    internal static class ContextCapsuleJson
+    {
+        internal static readonly System.Text.Json.JsonSerializerOptions Options = new()
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
+
+        internal static string Serialize(ContextCapsule capsule)
+            => System.Text.Json.JsonSerializer.Serialize(capsule, Options);
     }
 }

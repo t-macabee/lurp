@@ -42,6 +42,12 @@ public static class IndexRunner
         Console.WriteLine($"done ({solution.Projects.Count()} projects).");
         swSolutionLoad.Stop();
 
+        // Restore compiler fidelity: MSBuildWorkspace silently falls back to
+        // C# 7.3 parse options when a project fails to evaluate. Derive each
+        // affected project's effective language version from its own inputs
+        // (explicit LangVersion, or the SDK-style default) so modern C# binds.
+        solution = LanguageVersionRecovery.Apply(solution);
+
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
         var swWorkspaceInfo = Stopwatch.StartNew();

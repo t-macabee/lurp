@@ -937,6 +937,99 @@ public class MigrationRunnerTests : IDisposable
         }
 
         [Fact]
+        public void SearchSymbols_FindsCourseServiceByCamelCaseSegmentFragment()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-fts-frag-001";
+            CreateSnapshotWithContent(store, snapshotId, "src/CourseService.cs",
+                "namespace N.Services { class CourseService { } }");
+
+            var decl = new SymbolDeclaration
+            {
+                SymbolId = new SymbolId("T:N.Services.CourseService", "asm1", "N.Services.CourseService"),
+                Kind = IndexedSymbolKind.Type,
+                DocumentVersionId = "doc-src/CourseService.cs:hash-src/CourseService.cs",
+                FullSpan = new DeclarationSpan(0, 10),
+                SignatureSpan = new DeclarationSpan(0, 10),
+                BodySpan = new DeclarationSpan(null, null),
+                NameSpan = new DeclarationSpan(0, 3)
+            };
+
+            store.SaveDeclarations(snapshotId, [decl]);
+            store.BuildSearchIndex(snapshotId);
+
+            var results = store.SearchSymbols("Service", snapshotId);
+            Assert.Contains(results, r => r.FullyQualifiedName == "N.Services.CourseService");
+        }
+
+        [Fact]
+        public void SearchSymbols_FindsCourseServiceByArbitrarySubstringFragment()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-fts-frag-002";
+            CreateSnapshotWithContent(store, snapshotId, "src/CourseService.cs",
+                "namespace N.Services { class CourseService { } }");
+
+            var decl = new SymbolDeclaration
+            {
+                SymbolId = new SymbolId("T:N.Services.CourseService", "asm1", "N.Services.CourseService"),
+                Kind = IndexedSymbolKind.Type,
+                DocumentVersionId = "doc-src/CourseService.cs:hash-src/CourseService.cs",
+                FullSpan = new DeclarationSpan(0, 10),
+                SignatureSpan = new DeclarationSpan(0, 10),
+                BodySpan = new DeclarationSpan(null, null),
+                NameSpan = new DeclarationSpan(0, 3)
+            };
+
+            store.SaveDeclarations(snapshotId, [decl]);
+            store.BuildSearchIndex(snapshotId);
+
+            var results = store.SearchSymbols("rseServ", snapshotId);
+            Assert.Contains(results, r => r.FullyQualifiedName == "N.Services.CourseService");
+        }
+
+        [Fact]
+        public void SearchSymbols_FragmentFallback_HonorsKindFilter()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-fts-frag-003";
+            CreateSnapshotWithContent(store, snapshotId, "src/CourseService.cs",
+                "namespace N.Services { class CourseService { } }");
+
+            var typeDecl = new SymbolDeclaration
+            {
+                SymbolId = new SymbolId("T:N.Services.CourseService", "asm1", "N.Services.CourseService"),
+                Kind = IndexedSymbolKind.Type,
+                DocumentVersionId = "doc-src/CourseService.cs:hash-src/CourseService.cs",
+                FullSpan = new DeclarationSpan(0, 10),
+                SignatureSpan = new DeclarationSpan(0, 10),
+                BodySpan = new DeclarationSpan(null, null),
+                NameSpan = new DeclarationSpan(0, 3)
+            };
+            var methodDecl = new SymbolDeclaration
+            {
+                SymbolId = new SymbolId("M:N.Services.CourseService.GetPagedForInstructorAsync", "asm1", "N.Services.CourseService.GetPagedForInstructorAsync"),
+                Kind = IndexedSymbolKind.Method,
+                DocumentVersionId = "doc-src/CourseService.cs:hash-src/CourseService.cs",
+                FullSpan = new DeclarationSpan(11, 20),
+                SignatureSpan = new DeclarationSpan(11, 20),
+                BodySpan = new DeclarationSpan(null, null),
+                NameSpan = new DeclarationSpan(11, 14)
+            };
+
+            store.SaveDeclarations(snapshotId, [typeDecl, methodDecl]);
+            store.BuildSearchIndex(snapshotId);
+
+            var typeResults = store.SearchSymbols("Service", snapshotId, kind: "Type");
+            Assert.Contains(typeResults, r => r.FullyQualifiedName == "N.Services.CourseService");
+            Assert.DoesNotContain(typeResults, r => r.FullyQualifiedName == "N.Services.CourseService.GetPagedForInstructorAsync");
+
+            var methodResults = store.SearchSymbols("Service", snapshotId, kind: "Method");
+            Assert.Contains(methodResults, r => r.FullyQualifiedName == "N.Services.CourseService.GetPagedForInstructorAsync");
+            Assert.DoesNotContain(methodResults, r => r.FullyQualifiedName == "N.Services.CourseService");
+        }
+
+        [Fact]
         public void SearchSource_EmptyQuery_ReturnsEmptyList()
         {
             var store = CreateStore();
@@ -3963,6 +4056,29 @@ namespace Microsoft.Extensions.DependencyInjection {
     }
 }";
 
+        private static readonly string ScrutorStubs = @"
+namespace Scrutor {
+    public interface ITypeSourceSelector { }
+    public interface IImplementationTypeSelector { }
+    public interface IServiceTypeSelector { }
+    public static class ServiceCollectionExtensions {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection Scan(
+            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+            System.Action<ITypeSourceSelector> action) => services;
+    }
+    public static class TypeSourceSelectorExtensions {
+        public static IImplementationTypeSelector FromAssembliesOf<T>(this ITypeSourceSelector source) => null!;
+        public static IImplementationTypeSelector FromAssembliesOf(this ITypeSourceSelector source, params System.Type[] types) => null!;
+        public static IServiceTypeSelector AddClasses(this IImplementationTypeSelector source) => null!;
+        public static IServiceTypeSelector AddClasses(this IImplementationTypeSelector source, System.Action<IImplementationTypeFilter> filter) => null!;
+        public static ITypeSourceSelector AsImplementedInterfaces(this IImplementationTypeSelector source) => null!;
+        public static ITypeSourceSelector AsMatchingInterface(this IImplementationTypeSelector source) => null!;
+    }
+    public interface IImplementationTypeFilter {
+        IImplementationTypeFilter AssignableTo<T>();
+    }
+}";
+
         private static readonly string EfCoreStubs = @"
 namespace Microsoft.EntityFrameworkCore {
     public class DbContext { }
@@ -4179,6 +4295,96 @@ public class Startup
         }
 
         [Fact]
+        public void DI_ScrutorScan_FromAssembliesOf_EmitsConventionRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+using Scrutor;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.Scan(scan => scan
+            .FromAssembliesOf<IService>()
+            .AddClasses()
+            .AsImplementedInterfaces());
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs + ScrutorStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-scrutor-001", CreateTestLocationResolver());
+
+            var edge = Assert.Single(edges, e => e.Kind == "Registers");
+            Assert.Equal(Provenance.Convention, edge.Provenance);
+            Assert.NotEqual(Provenance.CompilerProved, edge.Provenance);
+            Assert.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, edge.TargetSymbolId);
+            Assert.Equal(GraphNodeKind.Convention, edge.TargetNodeKind);
+            Assert.Contains("TestAssembly", edge.TargetSymbolId, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DI_ScrutorScan_FromAssembliesOfTypeOf_EmitsConventionRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+using Scrutor;
+
+public class Service { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.Scan(scan => scan
+            .FromAssembliesOf(typeof(Service))
+            .AddClasses()
+            .AsImplementedInterfaces());
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs + ScrutorStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-scrutor-002", CreateTestLocationResolver());
+
+            var edge = Assert.Single(edges, e => e.Kind == "Registers");
+            Assert.Equal(Provenance.Convention, edge.Provenance);
+            Assert.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, edge.TargetSymbolId);
+            Assert.Equal(GraphNodeKind.Convention, edge.TargetNodeKind);
+        }
+
+        [Fact]
+        public void DI_ExplicitGeneric_NotCompilerProved()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddScoped<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-005", CreateTestLocationResolver());
+
+            var edge = Assert.Single(edges, e => e.Kind == "Registers");
+            Assert.Equal(Provenance.FrameworkDerived, edge.Provenance);
+            Assert.NotEqual(Provenance.CompilerProved, edge.Provenance);
+            Assert.False(edge.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void MediatR_INotificationHandler_EmitsHandlesEdge()
         {
             var source = @"
@@ -4337,6 +4543,93 @@ public class Foo
             var edges = adapter.Extract(compilation, "snap-b5-test-002", CreateTestLocationResolver());
 
             Assert.Empty(edges);
+        }
+
+        [Fact]
+        public void TestAdapter_HelperConstructedService_InvokedInTestBody_EmitsTestedByEdge()
+        {
+            var productionRef = EmitStubAssembly("MyApp.Production", @"
+public class CourseEnrollmentService
+{
+    public void EnrollAsync() { }
+}");
+
+            var testTree = CSharpSyntaxTree.ParseText(@"
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class FactAttribute : Attribute { }
+
+public class CourseEnrollmentServiceTests
+{
+    [Fact]
+    public void Enroll_ConstructsViaHelper_ThenInvokesService()
+    {
+        var service = CreateService();
+        service.EnrollAsync();
+    }
+
+    private static CourseEnrollmentService CreateService()
+    {
+        return new CourseEnrollmentService();
+    }
+}
+", path: "test.cs");
+
+            var compilation = CSharpCompilation.Create(
+                "MyProject.Tests",
+                [testTree],
+                [
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                    productionRef,
+                ]);
+
+            var adapter = new TestAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-test-helper-001", CreateTestLocationResolver());
+
+            Assert.Contains(edges, e => e.Kind == "TestedBy"
+                && e.SourceSymbolId.Contains("CourseEnrollmentService")
+                && e.TargetSymbolId.Contains("Enroll_ConstructsViaHelper_ThenInvokesService"));
+        }
+
+        [Fact]
+        public void TestAdapter_HelperConstructedService_OnlyConstructedInHelper_EmitsNoTestedByEdge()
+        {
+            var productionRef = EmitStubAssembly("MyApp.Production", @"
+public class CourseEnrollmentService
+{
+    public void EnrollAsync() { }
+}");
+
+            var testTree = CSharpSyntaxTree.ParseText(@"
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class FactAttribute : Attribute { }
+
+public class CourseEnrollmentServiceTests
+{
+    [Fact]
+    public void Enroll_ConstructsViaHelper_ButBodyDoesNotReferenceService()
+    {
+        CreateService();
+    }
+
+    private static CourseEnrollmentService CreateService()
+    {
+        return new CourseEnrollmentService();
+    }
+}
+", path: "test.cs");
+
+            var compilation = CSharpCompilation.Create(
+                "MyProject.Tests",
+                [testTree],
+                [
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                    productionRef,
+                ]);
+
+            var adapter = new TestAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-test-helper-002", CreateTestLocationResolver());
+
+            Assert.DoesNotContain(edges, e => e.Kind == "TestedBy" && e.SourceSymbolId.Contains("CourseEnrollmentService"));
         }
 
         [Fact]

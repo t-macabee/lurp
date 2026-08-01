@@ -11,46 +11,54 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
         var results = new List<CapsuleItem>();
         var seen = new HashSet<string>();
 
-        var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value);
-        foreach (var edge in incomingEdges)
+        var incomingKinds = new HashSet<string>
         {
-            if (edge.Kind != EdgeKind.MayDispatchTo.ToString() &&
-                edge.Kind != EdgeKind.Registers.ToString())
-            {
-                continue;
-            }
-
-            var sourceId = edge.SourceSymbolId;
-            if (!seen.Add(sourceId))
-                continue;
-
-            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
-                "Persisted runtime dispatch or registration source for the anchor.");
-            if (item != null)
-            {
-                results.Add(item);
-            }
-        }
-
-        var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, context.SymbolId.Value);
-        foreach (var edge in outgoingEdges)
+            EdgeKind.MayDispatchTo.ToString(),
+            EdgeKind.Registers.ToString(),
+        };
+        var outgoingKinds = new HashSet<string>
         {
-            if (edge.Kind != EdgeKind.MayDispatchTo.ToString() &&
-                edge.Kind != EdgeKind.Handles.ToString() &&
-                edge.Kind != EdgeKind.Registers.ToString())
+            EdgeKind.MayDispatchTo.ToString(),
+            EdgeKind.Handles.ToString(),
+            EdgeKind.Registers.ToString(),
+        };
+
+        foreach (var symbolId in context.EffectiveSymbolIds)
+        {
+            var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
+            foreach (var edge in incomingEdges)
             {
-                continue;
+                if (!incomingKinds.Contains(edge.Kind))
+                    continue;
+
+                var sourceId = edge.SourceSymbolId;
+                if (!seen.Add(sourceId))
+                    continue;
+
+                var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
+                    "Persisted runtime dispatch or registration source for the anchor.");
+                if (item != null)
+                {
+                    results.Add(item);
+                }
             }
 
-            var targetId = edge.TargetSymbolId;
-            if (!seen.Add(targetId))
-                continue;
-
-            var item = context.BuildCapsuleItem(targetId, edge.Kind, edge.Provenance,
-                "Persisted runtime dispatch, handler, or registration target of the anchor.");
-            if (item != null)
+            var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
+            foreach (var edge in outgoingEdges)
             {
-                results.Add(item);
+                if (!outgoingKinds.Contains(edge.Kind))
+                    continue;
+
+                var targetId = edge.TargetSymbolId;
+                if (!seen.Add(targetId))
+                    continue;
+
+                var item = context.BuildCapsuleItem(targetId, edge.Kind, edge.Provenance,
+                    "Persisted runtime dispatch, handler, or registration target of the anchor.");
+                if (item != null)
+                {
+                    results.Add(item);
+                }
             }
         }
 

@@ -9,50 +9,56 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
+        var seen = new HashSet<string>();
         var allowedKinds = new HashSet<string>
         {
             EdgeKind.Calls.ToString()
         };
 
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
-        var paths = traverser.TraceImpact(symbolId: context.SymbolId.Value, direction: ImpactDirection.Upstream, allowedEdgeKinds: allowedKinds, maxDepth: 1);
 
-        var seen = new HashSet<string>();
-        foreach (var path in paths)
+        foreach (var symbolId in context.EffectiveSymbolIds)
         {
-            foreach (var hop in path.Hops)
+            var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1);
+            foreach (var path in paths)
             {
-                var neighborId = hop.SourceSymbolId;
-                if (!seen.Add(neighborId))
-                    continue;
-
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
-                    "Direct caller that can be affected by changing the anchor.");
-                if (item != null)
+                foreach (var hop in path.Hops)
                 {
-                    results.Add(item);
+                    var callerId = hop.SourceSymbolId;
+                    if (!seen.Add(callerId))
+                        continue;
+
+                    var item = context.BuildCapsuleItem(callerId, hop.EdgeKind, hop.Provenance,
+                        "Direct caller that can be affected by changing the anchor.");
+                    if (item != null)
+                    {
+                        results.Add(item);
+                    }
                 }
             }
         }
 
-        var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value);
-        foreach (var edge in incomingEdges)
+        foreach (var symbolId in context.EffectiveSymbolIds)
         {
-            if (edge.Kind != EdgeKind.RoutesTo.ToString() &&
-                edge.Kind != EdgeKind.Handles.ToString())
+            var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
+            foreach (var edge in incomingEdges)
             {
-                continue;
-            }
+                if (edge.Kind != EdgeKind.RoutesTo.ToString() &&
+                    edge.Kind != EdgeKind.Handles.ToString())
+                {
+                    continue;
+                }
 
-            var sourceId = edge.SourceSymbolId;
-            if (!seen.Add(sourceId))
-                continue;
+                var sourceId = edge.SourceSymbolId;
+                if (!seen.Add(sourceId))
+                    continue;
 
-            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
-                "Framework route or handler entry point that reaches the anchor.");
-            if (item != null)
-            {
-                results.Add(item);
+                var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
+                    "Framework route or handler entry point that reaches the anchor.");
+                if (item != null)
+                {
+                    results.Add(item);
+                }
             }
         }
 

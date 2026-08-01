@@ -10,6 +10,7 @@ namespace Lurp.Workspace
         private readonly SymbolId _symbolId;
         private readonly bool _includeGenerated;
         private readonly string? _gitRoot;
+        private readonly IReadOnlyList<BindingIncompletenessRecord> _bindingIncompleteness;
         private readonly Dictionary<string, string?> _owningProjectCache = new(StringComparer.OrdinalIgnoreCase);
         private string? _solutionPath;
         private bool _solutionPathResolved;
@@ -20,7 +21,8 @@ namespace Lurp.Workspace
             string snapshotId,
             SymbolId symbolId,
             bool includeGenerated,
-            string? gitRoot = null)
+            string? gitRoot = null,
+            IReadOnlyList<BindingIncompletenessRecord>? bindingIncompleteness = null)
         {
             _edgeStore = edgeStore;
             _declarationStore = declarationStore;
@@ -28,6 +30,7 @@ namespace Lurp.Workspace
             _symbolId = symbolId;
             _includeGenerated = includeGenerated;
             _gitRoot = gitRoot;
+            _bindingIncompleteness = bindingIncompleteness ?? [];
         }
 
         public void Detect(ContextCapsule capsule)
@@ -43,6 +46,7 @@ namespace Lurp.Workspace
             CollectReflectionUncertainties(capsule, neighborhood);
             CollectDispatchUncertainties(capsule, neighborhood);
             CollectFrameworkConventionUncertainties(capsule, neighborhood);
+            CollectBindingIncompletenessUncertainties(capsule);
 
             if (!_includeGenerated)
                 CollectGeneratedExclusionUncertainties(capsule, neighborhood);
@@ -141,6 +145,103 @@ namespace Lurp.Workspace
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
                 }
             }
+        }
+
+        // Translates persisted binding-incompleteness rows that fall inside the
+        // capsule's document scope (anchor documents, tier items, and traversed
+        // path hops) into bounded uncertainty entries. Rows are aggregated by
+        // reason so the section stays small, and the wording distinguishes
+        // compiler_error, unresolved_metadata, and filtered_external without
+        // implying that a missing relation means the reference is absent from
+        // source.
+        private void CollectBindingIncompletenessUncertainties(ContextCapsule capsule)
+        {
+            if (_bindingIncompleteness.Count == 0)
+                return;
+
+            var documentScope = BuildIncompletenessDocumentScope(capsule);
+            if (documentScope.Count == 0)
+                return;
+
+            var byDocument = _bindingIncompleteness
+                .Where(record => record.DocumentPath != null && documentScope.Contains(record.DocumentPath))
+                .ToList();
+            if (byDocument.Count == 0)
+                return;
+
+            // Project-level rows (no document path, e.g. extractor_failure) are
+            // relevant when the owning project contributes an in-scope document.
+            var relevantProjects = new HashSet<string>(
+                byDocument.Select(static record => record.ProjectName), StringComparer.Ordinal);
+            var projectLevel = _bindingIncompleteness
+                .Where(record => record.DocumentPath == null && relevantProjects.Contains(record.ProjectName))
+                .ToList();
+
+            foreach (var group in byDocument.Concat(projectLevel)
+                         .GroupBy(static record => record.Reason, StringComparer.Ordinal)
+                         .OrderBy(static group => group.Key, StringComparer.Ordinal))
+            {
+                var count = group.Sum(static record => record.Count);
+                var projects = group.Select(static record => record.ProjectName)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(static name => name, StringComparer.Ordinal)
+                    .ToList();
+                capsule.Uncertainties.Add(new UncertaintyEntry(
+                    [_symbolId.Value],
+                    "binding_incompleteness",
+                    DescribeBindingIncompleteness(group.Key, count, projects)));
+            }
+        }
+
+        private HashSet<string> BuildIncompletenessDocumentScope(ContextCapsule capsule)
+        {
+            var paths = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var location in _declarationStore.GetDeclarationLocations(_symbolId.Value, _snapshotId, _includeGenerated))
+                paths.Add(location.DocumentPath);
+            AddItemDocumentPaths(paths, capsule.Contracts);
+            AddItemDocumentPaths(paths, capsule.DirectCallees);
+            AddItemDocumentPaths(paths, capsule.DirectCallers);
+            AddItemDocumentPaths(paths, capsule.RegisteredImplementations);
+            AddItemDocumentPaths(paths, capsule.RelevantTests);
+            AddItemDocumentPaths(paths, capsule.SecondDegreeContext);
+            AddItemDocumentPaths(paths, capsule.SurroundingSource);
+            foreach (var hop in capsule.IncomingPaths.Concat(capsule.OutgoingPaths).SelectMany(static path => path.Hops))
+            {
+                if (hop.SourceDocument != null)
+                    paths.Add(hop.SourceDocument);
+            }
+            return paths;
+        }
+
+        private static void AddItemDocumentPaths(HashSet<string> paths, IEnumerable<CapsuleItem> items)
+        {
+            foreach (var item in items)
+            {
+                if (item.DocumentPath != null)
+                    paths.Add(item.DocumentPath);
+            }
+        }
+
+        private static string DescribeBindingIncompleteness(string reason, int count, IReadOnlyList<string> projects)
+        {
+            var scope = string.Join(", ", projects);
+            return reason switch
+            {
+                BindingIncompletenessReason.CompilerError =>
+                    $"{count} binding(s) in {scope} could not be completed because the snapshot compilation reported compiler errors in those projects. Relations that depend on that code may be missing from the graph even though the references exist in source.",
+                BindingIncompletenessReason.UnresolvedMetadata =>
+                    $"{count} binding(s) in {scope} could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
+                BindingIncompletenessReason.FilteredExternal =>
+                    $"{count} binding(s) in {scope} resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+                BindingIncompletenessReason.AmbiguousOverload =>
+                    $"{count} binding(s) in {scope} were ambiguous, so no unique overload target could be selected. Dispatch targets for those call sites are uncertain.",
+                BindingIncompletenessReason.UnsupportedSyntax =>
+                    $"{count} binding(s) in {scope} could not be completed because the extractor does not support the relevant syntax. Relations at those sites may be missing.",
+                BindingIncompletenessReason.ExtractorFailure =>
+                    $"{count} extractor failure(s) were recorded while producing the snapshot for {scope}. Some relations may be missing.",
+                _ =>
+                    $"{count} binding-incompleteness record(s) (reason '{reason}') affect {scope}. Relations in that code may be incomplete.",
+            };
         }
 
         private void CollectGeneratedExclusionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)

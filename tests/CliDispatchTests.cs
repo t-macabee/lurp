@@ -50,6 +50,9 @@ public sealed class CliDispatchTests
         process.BeginErrorReadLine();
         var exited = process.WaitForExit(30_000);
         Assert.True(exited, "lurp process did not exit within 30s.");
+        // WaitForExit(int) can return before the async OutputDataReceived/ErrorDataReceived
+        // callbacks finish flushing; the parameterless overload blocks until they drain.
+        process.WaitForExit();
 
         return (process.ExitCode, stdOut.ToString(), stdErr.ToString());
     }

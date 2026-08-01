@@ -9,6 +9,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
+        var seen = new HashSet<string>();
         var allowedKinds = new HashSet<string>
         {
             EdgeKind.Calls.ToString(),
@@ -16,26 +17,48 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         };
 
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
-        var paths = traverser.TraceImpact(symbolId: context.SymbolId.Value, direction: ImpactDirection.Downstream, allowedEdgeKinds: allowedKinds, maxDepth: 1);
 
-        var seen = new HashSet<string>();
-        foreach (var path in paths)
+        foreach (var symbolId in context.EffectiveSymbolIds)
         {
-            foreach (var hop in path.Hops)
+            var paths = traverser.TraceImpact(symbolId, ImpactDirection.Downstream, allowedKinds, maxDepth: 1);
+            foreach (var path in paths)
             {
-                var neighborId = hop.TargetSymbolId;
-                if (!seen.Add(neighborId))
-                    continue;
-
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
-                    "Direct call or construction target of the anchor.");
-                if (item != null)
+                foreach (var hop in path.Hops)
                 {
-                    results.Add(item);
+                    AddItem(hop.TargetSymbolId, hop.EdgeKind, hop.Provenance,
+                        "Direct call or construction target of the anchor.");
+
+                    // Interface dispatch rule: a Calls hop that lands on an
+                    // interface/abstract member surfaces that member's persisted
+                    // MayDispatchTo implementations. Each target keeps the
+                    // MayDispatchTo edge's own kind and provenance.
+                    if (hop.EdgeKind == EdgeKind.Calls.ToString())
+                        AddMayDispatchTargets(hop.TargetSymbolId);
                 }
             }
         }
 
         return results;
+
+        void AddItem(string symbolId, string edgeKind, string provenance, string inclusionReason)
+        {
+            if (!seen.Add(symbolId))
+                return;
+
+            var item = context.BuildCapsuleItem(symbolId, edgeKind, provenance, inclusionReason);
+            if (item != null)
+            {
+                results.Add(item);
+            }
+        }
+
+        void AddMayDispatchTargets(string calledSymbolId)
+        {
+            foreach (var edge in context.GetMayDispatchEdges(calledSymbolId))
+            {
+                AddItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
+                    "Persisted MayDispatchTo implementation of a called interface member.");
+            }
+        }
     }
 }

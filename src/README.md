@@ -77,7 +77,7 @@ Full-text search over source text and symbols.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--query=<term>` | Yes | Search term. |
+| `--query=<term>` | Yes | Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count). |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). |
 | `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
@@ -157,10 +157,11 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--budget=<n>` | No | Token budget for the capsule (default: 8000). |
+| `--budget=<n>` | No | Token budget for the emitted capsule (default: 8000). The estimate counts content: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
+| `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
 
 \* Either `--symbol` or both `--file` and `--line` must be provided.
 

@@ -37,6 +37,19 @@ public static class IntegrationHarness
     }
 
     /// <summary>
+    /// Copy a named committed fixture (<c>tests/fixtures/&lt;name&gt;/</c>) to a
+    /// temp directory and return the path to its <c>.slnx</c>.
+    /// </summary>
+    public static string CopyNamedFixtureToTemp(string testDir, string fixtureName)
+    {
+        var assemblyDir = Path.GetDirectoryName(typeof(IntegrationHarness).Assembly.Location)
+            ?? throw new InvalidOperationException("Cannot determine test assembly location.");
+        var fixtureRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", "fixtures", fixtureName));
+        CopyDirectory(fixtureRoot, testDir);
+        return Path.Combine(testDir, $"{fixtureName}.slnx");
+    }
+
+    /// <summary>
     /// Run a full index through <see cref="IndexRunner.RunAsync"/> and return the snapshot id.
     /// </summary>
     public static async Task<string> RunFullIndexAsync(string dbPath, string solutionPath, string outputDir)

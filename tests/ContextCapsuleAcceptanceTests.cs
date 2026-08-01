@@ -39,7 +39,12 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
             new ContextLookup(snapshotId, anchor.SymbolId.Value, null, null),
             new ContextAssemblyOptions(
                 ContextIntent.Modify,
-                Budget: 50_000,
+                // Generous enough to hold the full self-host capsule untrimmed
+                // (its type-anchor tiers carry member source bodies). This test
+                // proves the eleven-item Phase 15 contract is present, not that
+                // the budget truncates; budget truthfulness is exercised by
+                // CapsuleBudgetEnforcerTests and the --budget CLI criterion.
+                Budget: 500_000,
                 MaxHops: 3,
                 Scope: "src/Shared/EdgeLocationResolver.cs",
                 AffectedProjects: ["Lurp"],
@@ -63,7 +68,8 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         AssertSectionPresentOrOmittedEmpty(capsule, "affectedPublicSurfaces", capsule.AffectedPublicSurfaces);
         Assert.NotEmpty(capsule.InclusionReasons);
         Assert.Contains(capsule.Constraints, constraint => constraint.Origin == "caller_supplied");
-        Assert.NotEmpty(capsule.Topology.Current);
+        Assert.NotNull(capsule.Topology.Current);
+        Assert.True(capsule.Topology.Current.TotalHopCount > 0);
         Assert.NotEmpty(capsule.Topology.Target);
         Assert.NotNull(capsule.Completeness);
     }

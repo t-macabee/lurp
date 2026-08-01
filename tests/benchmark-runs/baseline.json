@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-01T14:05:26.7945Z",
+  "generatedAtUtc": "2026-08-01T20:03:29.5993717Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,15 +26,38 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 133,
-        "truncated": false,
-        "unknownRuntimeVectorsDeclared": [],
+        "estimatedTokens": 1649,
+        "truncated": true,
+        "unknownRuntimeVectorsDeclared": [
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "131 binding(s) in Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "SymbolIds": [
+              "T:Outcome.Validation.OrderValidator|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          },
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "11 binding(s) in Outcome.Tests could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
+            "SymbolIds": [
+              "T:Outcome.Validation.OrderValidator|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          }
+        ],
         "content": [
           {
             "Tier": "contracts",
             "Fqn": "global::Outcome.Contracts.IOrderValidator",
             "SymbolId": "T:Outcome.Contracts.IOrderValidator|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
             "EdgeKind": "Implements",
+            "Provenance": "compiler_proved",
+            "Relevance": "relevant"
+          },
+          {
+            "Tier": "registeredImplementations",
+            "Fqn": "global::Outcome.Contracts.IOrderValidator.Validate",
+            "SymbolId": "M:Outcome.Contracts.IOrderValidator.Validate(Outcome.Contracts.OrderDto)|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "MayDispatchTo",
             "Provenance": "compiler_proved",
             "Relevance": "relevant"
           },
@@ -53,11 +76,19 @@
             "EdgeKind": "TestedBy",
             "Provenance": "framework_derived",
             "Relevance": "unclassified"
+          },
+          {
+            "Tier": "surroundingSource",
+            "Fqn": "global::Outcome.Validation.OrderValidator.Validate",
+            "SymbolId": "M:Outcome.Validation.OrderValidator.Validate(Outcome.Contracts.OrderDto)|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Declares",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
           }
         ],
-        "relevantCount": 2,
+        "relevantCount": 3,
         "irrelevantCount": 0,
-        "unclassifiedCount": 1
+        "unclassifiedCount": 2
       },
       "contracts": {
         "expected": [
@@ -90,8 +121,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "6c8fa43dd39c413580d7949b633a744a",
-        "fullSnapshot": "c389856252da46c88482bbe9935cd0c8",
+        "incrementalSnapshot": "05e15354592d47eeb08a3f146f739907",
+        "fullSnapshot": "a50caf30d1a34ef2bf598eb050d67028",
         "equivalent": true,
         "error": null
       },
@@ -113,9 +144,24 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 124,
-        "truncated": false,
-        "unknownRuntimeVectorsDeclared": [],
+        "estimatedTokens": 1776,
+        "truncated": true,
+        "unknownRuntimeVectorsDeclared": [
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "143 binding(s) in Application, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "SymbolIds": [
+              "T:Outcome.Application.OrderHandler|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          },
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "11 binding(s) in Outcome.Tests could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
+            "SymbolIds": [
+              "T:Outcome.Application.OrderHandler|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          }
+        ],
         "content": [
           {
             "Tier": "contracts",
@@ -126,17 +172,73 @@
             "Relevance": "relevant"
           },
           {
+            "Tier": "directCallees",
+            "Fqn": "global::Outcome.Contracts.IOrderValidator.Validate",
+            "SymbolId": "M:Outcome.Contracts.IOrderValidator.Validate(Outcome.Contracts.OrderDto)|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Calls",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "directCallees",
+            "Fqn": "global::Outcome.Validation.OrderValidator.Validate",
+            "SymbolId": "M:Outcome.Validation.OrderValidator.Validate(Outcome.Contracts.OrderDto)|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "MayDispatchTo",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "directCallees",
+            "Fqn": "global::Outcome.Validation.StrictOrderValidator.Validate",
+            "SymbolId": "M:Outcome.Validation.StrictOrderValidator.Validate(Outcome.Contracts.OrderDto)|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "MayDispatchTo",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "directCallees",
+            "Fqn": "global::Outcome.Contracts.OrderResult.OrderResult",
+            "SymbolId": "M:Outcome.Contracts.OrderResult.#ctor(System.Int32,System.Boolean)|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Constructs",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "registeredImplementations",
+            "Fqn": "global::Outcome.Contracts.IOrderHandler.Handle",
+            "SymbolId": "M:Outcome.Contracts.IOrderHandler.Handle(Outcome.Contracts.OrderDto)|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "MayDispatchTo",
+            "Provenance": "compiler_proved",
+            "Relevance": "relevant"
+          },
+          {
             "Tier": "relevantTests",
             "Fqn": "global::Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult",
             "SymbolId": "M:Outcome.Tests.HandlerTests.Handle_ReturnsValidationResult|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
             "EdgeKind": "TestedBy",
             "Provenance": "framework_derived",
             "Relevance": "relevant"
+          },
+          {
+            "Tier": "surroundingSource",
+            "Fqn": "global::Outcome.Application.OrderHandler.OrderHandler",
+            "SymbolId": "M:Outcome.Application.OrderHandler.#ctor(Outcome.Contracts.IOrderValidator)|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Declares",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "surroundingSource",
+            "Fqn": "global::Outcome.Application.OrderHandler.Handle",
+            "SymbolId": "M:Outcome.Application.OrderHandler.Handle(Outcome.Contracts.OrderDto)|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Declares",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
           }
         ],
-        "relevantCount": 2,
+        "relevantCount": 3,
         "irrelevantCount": 0,
-        "unclassifiedCount": 0
+        "unclassifiedCount": 6
       },
       "contracts": {
         "expected": [
@@ -173,8 +275,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "469c998ea6024b94bca98e0c22b81839",
-        "fullSnapshot": "7d067b5e7bc44485a0178d4e46b8c971",
+        "incrementalSnapshot": "53c08af9a78d4d938875c3ed347915d4",
+        "fullSnapshot": "531b8c569f9e47f6b0ed10af43abf145",
         "equivalent": true,
         "error": null
       },
@@ -196,9 +298,24 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 184,
+        "estimatedTokens": 3733,
         "truncated": false,
-        "unknownRuntimeVectorsDeclared": [],
+        "unknownRuntimeVectorsDeclared": [
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "131 binding(s) in Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          },
+          {
+            "RelationshipKind": "binding_incompleteness",
+            "Description": "11 binding(s) in Outcome.Tests could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          }
+        ],
         "content": [
           {
             "Tier": "directCallers",
@@ -255,8 +372,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "a3d581873614442dbeaa60be3d174886",
-        "fullSnapshot": "3816d4b47033476483cf106ad842020e",
+        "incrementalSnapshot": "9ff857a80c51494b88121e808e959610",
+        "fullSnapshot": "0c508e9ab8a74b03aac1409bb9a852cf",
         "equivalent": true,
         "error": null
       },

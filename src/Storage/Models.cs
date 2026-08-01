@@ -72,6 +72,11 @@ namespace Lurp.Storage
         int Count,
         string ExtractorVersion);
 
+    public sealed record BindingIncompletenessSummary(
+        string ProjectName,
+        string Reason,
+        int Count);
+
     public sealed class AnnotationRecord
     {
         public string SymbolId { get; }

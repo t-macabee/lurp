@@ -17,26 +17,30 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
         if (context.MaxHops <= 1)
             return results;
 
+        var effectiveSymbolIds = context.EffectiveSymbolIds;
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
-        var paths = traverser.TraceImpact(symbolId: context.SymbolId.Value, direction: ImpactDirection.Upstream, allowedEdgeKinds: allowedKinds, maxDepth: context.MaxHops);
 
         var seen = new HashSet<string>();
-        foreach (var path in paths)
+        foreach (var symbolId in effectiveSymbolIds)
         {
-            foreach (var hop in path.Hops)
+            var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
+            foreach (var path in paths)
             {
-                var neighborId = hop.SourceSymbolId;
-                if (!seen.Add(neighborId))
-                    continue;
-
-                if (neighborId == context.SymbolId.Value)
-                    continue;
-
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
-                    "Bounded upstream dependency within the requested hop limit.");
-                if (item != null)
+                foreach (var hop in path.Hops)
                 {
-                    results.Add(item);
+                    var neighborId = hop.SourceSymbolId;
+                    if (!seen.Add(neighborId))
+                        continue;
+
+                    if (effectiveSymbolIds.Contains(neighborId))
+                        continue;
+
+                    var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
+                        "Bounded upstream dependency within the requested hop limit.");
+                    if (item != null)
+                    {
+                        results.Add(item);
+                    }
                 }
             }
         }

@@ -11,7 +11,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
         var results = new List<CapsuleItem>();
         var seen = new HashSet<string>();
 
-        AddTestsFor(context.SymbolId.Value);
+        foreach (var symbolId in context.EffectiveSymbolIds)
+            AddTestsFor(symbolId);
 
         // TestAdapter records TestedBy as production -> test. A method anchor may
         // not be the exact production symbol recorded by the adapter, but its
@@ -20,16 +21,20 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
         // its outgoing TestedBy edges and collects target test IDs.
         var allowedKinds = new HashSet<string> { EdgeKind.Calls.ToString() };
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
-        var paths = traverser.TraceImpact(
-            context.SymbolId.Value,
-            ImpactDirection.Upstream,
-            allowedKinds,
-            context.MaxHops);
 
-        foreach (var path in paths)
+        foreach (var symbolId in context.EffectiveSymbolIds)
         {
-            foreach (var hop in path.Hops)
-                AddTestsFor(hop.SourceSymbolId);
+            var paths = traverser.TraceImpact(
+                symbolId,
+                ImpactDirection.Upstream,
+                allowedKinds,
+                context.MaxHops);
+
+            foreach (var path in paths)
+            {
+                foreach (var hop in path.Hops)
+                    AddTestsFor(hop.SourceSymbolId);
+            }
         }
 
         return results;
