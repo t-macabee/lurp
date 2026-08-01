@@ -20,7 +20,8 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
                 continue;
             }
 
-            var item = context.BuildCapsuleItem(edge.TargetSymbolId, edge.Kind, edge.Provenance);
+            var item = context.BuildCapsuleItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
+                "Contract directly implemented or overridden by the anchor.");
             if (item != null)
             {
                 results.Add(item);

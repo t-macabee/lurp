@@ -34,6 +34,9 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                     if (paramTypeId == null)
                         continue;
 
+                    var methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+                    context.RecordFilteredExternal(param.Type, methodSyntax);
+
                     var key = (methodId, paramTypeId, EdgeKind.References.ToString());
                     if (!seen.Add(key))
                         continue;

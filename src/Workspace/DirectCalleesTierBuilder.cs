@@ -27,7 +27,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                 if (!seen.Add(neighborId))
                     continue;
 
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance);
+                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
+                    "Direct call or construction target of the anchor.");
                 if (item != null)
                 {
                     results.Add(item);

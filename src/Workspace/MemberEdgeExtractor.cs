@@ -6,10 +6,16 @@ namespace Lurp.Workspace;
 public sealed class MemberEdgeExtractor
 {
     private readonly List<IMemberEdgeExtractor> _extractors;
+    public List<CompilationFactExtractor.ExtractionMeasurement> Measurements { get; } = [];
 
     public MemberEdgeExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
+        : this(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot, scopeDocuments, null)
     {
-        var context = new MemberEdgeExtractionContext(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot, scopeDocuments);
+    }
+
+    internal MemberEdgeExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness)
+    {
+        var context = new MemberEdgeExtractionContext(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness);
 
         _extractors =
         [
@@ -29,7 +35,16 @@ public sealed class MemberEdgeExtractor
         var allEdges = new List<EdgeRecord>();
 
         foreach (var extractor in _extractors)
+        {
+            var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             allEdges.AddRange(extractor.Extract());
+            stopwatch.Stop();
+            Measurements.Add(new CompilationFactExtractor.ExtractionMeasurement(
+                extractor.GetType().Name,
+                stopwatch.ElapsedMilliseconds,
+                GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
+        }
 
         return allEdges;
     }

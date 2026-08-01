@@ -17,9 +17,13 @@ namespace Lurp.Workspace
         public string Provenance { get; }
         public string? SourceDocument { get; }
         public int? SourceLine { get; }
+        public int? SourceColumn { get; }
+        public int? SourceEndLine { get; }
+        public int? SourceEndColumn { get; }
 
         [JsonConstructor]
-        public ImpactHop(string sourceSymbolId,string targetSymbolId,string edgeKind,string provenance,string? sourceDocument = null,int? sourceLine = null)
+        public ImpactHop(string sourceSymbolId,string targetSymbolId,string edgeKind,string provenance,string? sourceDocument = null,int? sourceLine = null,
+            int? sourceColumn = null, int? sourceEndLine = null, int? sourceEndColumn = null)
         {
             SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
             TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
@@ -27,6 +31,9 @@ namespace Lurp.Workspace
             Provenance = provenance ?? string.Empty;
             SourceDocument = sourceDocument;
             SourceLine = sourceLine;
+            SourceColumn = sourceColumn;
+            SourceEndLine = sourceEndLine;
+            SourceEndColumn = sourceEndColumn;
         }
     }
 

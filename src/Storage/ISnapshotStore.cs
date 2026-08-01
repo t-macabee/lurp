@@ -13,8 +13,11 @@
         void SaveSnapshot(SnapshotRow manifest);
         void MarkSnapshotInProgress(string snapshotId);
         void MarkSnapshotComplete(string snapshotId);
+        void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message);
+        SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null);
         SnapshotRow? LoadLatestSnapshot(string? workspaceId = null);
         string? GetLatestSnapshotId(string? workspaceId = null);
+        string? GetSnapshotGitRoot(string snapshotId);
         string? GetSource(string relativePath, string snapshotId);
         List<string> GetSnapshotIds(string workspaceId);
 

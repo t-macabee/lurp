@@ -466,6 +466,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
                 store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                 totalDiagnostics += result.Diagnostics.Count;
+                store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
 
                 Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }
@@ -870,6 +871,79 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         File.Delete(modelsPath);
     }
 
+    [SkippableFact]
+    public async Task IncrementalIndex_ThreeProjectReverseClosure_MatchesFullIncludingDiagnostics()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        CreateThreeProjectDependencyClosureSolution();
+        await RunFullIndexAsync("Index A (full initial, three-project closure)");
+
+        File.WriteAllText(Path.Combine(_testDir, "src", "ProjectA", "Contract.cs"), """
+            namespace ProjectA;
+
+            public interface IContract
+            {
+                int Get();
+            }
+            """);
+
+        var incremental = await RunIncrementalIndexAsync("Index B (incremental, A contract changed)");
+        var full = await RunFullIndexAsync("Index C (full after A contract changed)", deleteFirst: false);
+
+        CompareSnapshotsAreEquivalent(incremental, full);
+    }
+
+    private void CreateThreeProjectDependencyClosureSolution()
+    {
+        var projectADir = Path.Combine(_testDir, "src", "ProjectA");
+        var projectBDir = Path.Combine(_testDir, "src", "ProjectB");
+        var projectCDir = Path.Combine(_testDir, "src", "ProjectC");
+        Directory.CreateDirectory(projectADir);
+        Directory.CreateDirectory(projectBDir);
+        Directory.CreateDirectory(projectCDir);
+
+        File.WriteAllText(Path.Combine(projectADir, "ProjectA.csproj"), ProjectFile());
+        File.WriteAllText(Path.Combine(projectADir, "Contract.cs"), """
+            namespace ProjectA;
+            public interface IContract { string Get(); }
+            """);
+
+        File.WriteAllText(Path.Combine(projectBDir, "ProjectB.csproj"), ProjectFile("ProjectA"));
+        File.WriteAllText(Path.Combine(projectBDir, "Implementation.cs"), """
+            namespace ProjectB;
+            public sealed class Implementation : ProjectA.IContract
+            {
+                public string Get() => "value";
+            }
+            """);
+
+        File.WriteAllText(Path.Combine(projectCDir, "ProjectC.csproj"), ProjectFile("ProjectB"));
+        File.WriteAllText(Path.Combine(projectCDir, "Caller.cs"), """
+            namespace ProjectC;
+            public sealed class Caller
+            {
+                public string Run(ProjectB.Implementation implementation) => implementation.Get();
+            }
+            """);
+
+        File.WriteAllText(_solutionPath, """
+            <Solution>
+              <Folder Name="/src/">
+                <Project Path="src/ProjectA/ProjectA.csproj" />
+                <Project Path="src/ProjectB/ProjectB.csproj" />
+                <Project Path="src/ProjectC/ProjectC.csproj" />
+              </Folder>
+            </Solution>
+            """);
+
+        static string ProjectFile(string? reference = null)
+            => reference == null
+                ? """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable></PropertyGroup></Project>"""
+                : $"""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable></PropertyGroup><ItemGroup><ProjectReference Include="..\{reference}\{reference}.csproj" /></ItemGroup></Project>""";
+    }
+
     // T16a: Regression test for CrossDocumentEdgeRefresher — verifies that
     // when a symbol in ProjectA changes, documents in ProjectB that reference
     // the changed symbol through cross-project edges have their edges
@@ -896,6 +970,100 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         var snapshotC = await RunFullIndexAsync("Index C (full after Library change)", deleteFirst: false);
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
+    }
+
+    // T16b: Regression test for the absolute/relative path mismatch in
+    // binding-incompleteness invalidation. The cross-document refresh passed
+    // absolute document paths (C:/.../Calculator.cs) to
+    // DeleteBindingIncompletenessByDocumentPaths, which compares document_path
+    // ordinally against the relative paths written by
+    // BindingIncompletenessCollector — the delete was a silent no-op and stale
+    // incompleteness rows survived the refresh. The assertion must travel
+    // through the refresh path itself: a store-level unit test against the
+    // delete API cannot observe the defect (it passes either way), and the
+    // full incremental pipeline masks it because PrepareSnapshotData already
+    // deletes rows for the whole invalidation scope before the refresh runs.
+    [SkippableFact]
+    public async Task CrossDocumentRefresh_DeletesStaleBindingIncompletenessByRelativePath()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        CreateCrossProjectDependentTestSolution();
+
+        // Full index produces the previous snapshot with the real incoming edge
+        // from App/Calculator.cs to Library.Widget.GetLabel.
+        var previousSnapshotId = await RunFullIndexAsync("Index A (full initial, cross-project)");
+
+        var refreshSnapshotId = $"snap-refresh-{Guid.NewGuid():N}";
+
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.Open(_dbPath);
+
+            // The refresh writes into a real snapshot, so the target snapshot
+            // must exist as a well-formed header row before any per-snapshot
+            // table is populated — foreign keys are enforced.
+            var previous = store.LoadLatestSnapshot()
+                ?? throw new InvalidOperationException("The full index did not persist a snapshot.");
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = refreshSnapshotId,
+                WorkspaceId = previous.WorkspaceId,
+                GitRoot = previous.GitRoot,
+                SolutionPath = previous.SolutionPath,
+                SdkVersion = previous.SdkVersion,
+                CompilerVersion = previous.CompilerVersion,
+                CreatedAtUtc = DateTime.UtcNow,
+                Documents = previous.Documents,
+                DatabaseSchemaVersion = previous.DatabaseSchemaVersion,
+                OutputSchemaVersion = previous.OutputSchemaVersion,
+                ExtractorVersion = previous.ExtractorVersion,
+                ToolVersion = previous.ToolVersion,
+                PreviousSnapshotId = previousSnapshotId,
+                Projects = previous.Projects,
+                SkippedAdapters = previous.SkippedAdapters,
+            });
+
+            // Simulate the copy-forward step: the stale row — an ambiguity that
+            // no longer occurs — exists in the new snapshot before the refresh.
+            store.SaveBindingIncompleteness(refreshSnapshotId,
+            [
+                new BindingIncompletenessRecord(
+                    "App",
+                    "src/App/Calculator.cs",
+                    BindingIncompletenessReason.AmbiguousOverload,
+                    Count: 1,
+                    VersionConstants.ExtractorVersion),
+            ]);
+            store.Close();
+        }
+
+        using (var workspace = MSBuildWorkspace.Create())
+        {
+            workspace.RegisterWorkspaceFailedHandler(args =>
+                Console.Error.WriteLine($"  [Workspace] {args.Diagnostic.Kind}: {args.Diagnostic.Message}"));
+            var solution = await workspace.OpenSolutionAsync(_solutionPath);
+            var workspaceInfo = new WorkspaceInfo(solution, _testDir);
+
+            using var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            var refresher = new CrossDocumentEdgeRefresher(store, _testDir, []);
+            var changedPaths = new HashSet<string> { "src/Library/Widget.cs" };
+
+            var processed = await refresher.RefreshAsync(
+                solution, workspaceInfo, refreshSnapshotId, previousSnapshotId,
+                changedPaths, CancellationToken.None);
+
+            Assert.True(processed > 0,
+                "The refresh must re-extract the App document that references the changed Library symbol.");
+
+            var records = store.GetBindingIncompleteness(refreshSnapshotId);
+            Assert.DoesNotContain(records, record =>
+                record.ProjectName == "App"
+                && record.DocumentPath == "src/App/Calculator.cs"
+                && record.Reason == BindingIncompletenessReason.AmbiguousOverload);
+        }
     }
 
     // T15: Regression test for DocumentVersionId — verifies that two files with

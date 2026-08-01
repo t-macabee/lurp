@@ -19,6 +19,17 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
                     continue;
 
                 // -- Override edges --
+                ISymbol? overridden = member switch
+                {
+                    IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
+                        => method.OverriddenMethod,
+                    IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null
+                        => prop.OverriddenProperty,
+                    _ => null
+                };
+                if (overridden != null)
+                    context.RecordFilteredExternal(overridden, member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
+
                 (string? sourceId, string? targetId) = member switch
                 {
                     IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
@@ -117,6 +128,8 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         var targetId = context.MakeSymbolId(targetSymbol);
         if (sourceId == null || targetId == null)
             return;
+
+        context.RecordFilteredExternal(targetSymbol, sourceSymbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
 
         var key = (sourceId, targetId, EdgeKind.Hides.ToString());
         if (!seen.Add(key))

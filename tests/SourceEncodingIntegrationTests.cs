@@ -113,12 +113,9 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         var widgetClassId = symbolIds.First(id => id.StartsWith("T:", StringComparison.Ordinal));
         var getLabelId = symbolIds.First(id => id.StartsWith("M:", StringComparison.Ordinal) && id.Contains("GetLabel"));
 
-        // Widget is a partial class also declared in Widget.Extra.cs; GetSymbolSource for the
-        // class symbol has no document filter, so it can return either file's declaration.
-        // Assert against GetLabel, which is unique to Widget.cs, to avoid that ambiguity.
-        var labelDecl = store.GetSymbolSource(getLabelId, snapshotId, ViewKind.Declaration);
-        Assert.NotNull(labelDecl);
-        Assert.Contains("GetLabel", labelDecl);
+        var widgetDecl = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Declaration);
+        Assert.NotNull(widgetDecl);
+        Assert.Contains("GetLabel", widgetDecl);
 
         var nameView = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Name);
         Assert.NotNull(nameView);
@@ -173,12 +170,9 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         var widgetClassId = symbolIds.First(id => id.StartsWith("T:", StringComparison.Ordinal));
         var getLabelId = symbolIds.First(id => id.StartsWith("M:", StringComparison.Ordinal) && id.Contains("GetLabel"));
 
-        // Widget is a partial class also declared in Widget.Extra.cs; GetSymbolSource for the
-        // class symbol has no document filter, so it can return either file's declaration.
-        // Assert against GetLabel, which is unique to Widget.cs, to avoid that ambiguity.
-        var labelDecl = store.GetSymbolSource(getLabelId, snapshotId, ViewKind.Declaration);
-        Assert.NotNull(labelDecl);
-        Assert.Contains("GetLabel", labelDecl);
+        var widgetDecl = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Declaration);
+        Assert.NotNull(widgetDecl);
+        Assert.Contains("GetLabel", widgetDecl);
 
         var nameView = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Name);
         Assert.NotNull(nameView);
@@ -244,12 +238,9 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         var widgetClassId = symbolIds.First(id => id.StartsWith("T:", StringComparison.Ordinal));
         var getLabelId = symbolIds.First(id => id.StartsWith("M:", StringComparison.Ordinal) && id.Contains("GetLabel"));
 
-        // Widget is a partial class also declared in Widget.Extra.cs; GetSymbolSource for the
-        // class symbol has no document filter, so it can return either file's declaration.
-        // Assert against GetLabel, which is unique to Widget.cs, to avoid that ambiguity.
-        var labelDecl = store.GetSymbolSource(getLabelId, snapshotId, ViewKind.Declaration);
-        Assert.NotNull(labelDecl);
-        Assert.Contains("GetLabel", labelDecl);
+        var widgetDecl = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Declaration);
+        Assert.NotNull(widgetDecl);
+        Assert.Contains("GetLabel", widgetDecl);
 
         var nameView = store.GetSymbolSource(widgetClassId, snapshotId, ViewKind.Name);
         Assert.NotNull(nameView);

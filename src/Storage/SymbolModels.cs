@@ -149,5 +149,13 @@ namespace Lurp.Storage
         int FullEnd,
         int NameStart,
         int NameEnd);
+
+    public sealed record DeclarationLocation(
+        string DocumentPath,
+        int StartLine,
+        int StartColumn,
+        int EndLine,
+        int EndColumn,
+        bool IsGenerated);
 }
 

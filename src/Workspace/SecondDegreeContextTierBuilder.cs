@@ -32,7 +32,8 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                 if (neighborId == context.SymbolId.Value)
                     continue;
 
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance);
+                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
+                    "Bounded upstream dependency within the requested hop limit.");
                 if (item != null)
                 {
                     results.Add(item);

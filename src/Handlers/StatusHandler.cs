@@ -33,7 +33,7 @@ internal static class StatusHandler
             var latestSnapshotId = latestSnapshot?.SnapshotId;
             if (latestSnapshot == null || latestSnapshotId == null)
             {
-                ReportNeverIndexed(dbPath, asJson, schemaVersion);
+                ReportNeverIndexed(dbPath, asJson, schemaVersion, store.GetLatestSnapshotFailure());
                 return;
             }
 
@@ -68,7 +68,7 @@ internal static class StatusHandler
         return WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
     }
 
-    private static void ReportNeverIndexed(string dbPath, bool asJson, int? schemaVersion = null)
+    private static void ReportNeverIndexed(string dbPath, bool asJson, int? schemaVersion = null, SnapshotFailureRow? latestFailure = null)
     {
         if (asJson)
         {
@@ -78,6 +78,7 @@ internal static class StatusHandler
                 database_exists = File.Exists(dbPath),
                 schema_version = schemaVersion,
                 indexed = false,
+                latest_failure = latestFailure,
             }, new JsonSerializerOptions { WriteIndented = true }));
             return;
         }
@@ -104,7 +105,8 @@ internal static class StatusHandler
                 note = "Pass --solution=path or set INDEXER_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = SnapshotManifest.FromStorageManifest(latestSnapshot),
+                manifest = WithBindingCompleteness(store, latestSnapshot),
+                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
             }, JsonOutputOptions));
             return;
         }
@@ -140,7 +142,8 @@ internal static class StatusHandler
                 }),
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = SnapshotManifest.FromStorageManifest(latestSnapshot),
+                manifest = WithBindingCompleteness(store, latestSnapshot),
+                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
             }, JsonOutputOptions));
             return;
         }
@@ -184,4 +187,11 @@ internal static class StatusHandler
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
+
+    private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot)
+    {
+        var manifest = SnapshotManifest.FromStorageManifest(snapshot);
+        manifest.Completeness?.BindingIncompleteness.AddRange(store.GetBindingIncompleteness(snapshot.SnapshotId));
+        return manifest;
+    }
 }

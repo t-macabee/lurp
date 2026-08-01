@@ -1773,6 +1773,90 @@ class Foo {
         }
 
         [Fact]
+        public void BindingIncompleteness_AmbiguousOverload_IsReasonCoded()
+        {
+            var source = @"
+class Foo {
+    void Pick(int x, double y) {}
+    void Pick(double x, int y) {}
+    void A() { Pick(1, 1); }
+}";
+            var compilation = CreateCompilation(source);
+            var collector = new BindingIncompletenessCollector("TestProject", "/");
+            var extractor = new MemberEdgeExtractor(
+                compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(),
+                "snap-incomplete-ambiguous", "/", null, collector);
+
+            extractor.ExtractAll();
+
+            Assert.Contains(collector.ToRecords(), record =>
+                record.Reason == BindingIncompletenessReason.AmbiguousOverload && record.Count > 0);
+        }
+
+        [Fact]
+        public void BindingIncompleteness_MissingType_IsReasonCodedAndPersisted()
+        {
+            var source = @"
+class Foo {
+    object A() { return new Missing.ExternalType(); }
+}";
+            var compilation = CreateCompilation(source);
+            var collector = new BindingIncompletenessCollector("TestProject", "/");
+            var extractor = new MemberEdgeExtractor(
+                compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(),
+                "snap-incomplete-metadata", "/", null, collector);
+
+            extractor.ExtractAll();
+            var records = collector.ToRecords();
+
+            Assert.Contains(records, record =>
+                record.Reason == BindingIncompletenessReason.UnresolvedMetadata && record.Count > 0);
+
+            var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-binding-{Guid.NewGuid():N}.db");
+            using var store = new SqliteIndexStore(dbPath);
+            try
+            {
+                store.Open(dbPath);
+                store.RunMigrations();
+                store.SaveBindingIncompleteness("snap-incomplete-metadata", records);
+
+                var persisted = store.GetBindingIncompleteness("snap-incomplete-metadata", "TestProject");
+                Assert.Contains(persisted, record =>
+                    record.Reason == BindingIncompletenessReason.UnresolvedMetadata && record.Count > 0);
+            }
+            finally
+            {
+                store.Close();
+                if (File.Exists(dbPath)) File.Delete(dbPath);
+            }
+        }
+
+        // filtered_external was declared as a reason code but never recorded at
+        // any call site — the constant existed while the report and TRUST_KERNEL
+        // listed it as a live reason. A resolved binding whose target lives in an
+        // assembly outside the compilation is filtered from the persisted graph
+        // (external symbols are never declared in the snapshot), so the reason
+        // must be measured at the extraction site.
+        [Fact]
+        public void BindingIncompleteness_FilteredExternalTarget_IsReasonCoded()
+        {
+            var source = @"
+class Foo {
+    void A() { GetHashCode(); }
+}";
+            var compilation = CreateCompilation(source);
+            var collector = new BindingIncompletenessCollector("TestProject", "/");
+            var extractor = new MemberEdgeExtractor(
+                compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(),
+                "snap-filtered-external", "/", null, collector);
+
+            extractor.ExtractAll();
+
+            Assert.Contains(collector.ToRecords(), record =>
+                record.Reason == BindingIncompletenessReason.FilteredExternal && record.Count > 0);
+        }
+
+        [Fact]
         public void Calls_OverloadedBinaryOperator_EmitsCallsEdge()
         {
             var source = @"
@@ -2581,6 +2665,64 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
             Assert.NotNull(edgeRemoved);
             Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
             Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
+        }
+
+        [Theory]
+        [InlineData("possible", null, false, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", "[\"Customer\"]", false, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", null, true, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", null, false, ChangeType.EdgeLocationChanged)]
+        public void SemanticDiffer_SameRelationChangedPayload_ReportsSpecificChange(
+            string toProvenance,
+            string? toTypeArgumentsJson,
+            bool toIsCrossGenerated,
+            string expectedChangeType)
+        {
+            using var store = new SqliteIndexStore(_dbPath);
+            store.Open(_dbPath);
+            store.RunMigrations();
+
+            const string fromSnapshotId = "snap-edge-payload-from";
+            const string toSnapshotId = "snap-edge-payload-to";
+            var fromEdge = new EdgeRecord
+            {
+                SourceSymbolId = "M:Ns.Foo|asm1",
+                TargetSymbolId = "M:Ns.Bar|asm1",
+                Kind = "Calls",
+                Provenance = "compiler_proved",
+                SourceDocumentPath = "src/Foo.cs",
+                SourceStartLine = 10,
+                SourceStartColumn = 4,
+                SourceEndLine = 10,
+                SourceEndColumn = 9,
+            };
+            var locationOnly = expectedChangeType == ChangeType.EdgeLocationChanged;
+            var toEdge = new EdgeRecord
+            {
+                SourceSymbolId = fromEdge.SourceSymbolId,
+                TargetSymbolId = fromEdge.TargetSymbolId,
+                Kind = fromEdge.Kind,
+                Provenance = toProvenance,
+                TypeArgumentsJson = toTypeArgumentsJson,
+                IsCrossGenerated = toIsCrossGenerated,
+                SourceDocumentPath = locationOnly ? "src/MovedFoo.cs" : fromEdge.SourceDocumentPath,
+                SourceStartLine = locationOnly ? 12 : fromEdge.SourceStartLine,
+                SourceStartColumn = fromEdge.SourceStartColumn,
+                SourceEndLine = locationOnly ? 12 : fromEdge.SourceEndLine,
+                SourceEndColumn = fromEdge.SourceEndColumn,
+            };
+
+            store.SaveEdges(fromSnapshotId, [fromEdge]);
+            store.SaveEdges(toSnapshotId, [toEdge]);
+
+            var differ = new SemanticDiffer(store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var change = Assert.Single(changes, c => c.ChangeType == expectedChangeType);
+            Assert.Equal(fromEdge.SourceSymbolId, change.SymbolId);
+            Assert.DoesNotContain(changes, c => c.ChangeType is ChangeType.EdgeAdded or ChangeType.EdgeRemoved);
+            Assert.Contains("\"before\"", change.DetailJson!);
+            Assert.Contains("\"after\"", change.DetailJson!);
         }
 
         [Fact]

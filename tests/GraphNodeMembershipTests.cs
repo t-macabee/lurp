@@ -71,7 +71,7 @@ public sealed class GraphNodeMembershipTests : IDisposable
     }
 
     [Fact]
-    public void Migration_021_ReachesSchemaVersion21()
+    public void Migrations_ReachCurrentSchemaVersion()
     {
         var store = CreateStore();
         using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
@@ -79,7 +79,7 @@ public sealed class GraphNodeMembershipTests : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1;";
         var version = Convert.ToInt32(command.ExecuteScalar());
-        Assert.Equal(21, version);
+        Assert.Equal(MigrationRunner.MigrationVersions[^1], version);
     }
 
     [Fact]

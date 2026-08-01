@@ -34,10 +34,15 @@ public sealed class PolymorphismExtractor
     private readonly PolymorphismExtractionContext _context;
 
     public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
+        : this(compilation, snapshotId, gitRoot, scopeDocuments, null)
+    {
+    }
+
+    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments);
+        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
     }
 
     public List<EdgeRecord> ExtractAll()

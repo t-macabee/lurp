@@ -8,11 +8,14 @@ namespace Lurp.Workspace;
 public static class CompilationFactExtractor
 {
     public sealed record ExtractionFailure(string Stage, string ProjectName, string? AdapterName, string Message, Exception Exception);
+    public sealed record ExtractionMeasurement(string Extractor, long ElapsedMilliseconds, long AllocatedBytes);
 
     public sealed record ExtractionResult(
         List<SymbolDeclaration> Declarations,
         List<EdgeRecord> Edges,
         List<DiagnosticRecord> Diagnostics,
+        List<BindingIncompletenessRecord> BindingIncompleteness,
+        List<ExtractionMeasurement> Measurements,
         IReadOnlyList<ExtractionFailure>? RequiredFailures = null)
     {
         public void EnsureRequiredSuccess()
@@ -48,8 +51,10 @@ public static class CompilationFactExtractor
         var adapterProvider = options?.AdapterProvider ?? AdapterRegistry.GetAdapters;
 
         var failures = new List<ExtractionFailure>();
+        var measurements = new List<ExtractionMeasurement>();
+        var incompleteness = new BindingIncompletenessCollector(projectName, workspaceInfo.Id.GitRoot);
 
-        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments);
+        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments, incompleteness);
 
         List<SymbolDeclaration> declarations;
         try
@@ -78,32 +83,36 @@ public static class CompilationFactExtractor
 
         var gitRoot = workspaceInfo.Id.GitRoot;
 
-        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments);
+        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness);
 
         try
         {
             edges.AddRange(memberEdgeExtractor.ExtractAll());
+            measurements.AddRange(memberEdgeExtractor.Measurements);
         }
         catch (Exception ex)
         {
             logError?.Invoke($"Member edge extraction failed for project '{projectName}': {ex.Message}");
             failures.Add(new ExtractionFailure("MemberEdge", projectName, null, ex.Message, ex));
+            incompleteness.RecordExtractorFailure();
         }
 
 
-        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments);
+        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
 
         edges.AddRange(polyExtractor.ExtractAll());
 
         try
         {
-            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments);
+            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
             edges.AddRange(reflectionExtractor.Extract());
+            measurements.AddRange(reflectionExtractor.Measurements);
         }
         catch (Exception ex)
         {
             logWarning?.Invoke($"Reflection extraction failed: {ex.Message}");
             failures.Add(new ExtractionFailure("Reflection", projectName, null, ex.Message, ex));
+            incompleteness.RecordExtractorFailure();
         }
 
         var adapters = adapterProvider(skipAdapters);
@@ -123,11 +132,12 @@ public static class CompilationFactExtractor
             {
                 logError?.Invoke($"Adapter '{adapter.Name}' failed: {ex.Message}");
                 failures.Add(new ExtractionFailure("Adapter", projectName, adapter.Name, ex.Message, ex));
+                incompleteness.RecordExtractorFailure();
             }
         }
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
 
-        return new ExtractionResult(declarations, edges, diagnostics, RequiredFailures: failures.Count > 0 ? failures : null);
+        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, RequiredFailures: failures.Count > 0 ? failures : null);
     }
 }

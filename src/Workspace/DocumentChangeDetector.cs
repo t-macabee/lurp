@@ -41,7 +41,7 @@ public sealed class DocumentChangeDetector(string gitRoot)
 
     public HashSet<string> IdentifyAffectedProjects(Solution solution, HashSet<string> changedPaths)
     {
-        var affected = new HashSet<string>(StringComparer.Ordinal);
+        var affectedIds = new HashSet<ProjectId>();
 
         foreach (var project in solution.Projects)
         {
@@ -54,13 +54,40 @@ public sealed class DocumentChangeDetector(string gitRoot)
 
                 if (changedPaths.Contains(relPath))
                 {
-                    affected.Add(project.Name);
+                    affectedIds.Add(project.Id);
                     break;
                 }
             }
+
+            if (affectedIds.Contains(project.Id) || string.IsNullOrEmpty(project.FilePath))
+                continue;
+            var projectDirectory = Path.GetDirectoryName(project.FilePath);
+            if (projectDirectory != null && changedPaths.Any(path =>
+                    Path.GetFullPath(Path.Combine(_gitRoot, path)).StartsWith(
+                        Path.GetFullPath(projectDirectory) + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                affectedIds.Add(project.Id);
+            }
         }
 
-        return affected;
+        var dependencyGraph = solution.GetProjectDependencyGraph();
+        var queue = new Queue<ProjectId>(affectedIds);
+        while (queue.Count > 0)
+        {
+            var referencedProject = queue.Dequeue();
+            foreach (var dependent in dependencyGraph.GetProjectsThatDirectlyDependOnThisProject(referencedProject))
+            {
+                if (affectedIds.Add(dependent))
+                    queue.Enqueue(dependent);
+            }
+        }
+
+        return affectedIds
+            .Select(solution.GetProject)
+            .Where(static project => project != null)
+            .Select(static project => project!.Name)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     public static List<DocumentChangeInfo> DetectChanges(WorkspaceInfo workspaceInfo, SnapshotManifest previousManifest)

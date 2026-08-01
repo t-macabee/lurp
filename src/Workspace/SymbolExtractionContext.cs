@@ -8,7 +8,8 @@ internal sealed class SymbolExtractionContext(
     IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
     IReadOnlySet<DocumentId> generatedDocuments,
     string snapshotId,
-    IReadOnlySet<string>? scopeDocuments = null)
+    IReadOnlySet<string>? scopeDocuments = null,
+    BindingIncompletenessCollector? incompleteness = null)
 {
     internal Compilation Compilation { get; } = compilation;
     internal IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; } = documentContents;
@@ -17,6 +18,10 @@ internal sealed class SymbolExtractionContext(
     internal string AssemblyIdentity { get; } = compilation.Assembly.Identity.GetDisplayName();
     internal string SnapshotId { get; } = snapshotId;
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
+    internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
+
+    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
+        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
     internal bool IsInScope(SyntaxTree? syntaxTree)
     {

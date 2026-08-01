@@ -502,7 +502,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // when it should be "in_progress").
 
     [SkippableFact]
-    public async Task FullIndex_ProjectFailure_LeavesSnapshotInProgress()
+    public async Task FullIndex_ProjectFailure_LeavesFailedSnapshot()
     {
         Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
             "MSBuild is not available on this system. Cannot run integration test.");
@@ -543,13 +543,15 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT status, workspace_id FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
+            "SELECT status, workspace_id, failure_reason_code, failure_message FROM snapshots ORDER BY built_at_utc DESC LIMIT 1;";
         using var reader = cmd.ExecuteReader();
         Assert.True(reader.Read(), "Expected at least one snapshot row.");
         var status = reader.GetString(0);
         var workspaceId = reader.GetString(1);
 
-        Assert.Equal("in_progress", status);
+        Assert.Equal("failed", status);
+        Assert.Equal("full_index_failure", reader.GetString(2));
+        Assert.Contains("One or more projects failed during full index", reader.GetString(3));
 
         // LoadLatestSnapshot only returns complete snapshots — must be null.
         using var readStore = IntegrationHarness.OpenReadStore(dbPath);

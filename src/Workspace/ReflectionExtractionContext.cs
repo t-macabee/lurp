@@ -9,13 +9,14 @@ internal sealed class ReflectionExtractionContext
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
     private readonly string _gitRoot;
 
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
+    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         ScopeDocuments = scopeDocuments;
+        Incompleteness = incompleteness;
 
         KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         KnownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -28,6 +29,16 @@ internal sealed class ReflectionExtractionContext
     internal IReadOnlySet<string>? ScopeDocuments { get; }
     internal HashSet<string> KnownTypeNames { get; }
     internal HashSet<string> KnownMemberNames { get; }
+    internal BindingIncompletenessCollector? Incompleteness { get; }
+
+    internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
+        => Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+
+    internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
+        => Incompleteness?.RecordUnresolved(node, semanticModel);
+
+    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
+        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {

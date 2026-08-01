@@ -213,26 +213,81 @@ namespace Lurp.Workspace
 
         private void DiffEdges(List<EdgeRecord> fromEdges, List<EdgeRecord> toEdges, string fromSnapshotId, string toSnapshotId, List<SemanticChange> changes)
         {
-            var fromEdgeSet = new HashSet<(string source, string target, string kind)>(fromEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
-            var toEdgeSet = new HashSet<(string source, string target, string kind)>(toEdges.Select(e => (e.SourceSymbolId, e.TargetSymbolId, e.Kind)));
+            var fromByKey = fromEdges.ToDictionary(EdgeKey);
+            var toByKey = toEdges.ToDictionary(EdgeKey);
 
             foreach (var edge in toEdges)
             {
-                var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
-                if (!fromEdgeSet.Contains(key))
+                var key = EdgeKey(edge);
+                if (!fromByKey.TryGetValue(key, out var previous))
                 {
                     changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeAdded, edge.SourceSymbolId, new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
+                    continue;
+                }
+
+                if (!EvidenceEquals(previous, edge))
+                {
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeEvidenceChanged, edge.SourceSymbolId, new
+                    {
+                        source = edge.SourceSymbolId,
+                        target = edge.TargetSymbolId,
+                        kind = edge.Kind,
+                        before = EvidencePayload(previous),
+                        after = EvidencePayload(edge),
+                    }));
+                }
+
+                if (!LocationEquals(previous, edge))
+                {
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeLocationChanged, edge.SourceSymbolId, new
+                    {
+                        source = edge.SourceSymbolId,
+                        target = edge.TargetSymbolId,
+                        kind = edge.Kind,
+                        before = LocationPayload(previous),
+                        after = LocationPayload(edge),
+                    }));
                 }
             }
 
             foreach (var edge in fromEdges)
             {
-                var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
-                if (!toEdgeSet.Contains(key))
+                if (!toByKey.ContainsKey(EdgeKey(edge)))
                 {
                     changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeRemoved, edge.SourceSymbolId, new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
                 }
             }
+
+            static (string source, string target, string kind) EdgeKey(EdgeRecord edge)
+                => (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
+
+            static bool EvidenceEquals(EdgeRecord left, EdgeRecord right)
+                => string.Equals(left.Provenance, right.Provenance, StringComparison.Ordinal)
+                   && string.Equals(left.TypeArgumentsJson, right.TypeArgumentsJson, StringComparison.Ordinal)
+                   && left.IsCrossGenerated == right.IsCrossGenerated;
+
+            static object EvidencePayload(EdgeRecord edge) => new
+            {
+                provenance = edge.Provenance,
+                type_arguments_json = edge.TypeArgumentsJson,
+                is_cross_generated = edge.IsCrossGenerated,
+            };
+
+            static bool LocationEquals(EdgeRecord left, EdgeRecord right)
+                => string.Equals(left.SourceDocumentPath, right.SourceDocumentPath, StringComparison.Ordinal)
+                   && left.SourceStartLine == right.SourceStartLine
+                   && left.SourceStartColumn == right.SourceStartColumn
+                   && left.SourceEndLine == right.SourceEndLine
+                   && left.SourceEndColumn == right.SourceEndColumn;
+
+            static object LocationPayload(EdgeRecord edge) => new
+            {
+                document_path = edge.SourceDocumentPath,
+                start_line = edge.SourceStartLine,
+                start_column = edge.SourceStartColumn,
+                end_line = edge.SourceEndLine,
+                end_column = edge.SourceEndColumn,
+            };
         }
 
         private List<string> GetSymbolIdsInSnapshot(string snapshotId)

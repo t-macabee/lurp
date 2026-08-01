@@ -36,13 +36,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
         void AddTestsFor(string productionOrTestSymbolId)
         {
-            QueryTestedBy(productionOrTestSymbolId);
-
-            // TestAdapter emits TestedBy on the containing type, not on member
-            // symbols. Derive the containing-type ID and query its edges too.
-            var typeId = DeriveContainingTypeId(productionOrTestSymbolId);
-            if (typeId != null && typeId != productionOrTestSymbolId)
-                QueryTestedBy(typeId);
+            foreach (var candidateId in TestSymbolDiscovery.ExpandProductionSymbolIds(productionOrTestSymbolId))
+                QueryTestedBy(candidateId);
         }
 
         void QueryTestedBy(string symbolId)
@@ -57,7 +52,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
                 if (!seen.Add(testSymbolId))
                     continue;
 
-                var item = context.BuildCapsuleItem(testSymbolId, edge.Kind, edge.Provenance);
+                var item = context.BuildCapsuleItem(testSymbolId, edge.Kind, edge.Provenance,
+                    "Persisted TestedBy evidence connects this test to the change scope.");
                 if (item != null)
                 {
                     results.Add(item);
@@ -65,31 +61,5 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             }
         }
 
-        static string? DeriveContainingTypeId(string symbolId)
-        {
-            // symbolId format: docCommentId|assemblyIdentity.
-            // Strip the member segment from the doc-comment ID (e.g.,
-            // M:A.B.C.Method → T:A.B.C) and rebuild with the same assembly.
-            var pipeIndex = symbolId.IndexOf('|');
-            if (pipeIndex < 0)
-                return null;
-
-            var docCommentId = symbolId.AsSpan(0, pipeIndex);
-            if (docCommentId.Length < 3 || docCommentId[1] != ':')
-                return null;
-
-            var kind = docCommentId[0];
-            if (kind == 'T' || kind == 'N')
-                return null; // Already a type or namespace — no parent type
-
-            var afterPrefix = docCommentId[2..];
-            var lastDot = afterPrefix.LastIndexOf('.');
-            if (lastDot < 0)
-                return null;
-
-            var parentTypeName = afterPrefix[..lastDot];
-            var assemblyIdentity = symbolId.AsSpan(pipeIndex + 1);
-            return string.Concat("T:".AsSpan(), parentTypeName, "|".AsSpan(), assemblyIdentity);
-        }
     }
 }

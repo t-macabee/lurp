@@ -19,6 +19,7 @@ namespace Lurp.Storage
         private EdgeStore? _edgeStore;
         private SearchStore? _searchStore;
         private SemanticDiffStore? _semanticDiffStore;
+        private BindingIncompletenessStore? _bindingIncompletenessStore;
 
         public SqliteIndexStore(string dbPath)
         {
@@ -48,6 +49,7 @@ namespace Lurp.Storage
             _edgeStore = new EdgeStore(_connection);
             _searchStore = new SearchStore(_connection);
             _semanticDiffStore = new SemanticDiffStore(_connection);
+            _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
         }
 
         public void Close()
@@ -74,6 +76,7 @@ namespace Lurp.Storage
             _edgeStore = null;
             _searchStore = null;
             _semanticDiffStore = null;
+            _bindingIncompletenessStore = null;
         }
 
         private void EnsureOpen()
@@ -116,10 +119,16 @@ namespace Lurp.Storage
             { EnsureOpen(); _lifecycle!.MarkSnapshotInProgress(snapshotId); }
         public void MarkSnapshotComplete(string snapshotId)
             { EnsureOpen(); _lifecycle!.MarkSnapshotComplete(snapshotId); }
+        public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
+            { EnsureOpen(); _lifecycle!.MarkSnapshotFailed(snapshotId, reasonCode, message); }
+        public SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null)
+            { EnsureOpen(); return _lifecycle!.GetLatestSnapshotFailure(workspaceId); }
         public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.LoadLatestSnapshot(workspaceId); }
         public string? GetLatestSnapshotId(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.GetLatestSnapshotId(workspaceId); }
+        public string? GetSnapshotGitRoot(string snapshotId)
+            { EnsureOpen(); return _lifecycle!.GetSnapshotGitRoot(snapshotId); }
         public List<string> GetSnapshotIds(string workspaceId)
             { EnsureOpen(); return _lifecycle!.GetSnapshotIds(workspaceId); }
         public string? GetSource(string relativePath, string snapshotId)
@@ -148,6 +157,14 @@ namespace Lurp.Storage
             { EnsureOpen(); _timings!.SaveTimings(snapshotId, timings); }
         public List<SnapshotTimingRow> GetTimings(string snapshotId)
             { EnsureOpen(); return _timings!.GetTimings(snapshotId); }
+        public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records)
+            { EnsureOpen(); _bindingIncompletenessStore!.SaveBindingIncompleteness(snapshotId, records); }
+        public List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null)
+            { EnsureOpen(); return _bindingIncompletenessStore!.GetBindingIncompleteness(snapshotId, projectName); }
+        public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId)
+            { EnsureOpen(); _bindingIncompletenessStore!.CopyBindingIncompleteness(fromSnapshotId, toSnapshotId); }
+        public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+            { EnsureOpen(); _bindingIncompletenessStore!.DeleteBindingIncompletenessByDocumentPaths(snapshotId, documentPaths); }
 
         // ── IDeclarationStore ──────────────────────────────────────────────
 
@@ -161,6 +178,8 @@ namespace Lurp.Storage
             { EnsureOpen(); return _declReader!.GetContainingTypeSource(symbolId, snapshotId); }
         public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines)
             { EnsureOpen(); return _declReader!.GetSurroundingLines(symbolId, snapshotId, contextLines); }
+        public List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
+            { EnsureOpen(); return _declReader!.GetDeclarationLocations(symbolId, snapshotId, includeGenerated); }
         public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
             { EnsureOpen(); _declMaintenance!.DeleteDeclarationsByDocumentVersionIds(documentVersionIds); }
         public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)

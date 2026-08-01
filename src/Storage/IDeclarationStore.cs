@@ -7,6 +7,7 @@ namespace Lurp.Storage
         string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false);
         string? GetContainingTypeSource(string symbolId, string snapshotId);
         string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines);
+        List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false);
 
         void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds);
         List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);

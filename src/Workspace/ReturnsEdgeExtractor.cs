@@ -29,6 +29,9 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
                 if (methodId == null || returnTypeId == null)
                     continue;
 
+                var methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+                context.RecordFilteredExternal(method.ReturnType, methodSyntax);
+
                 var key = (methodId, returnTypeId, EdgeKind.Returns.ToString());
                 if (!seen.Add(key))
                     continue;

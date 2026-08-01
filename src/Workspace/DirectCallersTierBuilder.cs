@@ -26,7 +26,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
                 if (!seen.Add(neighborId))
                     continue;
 
-                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance);
+                var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
+                    "Direct caller that can be affected by changing the anchor.");
                 if (item != null)
                 {
                     results.Add(item);
@@ -47,7 +48,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
             if (!seen.Add(sourceId))
                 continue;
 
-            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance);
+            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
+                "Framework route or handler entry point that reaches the anchor.");
             if (item != null)
             {
                 results.Add(item);

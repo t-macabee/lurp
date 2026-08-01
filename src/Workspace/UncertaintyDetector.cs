@@ -9,19 +9,25 @@ namespace Lurp.Workspace
         private readonly string _snapshotId;
         private readonly SymbolId _symbolId;
         private readonly bool _includeGenerated;
+        private readonly string? _gitRoot;
+        private readonly Dictionary<string, string?> _owningProjectCache = new(StringComparer.OrdinalIgnoreCase);
+        private string? _solutionPath;
+        private bool _solutionPathResolved;
 
         public UncertaintyDetector(
             IEdgeStore edgeStore,
             IDeclarationStore declarationStore,
             string snapshotId,
             SymbolId symbolId,
-            bool includeGenerated)
+            bool includeGenerated,
+            string? gitRoot = null)
         {
             _edgeStore = edgeStore;
             _declarationStore = declarationStore;
             _snapshotId = snapshotId;
             _symbolId = symbolId;
             _includeGenerated = includeGenerated;
+            _gitRoot = gitRoot;
         }
 
         public void Detect(ContextCapsule capsule)
@@ -155,19 +161,112 @@ namespace Lurp.Workspace
         {
             // TestedBy direction is production -> test. Query outgoing edges from the
             // anchor production symbol and collect targets as suggested tests.
-            var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, _symbolId.Value);
-
-            foreach (var edge in outgoingEdges)
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var productionId in TestSymbolDiscovery.ExpandProductionSymbolIds(_symbolId.Value))
             {
-                if (edge.Kind != EdgeKind.TestedBy.ToString())
-                    continue;
+                var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, productionId);
+                foreach (var edge in outgoingEdges)
+                {
+                    if (edge.Kind != EdgeKind.TestedBy.ToString() || !seen.Add(edge.TargetSymbolId))
+                        continue;
 
-                var testId = edge.TargetSymbolId;
-                var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
-                var testName = testInfo?.FullyQualifiedName ?? testId;
+                    var testId = edge.TargetSymbolId;
+                    var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
+                    var testName = testInfo?.FullyQualifiedName ?? testId;
+                    var projectPath = ResolveOwningProject(testId);
+                    var command = projectPath == null
+                        ? $"dotnet test --filter \"FullyQualifiedName={testName}\""
+                        : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={testName}\"";
 
-                capsule.SuggestedVerification.Add(new VerificationSuggestion(testId: testId, testName: testName, description: $"Run '{testName}' to verify correctness after modifications."));
+                    capsule.SuggestedVerification.Add(new VerificationSuggestion(
+                        testId: testId,
+                        testName: testName,
+                        description: $"Run '{testName}' to verify correctness after modifications.",
+                        command: command));
+                }
             }
+
+            var projects = AllCapsuleItems(capsule)
+                .Select(item => ResolveOwningProject(item.SymbolId))
+                .Where(static path => path != null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (projects.Count >= 3)
+            {
+                capsule.SuggestedVerification.Clear();
+                var solution = ResolveSolutionPath();
+                var command = solution == null ? "dotnet test" : $"dotnet test \"{solution}\"";
+                capsule.SuggestedVerification.Add(new VerificationSuggestion(
+                    "full-suite",
+                    "Full suite",
+                    "Run the full suite because the change crosses three or more project boundaries.",
+                    command,
+                    "multi_project_blast_radius"));
+            }
+        }
+
+        private static IEnumerable<CapsuleItem> AllCapsuleItems(ContextCapsule capsule)
+            => capsule.Contracts
+                .Concat(capsule.DirectCallees)
+                .Concat(capsule.DirectCallers)
+                .Concat(capsule.RegisteredImplementations)
+                .Concat(capsule.RelevantTests)
+                .Concat(capsule.SecondDegreeContext)
+                .Concat(capsule.SurroundingSource);
+
+        private string? ResolveOwningProject(string symbolId)
+        {
+            if (string.IsNullOrEmpty(_gitRoot))
+                return null;
+            var location = _declarationStore.GetDeclarationLocations(symbolId, _snapshotId, _includeGenerated).FirstOrDefault();
+            if (location == null)
+                return null;
+            var root = Path.GetFullPath(_gitRoot);
+            var directory = Path.GetDirectoryName(Path.Combine(root, location.DocumentPath));
+            return ResolveProjectFromDirectory(directory, root);
+        }
+
+        private string? ResolveProjectFromDirectory(string? directory, string root)
+        {
+            if (string.IsNullOrEmpty(directory))
+                return null;
+            if (_owningProjectCache.TryGetValue(directory, out var cached))
+                return cached;
+
+            string? result = null;
+            var current = directory;
+            while (!string.IsNullOrEmpty(current) && current.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                var project = Directory.EnumerateFiles(current, "*.csproj", SearchOption.TopDirectoryOnly)
+                    .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+                if (project != null)
+                {
+                    result = Path.GetRelativePath(root, project).Replace('\\', '/');
+                    break;
+                }
+                if (string.Equals(current, root, StringComparison.OrdinalIgnoreCase))
+                    break;
+                current = Path.GetDirectoryName(current)!;
+            }
+
+            _owningProjectCache[current] = result;
+            return result;
+        }
+
+        private string? ResolveSolutionPath()
+        {
+            if (_solutionPathResolved)
+                return _solutionPath;
+            _solutionPathResolved = true;
+
+            if (string.IsNullOrEmpty(_gitRoot) || !Directory.Exists(_gitRoot))
+                return null;
+            var solution = Directory.EnumerateFiles(_gitRoot, "*.sln*", SearchOption.TopDirectoryOnly)
+                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            _solutionPath = solution == null ? null : Path.GetRelativePath(_gitRoot, solution).Replace('\\', '/');
+            return _solutionPath;
         }
     }
 }

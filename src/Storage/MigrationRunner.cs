@@ -77,6 +77,8 @@ namespace Lurp.Storage
             command.ExecuteNonQuery();
         }
 
+        public static IReadOnlyList<int> MigrationVersions => GetMigrations().Select(static migration => migration.Version).ToList();
+
         private static List<IMigration> GetMigrations() =>
             [
                 new Migration_001_InitialSchema(),
@@ -100,6 +102,9 @@ namespace Lurp.Storage
                 new Migration_019_SchemaHardening(),
                 new Migration_020_EdgeTypeArguments(),
                 new Migration_021_GraphNodeMembership(),
+                new Migration_022_BindingIncompleteness(),
+                new Migration_023_FailedSnapshotState(),
+                new Migration_024_FailedSnapshotTombstone(),
             ];
     }
 }

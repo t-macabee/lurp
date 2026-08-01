@@ -59,6 +59,8 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         if (ifaceMemberId == null)
             return;
 
+        context.RecordFilteredExternal(member, type.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
+
         var implMember = type.FindImplementationForInterfaceMember(member);
         if (implMember == null)
             return;

@@ -105,6 +105,10 @@ internal static class SnapshotAssertions
                 AssertEqual(diagB[i], diagC[i]);
             }
 
+            var incompletenessB = store.GetBindingIncompleteness(snapshotB);
+            var incompletenessC = store.GetBindingIncompleteness(snapshotC);
+            Assert.Equal(incompletenessC, incompletenessB);
+
             var annB = store.GetAnnotations(snapshotB);
             var annC = store.GetAnnotations(snapshotC);
             NormalizeAnnotations(annB);

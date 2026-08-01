@@ -24,7 +24,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             if (!seen.Add(sourceId))
                 continue;
 
-            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance);
+            var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
+                "Persisted runtime dispatch or registration source for the anchor.");
             if (item != null)
             {
                 results.Add(item);
@@ -45,7 +46,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             if (!seen.Add(targetId))
                 continue;
 
-            var item = context.BuildCapsuleItem(targetId, edge.Kind, edge.Provenance);
+            var item = context.BuildCapsuleItem(targetId, edge.Kind, edge.Provenance,
+                "Persisted runtime dispatch, handler, or registration target of the anchor.");
             if (item != null)
             {
                 results.Add(item);

@@ -18,6 +18,12 @@ internal static class ContextHandler
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var maxHopsArg = HandlerBootstrap.GetArgValue(args, "--max-hops=");
         var includeGenerated = args.Contains("--include-generated");
+        var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
+        var changeObjective = HandlerBootstrap.GetArgValue(args, "--change-objective=");
+        var affectedProjects = GetRepeatableArgs(args, "--affected-project=");
+        var constraints = GetRepeatableArgs(args, "--constraint=");
+        var topologyAnnotations = GetRepeatableArgs(args, "--topology-annotation=");
+        var targetTopology = ParseTargetTopology(GetRepeatableArgs(args, "--target-hop="));
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         bool hasSymbol = !string.IsNullOrEmpty(symbolArg);
@@ -41,7 +47,17 @@ internal static class ContextHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
-            var assemblyOptions = new ContextAssemblyOptions(intent, budget, maxHops, includeGenerated);
+            // Resolve the git root from the requested snapshot, not from the
+            // latest complete snapshot — the capsule's verification suggestions
+            // (owning test project, solution path) must describe the workspace
+            // the snapshot was taken from. Falling back to LoadLatestSnapshot()
+            // silently attributed the wrong workspace when --snapshot= pointed
+            // at an older snapshot.
+            var gitRoot = store.GetSnapshotGitRoot(snapshotId);
+            var assemblyOptions = new ContextAssemblyOptions(
+                intent, budget, maxHops, includeGenerated,
+                scopeArg, affectedProjects, changeObjective, constraints,
+                targetTopology, topologyAnnotations, gitRoot);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions);
             WriteCapsuleOutput(capsule, outputDirArg);
         }
@@ -102,5 +118,27 @@ internal static class ContextHandler
         var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
         File.WriteAllText(outputPath, json);
         Console.WriteLine(json);
+    }
+
+    private static List<string> GetRepeatableArgs(string[] args, string prefix)
+        => args.Where(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(arg => arg[prefix.Length..])
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+    private static List<ImpactPath> ParseTargetTopology(IEnumerable<string> values)
+    {
+        var paths = new List<ImpactPath>();
+        foreach (var value in values)
+        {
+            var fields = value.Split(',', StringSplitOptions.TrimEntries);
+            if (fields.Length is < 3 or > 4)
+                throw new ArgumentException("--target-hop must be sourceSymbolId,targetSymbolId,edgeKind[,provenance].");
+            paths.Add(new ImpactPath(
+            [
+                new ImpactHop(fields[0], fields[1], fields[2], fields.Length == 4 ? fields[3] : "caller_supplied"),
+            ]));
+        }
+        return paths;
     }
 }

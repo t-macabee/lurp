@@ -57,7 +57,7 @@ cite git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `MigrationRunner` |
 | 2 | Workspace, snapshot, document, and configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 21 migrations |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 24 migrations; `SchemaStabilityTests` binds the migration list to `VersionConstants`, upgrades the checked-in v22 fixture, and proves unknown persisted symbol kinds survive as `Unknown` |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6 |
@@ -71,7 +71,7 @@ cite git commits and named tests directly.
 | 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
 | 15 | Context capsules with source and token budgets | ✅ Done | See §Phase 15 verification below |
 | 16 | Rebase simulations and audits on the shared store | ✅ Done | All read/simulate/audit handlers now run through the shared `HandlerBootstrap` (`src/Handlers/HandlerBootstrap.cs`): `GetArgValue`, `RequireArg`, `ResolveOutputDir`, `ResolveDbPath`, `OpenStore`, `ResolveSnapshotId`. Each handler's private copies were deleted as it converted — simulate family (`SimulateRenameHandler`/`SimulateMoveHandler`/`SimulateRemoveHandler`), `AuditHandler`, then `ImpactHandler`, `DiffHandler`, `GetSymbolHandler`, `GetSourceHandler`, `SearchHandler`, `FindSymbolHandler`, `NavigateHandler`, `ContextHandler`, `AnnotationHandler`, `TimingsHandler`. `StatusHandler`/`IndexHandler` keep only their diverging control flow (async, pre-store-open branches, Roslyn use) and share just `GetArgValue`/output-dir resolution. Validation: `dotnet build src/Lurp.csproj` clean (0 warnings, 0 errors); full suite 237/237 pass, including handler-driving integration tests `Status_AfterFreshIndex_ReportsUpToDate` and `NavigateHandler_ReturnsSnapshotBoundTarget`. |
-| 17 | Optimize incremental updates from measurements | ❌ Not done | |
+| 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations are emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as the dominant traversals; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` from 2051→1944 ms (Lurp), 217→182 ms (Storage), and 427→418 ms (tests). A broader node-cache candidate was measured and rejected because it did not produce a reliable improvement. `B1MemberEdgeExtractorTests` 21/21 pass after the retained optimization. |
 
 ### Phase 13 verification — Reflection Evidence Ladder
 
@@ -95,12 +95,60 @@ cite git commits and named tests directly.
 
 | Requirement | Implementation | Status |
 |---|---|---|
-| CLI entry point | `ContextHandler.cs` | ✅ |
-| Tier-based assembly | `ContextAssembler.cs` with `IContextTierBuilder` | ✅ |
-| Token budgeting | `Budget` parameter, `EstimateTokens`, truncation tracking | ✅ |
-| Intent-based ordering | `ContextIntent.Inspect/Modify/Diagnose` | ✅ |
-| Uncertainty detection | `UncertaintyDetector.cs` consumes reflection edges | ✅ |
-| Suggested verification | `VerificationSuggestion` from `TestedBy` edges | ✅ |
+| Anchor symbols | `CapsuleAnchor` includes symbol/FQN/kind/source plus scope, intent, hop limit, snapshot, affected projects, objective, provenance, extractor identity, and declaration locations | ✅ |
+| Relevant contracts | `ContractsTierBuilder` | ✅ |
+| Registered or possible runtime targets | `RegisteredImplementationsTierBuilder` | ✅ |
+| Relevant tests | `RelevantTestsTierBuilder`; shared containing-type expansion in `TestSymbolDiscovery` | ✅ |
+| Uncertainties and unchecked vectors | `UncertaintyDetector`, including reflection/generated exclusions and persisted binding incompleteness | ✅ |
+| Incoming and outgoing paths | `ContextCapsule.IncomingPaths` / `OutgoingPaths`; `ImpactHop` carries the complete source span | ✅ |
+| Suggested verification commands | `VerificationSuggestion.Command`; owning test project is derived from the persisted test declaration path; multi-project changes escalate to a full-suite step | ✅ |
+| Likely change sites | Ranked `LikelyChangeSite` entries for anchor, direct callers, and composition points | ✅ |
+| Exact source spans | `DeclarationReadStore.GetDeclarationLocations`; every anchor and capsule item carries path/start/end coordinates | ✅ |
+| Affected public surfaces | Derived from persisted declaration accessibility | ✅ |
+| Reason every item was included | Per-group `InclusionReasons` plus per-item `InclusionReason`, authored explicitly by every tier builder | ✅ |
+
+Budgeting follows §20.1 order. The partial-tier policy is explicitly greedy-prefix;
+once a higher-priority item cannot fit, lower tiers are not allowed to leapfrog it.
+Every omitted tier is still evaluated and recorded with `budget_exhausted` or `empty`.
+`ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`
+indexes `Lurp.slnx` and proves the eleven-item contract plus an executable test command.
+
+Closed capsule decisions:
+
+- No occurrence multigraph: architecture §12/§13 defines one evidence-bearing relation edge, not exhaustive call-site storage. A future occurrence table would require an architecture amendment.
+- No generated anchor narrative: architecture §24 keeps deterministic structured facts canonical. Consumer-authored prose is not stored as fact; source-authored XML documentation remains retrievable source evidence.
+- Architectural constraints come from snapshot annotations and repeatable caller `--constraint` input. No second JSON authority was added.
+
+### Rework completion — incremental closure, honesty, and operations (2026-08-01)
+
+- Reverse project invalidation uses `Solution.GetProjectDependencyGraph()` to compute the transitive dependent closure. Edge-sourced document invalidation iterates to a fixed point before extraction.
+- Every affected project is re-extracted without document scoping. Copied edges and incompleteness rows for all affected documents are replaced; declarations and compiler diagnostics are recomputed. `IncrementalIndex_ThreeProjectReverseClosure_MatchesFullIncludingDiagnostics` proves a change in A converges through B and C to the same canonical facts as a clean rebuild, including diagnostics.
+- A source/binary breaking-change classifier remains deferred: it is a separate capability, not required for dependency closure.
+- Matching edge triples now emit `edge_evidence_changed` for provenance/type-arguments/generated-evidence changes and `edge_location_changed` for source moves. Relation identity remains `(source, target, kind)` and `EdgeDedup` still retains the strongest same-snapshot evidence.
+- `binding_incompleteness` persists reason-coded counts per snapshot/project/document (`ambiguous_overload`, `compiler_error`, `unresolved_metadata`, `unsupported_syntax`, `filtered_external`, `extractor_failure`) and surfaces them through status JSON and capsule completeness. Cross-document refresh deletes stale rows using git-relative document paths, matching the form `BindingIncompletenessCollector` writes; `CrossDocumentRefresh_DeletesStaleBindingIncompletenessByRelativePath` drives `CrossDocumentEdgeRefresher.RefreshAsync` directly, because the full incremental pipeline masks the delete (`PrepareSnapshotData` already clears the invalidation scope) and a store-level test passes either way.
+- Failed full or incremental snapshots are marked `failed` immediately with a stable reason code and message; complete-snapshot reader gating is unchanged.
+- Partial declarations are read deterministically as all declaration views. Source content, spans, and line starts now always come from the same persisted document version.
+- The §25 benchmark was re-baselined after capsule expansion. All three scenarios still report exact starting-symbol resolution, no missing contracts/tests, no irrelevant capsule content, and incremental/full equivalence; only timestamps and generated snapshot IDs changed.
+- Post-audit validation (2026-08-01): full suite 254/254 pass, 0 skipped, 421s. The audit that produced this state also verified the two persistence fixes are falsifiable — reverting the relative-path conversion fails `CrossDocumentRefresh_DeletesStaleBindingIncompletenessByRelativePath` on the surviving stale row.
+
+### Architecture §26 definitive-version checklist (2026-08-01)
+
+| Criterion | Evidence | Status |
+|---|---|---|
+| One SQLite database holds indexed workspace state | `SqliteIndexStore` and migrations 1–24 | ✅ |
+| Source and facts share snapshot identity | `snapshot_documents`, `snapshot_symbols`, snapshot-scoped edges/diagnostics/completeness | ✅ |
+| Symbols link to exact retrievable spans | `DeclarationReadStore.GetDeclarationLocations` and all-declaration source reads | ✅ |
+| Ordinary reads avoid Roslyn reload | Storage-backed handlers and context tiers | ✅ |
+| Changed documents update incrementally | Fixed-point document invalidation plus reverse project closure | ✅ |
+| Member-level typed edges power queries | Existing edge extractors/handlers; P0-3 payload-aware diffs | ✅ |
+| Polymorphism/framework indirection keeps evidence levels | Existing provenance ladder and capsule uncertainties | ✅ |
+| Generated semantics participate without flooding context | Existing generated flags, `includeGenerated`, and declared completeness limit | ✅ within declared boundary |
+| Semantic diffs explain changes | Metadata diffs, semantic causes, edge evidence/location changes | ✅ |
+| Impact results are paths with reasons | `ImpactPath`, exact hop spans, semantic causes | ✅ |
+| Capsules return bounded relevant code and surroundings | Eleven-item Phase 15 contract and reason-coded truncation | ✅ |
+| Every fact states provenance and extractor version | Edge/declaration anchor contracts and binding-completeness scope | ✅ |
+| Simulations/audits consume the common model | Phase 16 handlers | ✅ |
+| Indexer never modifies source | Index and handler pipelines are read-only with respect to repository source | ✅ |
 
 ### Phase 12 — Production-to-test traversal (Done, commit `63cfaf4`)
 
@@ -271,7 +319,7 @@ locking in that behavior.
 | Architecture reference | Status | Evidence-based reading |
 |---|---|---|
 | §3.4 logical `facts` table | Decided deviation | Attributes are stored in `metadata_json`; the facts table is deliberately not built. The approved contract preserves attribute identity and multiplicity. |
-| §5.6 schema stability | Partially aligned | Version assertions follow the schema constant; no separate migration/constant consistency test exists yet. |
+| §5.6 schema stability | Aligned | `SchemaStabilityTests.MigrationListAndSchemaConstant_AreConsistent` binds the migration list to `VersionConstants.DatabaseSchemaVersion` (count + uniqueness); `CheckedInPriorV22Fixture_UpgradesToCurrentSchema` upgrades the checked-in v22 schema fixture and asserts the failure-state columns exist; `UnknownPersistedSymbolKind_DeserializesAsUnknown` proves unknown persisted enum values survive as `Unknown`. Open caveat carried from the rework report: the prior-version fixture is a SQL recreation of the v22 schema, not a checked-in binary database image — it validates migration SQL, not real persisted bytes. |
 | §6 Stage A0 identity | Aligned, confirmed | `document_id` is path-scoped per the architecture's own definition; order-4's D1 decision made this explicit rather than building snapshot-scoped identity. |
 | §15 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` now passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes for the queried root symbol and target snapshot as `semantic_causes` on every returned impact path. Order 13 also verifies that newly extracted operator/conversion `Calls` edges are surfaced by the existing edge diff and converge between incremental and full snapshots. |
 | §16 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing was used, fixing encoding, short-file, and structural-edge provenance gaps; `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. A file injected outside `obj/` is proven end-to-end to be indexed correctly. |
@@ -433,14 +481,18 @@ pair; `document_versions.encoding` is now always `"utf-8"`. Covered by
 BOM/UTF-16 LE/UTF-16 BE fixtures).
 
 While debugging an initial failure in the BOM test, a red herring surfaced:
-`GetSymbolSource` (`src/Storage/DeclarationReadStore.cs`,
-`GetSymbolSpanContent`) resolves a symbol's declaration span with `LIMIT 1`
-and no document filter. For a partial class declared across two files
-(the `Widget`/`Widget.Extra.cs` test fixture), this can nondeterministically
-return either file's declaration — that, not encoding, was the actual test
-failure. Fixed by scoping the affected assertions to `GetLabel`, a method
-unique to `Widget.cs`, in all three tests. The underlying `LIMIT 1`
-ambiguity in `GetSymbolSpanContent` itself is unfixed and out of scope here.
+`GetSymbolSource` (`src/Storage/DeclarationReadStore.cs`) selected a
+declaration span with `LIMIT 1` and no document filter. For a partial class
+declared across two files (the `Widget`/`Widget.Extra.cs` test fixture),
+that could nondeterministically return either file's declaration. Resolved by
+P1-5: `GetSymbolSpanContents` now returns **all** declaration spans ordered by
+document path, and `GetSymbolSource` joins every view slice (declaration /
+signature / body / name), so content and line starts always come from the same
+persisted document version. `GetDeclarationLocations` additionally exposes
+exact path/start/end line-and-column coordinates per declaration. The interim
+`GetLabel` workaround in `tests/SourceEncodingIntegrationTests.cs` was
+reverted; all three tests now assert against the partial type (`Widget`)
+declaration directly, and the `LIMIT 1` ambiguity no longer exists.
 
 ## Explicitly postponed
 

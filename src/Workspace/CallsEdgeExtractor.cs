@@ -27,34 +27,23 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             if (callerId == null)
                 continue;
 
-            var invocations = bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>();
-
-            foreach (var invocation in invocations)
+            foreach (var node in bodySyntax.DescendantNodes())
             {
-                AddCallEdge(invocation, semanticModel, callerId, edges, seen);
-            }
-
-            // Overloaded operators are represented by BinaryExpressionSyntax,
-            // not InvocationExpressionSyntax. Keep built-in operators out of
-            // the graph: only a compiler-resolved operator method is a call.
-            foreach (var binary in bodySyntax.DescendantNodes().OfType<BinaryExpressionSyntax>())
-            {
-                AddCallEdge(binary, semanticModel, callerId, edges, seen);
-            }
-
-            // User-defined conversions are represented by CastExpressionSyntax
-            // and resolve to the conversion operator method.
-            foreach (var cast in bodySyntax.DescendantNodes().OfType<CastExpressionSyntax>())
-            {
-                AddCallEdge(cast, semanticModel, callerId, edges, seen);
-            }
-
-            // Indexer access (obj[key]) resolves to the indexer property, not
-            // an accessor method. Emit Reads/Writes edges so consumers can
-            // distinguish indexer binding from ordinary method invocations.
-            foreach (var elementAccess in bodySyntax.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
-            {
-                AddIndexerEdge(elementAccess, semanticModel, callerId, edges, seen);
+                switch (node)
+                {
+                    case InvocationExpressionSyntax invocation:
+                        AddCallEdge(invocation, semanticModel, callerId, edges, seen);
+                        break;
+                    case BinaryExpressionSyntax binary:
+                        AddCallEdge(binary, semanticModel, callerId, edges, seen);
+                        break;
+                    case CastExpressionSyntax cast:
+                        AddCallEdge(cast, semanticModel, callerId, edges, seen);
+                        break;
+                    case ElementAccessExpressionSyntax elementAccess:
+                        AddIndexerEdge(elementAccess, semanticModel, callerId, edges, seen);
+                        break;
+                }
             }
         }
 
@@ -68,8 +57,19 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         List<EdgeRecord> edges,
         HashSet<(string source, string target, string kind)> seen)
     {
-        if (semanticModel.GetSymbolInfo(elementAccess).Symbol is not IPropertySymbol { IsIndexer: true } indexer)
+        var symbolInfo = semanticModel.GetSymbolInfo(elementAccess);
+        if (symbolInfo.Symbol is not IPropertySymbol { IsIndexer: true } indexer)
+        {
+            if (symbolInfo.Symbol == null &&
+                (symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0 ||
+                 semanticModel.GetDiagnostics(elementAccess.Span).Any(static d => d.Severity == DiagnosticSeverity.Error)))
+            {
+                context.RecordUnresolvedBinding(symbolInfo, elementAccess, semanticModel);
+            }
             return;
+        }
+
+        context.RecordFilteredExternal(indexer, elementAccess);
 
         var indexerId = context.MakeSymbolId(indexer);
         if (indexerId == null || indexerId == callerId)
@@ -121,9 +121,18 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         List<EdgeRecord> edges,
         HashSet<(string source, string target, string kind)> seen)
     {
-        if (semanticModel.GetSymbolInfo(syntax).Symbol is not IMethodSymbol callee ||
-            callee.MethodKind == MethodKind.AnonymousFunction)
+        var symbolInfo = semanticModel.GetSymbolInfo(syntax);
+        if (symbolInfo.Symbol is not IMethodSymbol callee)
+        {
+            if (syntax is InvocationExpressionSyntax || symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0)
+                context.RecordUnresolvedBinding(symbolInfo, syntax, semanticModel);
             return;
+        }
+
+        if (callee.MethodKind == MethodKind.AnonymousFunction)
+            return;
+
+        context.RecordFilteredExternal(callee, syntax);
 
         var calleeId = context.MakeSymbolId(callee);
         if (calleeId == null || calleeId == callerId)

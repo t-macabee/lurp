@@ -169,6 +169,11 @@ public static class IndexRunner
 
                     store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                     totalDiagnostics += result.Diagnostics.Count;
+                    store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+                    foreach (var measurement in result.Measurements)
+                    {
+                        Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                    }
 
                     Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
                 }
@@ -247,7 +252,10 @@ public static class IndexRunner
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} left in '{SnapshotStatusValues.InProgress}' state: {ex.Message}");
+            var reasonCode = ex is OperationCanceledException ? "cancelled" : "full_index_failure";
+            try { store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message); }
+            catch { }
+            Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
 
             // Try to save whatever timings we have
             try { store.SaveTimings(snapshotIdStr, timings); }

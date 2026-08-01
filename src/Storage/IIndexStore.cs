@@ -58,7 +58,7 @@
         }
     }
 
-    public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore, ISemanticDiffReadStore
+    public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore, ISemanticDiffReadStore, IBindingIncompletenessStore
     {
     }
 }

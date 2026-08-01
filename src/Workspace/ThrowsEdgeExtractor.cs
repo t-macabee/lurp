@@ -35,16 +35,12 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
 
     private static IEnumerable<(ExpressionSyntax Expression, Location Location)> EnumerateThrownExpressions(SyntaxNode bodySyntax)
     {
-        foreach (var throwStmt in bodySyntax.DescendantNodes().OfType<ThrowStatementSyntax>())
+        foreach (var node in bodySyntax.DescendantNodes())
         {
-            if (throwStmt.Expression != null)
-                yield return (throwStmt.Expression, throwStmt.GetLocation());
-        }
-
-        foreach (var throwExpr in bodySyntax.DescendantNodes().OfType<ThrowExpressionSyntax>())
-        {
-            if (throwExpr.Expression != null)
-                yield return (throwExpr.Expression, throwExpr.GetLocation());
+            if (node is ThrowStatementSyntax { Expression: not null } throwStatement)
+                yield return (throwStatement.Expression, throwStatement.GetLocation());
+            else if (node is ThrowExpressionSyntax { Expression: not null } throwExpression)
+                yield return (throwExpression.Expression, throwExpression.GetLocation());
         }
     }
 
@@ -53,7 +49,12 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
     {
         var exceptionType = ResolveThrownType(thrownExpression, semanticModel);
         if (exceptionType == null)
+        {
+            context.RecordUnresolvedBinding(thrownExpression, semanticModel);
             return;
+        }
+
+        context.RecordFilteredExternal(exceptionType, thrownExpression);
 
         var typeId = context.MakeSymbolId(exceptionType);
         if (typeId == null)

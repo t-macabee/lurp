@@ -33,9 +33,19 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
             {
                 var symbolInfo = semanticModel.GetSymbolInfo(access);
                 if (symbolInfo.Symbol is not IFieldSymbol and not IPropertySymbol)
+                {
+                    if (symbolInfo.Symbol == null &&
+                        (symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0 ||
+                         semanticModel.GetDiagnostics(access.Span).Any(static d => d.Severity == DiagnosticSeverity.Error)))
+                    {
+                        context.RecordUnresolvedBinding(symbolInfo, access, semanticModel);
+                    }
                     continue;
+                }
 
                 var memberSymbol = symbolInfo.Symbol;
+                context.RecordFilteredExternal(memberSymbol, access);
+
                 var memberId = context.MakeSymbolId(memberSymbol);
                 if (memberId == null)
                     continue;

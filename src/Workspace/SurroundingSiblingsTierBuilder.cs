@@ -34,7 +34,8 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
             if (siblingId == context.SymbolId.Value)
                 continue;
 
-            var item = context.BuildCapsuleItem(siblingId, EdgeKind.Contains.ToString(), edge.Provenance);
+            var item = context.BuildCapsuleItem(siblingId, EdgeKind.Contains.ToString(), edge.Provenance,
+                "Sibling declaration sharing the anchor's containing declaration.");
             if (item != null)
             {
                 results.Add(item);

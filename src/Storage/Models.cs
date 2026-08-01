@@ -65,6 +65,13 @@ namespace Lurp.Storage
         public int? EndColumn { get; init; }
     }
 
+    public sealed record BindingIncompletenessRecord(
+        string ProjectName,
+        string? DocumentPath,
+        string Reason,
+        int Count,
+        string ExtractorVersion);
+
     public sealed class AnnotationRecord
     {
         public string SymbolId { get; }
@@ -93,6 +100,8 @@ namespace Lurp.Storage
         public const string MetadataChanged = "metadata_changed";
         public const string EdgeAdded = "edge_added";
         public const string EdgeRemoved = "edge_removed";
+        public const string EdgeEvidenceChanged = "edge_evidence_changed";
+        public const string EdgeLocationChanged = "edge_location_changed";
         public const string AttributeChanged = "attribute_changed";
         public const string BodyOnlyChanged = "body_only_changed";
         public const string ComparisonUnavailable = "comparison_unavailable";
@@ -122,6 +131,8 @@ namespace Lurp.Storage
             CreatedAtUtc = createdAtUtc;
         }
     }
+
+    public sealed record SnapshotFailureRow(string SnapshotId, string ReasonCode, string? Message, DateTime CreatedAtUtc);
 
     public class DocumentVersion
     {

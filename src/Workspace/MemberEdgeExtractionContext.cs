@@ -6,18 +6,29 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 
-internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
+internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
 {
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
     private readonly EdgeLocationResolver _locationResolver = new(
         documentVersions.Keys.Select(static id => id.ToString()),
         generatedDocuments.Select(static id => id.ToString()),
         gitRoot);
+    private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
     internal EdgeLocationResolver LocationResolver => _locationResolver;
     internal string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
+    internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
+
+    internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
+        => Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+
+    internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
+        => Incompleteness?.RecordUnresolved(node, semanticModel);
+
+    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
+        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
     private bool IsSyntaxTreeInScope(SyntaxTree? syntaxTree)
     {
@@ -72,8 +83,11 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         };
     }
 
-    internal IEnumerable<(IMethodSymbol, CSharpSyntaxNode)> EnumerateMethodDeclarations()
+    internal IReadOnlyList<(IMethodSymbol Method, CSharpSyntaxNode Syntax)> EnumerateMethodDeclarations()
     {
+        if (_methodDeclarations != null)
+            return _methodDeclarations;
+        var result = new List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>();
         foreach (var typeSymbol in GetAllNamedTypes())
         {
             foreach (var member in typeSymbol.GetMembers())
@@ -86,9 +100,9 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
                             continue;
                         var syntax = syntaxRef.GetSyntax();
                         if (syntax is MethodDeclarationSyntax methodSyntax)
-                            yield return (method, methodSyntax);
+                            result.Add((method, methodSyntax));
                         else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
-                            yield return (method, ctorSyntax);
+                            result.Add((method, ctorSyntax));
                     }
                 }
 
@@ -104,13 +118,16 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
                             if (!IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
                                 continue;
                             if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
-                                yield return (accessor, accessorSyntax);
+                                result.Add((accessor, accessorSyntax));
                         }
                     }
                 }
             }
         }
+        _methodDeclarations = result;
+        return result;
     }
+
 
     internal string? MakeSymbolId(ISymbol symbol)
     {

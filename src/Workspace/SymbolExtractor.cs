@@ -13,6 +13,17 @@ public sealed class SymbolExtractor
         string snapshotId,
         Action<string>? logWarning = null,
         IReadOnlySet<string>? scopeDocuments = null)
+        : this(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, logWarning, scopeDocuments, null)
+    {
+    }
+
+    internal SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
+        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
+        IReadOnlySet<DocumentId> generatedDocuments,
+        string snapshotId,
+        Action<string>? logWarning,
+        IReadOnlySet<string>? scopeDocuments,
+        BindingIncompletenessCollector? incompleteness)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (documentContents == null) throw new ArgumentNullException(nameof(documentContents));
@@ -20,7 +31,7 @@ public sealed class SymbolExtractor
         if (generatedDocuments == null) throw new ArgumentNullException(nameof(generatedDocuments));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
 
-        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments);
+        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, incompleteness);
         _logWarning = logWarning;
     }
 

@@ -113,7 +113,12 @@ namespace Lurp.Workspace
 
                 anyEdgeFollowed = true;
 
-                var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,sourceDocument: includeSource ? edge.SourceDocumentPath : null,sourceLine: includeSource ? edge.SourceStartLine : null);
+                var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,
+                    sourceDocument: includeSource ? edge.SourceDocumentPath : null,
+                    sourceLine: includeSource ? edge.SourceStartLine : null,
+                    sourceColumn: includeSource ? edge.SourceStartColumn : null,
+                    sourceEndLine: includeSource ? edge.SourceEndLine : null,
+                    sourceEndColumn: includeSource ? edge.SourceEndColumn : null);
 
                 var newHops = new List<ImpactHop>(hopsSoFar) { newHop };
                 var newVisited = new HashSet<string>(visited) { neighborId };

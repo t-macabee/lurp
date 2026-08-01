@@ -52,11 +52,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                     "Use GetContainingTypeSource or GetSurroundingLines for this view kind.");
         }
 
-        var (content, start, end) = GetSymbolSpanContent(symbolId, snapshotId, startCol, endCol, includeGenerated);
-        if (content == null || start == null || end == null)
-            return null;
+        var views = GetSymbolSpanContents(symbolId, snapshotId, startCol, endCol, includeGenerated)
+            .Where(static span => span.Content != null && span.Start != null && span.End != null)
+            .Select(span => SliceToString(span.Content!, span.Start!.Value, span.End!.Value))
+            .Where(static source => source != null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-        return SliceToString(content, start.Value, end.Value);
+        return views.Count == 0 ? null : string.Join("\n\n", views);
     }
 
     internal string? GetContainingTypeSource(string symbolId, string snapshotId)
@@ -89,39 +92,89 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
 
     internal string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines)
     {
-        var (content, fullStart, fullEnd) = GetSymbolSpanContent(symbolId, snapshotId, "full_start", "full_end");
-        if (content == null || fullStart == null || fullEnd == null)
-            return null;
+        var views = new List<string>();
+        foreach (var span in GetSymbolSpanContents(symbolId, snapshotId, "full_start", "full_end"))
+        {
+            if (span.Content == null || span.Start == null || span.End == null || span.LineStarts is not { Length: > 0 })
+                continue;
 
-        var lineStarts = GetLineStarts(symbolId, snapshotId);
-        if (lineStarts == null || lineStarts.Length == 0)
-            return null;
+            int startLine = FindLineIndex(span.LineStarts, span.Start.Value);
+            int endLine = FindLineIndex(span.LineStarts, span.End.Value - 1);
+            int expandedStartLine = Math.Max(0, startLine - contextLines);
+            int expandedEndLine = Math.Min(span.LineStarts.Length - 1, endLine + contextLines);
+            int byteStart = span.LineStarts[expandedStartLine];
+            int byteEnd = expandedEndLine + 1 < span.LineStarts.Length
+                ? span.LineStarts[expandedEndLine + 1]
+                : span.Content.Length;
+            var source = SliceToString(span.Content, byteStart, byteEnd);
+            if (source != null && !views.Contains(source, StringComparer.Ordinal))
+                views.Add(source);
+        }
 
-        int startLine = FindLineIndex(lineStarts, fullStart.Value);
-        int endLine = FindLineIndex(lineStarts, fullEnd.Value - 1);
-
-        int expandedStartLine = Math.Max(0, startLine - contextLines);
-        int expandedEndLine = Math.Min(lineStarts.Length - 1, endLine + contextLines);
-
-        int byteStart = lineStarts[expandedStartLine];
-        int byteEnd;
-        if (expandedEndLine + 1 < lineStarts.Length)
-            byteEnd = lineStarts[expandedEndLine + 1];
-        else
-            byteEnd = content.Length;
-
-        return SliceToString(content, byteStart, byteEnd);
+        return views.Count == 0 ? null : string.Join("\n\n", views);
     }
 
-    private (byte[]? Content, int? Start, int? End) GetSymbolSpanContent(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
+    internal List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT doc.relative_path, d.full_start, d.full_end, dv.line_starts, dv.content,
+                   COALESCE(d.is_generated, 0)
+            FROM declarations d
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId AND d.symbol_id = @symbolId
+        ";
+        if (!includeGenerated)
+            command.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
+        command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@symbolId", symbolId);
+
+        var results = new List<DeclarationLocation>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.IsDBNull(1) || reader.IsDBNull(2) || reader.IsDBNull(3) || reader.IsDBNull(4))
+                continue;
+            var start = reader.GetInt32(1);
+            var end = reader.GetInt32(2);
+            var lineStarts = JsonSerializer.Deserialize<int[]>(reader.GetString(3));
+            var content = (byte[])reader[4];
+            if (lineStarts is not { Length: > 0 } || start < 0 || end < start || end > content.Length)
+                continue;
+            var startLine = FindLineIndex(lineStarts, start);
+            var endLine = FindLineIndex(lineStarts, end);
+            results.Add(new DeclarationLocation(
+                reader.GetString(0),
+                startLine,
+                Utf8Column(content, lineStarts[startLine], start),
+                endLine,
+                Utf8Column(content, lineStarts[endLine], end),
+                reader.GetInt32(5) == 1));
+        }
+        return results;
+    }
+
+    private static int Utf8Column(byte[] content, int lineStart, int offset)
+    {
+        var safeOffset = Math.Clamp(offset, lineStart, content.Length);
+        return Encoding.UTF8.GetCharCount(content, lineStart, safeOffset - lineStart);
+    }
+
+    private sealed record SymbolSpanContent(byte[]? Content, int? Start, int? End, int[]? LineStarts);
+
+    private List<SymbolSpanContent> GetSymbolSpanContents(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = $@"
-            SELECT dv.content, d.{startCol}, d.{endCol}
+            SELECT dv.content, d.{startCol}, d.{endCol}, dv.line_starts
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
             JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
             WHERE ss.snapshot_id = @snapshotId
               AND sd.snapshot_id = @snapshotId
               AND ss.symbol_id = @symbolId
@@ -132,45 +185,25 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
         }
 
-        command.CommandText += " LIMIT 1;";
+        command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
 
         command.Parameters.AddWithValue("@symbolId", symbolId);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
+        var results = new List<SymbolSpanContent>();
         using var reader = command.ExecuteReader();
-        if (!reader.Read())
-            return (null, null, null);
-
-        var content = reader.IsDBNull(0) ? null : (byte[])reader[0];
-        var start = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-        var end = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
-
-        return (content, start, end);
-    }
-
-    private int[]? GetLineStarts(string symbolId, string snapshotId)
-    {
-        using var command = _connection.CreateCommand();
-        command.CommandText = @"
-            SELECT dv.line_starts
-            FROM snapshot_symbols ss
-            JOIN declarations d ON d.symbol_id = ss.symbol_id
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
-            WHERE ss.snapshot_id = @snapshotId
-              AND sd.snapshot_id = @snapshotId
-              AND ss.symbol_id = @symbolId
-            LIMIT 1;
-        ";
-        command.Parameters.AddWithValue("@symbolId", symbolId);
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        var result = command.ExecuteScalar();
-        if (result == null || result == DBNull.Value)
-            return null;
-
-        var json = (string)result;
-        return JsonSerializer.Deserialize<int[]>(json);
+        while (reader.Read())
+        {
+            var lineStarts = reader.IsDBNull(3)
+                ? null
+                : JsonSerializer.Deserialize<int[]>(reader.GetString(3));
+            results.Add(new SymbolSpanContent(
+                reader.IsDBNull(0) ? null : (byte[])reader[0],
+                reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                lineStarts));
+        }
+        return results;
     }
 
     internal static IndexedSymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
@@ -180,7 +213,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
 
         var kindStr = reader.GetString(3);
-        Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind);
+        if (!Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind))
+            kind = IndexedSymbolKind.Unknown;
 
         return new IndexedSymbolInfo(symbolId: sid, kind: kind, fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
             metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
@@ -273,7 +307,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
 
             if (!symbolMeta.ContainsKey(symbolId))
             {
-                Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind);
+                if (!Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind))
+                    kind = IndexedSymbolKind.Unknown;
                 symbolMeta[symbolId] = (kind, assemblyIdentity, fqn);
             }
 

@@ -186,4 +186,37 @@ public sealed class TestedByContractTests : IDisposable
             capsule.RelevantTests,
             t => t.SymbolId == "M:B|prod");
     }
+
+    [Fact]
+    public void MethodAnchor_TypeLevelTestedBy_EmitsExecutableVerificationStep()
+    {
+        const string snapId = "snap-tc-method";
+        const string methodId = "M:MyApp.Service.Execute|prod";
+        const string typeId = "T:MyApp.Service|prod";
+        const string testId = "M:MyApp.Tests.ServiceTests.Execute_Works|test";
+        var store = CreateStore();
+        SeedFkReferences(snapId);
+        store.SaveDeclarations(snapId, [MakeDecl(methodId), MakeDecl(typeId), MakeDecl(testId)]);
+        store.SaveEdges(snapId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = typeId,
+                TargetSymbolId = testId,
+                Kind = EdgeKind.TestedBy.ToString(),
+                Provenance = "framework_derived",
+                SnapshotId = snapId,
+                ExtractorVersion = "test-v3",
+            },
+        ]);
+
+        var capsule = new ContextCapsule(new CapsuleAnchor(methodId, "MyApp.Service.Execute", "Method", ""));
+        new UncertaintyDetector(store, store, snapId, SymbolId.Parse(methodId), false).Detect(capsule);
+
+        var step = Assert.Single(capsule.SuggestedVerification);
+        Assert.Equal(testId, step.TestId);
+        Assert.False(string.IsNullOrWhiteSpace(step.Command));
+        Assert.Contains("dotnet test", step.Command, StringComparison.Ordinal);
+        Assert.Contains("FullyQualifiedName=", step.Command, StringComparison.Ordinal);
+    }
 }

@@ -16,7 +16,12 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
         {
             var typeInfo = semanticModel.GetTypeInfo(typeOfExpr.Type);
             if (typeInfo.Type == null)
+            {
+                context.RecordUnresolvedBinding(typeOfExpr.Type, semanticModel);
                 continue;
+            }
+
+            context.RecordFilteredExternal(typeInfo.Type, typeOfExpr);
 
             var targetId = context.MakeSymbolId(typeInfo.Type);
             if (targetId == null)

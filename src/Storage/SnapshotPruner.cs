@@ -70,16 +70,22 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     internal void DeleteIncompleteSnapshots()
     {
         using var listCmd = _connection.CreateCommand();
-        listCmd.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status;";
-        listCmd.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
-        var snapshotIds = new List<string>();
+        listCmd.CommandText = @"
+            SELECT snapshot_id, status
+            FROM snapshots
+            WHERE status IN (@inProgress, @failed)
+              AND payload_pruned = 0;
+        ";
+        listCmd.Parameters.AddWithValue("@inProgress", SnapshotStatusValues.InProgress);
+        listCmd.Parameters.AddWithValue("@failed", SnapshotStatusValues.Failed);
+        var snapshotRows = new List<(string SnapshotId, string Status)>();
         using (var reader = listCmd.ExecuteReader())
         {
             while (reader.Read())
-                snapshotIds.Add(reader.GetString(0));
+                snapshotRows.Add((reader.GetString(0), reader.GetString(1)));
         }
 
-        if (snapshotIds.Count == 0)
+        if (snapshotRows.Count == 0)
             return;
 
         using var transaction = _connection.BeginTransaction();
@@ -88,9 +94,28 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
 
-            foreach (var sid in snapshotIds)
+            foreach (var (snapshotId, status) in snapshotRows)
             {
-                DeleteSnapshotData(cmd, sid);
+                DeleteSnapshotPayload(cmd, snapshotId);
+                if (status == SnapshotStatusValues.Failed)
+                {
+                    // Tombstone: keep the row — and with it the failure reason
+                    // that P2-9 exists to expose — but mark the payload pruned so
+                    // a later run does not rescan the (now empty) payload.
+                    cmd.CommandText = "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;";
+                    cmd.Parameters.Clear();
+                    cmd.Parameters.AddWithValue("@sid", snapshotId);
+                    cmd.ExecuteNonQuery();
+                }
+                else
+                {
+                    // Crashed in-progress rows have no failure reason to preserve;
+                    // restore the original cleanup of deleting the whole row.
+                    cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
+                    cmd.Parameters.Clear();
+                    cmd.Parameters.AddWithValue("@sid", snapshotId);
+                    cmd.ExecuteNonQuery();
+                }
             }
 
             transaction.Commit();
@@ -121,11 +146,21 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId)
     {
+        DeleteSnapshotPayload(cmd, snapshotId);
+
+        cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@sid", snapshotId);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void DeleteSnapshotPayload(SqliteCommand cmd, string snapshotId)
+    {
         string[] tables =
         [
             "edges", "diagnostics", "annotations", "snapshot_symbols",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
-            "snapshot_timings", "snapshot_graph_nodes",
+            "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness",
         ];
 
         foreach (var table in tables)
@@ -221,11 +256,6 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             );
         ";
         cmd.Parameters.Clear();
-        cmd.ExecuteNonQuery();
-
-        cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
-        cmd.Parameters.Clear();
-        cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
     }
 }

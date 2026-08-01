@@ -42,8 +42,11 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (sourceId == null)
             return;
 
+        var sourceSyntax = typeSymbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+
         if (typeSymbol.BaseType != null && typeSymbol.BaseType.SpecialType != SpecialType.System_Object && typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType)
         {
+            context.RecordFilteredExternal(typeSymbol.BaseType, sourceSyntax);
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
             {
@@ -53,6 +56,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
         foreach (var iface in typeSymbol.Interfaces)
         {
+            context.RecordFilteredExternal(iface, sourceSyntax);
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
             {
@@ -99,6 +103,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
         if (referencedType is INamedTypeSymbol namedType)
         {
+            context.RecordFilteredExternal(namedType, member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
             var targetId = MakeSymbolId(namedType);
             if (targetId != null && targetId != sourceSymbolId)
             {

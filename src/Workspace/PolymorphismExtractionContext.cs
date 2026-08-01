@@ -10,19 +10,24 @@ internal sealed class PolymorphismExtractionContext
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
     private readonly string _gitRoot;
 
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         ScopeDocuments = scopeDocuments;
+        Incompleteness = incompleteness;
     }
 
     internal Compilation Compilation { get; }
     internal string SnapshotId { get; }
     internal string AssemblyIdentity { get; }
     internal IReadOnlySet<string>? ScopeDocuments { get; }
+    internal BindingIncompletenessCollector? Incompleteness { get; }
+
+    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
+        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {

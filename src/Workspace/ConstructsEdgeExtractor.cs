@@ -29,8 +29,16 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
             foreach (var creation in creations)
             {
                 var symbolInfo = semanticModel.GetSymbolInfo(creation);
-                if (symbolInfo.Symbol is IMethodSymbol ctor && ctor.MethodKind == MethodKind.Constructor)
+                if (symbolInfo.Symbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
                 {
+                    context.RecordUnresolvedBinding(symbolInfo, creation, semanticModel);
+                    continue;
+                }
+
+                if (ctor.MethodKind == MethodKind.Constructor)
+                {
+                    context.RecordFilteredExternal(ctor, creation);
+
                     var ctorId = context.MakeSymbolId(ctor);
                     if (ctorId == null)
                         continue;

@@ -41,7 +41,13 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         var resolvedSymbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
 
         if (resolvedSymbol == null || !resolvedSymbol.CanBeReferencedByName)
+        {
+            if (resolvedSymbol == null)
+                context.RecordUnresolvedBinding(symbolInfo, argument, semanticModel);
             return;
+        }
+
+        context.RecordFilteredExternal(resolvedSymbol, argument);
 
         var targetId = context.MakeSymbolId(resolvedSymbol);
         if (targetId == null)

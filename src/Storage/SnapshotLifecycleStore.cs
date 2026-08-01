@@ -190,6 +190,42 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
+    internal void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE snapshots
+            SET status = @status, failure_reason_code = @reasonCode, failure_message = @message
+            WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Failed);
+        command.Parameters.AddWithValue("@reasonCode", reasonCode);
+        command.Parameters.AddWithValue("@message", (object?)message ?? DBNull.Value);
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.ExecuteNonQuery();
+    }
+
+    internal SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = string.IsNullOrEmpty(workspaceId)
+            ? @"SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
+                FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;"
+            : @"SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
+                FROM snapshots WHERE status = @status AND workspace_id = @workspaceId
+                ORDER BY built_at_utc DESC LIMIT 1;";
+        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Failed);
+        if (!string.IsNullOrEmpty(workspaceId))
+            command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return new SnapshotFailureRow(
+            reader.GetString(0),
+            reader.IsDBNull(1) ? "unknown" : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetString(2),
+            DateTime.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+    }
+
     internal SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
     {
         using var command = _connection.CreateCommand();
@@ -387,6 +423,19 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         }
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
 
+        return command.ExecuteScalar() as string;
+    }
+
+    internal string? GetSnapshotGitRoot(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT w.git_root
+            FROM snapshots s
+            JOIN workspaces w ON w.workspace_id = s.workspace_id
+            WHERE s.snapshot_id = @snapshotId;
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
         return command.ExecuteScalar() as string;
     }
 
