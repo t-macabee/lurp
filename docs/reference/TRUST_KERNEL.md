@@ -71,7 +71,7 @@ cite git commits and named tests directly.
 | 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
 | 15 | Context capsules with source and token budgets | ✅ Done | See §Phase 15 verification below |
 | 16 | Rebase simulations and audits on the shared store | ✅ Done | All read/simulate/audit handlers now run through the shared `HandlerBootstrap` (`src/Handlers/HandlerBootstrap.cs`): `GetArgValue`, `RequireArg`, `ResolveOutputDir`, `ResolveDbPath`, `OpenStore`, `ResolveSnapshotId`. Each handler's private copies were deleted as it converted — simulate family (`SimulateRenameHandler`/`SimulateMoveHandler`/`SimulateRemoveHandler`), `AuditHandler`, then `ImpactHandler`, `DiffHandler`, `GetSymbolHandler`, `GetSourceHandler`, `SearchHandler`, `FindSymbolHandler`, `NavigateHandler`, `ContextHandler`, `AnnotationHandler`, `TimingsHandler`. `StatusHandler`/`IndexHandler` keep only their diverging control flow (async, pre-store-open branches, Roslyn use) and share just `GetArgValue`/output-dir resolution. Validation: `dotnet build src/Lurp.csproj` clean (0 warnings, 0 errors); full suite 237/237 pass, including handler-driving integration tests `Status_AfterFreshIndex_ReportsUpToDate` and `NavigateHandler_ReturnsSnapshotBoundTarget`. |
-| 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations are emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as the dominant traversals; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` from 2051→1944 ms (Lurp), 217→182 ms (Storage), and 427→418 ms (tests). A broader node-cache candidate was measured and rejected because it did not produce a reliable improvement. `B1MemberEdgeExtractorTests` 21/21 pass after the retained optimization. |
+| 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations are emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as the dominant traversals; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` from 2051→1944 ms (Lurp), 217→182 ms (Storage), and 427→418 ms (tests). A broader node-cache candidate was measured and rejected because it did not produce a reliable improvement. `B1MemberEdgeExtractorTests` 22/22 pass after the retained optimization. |
 
 ### Phase 13 verification — Reflection Evidence Ladder
 
@@ -173,7 +173,7 @@ Validation: `FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType` (edges no
 | Truncation explanation | `Truncated`, `TruncationReason` | ✅ |
 | Semantic causes | `SemanticCauses` attached via `ISemanticDiffStore` | ✅ |
 
-Tests: `B7ImpactTraverserTests` (13 tests), `SemanticRenameIntegrationTests` integration
+Tests: `B7ImpactTraverserTests` (14 tests), `SemanticRenameIntegrationTests` integration
 
 Order 4's scope was narrowed by an audit before its D1–D5 sub-tasks were
 written: immutable document versions already existed de facto (T12 below),
