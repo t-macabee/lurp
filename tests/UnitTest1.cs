@@ -4069,10 +4069,13 @@ namespace Scrutor {
     public static class TypeSourceSelectorExtensions {
         public static IImplementationTypeSelector FromAssembliesOf<T>(this ITypeSourceSelector source) => null!;
         public static IImplementationTypeSelector FromAssembliesOf(this ITypeSourceSelector source, params System.Type[] types) => null!;
-        public static IServiceTypeSelector AddClasses(this IImplementationTypeSelector source) => null!;
-        public static IServiceTypeSelector AddClasses(this IImplementationTypeSelector source, System.Action<IImplementationTypeFilter> filter) => null!;
-        public static ITypeSourceSelector AsImplementedInterfaces(this IImplementationTypeSelector source) => null!;
+        public static IImplementationTypeSelector AddClasses(this IImplementationTypeSelector source) => null!;
+        public static IImplementationTypeSelector AddClasses(this IImplementationTypeSelector source, System.Action<IImplementationTypeFilter> filter) => null!;
+        public static IServiceTypeSelector AsImplementedInterfaces(this IImplementationTypeSelector source) => null!;
         public static ITypeSourceSelector AsMatchingInterface(this IImplementationTypeSelector source) => null!;
+    }
+    public static class ServiceTypeSelectorExtensions {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection WithScopedLifetime(this IServiceTypeSelector source) => null!;
     }
     public interface IImplementationTypeFilter {
         IImplementationTypeFilter AssignableTo<T>();
@@ -4378,10 +4381,276 @@ public class Startup
             var adapter = new DependencyInjectionAdapter();
             var edges = adapter.Extract(compilation, "snap-b5-di-005", CreateTestLocationResolver());
 
+            var registrations = edges.Where(e => e.Kind == "Registers").ToList();
+            Assert.Equal(2, registrations.Count);
+
+            var ownerEdge = Assert.Single(registrations, e => e.SourceSymbolId.Contains("ConfigureServices"));
+            Assert.Equal(Provenance.FrameworkDerived, ownerEdge.Provenance);
+            Assert.NotEqual(Provenance.CompilerProved, ownerEdge.Provenance);
+            Assert.False(ownerEdge.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void DI_AddScoped_InterfaceToImplementation_EmitsRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddScoped<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-010", CreateTestLocationResolver());
+
+            var ifaceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("IService")!, "TestAssembly");
+            var serviceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("Service")!, "TestAssembly");
+
+            var registration = Assert.Single(edges,
+                e => e.Kind == "Registers" && e.SourceSymbolId == ifaceId && e.TargetSymbolId == serviceId);
+
+            Assert.Equal(Provenance.FrameworkDerived, registration.Provenance);
+            Assert.Equal("di-v1", registration.ExtractorVersion);
+            Assert.Equal("test.cs", registration.SourceDocumentPath);
+            Assert.False(registration.IsCrossGenerated);
+            Assert.False(registration.SourceSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void DI_AddTransient_InterfaceToImplementation_EmitsRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddTransient<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-011", CreateTestLocationResolver());
+
+            var ifaceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("IService")!, "TestAssembly");
+            var serviceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("Service")!, "TestAssembly");
+
+            var registration = Assert.Single(edges,
+                e => e.Kind == "Registers" && e.SourceSymbolId == ifaceId && e.TargetSymbolId == serviceId);
+
+            Assert.Equal(Provenance.FrameworkDerived, registration.Provenance);
+            Assert.Equal("di-v1", registration.ExtractorVersion);
+            Assert.Equal("test.cs", registration.SourceDocumentPath);
+            Assert.False(registration.IsCrossGenerated);
+        }
+
+        [Fact]
+        public void DI_AddSingleton_InterfaceToImplementation_EmitsRegistersEdge()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-012", CreateTestLocationResolver());
+
+            var ifaceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("IService")!, "TestAssembly");
+            var serviceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("Service")!, "TestAssembly");
+
+            var registration = Assert.Single(edges,
+                e => e.Kind == "Registers" && e.SourceSymbolId == ifaceId && e.TargetSymbolId == serviceId);
+
+            Assert.Equal(Provenance.FrameworkDerived, registration.Provenance);
+            Assert.Equal("di-v1", registration.ExtractorVersion);
+            Assert.Equal("test.cs", registration.SourceDocumentPath);
+            Assert.False(registration.IsCrossGenerated);
+        }
+
+        [Fact]
+        public void DI_ConstructorParameter_AndExplicitRegistration_FormReferenceRegistrationPath()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Consumer
+{
+    public Consumer(IService service) { }
+}
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddScoped<IService, Service>();
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs);
+
+            var docVersions = new Dictionary<DocumentId, DocumentVersionId>
+            {
+                { new DocumentId("test.cs"), DocumentVersionId.Compute("test-content") },
+                { new DocumentId("stubs.cs"), DocumentVersionId.Compute("stub-content") },
+            };
+
+            var memberEdges = new MemberEdgeExtractor(
+                compilation, docVersions, new HashSet<DocumentId>(), "snap-b5-di-path-001", "/").ExtractAll();
+            var adapterEdges = new DependencyInjectionAdapter().Extract(
+                compilation, "snap-b5-di-path-001", CreateTestLocationResolver());
+            var edges = memberEdges.Concat(adapterEdges).ToList();
+
+            var consumerCtor = compilation.GetTypeByMetadataName("Consumer")!.InstanceConstructors.Single();
+            var iface = compilation.GetTypeByMetadataName("IService")!;
+            var service = compilation.GetTypeByMetadataName("Service")!;
+
+            var consumerId = SymbolIdFactory.Make(consumerCtor, "TestAssembly")!;
+            var ifaceId = SymbolIdFactory.Make(iface, "TestAssembly")!;
+            var serviceId = SymbolIdFactory.Make(service, "TestAssembly")!;
+
+            var reference = Assert.Single(edges,
+                e => e.Kind == "References" && e.SourceSymbolId == consumerId && e.TargetSymbolId == ifaceId);
+            Assert.Equal(ExtractorConstants.ParameterDependenciesExtractor, reference.ExtractorVersion);
+
+            var registration = Assert.Single(edges,
+                e => e.Kind == "Registers" && e.SourceSymbolId == ifaceId && e.TargetSymbolId == serviceId);
+            Assert.Equal(Provenance.FrameworkDerived, registration.Provenance);
+
+            var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-di-path-{Guid.NewGuid():N}.db");
+            using var store = new SqliteIndexStore(dbPath);
+            try
+            {
+                store.Open();
+                store.RunMigrations();
+                store.SaveEdges("snap-b5-di-path-001", edges);
+
+                var traverser = new ImpactTraverser(store, "snap-b5-di-path-001");
+                var paths = traverser.TraceImpact(
+                    consumerId, ImpactDirection.Downstream, allowedEdgeKinds: ["References", "Registers"]);
+
+                var path = Assert.Single(paths);
+                Assert.False(path.Truncated);
+                Assert.Equal(2, path.TotalSteps);
+                Assert.Equal(consumerId, path.Hops[0].SourceSymbolId);
+                Assert.Equal(ifaceId, path.Hops[0].TargetSymbolId);
+                Assert.Equal("References", path.Hops[0].EdgeKind);
+                Assert.Equal(ifaceId, path.Hops[1].SourceSymbolId);
+                Assert.Equal(serviceId, path.Hops[1].TargetSymbolId);
+                Assert.Equal("Registers", path.Hops[1].EdgeKind);
+            }
+            finally
+            {
+                store.Close();
+                if (File.Exists(dbPath)) File.Delete(dbPath);
+            }
+        }
+
+        [Fact]
+        public void DI_Scrutor_AsImplementedInterfaces_EmitsConventionRegistrationEdges()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+using Scrutor;
+
+public interface IService { }
+public interface IOtherService { }
+public class Service : IService, IOtherService { }
+public abstract class AbstractService : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.Scan(scan => scan
+            .FromAssembliesOf<IService>()
+            .AddClasses()
+            .AsImplementedInterfaces()
+            .WithScopedLifetime());
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs + ScrutorStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-scrutor-003", CreateTestLocationResolver());
+
+            Assert.Contains(edges,
+                e => e.Kind == "Registers" && e.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix));
+
+            var ifaceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("IService")!, "TestAssembly");
+            var otherId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("IOtherService")!, "TestAssembly");
+            var serviceId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("Service")!, "TestAssembly");
+            var abstractId = SymbolIdFactory.Make(compilation.GetTypeByMetadataName("AbstractService")!, "TestAssembly");
+
+            var registrations = edges
+                .Where(e => e.Kind == "Registers" && !e.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix))
+                .ToList();
+
+            Assert.Equal(2, registrations.Count);
+            Assert.Contains(registrations, e => e.SourceSymbolId == ifaceId && e.TargetSymbolId == serviceId);
+            Assert.Contains(registrations, e => e.SourceSymbolId == otherId && e.TargetSymbolId == serviceId);
+            Assert.DoesNotContain(registrations, e => e.TargetSymbolId == abstractId);
+            Assert.All(registrations, e => Assert.Equal(Provenance.Convention, e.Provenance));
+            Assert.All(registrations, e => Assert.Equal("di-v1", e.ExtractorVersion));
+            Assert.All(registrations, e => Assert.Equal("test.cs", e.SourceDocumentPath));
+            Assert.All(registrations, e => Assert.False(e.IsCrossGenerated));
+        }
+
+        [Fact]
+        public void DI_Scrutor_UnsupportedPattern_RetainsOnlyConventionPlaceholder()
+        {
+            var source = @"
+using Microsoft.Extensions.DependencyInjection;
+using Scrutor;
+
+public interface IService { }
+public class Service : IService { }
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services, System.Type[] types)
+    {
+        services.Scan(scan => scan
+            .FromAssembliesOf(types)
+            .AddClasses()
+            .AsImplementedInterfaces()
+            .WithScopedLifetime());
+    }
+}
+";
+            var compilation = CreateCompilationWithStubs(source, DependencyInjectionStubs + ScrutorStubs);
+            var adapter = new DependencyInjectionAdapter();
+            var edges = adapter.Extract(compilation, "snap-b5-di-scrutor-004", CreateTestLocationResolver());
+
             var edge = Assert.Single(edges, e => e.Kind == "Registers");
-            Assert.Equal(Provenance.FrameworkDerived, edge.Provenance);
-            Assert.NotEqual(Provenance.CompilerProved, edge.Provenance);
-            Assert.False(edge.TargetSymbolId.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, StringComparison.Ordinal));
+            Assert.Equal(Provenance.Convention, edge.Provenance);
+            Assert.StartsWith(GraphNodeIds.AssemblyScanConventionPrefix, edge.TargetSymbolId);
+            Assert.Equal(GraphNodeKind.Convention, edge.TargetNodeKind);
         }
 
         [Fact]

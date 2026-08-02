@@ -893,15 +893,22 @@ were compounding:
 Validation: full suite 306/306 pass, 0 failed, 0 skipped (user-run, not
 Claude — see the "no full test runs" operating rule).
 
-**Open, not yet fixed:** the CI step "Run clean-rebuild equivalence test"
-(`ci.yml` line 49) filters on
+**Fixed (2026-08-02):** the CI step "Run clean-rebuild equivalence test"
+(`ci.yml` line 49) filtered on
 `FullyQualifiedName=Lurp.Storage.Tests.CleanRebuildEquivalenceTest.IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange`.
-The class was renamed to `PipelineEquivalenceTest`
+The class had been renamed to `PipelineEquivalenceTest`
 (`tests/CleanRebuildEquivalenceTest.cs:18`) without updating the workflow
 filter. `dotnet test` with a filter matching zero tests exits 0, so this step
-has been silently passing while running nothing — the "blocks the merge"
-gate described in its own comment has not actually run since the rename.
-Needs the filter updated to the current FQN.
+had been silently passing while running nothing since the rename — the
+"blocks the merge" gate described in its own comment never actually ran.
+The filter now targets `Lurp.Storage.Tests.PipelineEquivalenceTest`, verified
+against the current class/method names in source. Not yet re-run on CI to
+confirm the step executes and passes for real.
+
+A full CI run completed 2026-08-02 (~3h20m — the 20x flake-guard loop over a
+now-serialized, ~13-minute suite) after the Debug/Release path and
+`Console.Out` fixes above; the equivalence-test filter fix landed in a
+separate, later commit (`d648d26`) and has not yet had its own CI run.
 
 ## Explicitly postponed
 
