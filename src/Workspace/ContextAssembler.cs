@@ -30,6 +30,15 @@ namespace Lurp.Workspace
 
         public IEdgeStore EdgeStore { get; init; } = null!;
         public IDeclarationStore DeclarationStore { get; init; } = null!;
+
+        /// <summary>
+        /// Optional explicit completeness reader. When it is absent, snapshot
+        /// completeness is unavailable and no relation omission may be reported
+        /// as a proved "empty": every empty tier is marked "unresolved" instead,
+        /// because without the reader no absence can be observed.
+        /// </summary>
+        public IBindingIncompletenessStore? BindingIncompletenessStore { get; init; }
+
         public string SnapshotId { get; init; } = string.Empty;
         public SymbolId SymbolId { get; init; } = null!;
         public ContextIntent Intent { get; init; }
@@ -54,14 +63,16 @@ namespace Lurp.Workspace
                 Budget = Budget,
             };
 
-            var bindingIncompleteness = EdgeStore is IBindingIncompletenessStore bindingStore
-                ? bindingStore.GetBindingIncompleteness(SnapshotId)
-                : [];
+            var bindingIncompleteness = BindingIncompletenessStore?.GetBindingIncompleteness(SnapshotId) ?? [];
 
             // Whether the anchor sits in a region where bindings were lost decides how an
             // empty tier is reported. Resolved here so the budgeter can label emptiness
-            // as "unresolved" rather than as a proved "empty".
-            var anchorBindingIsIncomplete = AnchorRegionHasLostBindings(anchor, bindingIncompleteness);
+            // as "unresolved" rather than as a proved "empty". When the completeness
+            // reader itself is absent, no absence can be observed at all, so the region
+            // is treated as unobservable: absence of the reader must never become a
+            // proved "empty" relation.
+            var anchorBindingIsIncomplete = BindingIncompletenessStore == null
+                || AnchorRegionHasLostBindings(anchor, bindingIncompleteness);
 
             // Non-tier sections (paths, topology, constraints, completeness
             // summary, inclusion reasons) are populated after the tier budgeter
@@ -76,7 +87,7 @@ namespace Lurp.Workspace
                 EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
             capsule.EstimatedTokens = runningTotal;
 
-            PopulateContractSections(capsule, bindingIncompleteness);
+            PopulateContractSections(capsule, bindingIncompleteness, anchorBindingIsIncomplete);
 
             new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
                 .Detect(capsule);
@@ -90,7 +101,7 @@ namespace Lurp.Workspace
             return capsule;
         }
 
-        private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness)
+        private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete)
         {
             capsule.InclusionReasons["contracts"] = "Compiler-resolved contracts implemented or overridden by the anchor.";
             capsule.InclusionReasons["directCallees"] = "Direct compiler-resolved calls or constructions made by the anchor.";
@@ -100,7 +111,7 @@ namespace Lurp.Workspace
             capsule.InclusionReasons["secondDegreeContext"] = "Bounded upstream paths within the requested hop limit.";
             capsule.InclusionReasons["surroundingSource"] = "Sibling declarations sharing the anchor's containing declaration.";
 
-            if (AnchorRegionHasLostBindings(capsule.Anchor, bindingIncompleteness))
+            if (anchorBindingIsIncomplete)
             {
                 capsule.InclusionReasons["omittedTiers.unresolved"] =
                     "Bindings were lost over the anchor's documents, so an omitted tier marked "
@@ -169,11 +180,11 @@ namespace Lurp.Workspace
                 // emptiness through the same reason-coded omission channel the
                 // budgeter uses for empty tiers, including the same proved-absence
                 // versus unobservable-region distinction.
-                var reason = AnchorRegionHasLostBindings(capsule.Anchor, bindingIncompleteness) ? "unresolved" : "empty";
+                var reason = anchorBindingIsIncomplete ? "unresolved" : "empty";
                 capsule.OmittedTiers.Add(new TruncationEntry("affectedPublicSurfaces", reason));
             }
 
-            if (EdgeStore is IBindingIncompletenessStore)
+            if (BindingIncompletenessStore != null)
             {
                 capsule.Completeness = new SnapshotCompleteness
                 {
@@ -356,7 +367,7 @@ namespace Lurp.Workspace
             return false;
         }
 
-        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options)
+        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null)
         {
             if (!string.IsNullOrEmpty(lookup.SymbolArg))
             {
@@ -365,6 +376,7 @@ namespace Lurp.Workspace
                 {
                     EdgeStore = edgeStore,
                     DeclarationStore = declarationStore,
+                    BindingIncompletenessStore = bindingIncompletenessStore,
                     SnapshotId = lookup.SnapshotId,
                     SymbolId = symbolId,
                     Intent = options.Intent,
@@ -413,6 +425,7 @@ namespace Lurp.Workspace
             {
                 EdgeStore = edgeStore,
                 DeclarationStore = declarationStore,
+                BindingIncompletenessStore = bindingIncompletenessStore,
                 SnapshotId = lookup.SnapshotId,
                 SymbolId = resolvedSymbolId,
                 Intent = options.Intent,

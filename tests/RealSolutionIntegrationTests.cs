@@ -348,7 +348,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var queries = new FastTravelQueries(store);
+        var queries = new FastTravelQueries(store, store);
         var target = queries.Navigate("Library/Widget.cs", 6, snapshotId);
 
         Assert.NotNull(target);
@@ -497,9 +497,12 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         Assert.Equal(0, orphanCount);
     }
 
-    // ── Test 9: FullIndex_ProjectFailure_LeavesSnapshotInProgress ──────────
+    // ── Test 9: FullIndex_ProjectFailure_LeavesFailedSnapshot ──────────────
     // Catches D5 (project failures are swallowed, leaving snapshot "complete"
-    // when it should be "in_progress").
+    // when it should be "failed"). Post-gate (commit 287bb99): when every
+    // project fails extraction the failure is reclassified as
+    // workspace-unreadable — the snapshot row must still be marked failed with
+    // the unreadable reason code, never complete.
 
     [SkippableFact]
     public async Task FullIndex_ProjectFailure_LeavesFailedSnapshot()
@@ -519,7 +522,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
         try
         {
-            var ex = await Assert.ThrowsAsync<AggregateException>(() =>
+            var ex = await Assert.ThrowsAsync<WorkspaceUnreadableException>(() =>
                 IndexRunner.RunAsync(
                     proxy,
                     solutionPath,
@@ -528,16 +531,14 @@ public sealed class RealSolutionIntegrationTests : IDisposable
                     jsonExportPath: null,
                     strategyArg: "full"));
 
-            Assert.Contains(
-                "One or more projects failed during full index.",
-                ex.Message);
+            Assert.Contains("No metadata references resolved for", ex.Message);
         }
         finally
         {
         }
 
-        // Verify the snapshot stayed in_progress (MarkSnapshotComplete was
-        // never reached).
+        // Verify the snapshot stayed failed (MarkSnapshotComplete was never
+        // reached) and the failure reason is the gate's classification.
         using var conn = new SqliteConnection($"Data Source={dbPath}");
         conn.Open();
 
@@ -550,8 +551,8 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var workspaceId = reader.GetString(1);
 
         Assert.Equal("failed", status);
-        Assert.Equal("full_index_failure", reader.GetString(2));
-        Assert.Contains("One or more projects failed during full index", reader.GetString(3));
+        Assert.Equal("workspace_unreadable", reader.GetString(2));
+        Assert.Contains("No metadata references resolved for", reader.GetString(3));
 
         // LoadLatestSnapshot only returns complete snapshots — must be null.
         using var readStore = IntegrationHarness.OpenReadStore(dbPath);

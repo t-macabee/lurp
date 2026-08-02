@@ -166,6 +166,7 @@ public sealed class TestedByContractTests : IDisposable
         {
             EdgeStore = store,
             DeclarationStore = store,
+            BindingIncompletenessStore = store,
             SnapshotId = snapId,
             SymbolId = symbolId,
             Intent = ContextIntent.Inspect,

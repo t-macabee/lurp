@@ -1,7 +1,5 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.MSBuild;
 using System.Diagnostics;
 
 namespace Lurp.Workspace;
@@ -14,12 +12,7 @@ public static class IndexRunner
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!MSBuildLocator.IsRegistered)
-        {
-            var instances = MSBuildLocator.RegisterDefaults();
-
-            Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
-        }
+        using var loader = new WorkspaceLoader();
 
         string strategy = ResolveStrategy(store, strategyArg);
 
@@ -32,21 +25,8 @@ public static class IndexRunner
 
         var totalSw = Stopwatch.StartNew();
 
-        var swSolutionLoad = Stopwatch.StartNew();
-        Console.Write("Loading solution... ");
-
-        using var workspace = MSBuildWorkspace.Create();
-
-        var solution = await workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
-
-        Console.WriteLine($"done ({solution.Projects.Count()} projects).");
-        swSolutionLoad.Stop();
-
-        // Restore compiler fidelity: MSBuildWorkspace silently falls back to
-        // C# 7.3 parse options when a project fails to evaluate. Derive each
-        // affected project's effective language version from its own inputs
-        // (explicit LangVersion, or the SDK-style default) so modern C# binds.
-        solution = LanguageVersionRecovery.Apply(solution);
+        var loaded = await loader.LoadAsync(solutionPath, cancellationToken);
+        var solution = loaded.Solution;
 
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
@@ -106,7 +86,7 @@ public static class IndexRunner
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
-                new SnapshotTimingRow("solution_load", swSolutionLoad.ElapsedMilliseconds, DateTime.UtcNow),
+                new SnapshotTimingRow("solution_load", loaded.LoadElapsedMilliseconds, DateTime.UtcNow),
                 new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
             };
             await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose);

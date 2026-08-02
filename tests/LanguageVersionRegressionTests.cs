@@ -7,17 +7,25 @@ using Xunit;
 namespace Lurp.Storage.Tests;
 
 /// <summary>
-/// Regression coverage for compiler-language-version fidelity (context-capsule
-/// completeness audit task #1).
+/// End-to-end regression coverage for compiler-language-version fidelity
+/// (context-capsule completeness audit task #1).
 ///
-/// MSBuildWorkspace silently falls back to C# 7.3 parse options when a project
-/// fails to evaluate. <c>tests/fixtures/LanguageVersionFallback/</c> reproduces
-/// that state with an SDK-style project that deliberately has no
-/// <c>&lt;TargetFramework&gt;</c> (so MSBuild evaluation fails) and modern C#
-/// source (file-scoped namespaces). Before the fix this produced CS8370
-/// diagnostics per file; after the <see cref="Workspace.LanguageVersionRecovery"/>
-/// correction the project compiles at the SDK default (latest) and the same
-/// assembly's controller-to-interface calls bind as persisted edges.
+/// MSBuildWorkspace can silently fall back to C# 7.3 parse options when a
+/// project fails to evaluate. <c>tests/fixtures/LanguageVersionFallback/</c>
+/// reproduces the fidelity question with an SDK-style project that sets no
+/// <c>&lt;LangVersion&gt;</c> and modern C# source (file-scoped namespaces):
+/// whatever effective language version the workspace derives must compile the
+/// modern syntax (zero CS8370) and bind the controller-to-interface calls as
+/// persisted edges. The second project pins <c>&lt;LangVersion&gt;9.0</c> and
+/// must be honored (C# 9 record source extracts, no CS8370). The workspace
+/// loader's application of <see cref="Workspace.LanguageVersionRecovery"/>
+/// before extraction sees the solution is covered deterministically in
+/// <see cref="WorkspaceLoaderTests"/>.
+///
+/// The fixture projects carry a real <c>&lt;TargetFramework&gt;</c> so their
+/// compilations resolve a reference set and pass the unreadable-workspace gate
+/// (a reference-less compilation is refused before extraction; a project that
+/// cannot load a corlib has no observable language-version behavior either).
 /// </summary>
 public sealed class LanguageVersionRegressionTests : IDisposable
 {
@@ -49,9 +57,10 @@ public sealed class LanguageVersionRegressionTests : IDisposable
         Directory.CreateDirectory(_testDir);
         var dbPath = Path.Combine(_testDir, "index.db");
 
-        // Deliberately do NOT run dotnet build: the Modern project has no
-        // TargetFramework, so a build is impossible and MSBuildWorkspace
-        // evaluation is what reproduces the C# 7.3 fallback.
+        // Deliberately do NOT run dotnet build or restore: the fixture's
+        // language-version behavior is exercised through MSBuildWorkspace's own
+        // project load, and the framework reference set resolves from the SDK's
+        // targeting pack without a restore.
         var solutionPath = IntegrationHarness.CopyNamedFixtureToTemp(_testDir, "LanguageVersionFallback");
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, _testDir);
 

@@ -57,7 +57,7 @@ internal static class ContextHandler
                 intent, budget, maxHops, includeGenerated,
                 scopeArg, affectedProjects, changeObjective, constraints,
                 targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
-            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store);
             WriteCapsuleOutput(capsule, outputDirArg);
         }
         finally

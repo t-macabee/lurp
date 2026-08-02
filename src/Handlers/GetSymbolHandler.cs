@@ -63,7 +63,7 @@ internal static class GetSymbolHandler
         }
     }
 
-    private static void WriteRequestedView(SqliteIndexStore store, ViewSelection view, string symbolArg, string snapshotId, string viewArg, bool includeGenerated)
+    private static void WriteRequestedView(IDeclarationStore store, ViewSelection view, string symbolArg, string snapshotId, string viewArg, bool includeGenerated)
     {
         if (view.IsMetadataView)
             WriteMetadataView(store, symbolArg, snapshotId);
@@ -75,7 +75,7 @@ internal static class GetSymbolHandler
             WriteSourceView(store, symbolArg, snapshotId, view.ViewKind, viewArg, includeGenerated);
     }
 
-    private static void WriteMetadataView(SqliteIndexStore store, string symbolArg, string snapshotId)
+    private static void WriteMetadataView(IDeclarationStore store, string symbolArg, string snapshotId)
     {
         var info = store.GetSymbolInfo(symbolArg, snapshotId);
         if (info == null)
@@ -100,7 +100,7 @@ internal static class GetSymbolHandler
         Console.WriteLine(json);
     }
 
-    private static void WriteContainingTypeView(SqliteIndexStore store, string symbolArg, string snapshotId)
+    private static void WriteContainingTypeView(IDeclarationStore store, string symbolArg, string snapshotId)
     {
         var source = store.GetContainingTypeSource(symbolArg, snapshotId);
         if (source == null)
@@ -111,7 +111,7 @@ internal static class GetSymbolHandler
         Console.Write(source);
     }
 
-    private static void WriteSurroundingView(SqliteIndexStore store, string symbolArg, string snapshotId, int contextLines)
+    private static void WriteSurroundingView(IDeclarationStore store, string symbolArg, string snapshotId, int contextLines)
     {
         var source = store.GetSurroundingLines(symbolArg, snapshotId, contextLines);
         if (source == null)
@@ -122,7 +122,7 @@ internal static class GetSymbolHandler
         Console.Write(source);
     }
 
-    private static void WriteSourceView(SqliteIndexStore store, string symbolArg, string snapshotId, ViewKind viewKind, string viewArg, bool includeGenerated)
+    private static void WriteSourceView(IDeclarationStore store, string symbolArg, string snapshotId, ViewKind viewKind, string viewArg, bool includeGenerated)
     {
         var source = store.GetSymbolSource(symbolArg, snapshotId, viewKind, includeGenerated);
         if (source == null)

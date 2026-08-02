@@ -94,7 +94,7 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         Assert.Equal("utf-8", encoding);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var queries = new FastTravelQueries(store);
+        var queries = new FastTravelQueries(store, store);
 
         var source = queries.GetDocument("Library/Widget.cs", snapshotId);
         Assert.NotNull(source);
@@ -158,7 +158,7 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         Assert.Equal("utf-8", encoding);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var queries = new FastTravelQueries(store);
+        var queries = new FastTravelQueries(store, store);
 
         var source = queries.GetDocument("Library/Widget.cs", snapshotId);
         Assert.NotNull(source);
@@ -226,7 +226,7 @@ public sealed class SourceEncodingIntegrationTests : IDisposable
         Assert.Equal("utf-8", encoding);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var queries = new FastTravelQueries(store);
+        var queries = new FastTravelQueries(store, store);
 
         var source = queries.GetDocument("Library/Widget.cs", snapshotId);
         Assert.NotNull(source);

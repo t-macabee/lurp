@@ -163,7 +163,8 @@ public sealed class OutcomeBenchmarkTests : IDisposable
                 baselineStore,
                 baselineStore,
                 new ContextLookup(baselineSnapshot, anchor.SymbolId.Value, null, null),
-                new ContextAssemblyOptions(scenario.Intent, Budget: 8000));
+                new ContextAssemblyOptions(scenario.Intent, Budget: 8000),
+                baselineStore);
         }
 
         var capsuleContent = GetCapsuleContent(capsule, scenario);

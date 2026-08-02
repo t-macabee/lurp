@@ -52,20 +52,21 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
                 CallerConstraints: ["Do not introduce a Workspace dependency."],
                 TargetTopology: [target],
                 TopologyAnnotations: ["caller-supplied target topology"],
-                GitRoot: repositoryRoot));
+                GitRoot: repositoryRoot),
+            store);
 
         Assert.Equal(snapshotId, capsule.Anchor.SnapshotId);
         Assert.NotEmpty(capsule.Anchor.Locations);
-        AssertSectionPresentOrOmittedEmpty(capsule, "contracts", capsule.Contracts);
-        AssertSectionPresentOrOmittedEmpty(capsule, "registeredImplementations", capsule.RegisteredImplementations);
-        AssertSectionPresentOrOmittedEmpty(capsule, "relevantTests", capsule.RelevantTests);
+        AssertSectionPresentOrOmitted(capsule, "contracts", capsule.Contracts);
+        AssertSectionPresentOrOmitted(capsule, "registeredImplementations", capsule.RegisteredImplementations);
+        AssertSectionPresentOrOmitted(capsule, "relevantTests", capsule.RelevantTests);
         Assert.NotNull(capsule.Uncertainties);
         Assert.True(capsule.IncomingPaths.Count + capsule.OutgoingPaths.Count > 0);
         Assert.Contains(capsule.SuggestedVerification, step =>
             !string.IsNullOrWhiteSpace(step.Command) && step.Command.Contains("dotnet test", StringComparison.Ordinal));
         Assert.NotEmpty(capsule.LikelyChangeSites);
         Assert.All(AllItems(capsule).Where(item => item.Source != null), item => Assert.NotNull(item.InclusionReason));
-        AssertSectionPresentOrOmittedEmpty(capsule, "affectedPublicSurfaces", capsule.AffectedPublicSurfaces);
+        AssertSectionPresentOrOmitted(capsule, "affectedPublicSurfaces", capsule.AffectedPublicSurfaces);
         Assert.NotEmpty(capsule.InclusionReasons);
         Assert.Contains(capsule.Constraints, constraint => constraint.Origin == "caller_supplied");
         Assert.NotNull(capsule.Topology.Current);
@@ -75,15 +76,18 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
     }
 
     // A section that is genuinely empty for this anchor must prove it through
-    // the reason-coded OmittedTiers channel (reason "empty") instead of a
-    // vacuous Assert.NotNull on a collection that is non-null by construction.
-    private static void AssertSectionPresentOrOmittedEmpty(
+    // the reason-coded OmittedTiers channel instead of a vacuous Assert.NotNull
+    // on a collection that is non-null by construction. The reason is "empty"
+    // when the region's bindings were observable, "unresolved" when the anchor
+    // sits in a region where bindings were lost — both are honest reason-coded
+    // omissions, and which one applies depends on the persisted completeness.
+    private static void AssertSectionPresentOrOmitted(
         ContextCapsule capsule, string category, List<CapsuleItem> items)
     {
         if (items.Count > 0)
             return;
         Assert.Contains(capsule.OmittedTiers,
-            entry => entry.Category == category && entry.Reason == "empty");
+            entry => entry.Category == category && entry.Reason is "empty" or "unresolved");
     }
 
     private static IEnumerable<CapsuleItem> AllItems(ContextCapsule capsule)

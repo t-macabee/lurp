@@ -4,27 +4,29 @@ namespace Lurp.Queries;
 
 public sealed class FastTravelQueries
 {
-    private readonly SqliteIndexStore _store;
+    private readonly IDeclarationStore _declarations;
+    private readonly ISnapshotStore _snapshots;
 
-    public FastTravelQueries(SqliteIndexStore store)
+    public FastTravelQueries(IDeclarationStore declarations, ISnapshotStore snapshots)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
+        _snapshots = snapshots ?? throw new ArgumentNullException(nameof(snapshots));
     }
 
     public string? GetDocument(string relativePath, string snapshotId) =>
-        _store.GetSource(relativePath, snapshotId);
+        _snapshots.GetSource(relativePath, snapshotId);
 
     public IndexedSymbolInfo? GetSymbol(string symbolId, string snapshotId) =>
-        _store.GetSymbolInfo(symbolId, snapshotId);
+        _declarations.GetSymbolInfo(symbolId, snapshotId);
 
     public string? GetSymbolView(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false) =>
         viewKind switch
         {
-            ViewKind.ContainingType => _store.GetContainingTypeSource(symbolId, snapshotId),
-            ViewKind.Surrounding => _store.GetSurroundingLines(symbolId, snapshotId, 3),
-            _ => _store.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated),
+            ViewKind.ContainingType => _declarations.GetContainingTypeSource(symbolId, snapshotId),
+            ViewKind.Surrounding => _declarations.GetSurroundingLines(symbolId, snapshotId, 3),
+            _ => _declarations.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated),
         };
 
     public NavigationTarget? Navigate(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
-        _store.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
+        _declarations.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
 }

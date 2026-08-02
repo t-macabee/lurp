@@ -25,7 +25,7 @@ internal static class NavigateHandler
         try
         {
             var snapshot = HandlerBootstrap.ResolveSnapshotId(store, HandlerBootstrap.GetArgValue(args, "--snapshot="));
-            var target = new FastTravelQueries(store).Navigate(file!, line, snapshot!, args.Contains("--include-generated"));
+            var target = new FastTravelQueries(store, store).Navigate(file!, line, snapshot!, args.Contains("--include-generated"));
             if (target == null)
             {
                 Console.Error.WriteLine($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");

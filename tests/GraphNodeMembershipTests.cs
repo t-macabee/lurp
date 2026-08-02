@@ -288,4 +288,60 @@ public sealed class GraphNodeMembershipTests : IDisposable
             $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snap2}';"));
         Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
     }
+
+    [Fact]
+    public void SaveEdges_FailedWrite_PublishesNoPartialGraphNodeMembership()
+    {
+        // Transaction characterization: SaveEdges writes graph nodes, membership,
+        // and edge rows inside one transaction. A mid-write failure must roll the
+        // whole write back — a failed edge write can never publish partial
+        // graph-node membership for that write.
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-atomic";
+
+        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TRIGGER fail_inject_edge_insert
+                AFTER INSERT ON edges
+                WHEN NEW.target_symbol_id = 'fail:inject'
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected edge write failure');
+                END;
+            ";
+            command.ExecuteNonQuery();
+        }
+
+        // First edge completes fully; second edge registers its graph nodes and
+        // then fails at the edge insert, so the write has made visible progress
+        // before failing.
+        Assert.Throws<SqliteException>(() => store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "route://api/values",
+                TargetSymbolId = "T:Ns.Controller|asm1",
+                Kind = "RoutesTo",
+                Provenance = "framework_derived",
+                SourceNodeKind = GraphNodeKind.Route,
+            },
+            new EdgeRecord
+            {
+                SourceSymbolId = "convention:assembly_scan:MyLib",
+                TargetSymbolId = "fail:inject",
+                Kind = "Registers",
+                Provenance = "convention",
+                SourceNodeKind = GraphNodeKind.Convention,
+                TargetNodeKind = GraphNodeKind.Convention,
+            },
+        ]));
+
+        Assert.Equal(0, Scalar<long>("SELECT COUNT(*) FROM graph_nodes;"));
+        Assert.Equal(0, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snapshotId}';"));
+        Assert.Equal(0, Scalar<long>(
+            $"SELECT COUNT(*) FROM edges WHERE snapshot_id = '{snapshotId}';"));
+    }
 }

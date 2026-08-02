@@ -141,6 +141,7 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         {
             EdgeStore = store,
             DeclarationStore = store,
+            BindingIncompletenessStore = store,
             SnapshotId = SnapshotId,
             SymbolId = SymbolId.Parse(symbolId),
             Intent = ContextIntent.Inspect,

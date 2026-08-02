@@ -291,6 +291,7 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         {
             EdgeStore = store,
             DeclarationStore = store,
+            BindingIncompletenessStore = store,
             SnapshotId = SnapshotId,
             SymbolId = SymbolId.Parse("T:MyApp.Service|prod"),
             Intent = ContextIntent.Inspect,

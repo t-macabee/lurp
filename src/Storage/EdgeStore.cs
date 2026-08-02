@@ -7,6 +7,7 @@ public sealed class EdgeStore : IEdgeStore
     private readonly EdgeOperationsStore _edges;
     private readonly DiagnosticStore _diagnostics;
     private readonly AnnotationStore _annotations;
+    private readonly ExtractorRegistryStore _extractors;
 
     public EdgeStore(SqliteConnection connection)
     {
@@ -14,6 +15,7 @@ public sealed class EdgeStore : IEdgeStore
         _edges = new EdgeOperationsStore(connection);
         _diagnostics = new DiagnosticStore(connection);
         _annotations = new AnnotationStore(connection);
+        _extractors = new ExtractorRegistryStore(connection);
     }
 
     public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
@@ -68,8 +70,8 @@ public sealed class EdgeStore : IEdgeStore
         => _edges.DeleteOrphanEdges(snapshotId);
 
     public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
-        => _edges.UpsertExtractors(extractors);
+        => _extractors.UpsertExtractors(extractors);
 
     public bool HasStaleExtractorVersions(string snapshotId)
-        => _edges.HasStaleExtractorVersions(snapshotId);
+        => _extractors.HasStaleExtractorVersions(snapshotId);
 }

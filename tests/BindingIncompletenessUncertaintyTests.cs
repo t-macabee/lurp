@@ -117,6 +117,7 @@ public sealed class BindingIncompletenessUncertaintyTests : IDisposable
         {
             EdgeStore = store,
             DeclarationStore = store,
+            BindingIncompletenessStore = store,
             SnapshotId = SnapshotId,
             SymbolId = SymbolId.Parse(AnchorId),
             Intent = ContextIntent.Inspect,
