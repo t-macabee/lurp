@@ -21,7 +21,17 @@ public sealed class CliDispatchTests
         {
             var assemblyDir = Path.GetDirectoryName(typeof(CliDispatchTests).Assembly.Location)
                 ?? throw new InvalidOperationException("Cannot determine test assembly location.");
-            return Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", "..", "src", "bin", "Debug", "net10.0", "Lurp.dll"));
+            var projectRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", ".."));
+
+            var release = Path.Combine(projectRoot, "src", "bin", "Release", "net10.0", "Lurp.dll");
+            if (File.Exists(release))
+                return release;
+
+            var debug = Path.Combine(projectRoot, "src", "bin", "Debug", "net10.0", "Lurp.dll");
+            if (File.Exists(debug))
+                return debug;
+
+            return release;
         }
     }
 
