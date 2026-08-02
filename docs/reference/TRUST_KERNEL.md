@@ -856,6 +856,53 @@ exact path/start/end line-and-column coordinates per declaration. The interim
 reverted; all three tests now assert against the partial type (`Widget`)
 declaration directly, and the `LIMIT 1` ambiguity no longer exists.
 
+### CI reliability — Release/Debug path mismatch and a Console.Out capture race (2026-08-02)
+
+CI (`.github/workflows/ci.yml`) had been red on every run since it was added
+(`7c14046`, 2026-07-17) — never once green. Two independent, unrelated bugs
+were compounding:
+
+- **`CliDispatchTests` hardcoded a `bin/Debug/net10.0/Lurp.dll` path**
+  (`tests/CliDispatchTests.cs`) with no fallback. CI builds and tests in
+  `Release` only (`ci.yml` lines 25/30); the Debug artifact never exists on a
+  clean CI clone, so all 7 subprocess-dispatch tests failed
+  `File.Exists`. This passed locally only because a stale `bin/Debug/` from
+  earlier local `dotnet build` runs happened to still be on disk. Fixed:
+  `LurpDllPath` now checks `bin/Release` first, falls back to `bin/Debug`.
+  Verified both with the stale Debug folder present and with it temporarily
+  removed (matching a clean CI clone) — 7/7 pass either way.
+- **A process-wide `Console.Out` race under xUnit's default parallel test
+  execution.** `RealSolutionIntegrationTests`, `WorkspaceLoaderTests`, and
+  `T9CompletenessTests` redirect `Console.Out` to a private `StringWriter` to
+  capture pipeline output, but `WorkspaceLoader`/`IndexRunner`/
+  `IncrementalIndexer` write via raw `Console.Write`/`WriteLine` with no
+  locking, and the test project had no `[assembly: CollectionBehavior]`
+  configured — xUnit v2's default is to run test classes in parallel. Any
+  test writing to console while another test's capture is active can leak
+  into that capture buffer. Observed directly on CI:
+  `WorkspaceLoaderTests.Loader_RealFixtureLoad_EffectiveVersions_AndDisposal`
+  captured `"Loading solution... \r\nIndex complete for "` — the second half
+  is a string that only exists in `IndexRunner.cs`, a code path this test
+  never calls, proving cross-test leakage rather than a formatting change.
+  Fixed by adding `tests/AssemblyInfo.cs` with
+  `[assembly: CollectionBehavior(MaxParallelThreads = 1)]`, serializing the
+  whole test assembly. This is a real, accepted cost/correctness tradeoff:
+  local full-suite time went from ~7-9 minutes (parallel) to 779s/~13 minutes
+  (serial).
+
+Validation: full suite 306/306 pass, 0 failed, 0 skipped (user-run, not
+Claude — see the "no full test runs" operating rule).
+
+**Open, not yet fixed:** the CI step "Run clean-rebuild equivalence test"
+(`ci.yml` line 49) filters on
+`FullyQualifiedName=Lurp.Storage.Tests.CleanRebuildEquivalenceTest.IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange`.
+The class was renamed to `PipelineEquivalenceTest`
+(`tests/CleanRebuildEquivalenceTest.cs:18`) without updating the workflow
+filter. `dotnet test` with a filter matching zero tests exits 0, so this step
+has been silently passing while running nothing — the "blocks the merge"
+gate described in its own comment has not actually run since the rename.
+Needs the filter updated to the current FQN.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

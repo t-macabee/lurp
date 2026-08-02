@@ -1,7 +1,7 @@
-# Roslyn Indexer — Greatsword Architecture and Creation Roadmap
+# Lurp Architecture and Creation Roadmap
 
 **Status:** Conceptual design guide  
-**Starting point:** Roslyn Indexer v1.1.0, schema v2  
+**Starting point:** Lurp v1.1.0, schema v2  
 **Target:** A persistent semantic workspace mirror for agent-assisted .NET development  
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
@@ -9,11 +9,11 @@
 
 ## 1. Purpose of This Document
 
-The existing indexer successfully became the **sword**: it loads a .NET solution through Roslyn, discovers types and dependencies, tracks stale semantic data, performs structural audits, and simulates several refactorings without modifying source.
+The existing indexer already covers the first stage: it loads a .NET solution through Roslyn, discovers types and dependencies, tracks stale semantic data, performs structural audits, and simulates several refactorings without modifying source.
 
 Two developments are still required to realize the original idea completely:
 
-1. **Sword → Greatsword:** deepen the semantic map until it represents code relationships at the precision an agent needs for change reasoning.
+1. **Deepen the semantic map:** represent code relationships at the precision an agent needs for change reasoning.
 2. **Map → Map with fast travel:** make every indexed location lead immediately to the actual source code, without making the agent rediscover or reparse the project for every question.
 
 These are separate capabilities, but they are not separate products. They must share:
@@ -206,7 +206,7 @@ It supplies:
 - snapshot consistency;
 - database-backed freshness.
 
-### Track B — Sword to Greatsword
+### Track B — Deepening the Semantic Map
 
 This track deepens what the map knows.
 
@@ -246,7 +246,7 @@ This order avoids two expensive mistakes:
 
 ## 5. Non-Negotiable Design Rules
 
-These rules prevent the greatsword from accumulating unrelated attachments.
+These rules prevent the system from accumulating unrelated attachments.
 
 ### 5.1 Product boundary
 
@@ -525,7 +525,7 @@ Deleting operational JSON files does not remove any capability. JSON is generate
 
 ---
 
-# Part II — Evolve the Sword into the Greatsword
+# Part II — Deepening the Semantic Graph
 
 ## 12. Stage B0 — Establish the Semantic Fact Model
 
@@ -919,7 +919,7 @@ This is the actual implementation roadmap, combining both conceptual tracks in d
 | 5 | Stable type/member identities and declaration spans | Joins semantic map to actual code |
 | 6 | Fast `get` and lexical `search` queries | Delivers the first usable fast-travel result |
 | 7 | Migrate dirty state, fingerprints, diagnostics, and existing facts | Removes dual JSON/SQLite authority |
-| 8 | Typed member-level semantic edges | Begins the true sword-to-greatsword evolution |
+| 8 | Typed member-level semantic edges | Begins the deep semantic-graph work |
 | 9 | Polymorphism and dispatch candidates | Closes the largest compiler-visible graph gap |
 | 10 | Structured semantic snapshot diffs | Gives temporal precision and better invalidation |
 | 11 | Generated-code provenance | Restores semantic facts currently hidden by exclusions |
@@ -951,7 +951,7 @@ After Phase 10, the system provides:
 - polymorphic paths;
 - explainable changes between snapshots.
 
-This is the first proper **greatsword core**.
+This is the first proper deep-semantic core.
 
 ### 23.3 Completion milestone
 
@@ -1058,8 +1058,8 @@ The implementation should not proceed as two independent projects. The working s
 shared identity and SQLite foundation
     → stored documents and symbol-linked fast travel
     → migrate current map into the database
-    → deepen it into the greatsword semantic graph
+    → deepen it into the full semantic graph
     → combine retrieval and graph traversal into context capsules
 ```
 
-This preserves the existing sword, replaces Tokensave’s accidental role deliberately, and prevents either half from becoming a second source of truth.
+This preserves the existing indexer's capabilities, replaces Tokensave’s accidental role deliberately, and prevents either half from becoming a second source of truth.
