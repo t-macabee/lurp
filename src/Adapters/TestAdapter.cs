@@ -48,7 +48,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 if (!IsTestMethod(method))
                     continue;
 
-                var testMethodId = MakeSymbolId(method, assemblyIdentity);
+                var testMethodId = SymbolIdFactory.Make(method, assemblyIdentity);
                 if (testMethodId == null)
                     continue;
 
@@ -140,7 +140,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.AssemblyIdentity)
             return;
 
-        var productionId = MakeSymbolId(productionSymbol, context.AssemblyIdentity);
+        var productionId = SymbolIdFactory.Make(productionSymbol, context.AssemblyIdentity);
         if (productionId == null)
             return;
 
@@ -166,11 +166,6 @@ public sealed class TestAdapter : IFrameworkAdapter
                 IsCrossGenerated = context.TestIsCrossGenerated,
             });
         }
-    }
-
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
     private static SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache,Compilation compilation)

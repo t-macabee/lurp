@@ -66,7 +66,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
     private static void EmitHandlesEdge(INamedTypeSymbol handlerType, INamedTypeSymbol requestType, string assemblyIdentity, string snapshotId,
         List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
     {
-        var requestId = MakeSymbolId(requestType, assemblyIdentity);
+        var requestId = SymbolIdFactory.Make(requestType, assemblyIdentity);
         if (requestId == null)
             return;
 
@@ -77,7 +77,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         if (handleMethod == null)
             return;
 
-        var handleMethodId = MakeSymbolId(handleMethod, assemblyIdentity);
+        var handleMethodId = SymbolIdFactory.Make(handleMethod, assemblyIdentity);
         if (handleMethodId == null)
             return;
 
@@ -104,8 +104,4 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         }
     }
 
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
-    }
 }

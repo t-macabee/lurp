@@ -33,7 +33,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (!IsDbContext(type))
                 continue;
 
-            var dbContextId = MakeSymbolId(type, ctx.AssemblyIdentity);
+            var dbContextId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
             if (dbContextId == null)
                 continue;
 
@@ -49,11 +49,11 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (member is not IPropertySymbol prop || !IsDbSetType(prop.Type, out var entityType) || entityType == null)
                 continue;
 
-            var entityTypeId = MakeSymbolId(entityType, ctx.AssemblyIdentity);
+            var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
             if (entityTypeId == null)
                 continue;
 
-            var propId = MakeSymbolId(prop, ctx.AssemblyIdentity);
+            var propId = SymbolIdFactory.Make(prop, ctx.AssemblyIdentity);
             var sourceId = propId ?? dbContextId;
 
             AddMapsToEdge(sourceId, entityTypeId, ctx, prop);
@@ -88,7 +88,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 if (iface.OriginalDefinition?.Name != "IEntityTypeConfiguration")
                     continue;
 
-                var configId = MakeSymbolId(type, ctx.AssemblyIdentity);
+                var configId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
                 if (configId == null)
                     continue;
 
@@ -96,7 +96,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 if (entityTypeArg is not INamedTypeSymbol entityType)
                     continue;
 
-                var entityTypeId = MakeSymbolId(entityType, ctx.AssemblyIdentity);
+                var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
                 if (entityTypeId == null)
                     continue;
 
@@ -222,7 +222,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (typeInfo.Type is not INamedTypeSymbol entityType)
             return;
 
-        var entityTypeId = MakeSymbolId(entityType, ctx.AssemblyIdentity);
+        var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
         if (entityTypeId == null)
             return;
 
@@ -238,7 +238,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (navMethod.TypeArguments[0] is not INamedTypeSymbol navNamedType)
             return;
 
-        var navTypeId = MakeSymbolId(navNamedType, ctx.AssemblyIdentity);
+        var navTypeId = SymbolIdFactory.Make(navNamedType, ctx.AssemblyIdentity);
         if (navTypeId == null)
             return;
 
@@ -265,8 +265,4 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         }
     }
 
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
-    }
 }

@@ -23,7 +23,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!IsController(type))
                 continue;
 
-            var controllerId = MakeSymbolId(type, assemblyIdentity);
+            var controllerId = SymbolIdFactory.Make(type, assemblyIdentity);
             if (controllerId == null)
                 continue;
 
@@ -43,7 +43,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
     private void ProcessControllerAction(IMethodSymbol method, string controllerId, ExtractionContext ctx)
     {
-        var methodId = MakeSymbolId(method, ctx.AssemblyIdentity);
+        var methodId = SymbolIdFactory.Make(method, ctx.AssemblyIdentity);
         if (methodId == null)
             return;
 
@@ -92,7 +92,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         if (method.ReturnsVoid || method.ReturnType == null)
             return;
 
-        var returnTypeId = MakeSymbolId(method.ReturnType, ctx.AssemblyIdentity);
+        var returnTypeId = SymbolIdFactory.Make(method.ReturnType, ctx.AssemblyIdentity);
         if (returnTypeId == null)
             return;
 
@@ -109,7 +109,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!hasFromServices)
                 continue;
 
-            var paramTypeId = MakeSymbolId(param.Type, ctx.AssemblyIdentity);
+            var paramTypeId = SymbolIdFactory.Make(param.Type, ctx.AssemblyIdentity);
             if (paramTypeId == null)
                 continue;
 
@@ -159,11 +159,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         }
 
         return parts.Count > 0 ? string.Join("/", parts) : null;
-    }
-
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
     private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, EdgeLocation loc)

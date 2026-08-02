@@ -96,7 +96,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (typeArgs.Count == 0)
             return;
 
-        var implTypeId = MakeSymbolId(typeArgs[^1], ctx.AssemblyIdentity);
+        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.AssemblyIdentity);
         if (implTypeId == null)
             return;
 
@@ -353,7 +353,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             var methodSym = semanticModel.GetDeclaredSymbol(containingMethod);
             if (methodSym != null)
             {
-                var id = MakeSymbolId(methodSym, assemblyIdentity);
+                var id = SymbolIdFactory.Make(methodSym, assemblyIdentity);
                 if (id != null)
                     return id;
             }
@@ -368,7 +368,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             var typeSym = semanticModel.GetDeclaredSymbol(containingTypeDecl);
             if (typeSym != null)
             {
-                var id = MakeSymbolId(typeSym, assemblyIdentity);
+                var id = SymbolIdFactory.Make(typeSym, assemblyIdentity);
                 if (id != null)
                     return id;
             }
@@ -377,8 +377,4 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return null;
     }
 
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
-    }
 }

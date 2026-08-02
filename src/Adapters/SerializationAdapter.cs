@@ -1,6 +1,5 @@
 using Lurp.Shared;
 ﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -68,8 +67,8 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     if (typeSymbol == null)
                         continue;
 
-                    var sourceId = MakeSymbolId(typeSymbol, ctx.AssemblyIdentity);
-                    var targetId = MakeSymbolId(serializableType, ctx.AssemblyIdentity);
+                    var sourceId = SymbolIdFactory.Make(typeSymbol, ctx.AssemblyIdentity);
+                    var targetId = SymbolIdFactory.Make(serializableType, ctx.AssemblyIdentity);
                     if (sourceId != null && targetId != null)
                     {
                         var key = (sourceId, targetId, EdgeKind.References.ToString());
@@ -94,7 +93,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberSymbol == null)
             return;
 
-        var memberId = MakeSymbolId(memberSymbol, ctx.AssemblyIdentity);
+        var memberId = SymbolIdFactory.Make(memberSymbol, ctx.AssemblyIdentity);
         if (memberId == null)
             return;
 
@@ -108,7 +107,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         string? targetId = null;
         if (memberType is INamedTypeSymbol namedType)
         {
-            targetId = MakeSymbolId(namedType, ctx.AssemblyIdentity);
+            targetId = SymbolIdFactory.Make(namedType, ctx.AssemblyIdentity);
         }
 
         // Resolve location from the syntax node (property/field decl) — the evidence site
@@ -120,40 +119,22 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             {
                 var attrName = GetAttributeName(attr);
                 var classification = ClassifySerializationAttribute(attrName);
-                if (classification == null)
+                if (!classification)
                     continue;
 
-                var (library, resolveSerializedName) = classification.Value;
-                var serializedName = resolveSerializedName(attr);
-
-                EmitSerializationReferenceEdge(memberSymbol, memberId, targetId, library, serializedName, ctx, evidenceLocation);
+                EmitSerializationReferenceEdge(memberId, targetId, ctx, evidenceLocation);
             }
         }
     }
 
-    private readonly record struct SerializationAttributeClassification(string Library, Func<AttributeSyntax, string?> ResolveSerializedName);
-
-    private static SerializationAttributeClassification? ClassifySerializationAttribute(string attrName) => attrName switch
+    private static bool ClassifySerializationAttribute(string attrName) => attrName switch
     {
-        "JsonPropertyName" => new SerializationAttributeClassification("System.Text.Json", GetStringArgument),
-        "JsonProperty" => new SerializationAttributeClassification("Newtonsoft.Json", GetStringArgument),
-        "DataMember" => new SerializationAttributeClassification("DataContract", attr => GetNamedArgument(attr, "Name")),
-        "JsonIgnore" => new SerializationAttributeClassification("System.Text.Json", IgnoreHasNoSerializedName),
-        "IgnoreDataMember" => new SerializationAttributeClassification("DataContract", IgnoreHasNoSerializedName),
-        _ => null
+        "JsonPropertyName" or "JsonProperty" or "DataMember" or "JsonIgnore" or "IgnoreDataMember" => true,
+        _ => false
     };
 
-    private static string? IgnoreHasNoSerializedName(AttributeSyntax attr) => null;
-
-    private static void EmitSerializationReferenceEdge(ISymbol memberSymbol, string memberId, string? targetId, string library, string? serializedName, ExtractionContext ctx, Location evidenceLocation)
+    private static void EmitSerializationReferenceEdge(string memberId, string? targetId, ExtractionContext ctx, Location evidenceLocation)
     {
-        var detail = new Dictionary<string, string?>
-        {
-            ["serialized_name"] = serializedName,
-            ["library"] = library,
-            ["member_name"] = memberSymbol.Name
-        };
-
         if (targetId != null)
         {
             var key = (memberId, targetId, EdgeKind.References.ToString());
@@ -172,39 +153,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (name.EndsWith("Attribute", StringComparison.Ordinal))
             name = name[..^"Attribute".Length];
         return name;
-    }
-
-    private static string? GetStringArgument(AttributeSyntax attr)
-    {
-        if (attr.ArgumentList?.Arguments.Count > 0)
-        {
-            var arg = attr.ArgumentList.Arguments[0];
-            if (arg.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
-            {
-                return literal.Token.ValueText;
-            }
-        }
-        return null;
-    }
-
-    private static string? GetNamedArgument(AttributeSyntax attr, string argumentName)
-    {
-        if (attr.ArgumentList == null)
-            return null;
-
-        foreach (var arg in attr.ArgumentList.Arguments)
-        {
-            if (arg.NameEquals?.Name.Identifier.Text == argumentName && arg.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
-            {
-                return literal.Token.ValueText;
-            }
-        }
-        return null;
-    }
-
-    private static string? MakeSymbolId(ISymbol symbol, string assemblyIdentity)
-    {
-        return SymbolIdFactory.Make(symbol, assemblyIdentity);
     }
 
     private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ExtractionContext ctx, Location evidenceLocation)

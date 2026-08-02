@@ -38,9 +38,10 @@ namespace Lurp.Workspace
         internal static int Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
         {
             var trimmer = new SectionTrimmer(capsule, tierPriority);
-            if (Measure(capsule) <= budget)
+            var initialEstimate = Measure(capsule);
+            if (initialEstimate <= budget)
             {
-                capsule.EstimatedTokens = Measure(capsule);
+                capsule.EstimatedTokens = initialEstimate;
                 return capsule.EstimatedTokens;
             }
 

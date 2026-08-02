@@ -92,7 +92,7 @@ public sealed class WorkspaceInfo
                 map[docId] = hash;
                 contentMap[docId] = (normalized, "utf-8", lineStarts);
 
-                if (IsGeneratedDocument(document, normalized, relPath))
+                if (IsGeneratedDocument(normalized, relPath))
                 {
                     generatedDocs.Add(docId);
                 }
@@ -115,7 +115,7 @@ public sealed class WorkspaceInfo
         return false;
     }
 
-    private static bool IsGeneratedDocument(Document document, byte[] bytes, string relPath)
+    private static bool IsGeneratedDocument(byte[] bytes, string relPath)
     {
         if (IsGeneratedPath(relPath))
             return true;
