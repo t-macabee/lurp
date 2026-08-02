@@ -187,13 +187,18 @@ public sealed class OutcomeBenchmarkTests : IDisposable
         }
 
         var incrementalSnapshot = await RunIndexAsync(dbPath, solutionPath, scenarioDir, "incremental");
-        var fullSnapshot = await RunIndexAsync(dbPath, solutionPath, scenarioDir, "full");
+
+        // The clean rebuild must run against a fresh database: with
+        // deterministic snapshot ids it would otherwise derive the same id as
+        // the incremental snapshot and reuse it instead of re-extracting.
+        var fullDbPath = Path.Combine(scenarioDir, "index-full.db");
+        var fullSnapshot = await RunIndexAsync(fullDbPath, solutionPath, scenarioDir, "full");
 
         var agreement = true;
         string? agreementError = null;
         try
         {
-            SnapshotAssertions.CompareSnapshotsAreEquivalent(dbPath, incrementalSnapshot, fullSnapshot);
+            SnapshotAssertions.CompareSnapshotsAreEquivalent(dbPath, incrementalSnapshot, fullDbPath, fullSnapshot);
         }
         catch (Exception ex)
         {

@@ -163,6 +163,21 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness",
         ];
 
+        // project_references point at projects by row id, so this snapshot's
+        // reference rows must go before the projects rows themselves.
+        cmd.CommandText = @"
+            DELETE FROM project_references
+            WHERE project_id IN (
+                SELECT pr.project_id
+                FROM project_references pr
+                JOIN projects p ON p.project_id = pr.project_id
+                WHERE p.snapshot_id = @sid
+            );
+        ";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@sid", snapshotId);
+        cmd.ExecuteNonQuery();
+
         foreach (var table in tables)
         {
             cmd.CommandText = $"DELETE FROM {table} WHERE snapshot_id = @sid;";
@@ -181,6 +196,18 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
         // Clean up orphaned declarations whose document versions are no longer
         // referenced by any snapshot
+        cmd.CommandText = @"
+            DELETE FROM partial_declarations
+            WHERE declaration_id IN (
+                SELECT declaration_id FROM declarations
+                WHERE document_version_id NOT IN (
+                    SELECT DISTINCT document_version_id FROM snapshot_documents
+                )
+            );
+        ";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
         cmd.CommandText = @"
             DELETE FROM declarations
             WHERE document_version_id NOT IN (

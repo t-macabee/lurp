@@ -281,10 +281,14 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         // Don't delete — we need the previous snapshot for incremental to work.
         var snapshotB = await IntegrationHarness.RunIncrementalIndexAsync(dbPath, solutionPath, outputDir);
 
-        // Full rebuild with same state as B
-        var snapshotC = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
+        // Full rebuild with same state as B. With deterministic snapshot ids,
+        // a full rebuild of the same state derives the same id as B (and would
+        // reuse it in this database), so the clean rebuild must run against a
+        // fresh database to remain an independent extraction comparison.
+        var cleanDbPath = Path.Combine(_testDir!, "index-clean.db");
+        var snapshotC = await IntegrationHarness.RunFullIndexAsync(cleanDbPath, solutionPath, outputDir);
 
-        SnapshotAssertions.CompareSnapshotsAreEquivalent(dbPath, snapshotB, snapshotC);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(dbPath, snapshotB, cleanDbPath, snapshotC);
     }
 
     // ── Test 5: Declaration lookup and partial-type contract ───────────────

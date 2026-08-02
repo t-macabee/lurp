@@ -19,6 +19,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 {
     private readonly string _testDir;
     private readonly string _dbPath;
+    private readonly string _cleanRebuildDbPath;
     private readonly string _solutionPath;
 
     public PipelineEquivalenceTest()
@@ -29,6 +30,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         Directory.CreateDirectory(_testDir);
         _dbPath = Path.Combine(_testDir, "index.db");
+        _cleanRebuildDbPath = Path.Combine(_testDir, "index-clean.db");
         _solutionPath = Path.Combine(_testDir, "TestSolution.slnx");
     }
 
@@ -79,7 +81,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotB = await RunIncrementalIndexAsync("Index B (incremental)");
 
-        var snapshotC = await RunFullIndexAsync("Index C (full after change)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full after change)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -107,7 +109,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, only ProjectB touched)");
 
-        var snapshotC = await RunFullIndexAsync("Index C (full after change)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full after change)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -170,7 +172,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             Assert.Equal(0, Convert.ToInt32(command.ExecuteScalar()));
         }
 
-        var snapshotC = await RunFullIndexAsync("Index C (full rebuild after deletion)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full rebuild after deletion)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -415,14 +417,16 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 """));
     }
 
-    private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true)
+    private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true, string? dbPath = null)
     {
         Console.WriteLine($"--- {label} ---");
 
-        if (deleteFirst && File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        dbPath ??= _dbPath;
 
-        using var store = new SqliteIndexStore(_dbPath);
+        if (deleteFirst && File.Exists(dbPath))
+            File.Delete(dbPath);
+
+        using var store = new SqliteIndexStore(dbPath);
         store.Open();
         store.RunMigrations();
 
@@ -439,7 +443,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             var gitRoot = _testDir;
             var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
-            var snapshotId = SnapshotId.New();
+            var snapshotId = SnapshotIdentity.Create(workspaceInfo, new HashSet<string>());
             var manifest = global::Lurp.Workspace.SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
             var snapshotIdStr = snapshotId.ToString();
 
@@ -496,6 +500,9 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         }
     }
 
+    private Task<string> RunIndependentFullIndexAsync(string label)
+        => RunFullIndexAsync(label, deleteFirst: true, dbPath: _cleanRebuildDbPath);
+
     private async Task<string> RunIncrementalIndexAsync(string label)
     {
         Console.WriteLine($"--- {label} ---");
@@ -550,7 +557,8 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
     private void CompareSnapshotsAreEquivalent(string snapshotB, string snapshotC)
     {
-        SnapshotAssertions.CompareSnapshotsAreEquivalent(_dbPath, snapshotB, snapshotC);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(
+            _dbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
 
     private async Task AssertIncrementalMatchesFullRebuildAsync(
@@ -563,9 +571,8 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         var snapshotA = await RunFullIndexAsync($"Index A (full initial, {scenario})");
         modifySolution();
         var snapshotB = await RunIncrementalIndexAsync($"Index B (incremental, {scenario})");
-        var snapshotC = await RunFullIndexAsync(
-            $"Index C (full after {scenario})",
-            deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync(
+            $"Index C (full after {scenario})");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -890,7 +897,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             """);
 
         var incremental = await RunIncrementalIndexAsync("Index B (incremental, A contract changed)");
-        var full = await RunFullIndexAsync("Index C (full after A contract changed)", deleteFirst: false);
+        var full = await RunIndependentFullIndexAsync("Index C (full after A contract changed)");
 
         CompareSnapshotsAreEquivalent(incremental, full);
     }
@@ -967,7 +974,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, Library changed)");
 
-        var snapshotC = await RunFullIndexAsync("Index C (full after Library change)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full after Library change)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -1104,7 +1111,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             Assert.Contains("class Widget", source1);
         }
 
-        var snapshotB = await RunFullIndexAsync("Index B (second full, duplicate content)", deleteFirst: false);
+        var snapshotB = await RunIndependentFullIndexAsync("Index B (second full, duplicate content)");
         CompareSnapshotsAreEquivalent(snapshotA, snapshotB);
     }
 
@@ -1346,7 +1353,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, same-project signature change)");
 
-        var snapshotC = await RunFullIndexAsync("Index C (full after same-project change)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full after same-project change)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }
@@ -1427,7 +1434,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         Assert.NotEqual(snapshotA, snapshotB);
 
-        var snapshotC = await RunFullIndexAsync("Index C (full after config change)", deleteFirst: false);
+        var snapshotC = await RunIndependentFullIndexAsync("Index C (full after config change)");
 
         CompareSnapshotsAreEquivalent(snapshotB, snapshotC);
     }

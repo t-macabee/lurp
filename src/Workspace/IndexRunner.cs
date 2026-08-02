@@ -106,9 +106,25 @@ public static class IndexRunner
 
     private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose)
     {
-        var snapshotId = SnapshotId.New();
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
+
+        // Deterministic identity: an identical complete snapshot for this
+        // workspace must not be duplicated. A non-complete row with the same
+        // identity (a crashed or failed attempt) must not block a retry.
+        var existingStatus = store.GetSnapshotStatus(snapshotIdStr, workspaceInfo.Id.Value);
+        if (existingStatus == SnapshotStatusValues.Complete)
+        {
+            Console.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
+            return;
+        }
+        if (existingStatus != null)
+        {
+            Console.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existingStatus}'; removing it and retrying full index.");
+            store.DeleteSnapshotData(snapshotIdStr);
+        }
+
+        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
 
         // Step: Manifest Save (includes initial FTS build)
@@ -279,6 +295,8 @@ public static class IndexRunner
             // Persist all timings
             try { store.SaveTimings(snapshotIdStr, timings); }
             catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
+
+            return;
         }
         catch (Exception ex)
         {

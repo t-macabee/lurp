@@ -74,6 +74,24 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         if (changedDocs.Count == 0)
             return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
 
+        // Deterministic identity: identical indexed state must produce the
+        // identical snapshot id, so a complete snapshot with this id must be
+        // reused rather than duplicated, and a crashed or failed attempt with
+        // the same id must not block a retry.
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, _skipAdapters);
+        var newSnapshotIdStr = snapshotId.ToString();
+        var existingStatus = _store.GetSnapshotStatus(newSnapshotIdStr, workspaceInfo.Id.Value);
+        if (existingStatus == SnapshotStatusValues.Complete)
+        {
+            Console.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
+            return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
+        }
+        if (existingStatus != null)
+        {
+            Console.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existingStatus}'; removing it and retrying incremental index.");
+            _store.DeleteSnapshotData(newSnapshotIdStr);
+        }
+
         // Step 2: Affected Project Resolution
         cancellationToken.ThrowIfCancellationRequested();
         var sw2 = System.Diagnostics.Stopwatch.StartNew();
@@ -98,10 +116,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         sw3.Stop();
         timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds, DateTime.UtcNow));
 
-        var snapshotId = SnapshotId.New();
-        var newSnapshotIdStr = snapshotId.ToString();
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters: _skipAdapters);
-
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = System.Diagnostics.Stopwatch.StartNew();

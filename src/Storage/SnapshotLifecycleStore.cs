@@ -439,6 +439,20 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         return command.ExecuteScalar() as string;
     }
 
+    internal string? GetSnapshotStatus(string snapshotId, string workspaceId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT status
+            FROM snapshots
+            WHERE snapshot_id = @snapshotId
+              AND workspace_id = @workspaceId;
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        return command.ExecuteScalar() as string;
+    }
+
     internal List<string> GetSnapshotIds(string workspaceId)
     {
         using var command = _connection.CreateCommand();

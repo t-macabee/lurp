@@ -18,6 +18,7 @@
         SnapshotRow? LoadLatestSnapshot(string? workspaceId = null);
         string? GetLatestSnapshotId(string? workspaceId = null);
         string? GetSnapshotGitRoot(string snapshotId);
+        string? GetSnapshotStatus(string snapshotId, string workspaceId);
         string? GetSource(string relativePath, string snapshotId);
         List<string> GetSnapshotIds(string workspaceId);
 

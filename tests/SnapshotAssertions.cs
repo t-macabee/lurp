@@ -46,16 +46,27 @@ internal static class SnapshotAssertions
 
     public static void CompareSnapshotsAreEquivalent(
         string dbPath, string snapshotB, string snapshotC)
+        => CompareSnapshotsAreEquivalent(dbPath, snapshotB, dbPath, snapshotC);
+
+    /// <summary>
+    /// Compare two snapshots that may live in different databases. Used by the
+    /// incremental-vs-full convergence checks: with deterministic snapshot ids,
+    /// a full rebuild of state already indexed incrementally derives the same
+    /// snapshot id (that identity equality is itself the invariant under test),
+    /// so the full rebuild must be produced in a fresh database to remain a
+    /// genuine comparison of independent extraction runs.
+    /// </summary>
+    public static void CompareSnapshotsAreEquivalent(
+        string dbPathB, string snapshotB, string dbPathC, string snapshotC)
     {
-        Assert.NotEqual(snapshotB, snapshotC);
+        Assert.Equal(snapshotB, snapshotC);
 
-        var store = new SqliteIndexStore(dbPath);
-        store.Open();
-
+        using var storeB = OpenStore(dbPathB);
+        using var storeC = OpenStore(dbPathC);
         try
         {
-            var symbolsB = store.GetSymbolIdsInSnapshot(snapshotB);
-            var symbolsC = store.GetSymbolIdsInSnapshot(snapshotC);
+            var symbolsB = storeB.GetSymbolIdsInSnapshot(snapshotB);
+            var symbolsC = storeC.GetSymbolIdsInSnapshot(snapshotC);
             symbolsB.Sort(StringComparer.Ordinal);
             symbolsC.Sort(StringComparer.Ordinal);
 
@@ -68,15 +79,15 @@ internal static class SnapshotAssertions
                 $"  Only in C: {string.Join(", ", symbolsC.Except(symbolsB, StringComparer.Ordinal).Take(10))}");
 
             Assert.Equal(
-                ReadSymbols(dbPath, snapshotC),
-                ReadSymbols(dbPath, snapshotB));
+                ReadSymbols(dbPathC, snapshotC),
+                ReadSymbols(dbPathB, snapshotB));
 
             Assert.Equal(
-                ReadDeclarations(dbPath, snapshotC),
-                ReadDeclarations(dbPath, snapshotB));
+                ReadDeclarations(dbPathC, snapshotC),
+                ReadDeclarations(dbPathB, snapshotB));
 
-            var edgesB = store.GetEdges(snapshotB);
-            var edgesC = store.GetEdges(snapshotC);
+            var edgesB = storeB.GetEdges(snapshotB);
+            var edgesC = storeC.GetEdges(snapshotC);
             NormalizeEdges(edgesB);
             NormalizeEdges(edgesC);
 
@@ -94,8 +105,8 @@ internal static class SnapshotAssertions
                 AssertEqual(edgesB[i], edgesC[i]);
             }
 
-            var diagB = store.GetDiagnostics(snapshotB);
-            var diagC = store.GetDiagnostics(snapshotC);
+            var diagB = storeB.GetDiagnostics(snapshotB);
+            var diagC = storeC.GetDiagnostics(snapshotC);
             NormalizeDiagnostics(diagB);
             NormalizeDiagnostics(diagC);
 
@@ -105,12 +116,12 @@ internal static class SnapshotAssertions
                 AssertEqual(diagB[i], diagC[i]);
             }
 
-            var incompletenessB = store.GetBindingIncompleteness(snapshotB);
-            var incompletenessC = store.GetBindingIncompleteness(snapshotC);
+            var incompletenessB = storeB.GetBindingIncompleteness(snapshotB);
+            var incompletenessC = storeC.GetBindingIncompleteness(snapshotC);
             Assert.Equal(incompletenessC, incompletenessB);
 
-            var annB = store.GetAnnotations(snapshotB);
-            var annC = store.GetAnnotations(snapshotC);
+            var annB = storeB.GetAnnotations(snapshotB);
+            var annC = storeC.GetAnnotations(snapshotC);
             NormalizeAnnotations(annB);
             NormalizeAnnotations(annC);
 
@@ -120,18 +131,18 @@ internal static class SnapshotAssertions
                 AssertEqual(annB[i], annC[i]);
             }
 
-            var ftsCountsB = GetFtsCounts(dbPath, snapshotB);
-            var ftsCountsC = GetFtsCounts(dbPath, snapshotC);
+            var ftsCountsB = GetFtsCounts(dbPathB, snapshotB);
+            var ftsCountsC = GetFtsCounts(dbPathC, snapshotC);
             Assert.Equal(ftsCountsC.SourceRows, ftsCountsB.SourceRows);
             Assert.Equal(ftsCountsC.SymbolRows, ftsCountsB.SymbolRows);
 
             Assert.Equal(
-                ReadSourceFts(dbPath, snapshotC),
-                ReadSourceFts(dbPath, snapshotB));
+                ReadSourceFts(dbPathC, snapshotC),
+                ReadSourceFts(dbPathB, snapshotB));
 
             Assert.Equal(
-                ReadSymbolFts(dbPath, snapshotC),
-                ReadSymbolFts(dbPath, snapshotB));
+                ReadSymbolFts(dbPathC, snapshotC),
+                ReadSymbolFts(dbPathB, snapshotB));
 
             // Semantic changes: compare ordinally sorted (ChangeType, SymbolId, canonical DetailJson)
             // projections, deliberately excluding ChangeId, FromSnapshotId, ToSnapshotId, and CreatedAtUtc
@@ -139,20 +150,28 @@ internal static class SnapshotAssertions
             // Only compare when both snapshots have the same number of semantic changes from the same
             // from_snapshot_id. Incremental-vs-full runs and first-run vs subsequent runs legitimately
             // differ in change count or from_snapshot, so they skip this check.
-            var changesB = ReadSemanticChanges(dbPath, snapshotB);
-            var changesC = ReadSemanticChanges(dbPath, snapshotC);
+            var changesB = ReadSemanticChanges(dbPathB, snapshotB);
+            var changesC = ReadSemanticChanges(dbPathC, snapshotC);
             if (changesB.Count == changesC.Count && changesB.Count > 0)
             {
-                var fromB = GetSemanticDiffFromSnapshot(dbPath, snapshotB);
-                var fromC = GetSemanticDiffFromSnapshot(dbPath, snapshotC);
+                var fromB = GetSemanticDiffFromSnapshot(dbPathB, snapshotB);
+                var fromC = GetSemanticDiffFromSnapshot(dbPathC, snapshotC);
                 if (fromB != null && fromB == fromC)
                     Assert.Equal(changesC, changesB);
             }
         }
         finally
         {
-            store.Close();
+            storeB.Close();
+            storeC.Close();
         }
+    }
+
+    private static SqliteIndexStore OpenStore(string dbPath)
+    {
+        var store = new SqliteIndexStore(dbPath);
+        store.Open();
+        return store;
     }
 
     private static List<SymbolSnapshot> ReadSymbols(string dbPath, string snapshotId)

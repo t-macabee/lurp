@@ -51,7 +51,124 @@ public readonly record struct SnapshotId
 
     public static SnapshotId New() => new(Guid.NewGuid());
 
+    /// <summary>
+    /// Derives a snapshot id deterministically from a canonical identity
+    /// payload: SHA-256 the payload and take a stable 16-byte portion as the
+    /// GUID. Identical payloads produce identical ids; the existing
+    /// <see cref="Parse"/> and <see cref="ToString"/> formats are unchanged.
+    /// </summary>
+    public static SnapshotId CreateDeterministic(byte[] canonicalPayload)
+    {
+        ArgumentNullException.ThrowIfNull(canonicalPayload);
+        var hash = SHA256.HashData(canonicalPayload);
+        var guidBytes = new byte[16];
+        Array.Copy(hash, guidBytes, guidBytes.Length);
+        return new SnapshotId(new Guid(guidBytes));
+    }
+
     public override string ToString() => Value.ToString("N", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
+/// The canonical identity input from which a deterministic
+/// <see cref="SnapshotId"/> is derived. Every field participates in the hash;
+/// fields are serialized ordinally sorted and length-prefixed so that
+/// identical indexed state always yields an identical id.
+/// </summary>
+public sealed record SnapshotIdentityInput(
+    WorkspaceId WorkspaceId,
+    IReadOnlyDictionary<string, string> DocumentHashes,
+    IReadOnlyDictionary<string, string> TargetFrameworks,
+    IReadOnlyDictionary<string, IReadOnlyCollection<string>> ProjectGraph,
+    string SdkVersion,
+    string CompilerVersion,
+    string ExtractorVersion,
+    IReadOnlySet<string> SkipAdapters)
+{
+    public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
+        => new(
+            workspace.Id,
+            workspace.Documents.ToDictionary(
+                kvp => kvp.Key.RelativePath,
+                kvp => kvp.Value.Hash,
+                StringComparer.Ordinal),
+            new Dictionary<string, string>(workspace.TargetFrameworks, StringComparer.Ordinal),
+            workspace.ProjectGraph.ToDictionary(
+                kvp => kvp.Key,
+                kvp => (IReadOnlyCollection<string>)kvp.Value,
+                StringComparer.Ordinal),
+            workspace.SdkVersion,
+            workspace.CompilerVersion.ToString(),
+            workspace.ExtractorVersion,
+            skipAdapters ?? new HashSet<string>(StringComparer.Ordinal));
+}
+
+public static class SnapshotIdentity
+{
+    public static SnapshotId Create(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
+        => Create(SnapshotIdentityInput.FromWorkspace(workspace, skipAdapters));
+
+    public static SnapshotId Create(SnapshotIdentityInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        return SnapshotId.CreateDeterministic(BuildPayload(input));
+    }
+
+    private static byte[] BuildPayload(SnapshotIdentityInput input)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: false);
+
+        // Fixed field names plus length-prefixed values (BinaryWriter writes a
+        // 7-bit encoded length before each string), so the serialization is
+        // unambiguous regardless of value content. Every collection is
+        // enumerated in ordinal order.
+        WriteField(writer, "workspace", input.WorkspaceId.Value);
+        WriteField(writer, "sdkVersion", input.SdkVersion);
+        WriteField(writer, "compilerVersion", input.CompilerVersion);
+        WriteField(writer, "extractorVersion", input.ExtractorVersion);
+
+        writer.Write("targetFrameworks");
+        writer.Write(input.TargetFrameworks.Count);
+        foreach (var kvp in input.TargetFrameworks.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "project", kvp.Key);
+            WriteField(writer, "targetFramework", kvp.Value);
+        }
+
+        writer.Write("projectGraph");
+        writer.Write(input.ProjectGraph.Count);
+        foreach (var kvp in input.ProjectGraph.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "project", kvp.Key);
+            writer.Write("references");
+            writer.Write(kvp.Value.Count);
+            foreach (var reference in kvp.Value.OrderBy(r => r, StringComparer.Ordinal))
+                writer.Write(reference);
+        }
+
+        writer.Write("documents");
+        writer.Write(input.DocumentHashes.Count);
+        foreach (var kvp in input.DocumentHashes.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "path", kvp.Key);
+            WriteField(writer, "hash", kvp.Value);
+        }
+
+        writer.Write("skippedAdapters");
+        writer.Write(input.SkipAdapters.Count);
+        foreach (var adapter in input.SkipAdapters.OrderBy(a => a, StringComparer.Ordinal))
+            writer.Write(adapter);
+
+        writer.Flush();
+        return stream.ToArray();
+    }
+
+    private static void WriteField(BinaryWriter writer, string name, string value)
+    {
+        writer.Write(name);
+        writer.Write(value);
+    }
 }
 
 public readonly record struct DocumentId

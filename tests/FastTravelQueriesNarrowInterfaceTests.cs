@@ -151,6 +151,7 @@ public sealed class FastTravelQueriesNarrowInterfaceTests
         public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null) => throw new NotSupportedException();
         public string? GetLatestSnapshotId(string? workspaceId = null) => throw new NotSupportedException();
         public string? GetSnapshotGitRoot(string snapshotId) => throw new NotSupportedException();
+        public string? GetSnapshotStatus(string snapshotId, string workspaceId) => throw new NotSupportedException();
         public List<string> GetSnapshotIds(string workspaceId) => throw new NotSupportedException();
         public void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries) => throw new NotSupportedException();
         public Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId) => throw new NotSupportedException();
