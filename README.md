@@ -18,8 +18,8 @@ an agent text. They don't give it what a compiler already knows: which call
 actually resolves, which type actually implements which interface, which
 change actually reaches which test.
 
-Lurp doesn't try to make a model smarter. It changes its diet: compiler-
-verified facts instead of pattern-matched text, each one carrying its own
+Lurp doesn't try to make a model smarter. It changes its diet: compiler-verified 
+facts instead of pattern-matched text, each one carrying its own
 evidence and provenance, so an agent can tell a proven relationship from a
 guess instead of asking you to double-check its work. Not what to think.
 How to think with what's actually there.
