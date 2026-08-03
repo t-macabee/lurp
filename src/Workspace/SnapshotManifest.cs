@@ -55,7 +55,7 @@ public sealed class SnapshotManifest
 
     [JsonPropertyName("completeness")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public SnapshotCompleteness? Completeness { get; init; }
+    public SnapshotCompleteness? Completeness { get; set; }
 
     public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace,SnapshotId snapshotId,SnapshotId? previousSnapshotId = null,IReadOnlySet<string>? skipAdapters = null)
     {

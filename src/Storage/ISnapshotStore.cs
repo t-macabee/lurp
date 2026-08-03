@@ -16,6 +16,7 @@
         void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message);
         SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null);
         SnapshotRow? LoadLatestSnapshot(string? workspaceId = null);
+        SnapshotRow? LoadSnapshotMetadata(string snapshotId);
         string? GetLatestSnapshotId(string? workspaceId = null);
         string? GetSnapshotGitRoot(string snapshotId);
         string? GetSnapshotStatus(string snapshotId, string workspaceId);

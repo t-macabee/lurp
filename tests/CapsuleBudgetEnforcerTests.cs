@@ -184,7 +184,7 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
             new("Tests", "T.cs", BindingIncompletenessReason.CompilerError, 1, "v1"),
         };
 
-        var summary = ContextAssembler.BuildBindingIncompletenessSummary(records);
+        var summary = SnapshotCompleteness.BuildBindingIncompletenessSummary(records);
 
         Assert.Collection(summary,
             entry =>

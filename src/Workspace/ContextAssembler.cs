@@ -39,6 +39,13 @@ namespace Lurp.Workspace
         /// </summary>
         public IBindingIncompletenessStore? BindingIncompletenessStore { get; init; }
 
+        /// <summary>
+        /// Optional reader for the persisted snapshot completeness (active
+        /// TFMs, skipped adapters, extractor version). Absent only in tests
+        /// that construct a capsule without a backing snapshot store.
+        /// </summary>
+        public ISnapshotStore? SnapshotStore { get; init; }
+
         public string SnapshotId { get; init; } = string.Empty;
         public SymbolId SymbolId { get; init; } = null!;
         public ContextIntent Intent { get; init; }
@@ -186,27 +193,19 @@ namespace Lurp.Workspace
 
             if (BindingIncompletenessStore != null)
             {
-                capsule.Completeness = new SnapshotCompleteness
-                {
-                    ExtractorVersion = VersionConstants.ExtractorVersion,
-                    // Detailed per-document rows are emitted only behind an
-                    // explicit detail option; the default is a deterministic
-                    // reason/project rollup that stays within a bounded size.
-                    BindingIncompleteness = IncludeCompletenessDetail ? bindingIncompleteness.ToList() : [],
-                    BindingIncompletenessSummary = BuildBindingIncompletenessSummary(bindingIncompleteness),
-                    BindingIncompletenessTotal = bindingIncompleteness.Sum(static record => record.Count),
-                };
+                // Storage is the only producer of completeness; the hydrated
+                // manifest completeness (TFMs, skipped adapters, ...) is
+                // enriched with binding detail through the one method that
+                // keeps detail, summary, and total together. Detailed
+                // per-document rows are emitted only behind an explicit
+                // detail option; the default is a deterministic
+                // reason/project rollup that stays within a bounded size.
+                var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
+                var baseCompleteness = (snapshotMetadata != null ? SnapshotManifest.FromStorageManifest(snapshotMetadata).Completeness : null)
+                    ?? new SnapshotCompleteness { ExtractorVersion = VersionConstants.ExtractorVersion };
+                capsule.Completeness = baseCompleteness.WithBindingIncompleteness(bindingIncompleteness, IncludeCompletenessDetail);
             }
         }
-
-        internal static List<BindingIncompletenessSummary> BuildBindingIncompletenessSummary(IReadOnlyList<BindingIncompletenessRecord> records)
-            => records
-                .GroupBy(static record => (record.ProjectName, record.Reason))
-                .Select(static group => new BindingIncompletenessSummary(
-                    group.Key.ProjectName, group.Key.Reason, group.Sum(static record => record.Count)))
-                .OrderBy(static summary => summary.ProjectName, StringComparer.Ordinal)
-                .ThenBy(static summary => summary.Reason, StringComparer.Ordinal)
-                .ToList();
 
         private static bool IsPublicSurface(string? metadataJson)
         {
@@ -367,7 +366,7 @@ namespace Lurp.Workspace
             return false;
         }
 
-        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null)
+        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null, ISnapshotStore? snapshotStore = null)
         {
             if (!string.IsNullOrEmpty(lookup.SymbolArg))
             {
@@ -377,6 +376,7 @@ namespace Lurp.Workspace
                     EdgeStore = edgeStore,
                     DeclarationStore = declarationStore,
                     BindingIncompletenessStore = bindingIncompletenessStore,
+                    SnapshotStore = snapshotStore,
                     SnapshotId = lookup.SnapshotId,
                     SymbolId = symbolId,
                     Intent = options.Intent,
@@ -426,6 +426,7 @@ namespace Lurp.Workspace
                 EdgeStore = edgeStore,
                 DeclarationStore = declarationStore,
                 BindingIncompletenessStore = bindingIncompletenessStore,
+                SnapshotStore = snapshotStore,
                 SnapshotId = lookup.SnapshotId,
                 SymbolId = resolvedSymbolId,
                 Intent = options.Intent,

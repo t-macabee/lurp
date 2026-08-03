@@ -88,6 +88,11 @@ public sealed class T9CompletenessTests
                     SkippedAdapters = ["EF Core"],
                 });
                 store.MarkSnapshotComplete(snapshotId);
+                store.SaveBindingIncompleteness(snapshotId,
+                [
+                    new BindingIncompletenessRecord("App", "A.cs", BindingIncompletenessReason.CompilerError, 3, "extractor-test-v2"),
+                    new BindingIncompletenessRecord("App", "B.cs", BindingIncompletenessReason.CompilerError, 5, "extractor-test-v2"),
+                ]);
             }
 
             var originalOut = Console.Out;
@@ -114,6 +119,11 @@ public sealed class T9CompletenessTests
             Assert.Equal("net10.0", completeness.GetProperty("active_tfms").GetProperty("App").GetString());
             Assert.Equal("EF Core", completeness.GetProperty("skipped_adapters")[0].GetString());
             Assert.Equal("extractor-test-v2", completeness.GetProperty("extractor_version").GetString());
+
+            // D4 regression guard: the total must reflect the persisted detail
+            // rows, not silently read as zero while rows exist alongside it.
+            Assert.Equal(8, completeness.GetProperty("binding_incompleteness_total").GetInt32());
+            Assert.True(completeness.GetProperty("binding_incompleteness_summary").GetArrayLength() > 0);
         }
         finally
         {

@@ -969,6 +969,70 @@ section above); its result is not cited as evidence here.
 Remaining from the remediation plan (PR-2 through PR-8) are out of scope for
 this change — not started.
 
+### PR-2 — Single completeness authority through status and context (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` findings D3/D4, prioritized as PR-2
+in `LURP-REMEDIATION-PLAN.md` (external planning artifacts, user's desktop,
+not part of this repository).
+
+**Defect:** three call sites each held half the completeness answer.
+`SnapshotManifest.FromStorageManifest` hydrated persisted `ActiveTfms`,
+`SkippedAdapters`, and `ExtractorVersion` correctly, but
+`ContextAssembler.PopulateContractSections` discarded that hydration by
+constructing a brand-new `SnapshotCompleteness` from scratch (`active_tfms:
+{}` reached capsules even though the snapshot's projects had recorded TFMs).
+Separately, `StatusHandler.WithBindingCompleteness` kept the hydrated TFMs
+but `AddRange`'d binding-incompleteness rows onto the `init`-only list
+without recomputing `BindingIncompletenessSummary`/`BindingIncompletenessTotal`,
+so `status --json` could show `binding_incompleteness_total: 0` next to a
+non-empty detail list.
+
+**Fix:**
+- `src/Workspace/SnapshotCompleteness.cs` — converted to a `sealed record` and
+  given one method, `WithBindingIncompleteness(records, includeDetail)`,
+  that sets `BindingIncompleteness`, `BindingIncompletenessSummary`, and
+  `BindingIncompletenessTotal` together via `this with { ... }`. The
+  grouping logic (`BuildBindingIncompletenessSummary`, deterministic
+  project/reason rollup) moved here from `ContextAssembler`, which is now
+  the only place a completeness object gains binding detail.
+- `src/Storage/SnapshotLifecycleStore.cs` — added `LoadSnapshotMetadata`, a
+  cheap-per-snapshot query (extractor version, skipped adapters, project
+  TFMs; no document read) so `ContextAssembler` can obtain the *requested*
+  snapshot's persisted completeness rather than defaulting to empty. Storage
+  cannot reference `Lurp.Workspace.SnapshotCompleteness` directly (opposite
+  project-reference direction), so this returns a `SnapshotRow` and
+  `ContextAssembler` translates it through the existing
+  `SnapshotManifest.FromStorageManifest(...).Completeness` — the same
+  hydration code path `StatusHandler` already used, not a second one.
+- `src/Workspace/ContextAssembler.cs` — `PopulateContractSections` now loads
+  that base completeness via an optional `SnapshotStore` property and calls
+  `.WithBindingIncompleteness(...)` instead of constructing a fresh object.
+- `src/Handlers/StatusHandler.cs` — `WithBindingCompleteness` calls the same
+  `WithBindingIncompleteness(...)` instead of `AddRange`.
+- `SnapshotManifest.Completeness` changed from `init` to a settable property
+  (the class itself isn't a record, so `with` isn't available) so
+  `StatusHandler` can replace it with the enriched copy.
+
+No schema migration; `ISnapshotStore.LoadSnapshotMetadata` is additive (one
+test fake, `FastTravelQueriesNarrowInterfaceTests.RecordingSnapshotStore`,
+updated to throw `NotSupportedException` like its neighbors).
+
+**Tests:** extended `T9CompletenessTests.StatusJson_IncludesLatestSnapshotManifestCompleteness`
+with two `binding_incompleteness` rows and an assertion that
+`binding_incompleteness_total == 8` (the D4 regression shape — total
+silently reading `0` beside non-empty detail) and that the summary is
+non-empty; updated `CapsuleBudgetEnforcerTests.CompletenessSummary_...` to
+call the relocated `SnapshotCompleteness.BuildBindingIncompletenessSummary`.
+
+Validation (narrow filters, not a full run):
+`dotnet test tests/Lurp.Storage.Tests.csproj -c Release --filter
+"FullyQualifiedName~Completeness|FullyQualifiedName~CapsuleBudgetEnforcer|FullyQualifiedName~FastTravelQueriesNarrowInterface|FullyQualifiedName~ContextCapsuleAcceptance|FullyQualifiedName~WorkspaceLoadGate"`
+— 34/34 pass. `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
+errors.
+
+Remaining from the remediation plan (PR-1 landed separately; PR-3 through
+PR-8) are out of scope for this change — not started.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

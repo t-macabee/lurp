@@ -125,6 +125,8 @@ namespace Lurp.Storage
             { EnsureOpen(); return _lifecycle!.GetLatestSnapshotFailure(workspaceId); }
         public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.LoadLatestSnapshot(workspaceId); }
+        public SnapshotRow? LoadSnapshotMetadata(string snapshotId)
+            { EnsureOpen(); return _lifecycle!.LoadSnapshotMetadata(snapshotId); }
         public string? GetLatestSnapshotId(string? workspaceId = null)
             { EnsureOpen(); return _lifecycle!.GetLatestSnapshotId(workspaceId); }
         public string? GetSnapshotGitRoot(string snapshotId)

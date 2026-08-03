@@ -53,6 +53,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
                 TargetTopology: [target],
                 TopologyAnnotations: ["caller-supplied target topology"],
                 GitRoot: repositoryRoot),
+            store,
             store);
 
         Assert.Equal(snapshotId, capsule.Anchor.SnapshotId);

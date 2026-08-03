@@ -287,6 +287,53 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         };
     }
 
+    /// <summary>
+    /// Loads the completeness-relevant fields of a snapshot (extractor
+    /// version, skipped adapters, project target frameworks) without the
+    /// expensive per-document read that <see cref="LoadLatestSnapshot"/>
+    /// pays for. <see cref="SnapshotRow.Documents"/> is left empty.
+    /// </summary>
+    internal SnapshotRow? LoadSnapshotMetadata(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT s.snapshot_id, s.workspace_id, w.git_root, w.solution_path,
+                   s.sdk_version, s.compiler_version, s.built_at_utc,
+                   s.database_schema_version, s.output_schema_version,
+                   s.extractor_version, s.tool_version, s.previous_snapshot_id,
+                   s.skipped_adapters
+            FROM snapshots s
+            JOIN workspaces w ON w.workspace_id = s.workspace_id
+            WHERE s.snapshot_id = @snapshotId;
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        var row = ReadSnapshotRow(reader);
+        var projects = LoadProjects(snapshotId);
+
+        return new SnapshotRow
+        {
+            SnapshotId = row.SnapshotId,
+            WorkspaceId = row.WorkspaceId,
+            GitRoot = row.GitRoot,
+            SolutionPath = row.SolutionPath,
+            SdkVersion = row.SdkVersion,
+            CompilerVersion = row.CompilerVersion,
+            CreatedAtUtc = row.CreatedAtUtc,
+            DatabaseSchemaVersion = row.DatabaseSchemaVersion,
+            OutputSchemaVersion = row.OutputSchemaVersion,
+            ExtractorVersion = row.ExtractorVersion,
+            ToolVersion = row.ToolVersion,
+            PreviousSnapshotId = row.PreviousSnapshotId,
+            Projects = projects,
+            SkippedAdapters = row.SkippedAdapters,
+        };
+    }
+
     private static SnapshotRow ReadSnapshotRow(SqliteDataReader reader)
     {
         var snapshotId = reader.GetString(0);

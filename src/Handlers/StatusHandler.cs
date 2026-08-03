@@ -191,7 +191,8 @@ internal static class StatusHandler
     private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot)
     {
         var manifest = SnapshotManifest.FromStorageManifest(snapshot);
-        manifest.Completeness?.BindingIncompleteness.AddRange(store.GetBindingIncompleteness(snapshot.SnapshotId));
+        var records = store.GetBindingIncompleteness(snapshot.SnapshotId);
+        manifest.Completeness = manifest.Completeness?.WithBindingIncompleteness(records, includeDetail: true);
         return manifest;
     }
 }

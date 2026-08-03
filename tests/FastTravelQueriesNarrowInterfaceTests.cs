@@ -149,6 +149,7 @@ public sealed class FastTravelQueriesNarrowInterfaceTests
         public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message) => throw new NotSupportedException();
         public SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null) => throw new NotSupportedException();
         public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null) => throw new NotSupportedException();
+        public SnapshotRow? LoadSnapshotMetadata(string snapshotId) => throw new NotSupportedException();
         public string? GetLatestSnapshotId(string? workspaceId = null) => throw new NotSupportedException();
         public string? GetSnapshotGitRoot(string snapshotId) => throw new NotSupportedException();
         public string? GetSnapshotStatus(string snapshotId, string workspaceId) => throw new NotSupportedException();
