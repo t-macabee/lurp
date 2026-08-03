@@ -70,9 +70,10 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         AssertSectionPresentOrOmitted(capsule, "affectedPublicSurfaces", capsule.AffectedPublicSurfaces);
         Assert.NotEmpty(capsule.InclusionReasons);
         Assert.Contains(capsule.Constraints, constraint => constraint.Origin == "caller_supplied");
-        Assert.NotNull(capsule.Topology.Current);
-        Assert.True(capsule.Topology.Current.TotalHopCount > 0);
-        Assert.NotEmpty(capsule.Topology.Target);
+        var topology = Assert.IsType<CapsuleTopology>(capsule.Topology);
+        Assert.NotNull(topology.Current);
+        Assert.True(topology.Current.TotalHopCount > 0);
+        Assert.NotEmpty(topology.Target);
         Assert.NotNull(capsule.Completeness);
     }
 

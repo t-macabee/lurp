@@ -1,0 +1,31 @@
+# Duplicate Claude worktree
+.claude/worktrees/**
+
+# .NET build products
+**/bin/**
+**/obj/**
+
+# Generated test results
+**/TestResults/**
+test-output/**
+**/*.trx
+**/*.coverage
+**/*.coveragexml
+
+# Local/generated state
+.tokensave/**
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.log
+**/*.tmp
+
+# Historical generated benchmark results
+tests/benchmark-runs/**
+
+# Diagram source and other documentation assets
+docs/assets/**
+
+# Previous Repomix outputs
+repomix-output.*
+repomix-output-*

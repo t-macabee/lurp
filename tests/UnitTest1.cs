@@ -1321,6 +1321,23 @@ public class MigrationRunnerTests : IDisposable
             Assert.Null(SearchCursor.TryDecode("not-a-valid-cursor!!"));
         }
 
+        // Mode selects which keyset decoder reads the cursor's sort key, so an
+        // unrecognised mode must be rejected rather than falling through to the
+        // substring decoder and reinterpreting a rank-keyed cursor as FQN-keyed.
+        [Fact]
+        public void SearchCursor_Validate_RejectsForeignSnapshotQueryAndUnknownMode()
+        {
+            var fingerprint = SearchCursor.ComputeFingerprint("Retain", null, includeGenerated: false);
+            var cursor = new SearchCursor("snap-a", fingerprint, "fts", -1.5, "Ns.Retain", "T:Ns.Retain|prod");
+
+            cursor.Validate("snap-a", fingerprint);
+
+            Assert.Throws<ArgumentException>(() => cursor.Validate("snap-b", fingerprint));
+            Assert.Throws<ArgumentException>(() => cursor.Validate("snap-a", "a-different-request"));
+            Assert.Throws<ArgumentException>(() =>
+                (cursor with { Mode = "not-a-mode" }).Validate("snap-a", fingerprint));
+        }
+
         [Fact]
         public void SearchSymbols_SymbolWithNoDeclarations_RemainsSearchable()
         {

@@ -353,8 +353,7 @@ public sealed class SearchStore : ISearchStore
 
         limit = Math.Max(1, limit);
         var fingerprint = SearchCursor.ComputeFingerprint(query, kind, includeGenerated);
-        if (cursor != null && (cursor.SnapshotId != snapshotId || cursor.Fingerprint != fingerprint))
-            throw new ArgumentException("Cursor does not match the current snapshot/query/kind/includeGenerated; request a fresh page instead of resuming with a different query.", nameof(cursor));
+        cursor?.Validate(snapshotId, fingerprint);
 
         var mode = cursor?.Mode ?? "fts";
         if (mode == "fts")

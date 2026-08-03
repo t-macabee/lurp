@@ -183,7 +183,7 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--budget=<n>` | No | Token budget for the emitted capsule (default: 8000). The estimate counts content: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000), reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens` — size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
@@ -197,6 +197,51 @@ Assemble a context capsule for a symbol or source location.
 Also accepts the shared [read-command options](#read-command-options).
 
 The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout; `--quiet` and `--output=summary` replace the stdout copy, never the file.
+
+#### Capsule token estimates
+
+A capsule reports two different numbers, and they are not interchangeable:
+
+| Field | What it measures | Use it for |
+|---|---|---|
+| `estimatedTokens` | **Content only** — anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--budget` bounded. This is the budget basis. |
+| `estimatedArtifactTokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
+
+`estimatedArtifactTokens` is always the larger of the two, typically by a wide
+margin on capsules with many small items. It is reported, never budgeted
+against: budgeting on the whole serialization was measured to force dropping
+whole tiers (`directCallees`, `registeredImplementations`, `surroundingSource`)
+at realistic budgets, which is a worse capsule for the same context cost.
+
+#### Reading `omittedTiers`
+
+`omittedTiers` carries **exactly one terminal record per category**, describing
+the emitted capsule rather than the history of how it settled. Reasons:
+
+| Reason | Meaning |
+|---|---|
+| `empty` | Proved absence. The relation was observable and there is none. Safe to act on. |
+| `unresolved` | Unobservable. Bindings were lost over the anchor's region, or no anchor resolved at all (gap capsules mark every tier this way). **Not** evidence that the relation does not exist. |
+| `summarized` | Present but bounded — paths clipped, or item source truncated at the per-item cap. |
+| `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
+
+Both `budget_exhausted` shapes are recovered the same way: refetch that one tier
+unbudgeted with `--tier=<category>` (see `inclusionReasons["omittedTiers.budget_exhausted"]`,
+which is retained in the capsule even when budget pressure clears every other
+inclusion reason).
+
+A missing section is not the same as an empty one. When the enforcer drops
+`topology` or `completeness` they are omitted from the JSON entirely rather than
+serialized with zeroed counts, because zeroed counts read as a positive claim
+("no incoming references") that the capsule has not established. The
+corresponding `omittedTiers` record is the authority.
+
+#### Regeneration is bounded by snapshot retention
+
+A capsule is byte-for-byte regenerable from the snapshot it was built against,
+but only while that snapshot is retained: `--mode=index` prunes to the most
+recent 3 snapshots. Once the source snapshot is pruned, the artifact can no
+longer be reproduced or re-verified against the store.
 
 ---
 

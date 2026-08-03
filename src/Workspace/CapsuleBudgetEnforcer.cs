@@ -19,9 +19,14 @@ namespace Lurp.Workspace
     // lowest-priority sections greedily; every omitted/summarized category is
     // recorded in omittedTiers and truncatedCategories. The anchor is never
     // dropped; if it alone overflows the budget, that overflow is declared with
-    // budget_exhausted. estimatedTokens is set to the settled content measure of
-    // the capsule, so it always describes the emitted artifact's content within
-    // the requested budget.
+    // budget_exhausted. estimatedTokens is set to the settled CONTENT measure of
+    // the capsule — the serialized artifact is larger, because per-item identity
+    // and provenance framing is uncounted navigation metadata; the whole-artifact
+    // figure is reported separately as estimatedArtifactTokens.
+    //
+    // omittedTiers carries exactly ONE terminal record per category: a later trim
+    // of a category supersedes its earlier record in place, so the list describes
+    // the settled capsule rather than the history of how it settled.
     internal static class CapsuleBudgetEnforcer
     {
         private const int MaxBoundPaths = 3;
@@ -36,6 +41,13 @@ namespace Lurp.Workspace
         };
 
         internal static int Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
+        {
+            var estimate = EnforceContentBudget(capsule, budget, tierPriority);
+            StampArtifactEstimate(capsule);
+            return estimate;
+        }
+
+        private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
         {
             var trimmer = new SectionTrimmer(capsule, tierPriority);
             var initialEstimate = Measure(capsule);
@@ -86,6 +98,26 @@ namespace Lurp.Workspace
         }
 
         /// <summary>
+        /// Records the whole-serialization estimate the consumer needs to size a
+        /// context window. It is deliberately NOT the budget basis: budgeting on
+        /// the whole serialization was measured to gut tier content at realistic
+        /// budgets. The field is part of the document it measures, so its own
+        /// digits change the length; iterate to a fixed point, and accept the
+        /// last value if the length oscillates across a digit boundary (the
+        /// residual error is one character, far below one token).
+        /// </summary>
+        private static void StampArtifactEstimate(ContextCapsule capsule)
+        {
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                var estimate = ContextCapsuleJson.Serialize(capsule).Length / 4;
+                if (estimate == capsule.EstimatedArtifactTokens)
+                    return;
+                capsule.EstimatedArtifactTokens = estimate;
+            }
+        }
+
+        /// <summary>
         /// Content measure of the capsule: the source text of the anchor and
         /// every item, plus the serialized weight of the substantive non-source
         /// sections. Per-item identity framing is not counted.
@@ -127,27 +159,41 @@ namespace Lurp.Workspace
             capsule.Truncated = true;
             if (!capsule.TruncatedCategories.Contains(entry.Category))
                 capsule.TruncatedCategories.Add(entry.Category);
-            capsule.OmittedTiers.Add(entry);
+
+            // One terminal record per category. A category can be trimmed more
+            // than once (bounded, then cleared), and a chronological log of those
+            // steps forces the consumer to reconstruct which record is current.
+            // The later record supersedes the earlier one in place, so ordering
+            // stays deterministic and the list always describes the emitted state.
+            var existing = capsule.OmittedTiers.FindIndex(
+                record => string.Equals(record.Category, entry.Category, StringComparison.Ordinal));
+            if (existing >= 0)
+                capsule.OmittedTiers[existing] = entry;
+            else
+                capsule.OmittedTiers.Add(entry);
         }
 
         private static Func<ContextCapsule, bool> TopologyDropTargetsStep(ContextCapsule capsule)
             => _ =>
             {
-                if (capsule.Topology.Target.Count == 0 && capsule.Topology.Annotations.Count == 0)
+                if (capsule.Topology == null
+                    || (capsule.Topology.Target.Count == 0 && capsule.Topology.Annotations.Count == 0))
                     return false;
                 capsule.Topology.Target.Clear();
                 capsule.Topology.Annotations.Clear();
                 return true;
             };
 
+        // Dropped, not zeroed. A retained topology whose counts are all zero
+        // reads as "no incoming or outgoing references" — a positive claim, and a
+        // false one beside a populated directCallers tier. Absence plus the
+        // omittedTiers record says what is true: the section was not emitted.
         private static Func<ContextCapsule, bool> TopologyResetStep(ContextCapsule capsule)
             => _ =>
             {
-                if (capsule.Topology.Current == CapsuleTopologyReference.Empty
-                    && capsule.Topology.Target.Count == 0
-                    && capsule.Topology.Annotations.Count == 0)
+                if (capsule.Topology == null)
                     return false;
-                capsule.Topology = new CapsuleTopology(CapsuleTopologyReference.Empty, [], []);
+                capsule.Topology = null;
                 return true;
             };
 
@@ -178,12 +224,21 @@ namespace Lurp.Workspace
                 return true;
             };
 
+        // The omittedTiers.* entries are how a consumer interprets and recovers
+        // the omissions this trim pass creates, so they must outlive the pressure
+        // that makes them necessary — clearing them first (they are the
+        // lowest-priority section) left the capsule that omitted the most as the
+        // one with no instructions for recovering anything. They cost ~50 tokens.
         private static Func<ContextCapsule, bool> ClearDictionaryStep(Dictionary<string, string> items)
             => _ =>
             {
-                if (items.Count == 0)
+                var removable = items.Keys
+                    .Where(static key => !key.StartsWith("omittedTiers.", StringComparison.Ordinal))
+                    .ToList();
+                if (removable.Count == 0)
                     return false;
-                items.Clear();
+                foreach (var key in removable)
+                    items.Remove(key);
                 return true;
             };
 

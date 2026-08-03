@@ -138,11 +138,12 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         var store = CreateSeededStore();
         var capsule = Assemble(store, IncludeCompletenessDetail: false);
 
-        Assert.Equal(0, capsule.Topology.Current.IncomingPathCount);
-        Assert.Equal(1, capsule.Topology.Current.OutgoingPathCount);
-        Assert.Equal(1, capsule.Topology.Current.TotalHopCount);
-        Assert.Equal("see incomingPaths", capsule.Topology.Current.IncomingReference);
-        Assert.Equal("see outgoingPaths", capsule.Topology.Current.OutgoingReference);
+        var topology = Assert.IsType<CapsuleTopology>(capsule.Topology);
+        Assert.Equal(0, topology.Current.IncomingPathCount);
+        Assert.Equal(1, topology.Current.OutgoingPathCount);
+        Assert.Equal(1, topology.Current.TotalHopCount);
+        Assert.Equal("see incomingPaths", topology.Current.IncomingReference);
+        Assert.Equal("see outgoingPaths", topology.Current.OutgoingReference);
 
         // The serialized topology section carries only the reference summary,
         // never the full hop data; the hop data lives once under outgoingPaths.
@@ -273,6 +274,118 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
             Assert.True(item.Source == null || item.Source.Length <= 800 + "\n// … source truncated by token budget …".Length));
     }
 
+    // estimatedTokens is the content basis the budget bounds; estimatedArtifactTokens
+    // is the whole serialized file. Conflating them under-budgets a consumer's
+    // context window, so both must be reported and each must mean what it says.
+    [Fact]
+    public void SettledCapsule_ReportsContentEstimateAndWholeArtifactEstimateSeparately()
+    {
+        var capsule = Capsule("public sealed class C { }");
+        for (var i = 0; i < 20; i++)
+            capsule.DirectCallers.Add(new CapsuleItem(
+                $"M:Caller{i}.Run|prod", "Method", $"Namespace.Caller{i}.Run", "compiler_proved", "Calls",
+                $"void Run{i}() {{ }}", null, "Direct compiler-resolved call.",
+                CapsuleRelationship.DirectCaller, direct: true));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100_000, tierPriority: ["directCallers"]);
+
+        Assert.Equal(CapsuleBudgetEnforcer.Measure(capsule), capsule.EstimatedTokens);
+
+        // The artifact estimate is part of the document it measures, so it is
+        // settled to within one token of the emitted file's own length/4.
+        var emitted = ContextCapsuleJson.Serialize(capsule);
+        Assert.InRange(capsule.EstimatedArtifactTokens, emitted.Length / 4 - 1, emitted.Length / 4 + 1);
+
+        // The framing this capsule carries (symbol ids, FQNs, edge kinds,
+        // provenance) is exactly what the content basis excludes.
+        Assert.True(capsule.EstimatedArtifactTokens > capsule.EstimatedTokens);
+    }
+
+    [Fact]
+    public void RepeatedTrimOfOneCategory_LeavesExactlyOneTerminalRecord()
+    {
+        var capsule = Capsule("a");
+        for (var i = 0; i < 200; i++)
+            capsule.IncomingPaths.Add(MakePath(10));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 200, tierPriority: ["contracts"]);
+
+        // incomingPaths is bounded first ("summarized") and cleared later
+        // ("budget_exhausted") under this pressure. Only the terminal state is
+        // reported: a consumer reads the record, not a chronology.
+        Assert.All(
+            capsule.OmittedTiers.GroupBy(entry => entry.Category, StringComparer.Ordinal),
+            group => Assert.Single(group));
+        var record = Assert.Single(capsule.OmittedTiers, entry => entry.Category == "incomingPaths");
+        Assert.Equal("budget_exhausted", record.Reason);
+        Assert.Empty(capsule.IncomingPaths);
+    }
+
+    // A partially included tier is recorded budget_exhausted while still carrying
+    // items. That is the documented "complete greedy prefix" shape, and it must
+    // stay distinguishable from a fully omitted tier by item count alone.
+    [Fact]
+    public void PartiallyIncludedTier_IsDistinguishableFromAFullyOmittedOne()
+    {
+        var capsule = Capsule("a");
+        capsule.Contracts.Add(Item(new string('c', 4_000), "contract"));
+        capsule.DirectCallees.Add(Item(new string('d', 4_000), "callee"));
+        capsule.OmittedTiers.Add(new TruncationEntry("relevantTests", "budget_exhausted"));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 400,
+            tierPriority: ["contracts", "directCallees", "relevantTests"]);
+
+        var partial = Assert.Single(capsule.OmittedTiers, entry => entry.Category == "contracts");
+        Assert.Equal("summarized", partial.Reason);
+        Assert.NotEmpty(capsule.Contracts);
+
+        var omitted = Assert.Single(capsule.OmittedTiers, entry => entry.Category == "relevantTests");
+        Assert.Equal("budget_exhausted", omitted.Reason);
+        Assert.Empty(capsule.RelevantTests);
+    }
+
+    // The capsule that omits the most is the one that most needs to say how to
+    // recover the omissions, so the omittedTiers.* meta-entries outlive the
+    // pressure that creates them — even when every other section is cleared.
+    [Fact]
+    public void UnderFullPressure_OmissionRecoveryHintsSurviveWhileOtherReasonsAreCleared()
+    {
+        var capsule = Capsule(new string('x', 40_000));
+        capsule.Contracts.Add(Item("c"));
+        capsule.InclusionReasons["contracts"] = "Compiler-resolved contracts implemented by the anchor.";
+        capsule.InclusionReasons["omittedTiers.budget_exhausted"] =
+            "Fetch an omitted tier on its own, unbudgeted: --mode=context --tier=<category> --symbol=<anchor symbolId>.";
+        capsule.InclusionReasons["omittedTiers.unresolved"] =
+            "An omitted tier marked 'unresolved' is not evidence that no such relation exists.";
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100, tierPriority: ["contracts"]);
+
+        Assert.Contains(capsule.OmittedTiers, entry => entry.Category == "anchor");
+        Assert.DoesNotContain("contracts", capsule.InclusionReasons.Keys);
+        Assert.Contains("omittedTiers.budget_exhausted", capsule.InclusionReasons.Keys);
+        Assert.Contains("omittedTiers.unresolved", capsule.InclusionReasons.Keys);
+    }
+
+    // Zeroed topology counts beside a populated caller tier read as "no incoming
+    // references" — a claim the capsule never established. Dropped, not zeroed.
+    [Fact]
+    public void DroppedTopology_IsOmittedFromTheArtifactRatherThanSerializedAsZeroCounts()
+    {
+        var capsule = Capsule("a");
+        capsule.Topology = new CapsuleTopology(
+            new CapsuleTopologyReference("see incomingPaths", "see outgoingPaths", 4, 2, 18), [], []);
+        for (var i = 0; i < 200; i++)
+            capsule.IncomingPaths.Add(MakePath(10));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100, tierPriority: ["contracts"]);
+
+        Assert.Null(capsule.Topology);
+        Assert.Contains(capsule.OmittedTiers,
+            entry => entry.Category == "topology" && entry.Reason == "budget_exhausted");
+        var document = JsonDocument.Parse(ContextCapsuleJson.Serialize(capsule));
+        Assert.False(document.RootElement.TryGetProperty("topology", out _));
+    }
+
     private static ContextCapsule Capsule(string anchorSource)
         => new(new CapsuleAnchor("T:C|prod", "C", "Type", anchorSource));
 
@@ -296,9 +409,10 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
             "surroundingSource" => capsule.SurroundingSource.Count > 0,
             "incomingPaths" => capsule.IncomingPaths.Count > 0,
             "outgoingPaths" => capsule.OutgoingPaths.Count > 0,
-            "topology" => capsule.Topology.Current != CapsuleTopologyReference.Empty
-                || capsule.Topology.Target.Count > 0
-                || capsule.Topology.Annotations.Count > 0,
+            "topology" => capsule.Topology != null
+                && (capsule.Topology.Current != CapsuleTopologyReference.Empty
+                    || capsule.Topology.Target.Count > 0
+                    || capsule.Topology.Annotations.Count > 0),
             "constraints" => capsule.Constraints.Count > 0,
             "completeness" => capsule.Completeness != null,
             "uncertainties" => capsule.Uncertainties.Count > 0,

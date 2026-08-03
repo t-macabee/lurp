@@ -478,23 +478,47 @@ namespace Lurp.Workspace
 
             if (resolvedId == null)
             {
+                // A gap capsule is a real capsule and obeys the same finalization
+                // contract as any other. In particular its tiers are NOT bare `[]`:
+                // under the capsule's own empty/unresolved semantics a bare `[]`
+                // asserts a proved absence, and nothing was proved here — the anchor
+                // itself could not be resolved. Every tier is therefore reason-coded
+                // "unresolved", the snapshot that was consulted is recorded, the
+                // anchor carries no evidence grade (it asserts the absence of a
+                // symbol, so "compiler_proved" would be a false claim), and the
+                // budget enforcer settles estimatedTokens the same way it does
+                // everywhere else.
                 var gapAnchor = new CapsuleAnchor(
                     symbolId: $"file://{lookup.FileArg}:{lookup.LineNumber}",
                     fullyQualifiedName: $"<no symbol at {lookup.FileArg}:{lookup.LineNumber}>",
                     kind: "gap",
-                    source: string.Empty);
+                    source: string.Empty)
+                {
+                    SnapshotId = lookup.SnapshotId,
+                    Intent = options.Intent.ToString().ToLowerInvariant(),
+                    MaxHops = options.MaxHops,
+                    Provenance = string.Empty,
+                };
 
                 var gapCapsule = new ContextCapsule(gapAnchor)
                 {
                     Budget = options.Budget,
-                    EstimatedTokens = 0,
-                    Truncated = false,
                 };
+
+                foreach (var tierName in TierNames)
+                    gapCapsule.OmittedTiers.Add(new TruncationEntry(tierName, "unresolved"));
+
+                gapCapsule.InclusionReasons["omittedTiers.unresolved"] =
+                    "No symbol resolved at the requested location, so every tier is marked "
+                  + "'unresolved': the relation could not be observed. It is NOT evidence that "
+                  + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
 
                 gapCapsule.Uncertainties.Add(new UncertaintyEntry(
                     [gapAnchor.SymbolId],
                     "location_gap",
                     $"No symbol found at {lookup.FileArg}:{lookup.LineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
+
+                CapsuleBudgetEnforcer.Enforce(gapCapsule, options.Budget, TierNames);
 
                 return gapCapsule;
             }

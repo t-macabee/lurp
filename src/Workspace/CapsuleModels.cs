@@ -316,8 +316,10 @@ namespace Lurp.Workspace
         [JsonPropertyName("affectedPublicSurfaces")]
         public List<CapsuleItem> AffectedPublicSurfaces { get; init; } = [];
 
+        // Null once the budget enforcer drops it: zeroed counts would read as a
+        // positive "no references" claim. Its absence is declared in omittedTiers.
         [JsonPropertyName("topology")]
-        public CapsuleTopology Topology { get; set; } = new(CapsuleTopologyReference.Empty, [], []);
+        public CapsuleTopology? Topology { get; set; } = new(CapsuleTopologyReference.Empty, [], []);
 
         [JsonPropertyName("completeness")]
         public SnapshotCompleteness? Completeness { get; set; }
@@ -325,8 +327,24 @@ namespace Lurp.Workspace
         [JsonPropertyName("budget")]
         public int Budget { get; init; }
 
+        /// <summary>
+        /// The settled CONTENT measure this capsule was budgeted against: anchor
+        /// and item source plus the serialized weight of the substantive
+        /// non-source sections. Per-item identity and provenance framing is
+        /// navigation metadata and is deliberately not counted, so the emitted
+        /// file is larger than this number. To size a context window, use
+        /// <see cref="EstimatedArtifactTokens"/>.
+        /// </summary>
         [JsonPropertyName("estimatedTokens")]
         public int EstimatedTokens { get; set; }
+
+        /// <summary>
+        /// Estimate of the whole emitted artifact (serialized length ÷ 4),
+        /// including the identity/provenance framing <see cref="EstimatedTokens"/>
+        /// excludes. Reported, never budgeted against.
+        /// </summary>
+        [JsonPropertyName("estimatedArtifactTokens")]
+        public int EstimatedArtifactTokens { get; set; }
 
         [JsonPropertyName("truncated")]
         public bool Truncated { get; set; }
@@ -349,9 +367,11 @@ namespace Lurp.Workspace
         }
     }
 
-    // Canonical serializer for the emitted capsule representation. The budget
-    // enforcer measures this exact serialization and the handler writes it, so
-    // estimatedTokens always describes the artifact that is actually emitted.
+    // Canonical serializer for the emitted capsule representation; the handler
+    // writes exactly this. Note which field describes it: estimatedTokens is a
+    // content estimate and is smaller than this serialization, because per-item
+    // identity/provenance framing is uncounted navigation metadata.
+    // estimatedArtifactTokens is the estimate of this serialization itself.
     internal static class ContextCapsuleJson
     {
         internal static readonly System.Text.Json.JsonSerializerOptions Options = new()

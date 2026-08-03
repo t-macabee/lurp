@@ -195,9 +195,13 @@ eNote CourseService capsule serialized to ~1 MB while reporting
   recorded in `omittedTiers` and `truncatedCategories`. The anchor is never
   dropped; if it alone overflows the budget, that overflow is declared with
   `budget_exhausted`.
-- `estimatedTokens` is the settled content measure of the exact capsule the
-  handler writes (`ContextCapsuleJson.Serialize`), so it always describes the
-  emitted artifact's content within the requested budget.
+- `estimatedTokens` is the settled **content** measure of the exact capsule the
+  handler writes, so it always describes that capsule's content within the
+  requested budget. It is deliberately smaller than the serialized file, because
+  per-item identity/provenance framing is uncounted navigation metadata. The
+  whole-serialization figure is reported separately as `estimatedArtifactTokens`
+  (see §"Capsule contract honesty pass"), which is what a consumer sizes a
+  context window from.
 - `CapsuleTopology.Current` is a reference summary (direction, path and hop
   counts, `"see incomingPaths"`/`"see outgoingPaths"`) instead of a full copy of
   the path collections; the paths are serialized once under
@@ -300,9 +304,18 @@ re-run — do that before merging.
 
 #### Open findings for follow-up
 
-1. **Capsules do not resolve callers through `MayDispatchTo` (open).** With a
-   correct graph, a capsule anchored on a *concrete* implementation reports zero
-   callers. Callers bind to the interface member, and the concrete symbol is one
+1. **Capsules resolve callers through `MayDispatchTo` (closed 2026-08-03; two
+   sub-items remain).** The defect as originally written — a capsule anchored on
+   a *concrete* implementation reporting zero callers because
+   `DirectCallersTierBuilder` did not walk the `MayDispatchTo` hop — is fixed and
+   locked by `CapsuleProvenanceCompositionTests` (10 tests). The eNote artifact
+   in `test-output/enote-dispatch-provenance-20260803/` shows 12
+   dispatch-mediated callers on a concrete type anchor. What remains open is (a)
+   re-running the historical MusicLibrary reproduction, which is externally
+   blocked on that checkout, and (b) the `EffectiveSymbolIds` design question
+   below — neither is an outstanding defect. Original text retained for context:
+
+   Callers bind to the interface member, and the concrete symbol is one
    `MayDispatchTo` hop away that `DirectCallersTierBuilder` does not walk.
    Reproduction on the restored MusicLibrary index:
    `--mode=context --symbol='M:API.Interfaces.ITokenService.CreateToken(API.Entities.AppUser)|…'`
@@ -325,8 +338,10 @@ re-run — do that before merging.
    fix: `DirectCalleesTierBuilder` projects dispatch targets under
    `global_implementation_relation` / `indirect_dispatch_candidate` /
    `direct: false` while direct callees stay `compiler_proved`. The
-   zero-callers reproduction above and the `EffectiveSymbolIds` question
-   remain open.
+   zero-callers reproduction above is externally blocked (no MusicLibrary
+   checkout) and is recorded as permanently deferred, not as open work; the
+   `EffectiveSymbolIds` question is a design question, recorded and not acted
+   on.
 2. **`test-output/` artifacts are stale and pre-fix — do not treat them as
    current evidence.** Every capsule there was produced from a reference-less
    compilation that the gate now refuses outright. In particular the 973 KB
@@ -1363,10 +1378,8 @@ tests/Lurp.Storage.Tests.csproj -c Release --filter
 `ContextBudgeter`/`ContextTypeAnchorContract` passed 30/30. `dotnet build
 src/Lurp.csproj -c Release` — 0 warnings, 0 errors.
 
-**Open follow-up:** `SearchCursor` has no `Validate` counterpart to
-`SequenceCursor`'s — it trusts its decoded values. No CLI path feeds a cursor
-to the wrong decoder today, so this is a latent asymmetry rather than a
-defect, but the guard belongs on both.
+**Open follow-up (closed 2026-08-03):** `SearchCursor` had no `Validate`
+counterpart to `SequenceCursor`'s. Closed in §"Capsule contract honesty pass".
 
 Remaining from the remediation plan: PR-1 through PR-5 and PR-7 landed; PR-6
 landed as commit `bdf252c` (its receiver-type constraints are retained and
@@ -1429,6 +1442,114 @@ CapsuleBudgetEnforcer|ContextBudgeter|ContextCapsuleAcceptance` 29/29,
 `EdgeDedup|CleanRebuildEquivalence|InterfaceDispatch|OutcomeBenchmark|
 GraphNodeMembership|SqliteUpsert|SchemaStability` 25/25, and the full suite
 (`dotnet test tests/Lurp.Storage.Tests.csproj -c Release`, ~800s) 0 errors.
+
+### Capsule contract honesty pass (2026-08-03)
+
+Closes findings F1–F8 of `FABLE5_LURP_FINAL_CLOSURE_REVIEW.md`. Every defect was
+at the capsule boundary — the surface a downstream consumer reads — and every
+fix is local to finalization, labeling, or documentation. The two-stage
+budgeter, tier priorities, dispatch-provenance composition, persistence schema,
+and incremental machinery were deliberately not touched.
+
+**Gap capsules now obey the ordinary finalization contract** (F2,
+`ContextAssembler.ResolveAndAssemble`). Previously an unresolvable
+`--file/--line` emitted `estimatedTokens = 0` with content present, all seven
+tiers as bare `[]` (which under the capsule's own `empty`/`unresolved` contract
+reads as a *proved absence*), `provenance: compiler_proved` on an anchor that
+asserts the absence of a symbol, and no snapshot ID. Now: the consulted snapshot
+is recorded, the anchor carries no evidence grade (empty string, matching the
+existing `extractorIdentity` convention rather than new vocabulary), every tier
+gets an `unresolved` omission record plus the `omittedTiers.unresolved`
+explanation, the `location_gap` uncertainty is preserved, and
+`CapsuleBudgetEnforcer.Enforce` settles the estimate. The path had **zero** test
+coverage; `tests/GapCapsuleContractTests.cs` (new, 2 tests) locks it.
+
+**One written definition of `estimatedTokens`** (F1). The content-only
+measurement is deliberate and evidenced (§"Capsule budget truthfulness"), so the
+measurement is unchanged and the three texts that contradicted it were corrected
+instead: the `ContextCapsuleJson` comment (claimed "measures this exact
+serialization"), the `--budget` help line, and the parenthetical in §"Capsule
+budget truthfulness". A capsule now also reports **`estimatedArtifactTokens`** —
+the whole serialization ÷ 4, stamped after settlement and iterated to a fixed
+point so the field's own digits stabilize. The real eNote artifact serialized to
+~9,600 tokens while reporting 3,467; a consumer sizing a context window from the
+content field was off ~2.8×. `--output=summary` prints both.
+`tests/benchmark-runs/baseline.json` needs no regeneration: it records a
+hand-picked projection of the capsule, not its serialization.
+
+**`omittedTiers` is a terminal ledger, not an event log** (F3).
+`RecordTruncation` now supersedes an earlier record for the same category in
+place, so there is exactly one record per category describing the settled
+capsule. `budget_exhausted` keeps its two documented readings, now written down
+in `src/README.md`: *with items present* the included items are a complete
+greedy prefix; *with no items* the tier was fully omitted; both recover via
+`--tier=<name>`.
+
+**The recovery hint survives the pressure that creates it** (F4).
+`inclusionReasons` is the lowest-priority trimmable section, so under severe
+pressure the enforcer's first act was to delete the entry telling the consumer
+how to recover the omissions it was about to make. `ClearDictionaryStep` now
+exempts the `omittedTiers.*` meta-entries (~50 tokens) while clearing the
+per-tier descriptions.
+
+**Dropped `topology` is omitted, not zeroed.** A reset topology serialized
+`incomingPathCount: 0` beside a populated `directCallers` tier — a positive "no
+incoming references" claim the capsule never established. `Topology` is now
+nullable and dropped like `Completeness`; the `omittedTiers` record is the
+authority. (Surfaced by the blind consumer test in §8 of the review.)
+
+**`SearchCursor.Validate`** (F6) — parity with `SequenceCursor.Validate`,
+replacing the inline check in `SearchStore.SearchSymbolsPage` and adding a mode
+guard: `Mode` selects which keyset decoder reads the cursor's sort key, so an
+unrecognised mode would otherwise fall through to the substring decoder and
+reinterpret a rank-keyed cursor as FQN-keyed.
+
+**Documented, not built** (F5, F8, F9): capsule regeneration is byte-identical
+but bounded by 3-snapshot retention (`src/README.md`); open finding 1's wording
+now matches the code (the dispatch-caller walk is implemented and tested — what
+remains is the externally-blocked MusicLibrary reproduction and the
+`EffectiveSymbolIds` design question); source-only first-stage tier costing
+stays as-is, since `CapsuleBudgetEnforcer` re-measures the settled artifact and
+no failing characterization exists.
+
+**Tests:** `tests/GapCapsuleContractTests.cs` (new, 2);
+`CapsuleBudgetEnforcerTests` +5 (content-vs-artifact estimate, terminal-record
+collapse, partial-vs-omitted tier disambiguation, meta-hint survival under full
+trim, topology omitted rather than zeroed); `SearchCursor_Validate_Rejects
+ForeignSnapshotQueryAndUnknownMode` in `tests/UnitTest1.cs`.
+
+Validation: focused filters first — `CapsuleBudgetEnforcer|GapCapsuleContract|
+SearchCursor|CapsuleProvenanceComposition|CapsuleCompletenessExplicitDependency|
+OutputContinuation|SearchSymbolsPage|ContextBudgeter|ContextTypeAnchorContract`
+55/55, `ContextCapsuleAcceptance` 1/1, `dotnet build Lurp.slnx` 0 warnings /
+0 errors. **Full suite** (`dotnet test tests/Lurp.Storage.Tests.csproj -c
+Release`, 786s): **381/381, 0 failed, 0 skipped.**
+
+`tests/benchmark-runs/baseline.json` regenerated by that run. The diff is
+`generatedAtUtc` plus the three scenarios' snapshot IDs, which are
+non-deterministic by design (§"Explicitly postponed"); `incrementalSnapshot ==
+fullSnapshot` with `equivalent: true` in all three, and **every capsule
+projection value — including `estimatedTokens` and `truncated` — is
+byte-unchanged**. That is the direct evidence that the `estimatedArtifactTokens`
+addition perturbed no measured outcome: the benchmark records a hand-picked
+projection of the capsule, not its serialization, so the schema widening the
+closure review flagged as a regeneration risk turned out not to touch it.
+
+Capsule regeneration re-verified against the retained eNote snapshot
+(`3981bdce…`, `test-output/enote-dispatch-provenance-20260803/`): two
+consecutive runs byte-identical (SHA-256 `8b84256e…`), so the
+`estimatedArtifactTokens` fixed point converges deterministically.
+`estimatedTokens = 3479` against `estimatedArtifactTokens = 9565`, and the
+emitted file is 38,260 chars — the artifact estimate is exact, not approximate.
+`omittedTiers` carries 13 records over 13 categories (was 15 over 13);
+`inclusionReasons` retains `omittedTiers.budget_exhausted` under the pressure
+that cleared every other entry; `topology` is absent rather than zeroed.
+
+**Still open:** one observed green CI run in which the clean-rebuild equivalence
+step executes more than zero tests (F7: that step matched zero tests from a
+class rename until `d648d26` and has not had its own green run since). The local
+equivalence evidence above is not a substitute — the defect was in the CI
+filter, not in the test.
 
 ## Explicitly postponed
 
