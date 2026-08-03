@@ -57,12 +57,22 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         // is not a receiver-compatible candidate for this call site.
         var dispatchTarget = Assert.Single(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.HelperImpl.Do|prod");
         Assert.Equal(EdgeKind.MayDispatchTo.ToString(), dispatchTarget.EdgeKind);
-        Assert.Equal("compiler_proved", dispatchTarget.Provenance);
+        Assert.Equal("global_implementation_relation", dispatchTarget.Provenance);
+        Assert.NotEqual("compiler_proved", dispatchTarget.Provenance);
+        Assert.Equal(CapsuleRelationship.IndirectDispatchCandidate, dispatchTarget.Relationship);
+        Assert.False(dispatchTarget.Direct);
         Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.RootOnlyHelper.Do|prod");
         Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "T:MyApp.Service|prod");
 
-        // Facts on a sibling member (GetById) are also reached from the type anchor.
-        Assert.Contains(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.Repo.GetById|prod");
+        // A genuinely invoked concrete callee stays a direct compiler-proved callee.
+        var directCallee = Assert.Single(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.Repo.GetById|prod");
+        Assert.Equal(EdgeKind.Calls.ToString(), directCallee.EdgeKind);
+        Assert.Equal("compiler_proved", directCallee.Provenance);
+        Assert.Equal(CapsuleRelationship.DirectCallee, directCallee.Relationship);
+        Assert.True(directCallee.Direct);
+
+        // Facts on a sibling member (GetById) are also reached from the type anchor
+        // and remain direct compiler-proved callees (asserted above).
     }
 
     [Fact]

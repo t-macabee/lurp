@@ -74,7 +74,13 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
             return;
 
         // If the implementing member is declared on *this* type directly
-        // (rather than inherited from a base), it is compiler-proved.
+        // (rather than inherited from a base), the implementation candidate is
+        // compiler-established via FindImplementationForInterfaceMember:
+        // Roslyn proves this member implements the interface member. Inherited
+        // implementations are merely possible. Either way the edge is a
+        // structural fact about the graph, not a per-call-site claim about
+        // which implementation a call selects at runtime — composition into a
+        // call-site claim is graded separately by the capsule tier builders.
         bool isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
         string provenance = isDirect ? Provenance.CompilerProved : Provenance.Possible;
 

@@ -315,7 +315,18 @@ re-run — do that before merging.
    meant to include dispatching interface members, or have the builder walk
    incoming `MayDispatchTo` edges before tracing `Calls` upstream. **Provenance
    must not launder**: a caller reached via dispatch is weaker evidence than a
-   direct compiler-resolved call and the capsule item must say so.
+   direct compiler-resolved call and the capsule item must say so. The
+   laundering clause is now closed (`docs/reference/CAPSULE_PROVENANCE_FIX.md`):
+   `DirectCallersTierBuilder`/`SecondDegreeContextTierBuilder` walk incoming
+   `MayDispatchTo` edges before tracing `Calls` upstream, and dispatch-mediated
+   items are classified `indirect_dispatch_candidate` / `direct: false` with
+   `possible` claim provenance (or `framework_derived` only when a framework
+   edge participates in the path). The callee mirror is closed in the same
+   fix: `DirectCalleesTierBuilder` projects dispatch targets under
+   `global_implementation_relation` / `indirect_dispatch_candidate` /
+   `direct: false` while direct callees stay `compiler_proved`. The
+   zero-callers reproduction above and the `EffectiveSymbolIds` question
+   remain open.
 2. **`test-output/` artifacts are stale and pre-fix — do not treat them as
    current evidence.** Every capsule there was produced from a reference-less
    compilation that the gate now refuses outright. In particular the 973 KB
@@ -573,9 +584,10 @@ every full-index pipeline invocation.
 `EdgeStore.SaveEdges` uses `INSERT OR IGNORE INTO edges`, and
 `IndexRunner.RunFullIndexAsync` accumulates edges across all projects, runs
 `EdgeDedup.Deduplicate` (provenance priority: `compiler_proved` >
-`framework_derived` > `possible` > `convention` > `name_candidate` >
-`runtime_unknown`), then calls `SaveEdges` once. The unique index
-`ux_edges_relation` is unchanged — no relaxation, no migration-side dedup.
+`framework_derived` > `global_implementation_relation` > `possible` >
+`convention` > `name_candidate` > `runtime_unknown`), then calls `SaveEdges`
+once. The unique index `ux_edges_relation` is unchanged — no relaxation, no
+migration-side dedup.
 `SaveEdges_DeduplicatesSameTripleAcrossProjects` and
 `EdgeDedup_KeepsHighestProvenance` both pass.
 
@@ -1062,8 +1074,9 @@ labelled with Lurp's strongest confidence grade.
 
 No schema change, no other tier touched (`RegisteredImplementations` and the
 `DirectCallers` dispatch-source path project different, correctly-labelled
-facts — see PR-6 for the receiver-type-constrained fix that supersedes this
-interim relabelling).
+facts — see the capsule dispatch-provenance fix below for the final state,
+which keeps receiver-type filtering (commit `bdf252c`) while restoring the
+`global_implementation_relation` read-side label that this section introduced).
 
 **Tests:** updated
 `ContextTypeAnchorContractTests.TypeAnchor_DirectCallees_IncludeInterfaceMemberAndItsDispatchImplementations`
@@ -1356,8 +1369,66 @@ to the wrong decoder today, so this is a latent asymmetry rather than a
 defect, but the guard belongs on both.
 
 Remaining from the remediation plan: PR-1 through PR-5 and PR-7 landed; PR-6
-landed as commit `bdf252c` but has no section in this document; PR-8
+landed as commit `bdf252c` (its receiver-type constraints are retained and
+documented in the capsule dispatch-provenance fix below); PR-8
 (semantic-surface invalidation) is not started.
+
+### Capsule dispatch-provenance fix — callers and callees (2026-08-03)
+
+Closes the provenance-laundering clause of open finding 1
+(`docs/reference/CAPSULE_PROVENANCE_FIX.md`). A caller reached through
+`Calls → MayDispatchTo` was projected into a capsule as a direct
+`compiler_proved` caller of the concrete implementation. The reachability is
+legitimate; the presentation as a direct compiler-proved call is not.
+
+**Caller side** (`DirectCallersTierBuilder`, `SecondDegreeContextTierBuilder`):
+- Callers reached through an incoming `MayDispatchTo` edge are classified
+  `relationship: indirect_dispatch_candidate` / `direct: false` with effective
+  claim provenance `possible` — `framework_derived` only when an actual
+  framework/DI-derived edge participates in the composed path
+  (`EdgeDedup.ComposeDispatchClaimProvenance`; path-level provenance is never
+  the strongest edge's grade).
+- The inclusion reason names both underlying steps with their grades: the
+  caller's `Calls` edge to the interface/abstract member (persisted
+  `compiler_proved`) and the `MayDispatchTo` edge carrying the structural
+  implementation candidate (persisted `compiler_proved`).
+- Genuine direct calls stay `direct_caller` / `direct: true` /
+  `compiler_proved`. The persisted `MayDispatchTo` edges are unchanged —
+  `InterfaceDispatchExtractor` keeps emitting `compiler_proved` for direct
+  structural implementations; the grade is composed at read time, not
+  laundered at write time.
+
+**Callee side** (`DirectCalleesTierBuilder`): PR-3's label was reverted by
+PR-6's receiver-type commit (`bdf252c`), which left the live code hardcoding
+`compiler_proved` for projected dispatch targets against this document's
+PR-3 record. Reconciled: receiver-type constraint filtering is retained
+(candidates must be assignable to the call site's persisted static receiver
+types), and the projection is again labeled
+`Provenance.GlobalImplementationRelation` with
+`relationship: indirect_dispatch_candidate` / `direct: false`. The inclusion
+reason names the `Calls` edge, the `MayDispatchTo` edge, and states that
+receiver compatibility narrows but does not establish the runtime target.
+Directly invoked concrete callees remain `direct_callee` / `direct: true` /
+`compiler_proved`. `EdgeDedup.ProvenanceRank` now ranks the canonical
+`global_implementation_relation` between `framework_derived` and `possible`,
+and the T4 ladder above reflects it.
+
+**Tests:** `tests/CapsuleProvenanceCompositionTests.cs` (new, 10 tests) locks
+the full contract including the callee projection;
+`ContextTypeAnchorContractTests.TypeAnchor_DirectCallees_IncludeInterfaceMemberAndItsDispatchImplementations`
+asserts `global_implementation_relation` (and `!= compiler_proved`) for the
+receiver-compatible dispatch target while keeping the receiver-incompatible
+candidate exclusion. `tests/benchmark-runs/baseline.json` regenerated: the
+DI-replacement scenario's dispatch-mediated caller items report `possible`
+and its `directCallees` dispatch projections report
+`global_implementation_relation`.
+
+Validation: `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
+errors; `CapsuleProvenanceComposition|ContextTypeAnchorContract|
+CapsuleBudgetEnforcer|ContextBudgeter|ContextCapsuleAcceptance` 29/29,
+`EdgeDedup|CleanRebuildEquivalence|InterfaceDispatch|OutcomeBenchmark|
+GraphNodeMembership|SqliteUpsert|SchemaStability` 25/25, and the full suite
+(`dotnet test tests/Lurp.Storage.Tests.csproj -c Release`, ~800s) 0 errors.
 
 ## Explicitly postponed
 

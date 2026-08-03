@@ -96,7 +96,8 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         return ids;
     }
 
-    internal CapsuleItem? BuildCapsuleItem(string symbolId, string edgeKind, string provenance, string? inclusionReason = null)
+    internal CapsuleItem? BuildCapsuleItem(string symbolId, string edgeKind, string provenance, string? inclusionReason = null,
+        string? relationship = null, bool? direct = null)
     {
         var info = DeclarationStore.GetSymbolInfo(symbolId, SnapshotId);
         if (info == null)
@@ -118,7 +119,9 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
             edgeKind: edgeKind,
             source: source,
             location: location,
-            inclusionReason: inclusionReason);
+            inclusionReason: inclusionReason,
+            relationship: relationship,
+            direct: direct);
     }
 
     private DeclarationLocation? GetDeclarationLocation(string symbolId)

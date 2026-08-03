@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -106,6 +107,79 @@ public sealed class LanguageVersionRegressionTests : IDisposable
             "SELECT COUNT(*) FROM snapshot_symbols WHERE snapshot_id = @id AND symbol_id LIKE '%ExplicitLang.WeatherForecast%'", snapshotId);
         Assert.True(recordSymbols > 0,
             $"Expected the C#9 record ExplicitLang.WeatherForecast to be extracted, got {recordSymbols}.");
+    }
+
+    [SkippableFact]
+    public async Task LanguageVersionFallback_CapsulePreservesInterfaceDispatchProvenance()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        _testDir = Path.Combine(Path.GetTempPath(), $"lurp_dispatch_provenance_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_testDir);
+        var dbPath = Path.Combine(_testDir, "index.db");
+        var solutionPath = IntegrationHarness.CopyNamedFixtureToTemp(_testDir, "LanguageVersionFallback");
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, _testDir);
+
+        using var store = IntegrationHarness.OpenReadStore(dbPath);
+        var courseService = store.ResolveSymbolByFqn("Modern.CourseService", snapshotId)
+            ?? throw new InvalidOperationException("Modern.CourseService was not indexed.");
+        var courseCapsule = ContextAssembler.ResolveAndAssemble(
+            store, store,
+            new ContextLookup(snapshotId, courseService.SymbolId.Value, null, null),
+            new ContextAssemblyOptions(ContextIntent.Inspect, Budget: 100_000, MaxHops: 3),
+            store, store);
+
+        var mediatedController = Assert.Single(courseCapsule.DirectCallers,
+            item => item.SymbolId.Contains("InstructorCourseController.GetById", StringComparison.Ordinal));
+        Assert.Equal(CapsuleRelationship.IndirectDispatchCandidate, mediatedController.Relationship);
+        Assert.False(mediatedController.Direct);
+        Assert.Equal("possible", mediatedController.Provenance);
+        Assert.Contains("Calls", mediatedController.InclusionReason);
+        Assert.Contains("MayDispatchTo", mediatedController.InclusionReason);
+
+        var directCaller = Assert.Single(courseCapsule.DirectCallers,
+            item => item.SymbolId.Contains("DirectCourseServiceCaller.GetByIdDirectly", StringComparison.Ordinal));
+        Assert.Equal(CapsuleRelationship.DirectCaller, directCaller.Relationship);
+        Assert.True(directCaller.Direct);
+        Assert.Equal("compiler_proved", directCaller.Provenance);
+
+        var controller = store.ResolveSymbolByFqn("Modern.Api.InstructorCourseController", snapshotId)
+            ?? throw new InvalidOperationException("Modern.Api.InstructorCourseController was not indexed.");
+        var controllerCapsule = ContextAssembler.ResolveAndAssemble(
+            store, store,
+            new ContextLookup(snapshotId, controller.SymbolId.Value, null, null),
+            new ContextAssemblyOptions(ContextIntent.Inspect, Budget: 100_000, MaxHops: 3),
+            store, store);
+        var projectedCallee = Assert.Single(controllerCapsule.DirectCallees,
+            item => item.SymbolId.Contains("Modern.CourseService.GetByIdForInstructorAsync", StringComparison.Ordinal));
+        Assert.Equal("global_implementation_relation", projectedCallee.Provenance);
+        Assert.Equal(CapsuleRelationship.IndirectDispatchCandidate, projectedCallee.Relationship);
+        Assert.False(projectedCallee.Direct);
+        Assert.Contains("Calls", projectedCallee.InclusionReason);
+        Assert.Contains("MayDispatchTo", projectedCallee.InclusionReason);
+
+        var directCallerType = store.ResolveSymbolByFqn("Modern.DirectCourseServiceCaller", snapshotId)
+            ?? throw new InvalidOperationException("Modern.DirectCourseServiceCaller was not indexed.");
+        var directCallerCapsule = ContextAssembler.ResolveAndAssemble(
+            store, store,
+            new ContextLookup(snapshotId, directCallerType.SymbolId.Value, null, null),
+            new ContextAssemblyOptions(ContextIntent.Inspect, Budget: 100_000, MaxHops: 3),
+            store, store);
+        var directCallee = Assert.Single(directCallerCapsule.DirectCallees,
+            item => item.SymbolId.Contains("Modern.CourseService.GetByIdForInstructorAsync", StringComparison.Ordinal));
+        Assert.Equal(CapsuleRelationship.DirectCallee, directCallee.Relationship);
+        Assert.True(directCallee.Direct);
+        Assert.Equal("compiler_proved", directCallee.Provenance);
+
+        var interfaceMember = store.ResolveSymbolByFqn("Modern.ICourseService.GetByIdForInstructorAsync", snapshotId)
+            ?? throw new InvalidOperationException("Modern.ICourseService.GetByIdForInstructorAsync was not indexed.");
+        var implementationCandidates = store.GetOutgoingEdges(snapshotId, interfaceMember.SymbolId.Value)
+            .Where(edge => edge.Kind == "MayDispatchTo")
+            .ToList();
+        Assert.True(implementationCandidates.Count >= 2,
+            $"Expected at least two source-level ICourseService implementations, got {implementationCandidates.Count}.");
+        Assert.All(implementationCandidates, edge => Assert.Equal("compiler_proved", edge.Provenance));
     }
 
     private static long ScalarLong(SqliteConnection conn, string sql, string snapshotId)

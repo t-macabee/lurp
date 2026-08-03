@@ -60,6 +60,33 @@ namespace Lurp.Workspace
         }
     }
 
+    /// <summary>
+    /// Canonical relationship vocabulary for capsule items. The relationship
+    /// states how the item relates to the anchor, independently of the graph
+    /// edge kind that surfaced it: an item built from a Calls hop can still be
+    /// an indirect dispatch candidate rather than a direct caller/callee.
+    /// </summary>
+    internal static class CapsuleRelationship
+    {
+        /// <summary>A source-level call that directly targets the anchor.</summary>
+        public const string DirectCaller = "direct_caller";
+
+        /// <summary>A source-level call or construction directly targeted by the anchor.</summary>
+        public const string DirectCallee = "direct_callee";
+
+        /// <summary>
+        /// A symbol connected to the anchor through Calls + MayDispatchTo, in
+        /// either direction. As a caller: the caller directly calls an
+        /// interface/abstract member (compiler-proved Calls edge); that member
+        /// may dispatch to the anchor at runtime (MayDispatchTo edge). As a
+        /// callee: the anchor calls an interface/abstract member that may
+        /// dispatch to this implementation at runtime. In both directions the
+        /// composed claim is possible — the runtime dispatch target is not
+        /// compiler-established.
+        /// </summary>
+        public const string IndirectDispatchCandidate = "indirect_dispatch_candidate";
+    }
+
     internal sealed class CapsuleItem
     {
         [JsonPropertyName("symbolId")]
@@ -98,8 +125,39 @@ namespace Lurp.Workspace
         [JsonPropertyName("inclusionReason")]
         public string? InclusionReason { get; init; }
 
+        /// <summary>
+        /// How the item relates to the anchor when the graph edge kind alone
+        /// cannot say (see <see cref="CapsuleRelationship"/>). Null when the
+        /// edge kind already conveys the relationship.
+        /// </summary>
+        [JsonPropertyName("relationship")]
+        public string? Relationship { get; init; }
+
+        /// <summary>
+        /// Whether the item is a direct source-level relationship to the
+        /// anchor. False for dispatch-mediated items; they must never be read
+        /// as direct callers. Null when directness is not part of the claim.
+        /// </summary>
+        [JsonPropertyName("direct")]
+        public bool? Direct { get; init; }
+
+        // Capsule items are ordinarily authored through the invariant-enforcing
+        // constructor below, but emitted capsules are also machine-readable
+        // artifacts. A parameterless JSON constructor lets the JSON contract
+        // round-trip the flattened location fields without inventing a
+        // synthetic `location` property solely for deserialization.
+        [JsonConstructor]
+        public CapsuleItem()
+        {
+            SymbolId = string.Empty;
+            Kind = string.Empty;
+            FullyQualifiedName = string.Empty;
+            Provenance = string.Empty;
+            EdgeKind = string.Empty;
+        }
+
         public CapsuleItem(string symbolId,string kind,string fullyQualifiedName,string provenance,string edgeKind,string? source = null,
-            DeclarationLocation? location = null, string? inclusionReason = null)
+            DeclarationLocation? location = null, string? inclusionReason = null, string? relationship = null, bool? direct = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));
@@ -113,6 +171,8 @@ namespace Lurp.Workspace
             EndLine = location?.EndLine;
             EndColumn = location?.EndColumn;
             InclusionReason = inclusionReason;
+            Relationship = relationship;
+            Direct = direct;
         }
     }
 

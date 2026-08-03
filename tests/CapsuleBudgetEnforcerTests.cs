@@ -56,6 +56,29 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
     }
 
     [Fact]
+    public void SourceBounding_PreservesDispatchRelationshipQualifier()
+    {
+        var capsule = Capsule("anchor");
+        capsule.DirectCallers.Add(new CapsuleItem(
+            "M:Controller.Run|prod", "Method", "Controller.Run", "possible", "Calls",
+            new string('x', 2_000), null,
+            "Calls → MayDispatchTo; indirect runtime dispatch candidate.",
+            CapsuleRelationship.IndirectDispatchCandidate, direct: false));
+
+        // 500 is below the original 2,000-character item's content estimate,
+        // but above the bounded representation, so this exercises source
+        // trimming rather than whole-tier removal.
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 500, tierPriority: ["directCallers"]);
+
+        var retained = Assert.Single(capsule.DirectCallers);
+        Assert.Equal(CapsuleRelationship.IndirectDispatchCandidate, retained.Relationship);
+        Assert.False(retained.Direct);
+        Assert.Equal("possible", retained.Provenance);
+        Assert.Contains("MayDispatchTo", retained.InclusionReason);
+        Assert.Contains("source truncated", retained.Source);
+    }
+
+    [Fact]
     public void OverBudget_KeepsHighestPriorityPrefixAndRecordsEveryDroppedCategory()
     {
         var capsule = Capsule("a");

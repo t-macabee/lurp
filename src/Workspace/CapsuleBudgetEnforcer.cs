@@ -236,7 +236,9 @@ namespace Lurp.Workspace
                 item.DocumentPath != null
                     ? new DeclarationLocation(item.DocumentPath, item.StartLine ?? 0, item.StartColumn ?? 0, item.EndLine ?? 0, item.EndColumn ?? 0, IsGenerated: false)
                     : null,
-                item.InclusionReason);
+                item.InclusionReason,
+                item.Relationship,
+                item.Direct);
         }
 
         private sealed class SectionTrimmer
