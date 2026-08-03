@@ -255,6 +255,8 @@ namespace Lurp.Storage
             { EnsureOpen(); return _searchStore!.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens); }
         public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
             { EnsureOpen(); return _searchStore!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind); }
+        public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
+            { EnsureOpen(); return _searchStore!.SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor); }
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
             { EnsureOpen(); return _searchStore!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
 

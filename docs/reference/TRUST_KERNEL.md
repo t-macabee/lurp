@@ -1220,6 +1220,68 @@ errors.
 Remaining from the remediation plan (PR-1 through PR-5 landed; PR-6 through
 PR-8) are out of scope for this change — not started.
 
+### PR-7 — Keyset pagination for symbol search (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` finding D8, prioritized as PR-7 in
+`LURP-REMEDIATION-PLAN.md` (external planning artifact, user's desktop, not
+part of this repository). Scoped to the pagination mechanism itself, not the
+full PR-7 design in the plan's §3.6 (which also covers `impact` grouping,
+capsule tier continuation, and `--output=summary|json|jsonl`/`--quiet` — none
+of that is touched here).
+
+**Defect:** `search --type=symbol` has no way to fetch a second page.
+`--limit` truncates silently; there is no cursor, so a caller who wants the
+next N results has no option but to re-run with a larger `--limit` and
+re-read everything already seen.
+
+**Fix — opaque keyset cursor, snapshot-scoped, no schema change:**
+- `src/Storage/SearchCursor.cs` (new) — `SearchCursor` record
+  (`SnapshotId`, `Fingerprint`, `Mode`, `LastRank`, `LastFqn`,
+  `LastSymbolId`), base64-JSON `Encode`/`TryDecode`, and
+  `ComputeFingerprint(query, kind, includeGenerated)`. `SymbolSearchPage`
+  wraps `Items` + `NextCursor`.
+- `src/Storage/ISearchStore.cs` / `SearchStore.cs` — new
+  `SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor)`,
+  additive alongside the existing non-paginated `SearchSymbols` (unchanged,
+  still used by `--type=all`/`--type=source`). Both the FTS and substring
+  paths gained a `symbol_id` tiebreaker on `ORDER BY` (`rank, symbol_id` /
+  `fqn, symbol_id`) — this is what PR-1's snapshot-scoped, duplicate-free
+  order makes a *cursor* meaningful rather than one racing a moving window.
+  Each page fetches `limit + 1` rows to detect a next page without a
+  separate `COUNT` query; the keyset predicate is `(rank, symbol_id) >
+  (lastRank, lastSymbolId)` for FTS and `(fqn, symbol_id) > (lastFqn,
+  lastSymbolId)` for substring. A cursor whose `SnapshotId`/`Fingerprint`
+  doesn't match the current request throws `ArgumentException` rather than
+  silently resuming against a different query's keyset.
+- `src/Handlers/SearchHandler.cs` — `--cursor=<token>` (only accepted with
+  `--type=symbol`; rejected otherwise, since `--type=all`/`source` don't go
+  through the paginated path), decodes and validates the cursor, and the
+  response gains a `nextCursor` field (`null` on the last page).
+
+**Tests:** four new tests in `tests/UnitTest1.cs` reusing the existing
+`CreateThreeRetainedAlphaVersions`/`AddBetaAndGammaToSnapshot` fixture —
+paging through with `limit=1` across three symbols yields no duplicates and
+no gaps and matches the non-paginated result set; a single large-limit page
+returns `nextCursor: null`; a cursor replayed against a different query
+throws instead of returning wrong rows; and `SearchCursor.TryDecode` on
+garbage input returns `null` instead of throwing.
+
+Validation (narrow filter, not a full run): `dotnet test
+tests/Lurp.Storage.Tests.csproj --filter
+"FullyQualifiedName~SearchSymbolsPage|FullyQualifiedName~SearchCursor_TryDecode|FullyQualifiedName~SearchSymbols|FullyQualifiedName~SearchSource|FullyQualifiedName~ResolveSymbolByFqn"`
+— 29/29 pass. `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
+errors.
+
+Not done (out of scope for this slice): `impact` path grouping/truncation
+cursor, context-capsule `--tier=<name>&--cursor=<c>` continuation, `status
+--detail=documents`, and `--output=summary|json|jsonl`/`--quiet` — all
+listed in the plan's §3.6 but not implemented here.
+
+Remaining from the remediation plan (PR-1 through PR-5 landed; this PR-7
+slice covers only the pagination mechanism for symbol search; PR-6, PR-8,
+and the rest of PR-7's §3.6 surfaces are out of scope for this change — not
+started).
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

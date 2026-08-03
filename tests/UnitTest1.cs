@@ -1260,6 +1260,68 @@ public class MigrationRunnerTests : IDisposable
         }
 
         [Fact]
+        public void SearchSymbolsPage_WithLimitOne_PagesThroughAllDistinctSymbolsWithoutDuplicatesOrGaps()
+        {
+            var store = CreateStore();
+            var (_, _, snap3) = CreateThreeRetainedAlphaVersions(store);
+            AddBetaAndGammaToSnapshot(store, snap3);
+
+            var seen = new List<string>();
+            SearchCursor? cursor = null;
+            for (var i = 0; i < 10; i++)
+            {
+                var page = store.SearchSymbolsPage("Retain", snap3, limit: 1, includeGenerated: false, kind: null, cursor);
+                Assert.Single(page.Items);
+                seen.Add(page.Items[0].FullyQualifiedName);
+
+                if (page.NextCursor == null)
+                    break;
+
+                cursor = SearchCursor.TryDecode(page.NextCursor);
+                Assert.NotNull(cursor);
+            }
+
+            Assert.Equal(3, seen.Count);
+            Assert.Equal(3, seen.Distinct().Count());
+            Assert.Equal(
+                store.SearchSymbols("Retain", snap3).Select(r => r.FullyQualifiedName).OrderBy(x => x),
+                seen.OrderBy(x => x));
+        }
+
+        [Fact]
+        public void SearchSymbolsPage_LastPage_ReturnsNullNextCursor()
+        {
+            var store = CreateStore();
+            var (_, _, snap3) = CreateThreeRetainedAlphaVersions(store);
+            AddBetaAndGammaToSnapshot(store, snap3);
+
+            var page = store.SearchSymbolsPage("Retain", snap3, limit: 10, includeGenerated: false, kind: null, cursor: null);
+
+            Assert.Equal(3, page.Items.Count);
+            Assert.Null(page.NextCursor);
+        }
+
+        [Fact]
+        public void SearchSymbolsPage_CursorFromDifferentQuery_ThrowsRatherThanReturningWrongRows()
+        {
+            var store = CreateStore();
+            var (_, _, snap3) = CreateThreeRetainedAlphaVersions(store);
+            AddBetaAndGammaToSnapshot(store, snap3);
+
+            var page = store.SearchSymbolsPage("Retain", snap3, limit: 1, includeGenerated: false, kind: null, cursor: null);
+            var cursor = SearchCursor.TryDecode(page.NextCursor!);
+
+            Assert.Throws<ArgumentException>(() =>
+                store.SearchSymbolsPage("SomethingElse", snap3, limit: 1, includeGenerated: false, kind: null, cursor));
+        }
+
+        [Fact]
+        public void SearchCursor_TryDecode_GarbageInput_ReturnsNull()
+        {
+            Assert.Null(SearchCursor.TryDecode("not-a-valid-cursor!!"));
+        }
+
+        [Fact]
         public void SearchSymbols_SymbolWithNoDeclarations_RemainsSearchable()
         {
             var store = CreateStore();

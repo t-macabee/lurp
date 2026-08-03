@@ -29,6 +29,14 @@ namespace Lurp.Storage
 
         List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64);
         List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null);
+
+        /// <summary>
+        /// Keyset-paginated symbol search. Fetches one extra row beyond <paramref name="limit"/>
+        /// to determine whether a next page exists, then returns an opaque cursor for it rather
+        /// than an offset — offsets shift under duplicate-free re-ordering, cursors do not.
+        /// </summary>
+        SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor);
+
         IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
     }
 }
