@@ -56,8 +56,15 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         {
             foreach (var edge in context.GetMayDispatchEdges(calledSymbolId))
             {
-                AddItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
-                    "Persisted MayDispatchTo implementation of a called interface member.");
+                // This projects a global implementation relation onto a specific call
+                // site without filtering by the call site's static receiver type, so it
+                // must not carry compiler_proved — that label would claim the candidate
+                // is reachable from here, which is not established. See PR-6 for
+                // receiver-type-constrained candidates.
+                AddItem(edge.TargetSymbolId, edge.Kind, Provenance.GlobalImplementationRelation,
+                    "Implementation of a called interface member, from the global implementation relation. " +
+                    "Not filtered by this call site's static receiver type — inclusion here does not prove " +
+                    "the candidate is reachable from this call.");
             }
         }
     }

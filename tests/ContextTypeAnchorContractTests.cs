@@ -53,10 +53,13 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
 
         // Interface dispatch rule: the persisted MayDispatchTo implementation of a
         // called interface member is surfaced with the MayDispatchTo edge's own
-        // kind and provenance, and no type-level edge is synthesized.
+        // kind, and no type-level edge is synthesized. Its provenance is NOT
+        // compiler_proved: the candidate is not filtered by this call site's static
+        // receiver type, so reachability from this specific call is not proven.
         var dispatchTarget = Assert.Single(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.HelperImpl.Do|prod");
         Assert.Equal(EdgeKind.MayDispatchTo.ToString(), dispatchTarget.EdgeKind);
-        Assert.Equal("compiler_proved", dispatchTarget.Provenance);
+        Assert.Equal("global_implementation_relation", dispatchTarget.Provenance);
+        Assert.NotEqual("compiler_proved", dispatchTarget.Provenance);
         Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "T:MyApp.Service|prod");
 
         // Facts on a sibling member (GetById) are also reached from the type anchor.

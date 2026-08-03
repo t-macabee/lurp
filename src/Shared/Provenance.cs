@@ -28,6 +28,14 @@ public static class Provenance
     /// <summary>Framework convention-based inference (e.g. ASP.NET controller naming).</summary>
     public const string Convention = "convention";
 
+    /// <summary>
+    /// A true global implementation/override relation (proven by the compiler) projected
+    /// into a specific call site without filtering by that call site's static receiver
+    /// type. The relation itself is real; whether it is reachable from this particular
+    /// call is not established.
+    /// </summary>
+    public const string GlobalImplementationRelation = "global_implementation_relation";
+
     /// <summary>All canonical provenance values.</summary>
     public static readonly IReadOnlySet<string> CanonicalValues = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -37,6 +45,7 @@ public static class Provenance
         NameCandidate,
         RuntimeUnknown,
         Convention,
+        GlobalImplementationRelation,
     };
 
     /// <summary>

@@ -1033,6 +1033,52 @@ errors.
 Remaining from the remediation plan (PR-1 landed separately; PR-3 through
 PR-8) are out of scope for this change — not started.
 
+### PR-3 — Honest labelling of call-site dispatch candidates (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` finding D5 (part 1), prioritized as
+PR-3 in `LURP-REMEDIATION-PLAN.md` (external planning artifacts, user's
+desktop, not part of this repository).
+
+**Defect:** `DirectCalleesTierBuilder.AddMayDispatchTargets` surfaced every
+persisted `MayDispatchTo` implementation of a called interface member under
+the called `MayDispatchTo` edge's own provenance — `compiler_proved` for a
+direct implementation. That label is true of the global relation ("`T`
+implements this interface member") but false of the projection into this
+specific call site, which is never filtered by the call site's static
+receiver type. A receiver-incompatible implementation could reach a capsule
+labelled with Lurp's strongest confidence grade.
+
+**Fix:**
+- `src/Shared/Provenance.cs` — added `GlobalImplementationRelation`
+  (`"global_implementation_relation"`) to the canonical provenance
+  vocabulary, documented as a true relation projected into a call site
+  without receiver-type filtering.
+- `src/Workspace/DirectCalleesTierBuilder.cs` — `AddMayDispatchTargets` now
+  emits candidates under `Provenance.GlobalImplementationRelation` instead
+  of the persisted edge's own provenance, with an inclusion reason stating
+  explicitly that the candidate is not filtered by the call site's static
+  receiver type. The persisted edge (`EdgeStore`) and its provenance are
+  unchanged — only the read-side capsule projection is relabelled.
+
+No schema change, no other tier touched (`RegisteredImplementations` and the
+`DirectCallers` dispatch-source path project different, correctly-labelled
+facts — see PR-6 for the receiver-type-constrained fix that supersedes this
+interim relabelling).
+
+**Tests:** updated
+`ContextTypeAnchorContractTests.TypeAnchor_DirectCallees_IncludeInterfaceMemberAndItsDispatchImplementations`
+to assert `global_implementation_relation` (and explicitly `!=
+compiler_proved`) for the dispatch target instead of the prior
+`compiler_proved` assertion.
+
+Validation (narrow filter, not a full run): `dotnet test
+tests/Lurp.Storage.Tests.csproj --filter
+"FullyQualifiedName~ContextTypeAnchorContractTests"` — 6/6 pass. `dotnet
+build src/Lurp.csproj -c Release` — 0 warnings, 0 errors.
+
+Remaining from the remediation plan (PR-1, PR-2 landed separately; PR-4
+through PR-8) are out of scope for this change — not started.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.
