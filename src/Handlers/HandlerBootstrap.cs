@@ -10,7 +10,7 @@ namespace Lurp.Handlers;
 /// </summary>
 internal enum OutputMode
 {
-    /// <summary>Human/agent-readable digest — counts, names, and the continuation token.</summary>
+    /// <summary>Human/agent-readable digest : counts, names, and the continuation token.</summary>
     Summary,
 
     /// <summary>One indented JSON document (the historical output).</summary>
@@ -65,7 +65,7 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// <c>--quiet</c> suppresses everything that is not the payload — the freshness
+    /// <c>--quiet</c> suppresses everything that is not the payload : the freshness
     /// stderr line here, and additionally the stdout echo of an artifact that was also
     /// written to a file (see <c>--mode=context</c>).
     /// </summary>

@@ -14,7 +14,7 @@ namespace Lurp.Storage.Tests;
 /// Proves the workspace-loading seam (Task 4): the loader owns MSBuild
 /// registration, solution opening, language-version recovery, and workspace
 /// disposal, and recovery is applied to the solution <b>before</b> either full
-/// or incremental extraction can see it — both paths in
+/// or incremental extraction can see it : both paths in
 /// <see cref="IndexRunner"/> consume only the loader's returned
 /// <see cref="LoadedSolution"/>.
 ///
@@ -51,7 +51,7 @@ public sealed class WorkspaceLoaderTests : IDisposable
 
         // The substituted opener returns a solution whose projects carry the
         // C# 7.3 parse-options fallback that MSBuildWorkspace assigns when a
-        // project fails to evaluate — the exact state LanguageVersionRecovery
+        // project fails to evaluate : the exact state LanguageVersionRecovery
         // exists to correct. Project files on disk mirror the fallback fixture:
         // Modern is SDK-style with no LangVersion (SDK default is latest),
         // ExplicitLang pins LangVersion=9.0.

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -951,7 +951,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 : $"""<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable></PropertyGroup><ItemGroup><ProjectReference Include="..\{reference}\{reference}.csproj" /></ItemGroup></Project>""";
     }
 
-    // T16a: Regression test for CrossDocumentEdgeRefresher — verifies that
+    // T16a: Regression test for CrossDocumentEdgeRefresher : verifies that
     // when a symbol in ProjectA changes, documents in ProjectB that reference
     // the changed symbol through cross-project edges have their edges
     // correctly re-extracted during incremental indexing. Without the
@@ -984,7 +984,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     // absolute document paths (C:/.../Calculator.cs) to
     // DeleteBindingIncompletenessByDocumentPaths, which compares document_path
     // ordinally against the relative paths written by
-    // BindingIncompletenessCollector — the delete was a silent no-op and stale
+    // BindingIncompletenessCollector : the delete was a silent no-op and stale
     // incompleteness rows survived the refresh. The assertion must travel
     // through the refresh path itself: a store-level unit test against the
     // delete API cannot observe the defect (it passes either way), and the
@@ -1010,7 +1010,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
             // The refresh writes into a real snapshot, so the target snapshot
             // must exist as a well-formed header row before any per-snapshot
-            // table is populated — foreign keys are enforced.
+            // table is populated : foreign keys are enforced.
             var previous = store.LoadLatestSnapshot()
                 ?? throw new InvalidOperationException("The full index did not persist a snapshot.");
             store.SaveSnapshot(new SnapshotRow
@@ -1032,8 +1032,8 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 SkippedAdapters = previous.SkippedAdapters,
             });
 
-            // Simulate the copy-forward step: the stale row — an ambiguity that
-            // no longer occurs — exists in the new snapshot before the refresh.
+            // Simulate the copy-forward step: the stale row : an ambiguity that
+            // no longer occurs : exists in the new snapshot before the refresh.
             store.SaveBindingIncompleteness(refreshSnapshotId,
             [
                 new BindingIncompletenessRecord(
@@ -1073,7 +1073,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         }
     }
 
-    // T15: Regression test for DocumentVersionId — verifies that two files with
+    // T15: Regression test for DocumentVersionId : verifies that two files with
     // identical byte content stored at different paths receive distinct
     // version IDs that include the document path, so consumers can tell them
     // apart and a second full rebuild produces an equivalent snapshot.
@@ -1181,7 +1181,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
     private void CreateCrossProjectDependentTestSolution()
     {
-        // ProjectA: Library — defines Widget (the type that will change)
+        // ProjectA: Library : defines Widget (the type that will change)
         var libDir = Path.Combine(_testDir, "src", "Library");
         Directory.CreateDirectory(libDir);
 
@@ -1207,7 +1207,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             }
             """);
 
-        // ProjectB: App — references Library and uses Widget
+        // ProjectB: App : references Library and uses Widget
         var appDir = Path.Combine(_testDir, "src", "App");
         Directory.CreateDirectory(appDir);
 
@@ -1291,7 +1291,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         return SnapshotAssertions.GetFtsCounts(_dbPath, snapshotId);
     }
 
-    // Task 3 regression: same-project two-document convergence — when a
+    // Task 3 regression: same-project two-document convergence : when a
     // declaration in one file changes and an unchanged caller in the same
     // project references it, the cross-document edge refresher must
     // re-extract the unchanged caller's edges so the incremental snapshot
@@ -1335,7 +1335,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotA = await RunFullIndexAsync("Index A (full initial, same-project)");
 
-        // Change only Calculator.Add's signature — Service.cs is untouched
+        // Change only Calculator.Add's signature : Service.cs is untouched
         // but its edges referencing Calculator.Add must be refreshed.
         File.WriteAllText(
             Path.Combine(_testDir, "src", "TestProject", "Calculator.cs"),
@@ -1359,7 +1359,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     }
 
     // Task 3 regression: configuration-only change (project reference added)
-    // must not return the previous snapshot — it must fall back to a full
+    // must not return the previous snapshot : it must fall back to a full
     // rebuild and produce a result equivalent to a clean rebuild.
     [SkippableFact]
     public async Task IncrementalIndex_ConfigOnlyProjectReferenceChange_FallsBackToEquivalentFullRebuild()
@@ -1415,7 +1415,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         var snapshotA = await RunFullIndexAsync("Index A (full initial, no project ref)");
 
-        // Now add a project reference from ProjectB to ProjectA — no source
+        // Now add a project reference from ProjectB to ProjectA : no source
         // files change, only the project graph configuration.
         File.WriteAllText(Path.Combine(projBDir, "ProjectB.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
@@ -1430,7 +1430,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
         // Incremental must detect the project-reference change and fall back
         // to a full rebuild rather than returning the previous snapshot.
-        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, config-only change — should fallback)");
+        var snapshotB = await RunIncrementalIndexAsync("Index B (incremental, config-only change : should fallback)");
 
         Assert.NotEqual(snapshotA, snapshotB);
 
@@ -1440,7 +1440,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
     }
 
     // T4 regression: SaveEdges must not throw SQLite Error 19 when given
-    // duplicate (source, target, kind) triples — e.g. from cross-project
+    // duplicate (source, target, kind) triples : e.g. from cross-project
     // extraction or multiple extractors producing the same relation.
     [SkippableFact]
     public void SaveEdges_DeduplicatesSameTripleAcrossProjects()

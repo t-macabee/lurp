@@ -85,7 +85,7 @@ public sealed class CapsuleCompletenessExplicitDependencyTests : IDisposable
         // The seeded store itself implements IBindingIncompletenessStore; the
         // dependency is deliberately not supplied. If assembly sniffed the edge
         // store's capability instead of the explicit dependency, this test would
-        // see completeness populated and "empty" reasons — the defect being fixed.
+        // see completeness populated and "empty" reasons : the defect being fixed.
         var store = CreateSeededStore();
         var capsule = Assemble(store, supplyCompletenessReader: false);
 

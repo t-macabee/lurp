@@ -8,7 +8,7 @@ namespace Lurp.Storage.Migrations
     /// once extraction succeeds. This migration fixes the default and updates
     /// any existing rows that were created with the inverted default.
     ///
-    /// Resolution of roadmap ambiguity #2 — "atomic snapshot commit":
+    /// Resolution of roadmap ambiguity #2 : "atomic snapshot commit":
     ///   Operationally in this codebase, an atomic snapshot commit means the
     ///   snapshot row and its document rows must be written in a single
     ///   transaction with status = 'in_progress'. Only after all facts (edges,

@@ -85,7 +85,7 @@ public sealed class CancellationPropagationTests : IDisposable
         RunGitCommand(_testDir!, "commit -m change");
 
         // Step 3: Set up the real store and a proxy that cancels the token
-        // when staging (CopyEdgesToSnapshot) is called — this ensures the
+        // when staging (CopyEdgesToSnapshot) is called : this ensures the
         // new snapshot is created before cancellation fires.
         using var innerStore = new SqliteIndexStore(dbPath);
         innerStore.Open();
@@ -95,7 +95,7 @@ public sealed class CancellationPropagationTests : IDisposable
         var proxy = DispatchProxy.Create<IIndexStore, CancelAtStagingStore>();
         ((CancelAtStagingStore)(object)proxy).SetInner(innerStore, cts);
 
-        // Step 4: Run incremental through IndexRunner — cancellation fires
+        // Step 4: Run incremental through IndexRunner : cancellation fires
         // before FinalizeSnapshotAsync can mark the snapshot complete.
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             IndexRunner.RunAsync(

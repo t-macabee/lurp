@@ -139,11 +139,11 @@ An actual graph database would add operational complexity without solving a prob
 
 The authority hierarchy remains:
 
-1. **Repository source files** — authoritative source content.
-2. **Roslyn compilation** — authoritative static semantics for a specific build configuration.
-3. **`index.db`** — persistent materialized representation of a known workspace snapshot.
-4. **Context capsule** — task-specific projection of database facts and source.
-5. **Annotations** — human or agent interpretation, kept separate from compiler-derived facts.
+1. **Repository source files**: authoritative source content.
+2. **Roslyn compilation**: authoritative static semantics for a specific build configuration.
+3. **`index.db`**: persistent materialized representation of a known workspace snapshot.
+4. **Context capsule**: task-specific projection of database facts and source.
+5. **Annotations**: human or agent interpretation, kept separate from compiler-derived facts.
 
 The database is a single source of truth for the **indexed snapshot**, not a replacement for the repository or compiler.
 
@@ -193,7 +193,7 @@ Source text may be compressed later if measurement shows the database size matte
 
 The two tracks are conceptually distinct.
 
-### Track A — Fast Travel and Persistent Memory
+### Track A: Fast Travel and Persistent Memory
 
 This track makes indexed code immediately retrievable without reopening or reparsing the solution for normal read queries.
 
@@ -206,7 +206,7 @@ It supplies:
 - snapshot consistency;
 - database-backed freshness.
 
-### Track B — Deepening the Semantic Map
+### Track B: Deepening the Semantic Map
 
 This track deepens what the map knows.
 
@@ -317,9 +317,9 @@ Every field is a contract with future consumers.
 
 ---
 
-# Part I — Build the Missing Fast-Travel Half
+# Part I: Build the Missing Fast-Travel Half
 
-## 6. Stage A0 — Define Identity and Version Contracts
+## 6. Stage A0: Define Identity and Version Contracts
 
 ### Objective
 
@@ -339,7 +339,7 @@ Use four distinct identities:
 `document_id` is path-scoped and constant across snapshots; it is **not**
 snapshot-scoped. A snapshot binds a document to a specific
 `document_version_id` (via `snapshot_documents`), which is what gives each
-snapshot an isolated, immutable view of content — the document's identity
+snapshot an isolated, immutable view of content: the document's identity
 itself does not vary per snapshot. See
 the current-status summary in `TRUST_KERNEL.md` for
 the schema-level confirmation of this reading.
@@ -361,7 +361,7 @@ The tool can state whether the database represents the current workspace and exp
 
 ---
 
-## 7. Stage A1 — Introduce SQLite Without Removing Existing Behavior
+## 7. Stage A1: Introduce SQLite Without Removing Existing Behavior
 
 ### Objective
 
@@ -398,7 +398,7 @@ A database can be created, migrated, opened, validated, and rebuilt without chan
 
 ---
 
-## 8. Stage A2 — Store Immutable Documents
+## 8. Stage A2: Store Immutable Documents
 
 ### Objective
 
@@ -424,7 +424,7 @@ Given a file identity and current snapshot, the CLI can return exact source with
 
 ---
 
-## 9. Stage A3 — Link Symbols to Exact Source Spans
+## 9. Stage A3: Link Symbols to Exact Source Spans
 
 ### Objective
 
@@ -458,7 +458,7 @@ All views must come from the same document version used to extract the symbol.
 
 ---
 
-## 10. Stage A4 — Add Dual Retrieval
+## 10. Stage A4: Add Dual Retrieval
 
 ### Objective
 
@@ -480,7 +480,7 @@ get symbol → retrieve stored span
 
 Use SQLite FTS5 for:
 
-- identifier fragments — any case-insensitive substring of a symbol's fully qualified name. Whole
+- identifier fragments: any case-insensitive substring of a symbol's fully qualified name. Whole
   tokens, camel-case segments, and prefixes all qualify: a query of `Service` matches
   `CourseService`. Implemented as whole-token FTS5 matching with a substring fallback when no
   whole token matches;
@@ -498,7 +498,7 @@ The common question “where is this and what does it contain?” no longer requ
 
 ---
 
-## 11. Stage A5 — Replace JSON Coordination with Database State
+## 11. Stage A5: Replace JSON Coordination with Database State
 
 ### Objective
 
@@ -525,9 +525,9 @@ Deleting operational JSON files does not remove any capability. JSON is generate
 
 ---
 
-# Part II — Deepening the Semantic Graph
+# Part II: Deepening the Semantic Graph
 
-## 12. Stage B0 — Establish the Semantic Fact Model
+## 12. Stage B0: Establish the Semantic Fact Model
 
 ### Objective
 
@@ -579,7 +579,7 @@ No core analysis needs `OutgoingTypeNames` as its primary relationship represent
 
 ---
 
-## 13. Stage B1 — Add Member-Level Compiler Relationships
+## 13. Stage B1: Add Member-Level Compiler Relationships
 
 ### Objective
 
@@ -606,7 +606,7 @@ For a changed method, the indexer can identify the compiler-visible callers, con
 
 ---
 
-## 14. Stage B2 — Model Polymorphism Honestly
+## 14. Stage B2: Model Polymorphism Honestly
 
 ### Objective
 
@@ -634,7 +634,7 @@ Interface-mediated impact paths are visible, and every concrete target states wh
 
 ---
 
-## 15. Stage B3 — Implement Structured Semantic Diffing
+## 15. Stage B3: Implement Structured Semantic Diffing
 
 ### Objective
 
@@ -665,7 +665,7 @@ Do not attempt to derive a semantic diff from hashes alone. The previous canonic
 
 ---
 
-## 16. Stage B4 — Index Generated Semantics
+## 16. Stage B4: Index Generated Semantics
 
 ### Objective
 
@@ -692,7 +692,7 @@ Generated symbols participate in dependency and impact queries without automatic
 
 ---
 
-## 17. Stage B5 — Add Framework Adapters
+## 17. Stage B5: Add Framework Adapters
 
 ### Objective
 
@@ -731,7 +731,7 @@ while preserving the evidence level of each step.
 
 ---
 
-## 18. Stage B6 — Add a Reflection Evidence Ladder
+## 18. Stage B6: Add a Reflection Evidence Ladder
 
 ### Objective
 
@@ -752,7 +752,7 @@ Reflection blind spots become narrower and more explicit, not falsely eliminated
 
 ---
 
-## 19. Stage B7 — Build Impact Paths
+## 19. Stage B7: Build Impact Paths
 
 ### Objective
 
@@ -790,9 +790,9 @@ An agent can see why a code location is considered affected and inspect the exac
 
 ---
 
-# Part III — Unite Both Halves
+# Part III: Unite Both Halves
 
-## 20. Stage C0 — Context Capsules
+## 20. Stage C0: Context Capsules
 
 ### Objective
 
@@ -847,7 +847,7 @@ The agent receives enough code and semantic context to begin the task without re
 
 ---
 
-## 21. Stage C1 — Convert Existing Features into Consumers
+## 21. Stage C1: Convert Existing Features into Consumers
 
 ### Objective
 
@@ -876,7 +876,7 @@ There is one fact store, one freshness model, and one identity system behind all
 
 ---
 
-## 22. Stage C2 — Incremental Operation
+## 22. Stage C2: Incremental Operation
 
 ### Objective
 

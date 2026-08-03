@@ -99,8 +99,8 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                 DeleteSnapshotPayload(cmd, snapshotId);
                 if (status == SnapshotStatusValues.Failed)
                 {
-                    // Tombstone: keep the row — and with it the failure reason
-                    // that P2-9 exists to expose — but mark the payload pruned so
+                    // Tombstone: keep the row : and with it the failure reason
+                    // that P2-9 exists to expose : but mark the payload pruned so
                     // a later run does not rescan the (now empty) payload.
                     cmd.CommandText = "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;";
                     cmd.Parameters.Clear();

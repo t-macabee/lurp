@@ -1,4 +1,4 @@
-﻿using Lurp.Storage;
+using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -45,7 +45,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
         var timings = new List<SnapshotTimingRow>();
 
-        // Step 0: Configuration freshness check — must run before document change
+        // Step 0: Configuration freshness check : must run before document change
         // detection so that config-only changes (SDK, compiler, TFM, project graph,
         // extractor version) trigger a full rebuild even when no document changed.
         var configMismatches = WorkspaceFreshness.GetFullRebuildMismatches(workspaceInfo, previousRichManifest);
@@ -58,7 +58,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             throw new FullRebuildRequiredException(
             [
                 new SnapshotMismatch(MismatchKind.VersionChanged,
-                    "Extractor version staleness detected — some edges in the previous snapshot reference extractor versions not in the current registry.",
+                    "Extractor version staleness detected : some edges in the previous snapshot reference extractor versions not in the current registry.",
                     Document: null,
                     Detail: null)
             ]);
@@ -249,7 +249,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
         // implicit default constructor) can't be scoped to a document by path, so we
         // scope the delete to symbols declared in the documents that actually changed
-        // rather than the whole affected assembly — re-extraction is scoped the same
+        // rather than the whole affected assembly : re-extraction is scoped the same
         // way, so an unchanged document elsewhere in the assembly must keep its
         // copied-forward null-path edges intact.
         var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
@@ -371,7 +371,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         cancellationToken.ThrowIfCancellationRequested();
         ComputeAndPersistSemanticChanges(context, timings);
 
-        // Completion must be last — all preceding phases must succeed.
+        // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();
         _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
         return crossDocEdgesProcessed;

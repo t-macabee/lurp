@@ -284,10 +284,10 @@ public sealed class SearchStore : ISearchStore
         }
 
         // Snapshot-scoped generated-declaration filter. This is a LEFT JOIN in spirit
-        // (symbols with no declaration rows — metadata-only/external symbols — must
+        // (symbols with no declaration rows : metadata-only/external symbols : must
         // remain searchable), so it stays a NOT EXISTS / EXISTS disjunction rather
         // than an inner join. Do not collapse this into the single-EXISTS shape used
-        // by ResolveSymbolByFqn below — that shape requires at least one declaration
+        // by ResolveSymbolByFqn below : that shape requires at least one declaration
         // and would silently drop external symbols here.
         if (!includeGenerated)
         {

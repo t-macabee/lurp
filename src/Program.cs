@@ -83,7 +83,7 @@ public class Program
 
     private static void PrintHelp()
     {
-        Console.WriteLine("lurp — Roslyn-based code indexer");
+        Console.WriteLine("lurp : Roslyn-based code indexer");
         Console.WriteLine();
         Console.WriteLine("MODES");
         Console.WriteLine("  --mode=index              Index a solution and store facts in the database.");
@@ -196,7 +196,8 @@ public class Program
         Console.WriteLine("                          secondDegreeContext, surroundingSource.");
         Console.WriteLine("    --tier-limit=<n>      Items per tier page (default: 25).");
         Console.WriteLine("    --cursor=<token>      Continue a tier from its next_cursor (--tier only).");
-        Console.WriteLine("  The capsule is always written to <output-dir>/capsule-<symbol>.json; the");
+        Console.WriteLine("  The capsule is always written to <output-dir>/capsule-<symbol>.json (long");
+        Console.WriteLine("  symbols are shortened with a stable hash suffix); the");
         Console.WriteLine("  stdout copy is what --quiet and --output=summary replace.");
         Console.WriteLine();
         Console.WriteLine("SIMULATION (--mode=simulate-*)");
@@ -250,7 +251,7 @@ public class Program
         Console.WriteLine("SNAPSHOT LIFECYCLE");
         Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot.");
         Console.WriteLine("  The last 3 snapshots are retained; older ones are pruned automatically.");
-        Console.WriteLine("  Snapshots are never mutated — incremental creates a new snapshot,");
+        Console.WriteLine("  Snapshots are never mutated : incremental creates a new snapshot,");
         Console.WriteLine("  it does NOT modify the previous one.");
         Console.WriteLine();
         Console.WriteLine("READ-COMMAND OPTIONS (search, find-symbol, impact, context)");
@@ -265,7 +266,7 @@ public class Program
         Console.WriteLine("                          written capsule path instead of the capsule itself.");
         Console.WriteLine("  --freshness=<auto|hash|off>");
         Console.WriteLine("                          How hard to check that the snapshot still matches the");
-        Console.WriteLine("                          working tree (default: auto — stat only; 'hash'");
+        Console.WriteLine("                          working tree (default: auto : stat only; 'hash'");
         Console.WriteLine("                          re-hashes suspect files, 'off' skips the check).");
         Console.WriteLine("  --require-fresh         Exit 2 when the snapshot is not fresh.");
         Console.WriteLine();

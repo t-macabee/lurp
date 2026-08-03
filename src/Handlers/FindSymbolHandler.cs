@@ -61,7 +61,7 @@ internal static class FindSymbolHandler
                     Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
                     break;
 
-                // A single symbol is one record, so jsonl is that record on one line —
+                // A single symbol is one record, so jsonl is that record on one line :
                 // the same field contract, just streamable alongside other jsonl output.
                 case OutputMode.Jsonl:
                     Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));

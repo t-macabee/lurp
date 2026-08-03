@@ -17,7 +17,7 @@ namespace Lurp.Storage;
 /// does not generalize: the sequence is derived from an immutable snapshot by a
 /// deterministic computation, so offset N addresses the same element on every request.
 /// There are no phantom reads and no skipped rows. Over mutable state an offset cursor
-/// would silently drop or duplicate elements — do not reuse this type for one.
+/// would silently drop or duplicate elements : do not reuse this type for one.
 /// </summary>
 public sealed record SequenceCursor(string SnapshotId, string Fingerprint, string Kind, int Offset)
 {

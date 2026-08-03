@@ -116,7 +116,7 @@ internal static class StatusHandler
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
-        Console.WriteLine("Freshness: unknown — pass --solution=path or set INDEXER_SOLUTION_PATH to compare against the current workspace.");
+        Console.WriteLine("Freshness: unknown : pass --solution=path or set INDEXER_SOLUTION_PATH to compare against the current workspace.");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 

@@ -85,7 +85,7 @@ namespace Lurp.Workspace
             // summary, inclusion reasons) are populated after the tier budgeter
             // runs. Reserve a fraction of the budget so the tier-level
             // greedy-prefix decisions do not exhaust the budget before those
-            // sections are added — the CapsuleBudgetEnforcer re-measures the
+            // sections are added : the CapsuleBudgetEnforcer re-measures the
             // whole artifact afterward, but the tier *selection* quality improves
             // when the budgeter knows its effective headroom.
             var nonTierReserve = Math.Min(Budget / 4, 500);
@@ -292,7 +292,7 @@ namespace Lurp.Workspace
         }
 
         /// <summary>
-        /// Every tier name a capsule can carry. Ordering here is presentation only —
+        /// Every tier name a capsule can carry. Ordering here is presentation only :
         /// the assembly priority is intent-dependent and lives in <c>GetTierBuilders</c>.
         /// </summary>
         internal static readonly string[] TierNames =
@@ -320,7 +320,7 @@ namespace Lurp.Workspace
         /// previously left the consumer no way to act on that admission except to widen the
         /// whole budget and re-read the entire capsule to recover one section. The tier is
         /// rebuilt from the same immutable snapshot by the same builder, so a page fetched
-        /// this way is the same evidence the capsule would have carried — it is bounded by
+        /// this way is the same evidence the capsule would have carried : it is bounded by
         /// <paramref name="limit"/> rather than by the capsule's token budget, because the
         /// caller asked for exactly this one section.
         /// </summary>
@@ -481,7 +481,7 @@ namespace Lurp.Workspace
                 // A gap capsule is a real capsule and obeys the same finalization
                 // contract as any other. In particular its tiers are NOT bare `[]`:
                 // under the capsule's own empty/unresolved semantics a bare `[]`
-                // asserts a proved absence, and nothing was proved here — the anchor
+                // asserts a proved absence, and nothing was proved here : the anchor
                 // itself could not be resolved. Every tier is therefore reason-coded
                 // "unresolved", the snapshot that was consulted is recorded, the
                 // anchor carries no evidence grade (it asserts the absence of a

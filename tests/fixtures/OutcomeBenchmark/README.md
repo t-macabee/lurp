@@ -2,9 +2,9 @@
 
 This benchmark implements T11 (see `docs/reference/TRUST_KERNEL.md`). It measures agent-facing outcomes for three architecture scenarios, using a small committed multi-project fixture rather than database size or edge counts:
 
-1. **Local validation change** — start at `Outcome.Validation.OrderValidator`, preserve its `IOrderValidator` contract and relevant validation test, and change one validation rule.
-2. **Handler/DTO modification** — start at `Outcome.Application.OrderHandler`, include `IOrderHandler`, `IOrderValidator`, and the handler test, and change the request DTO plus handler behavior.
-3. **DI implementation replacement** — start at `Outcome.Composition.ServiceRegistration.Configure`, identify the registered validator implementation, and declare the hosted-service runtime vector as unknown.
+1. **Local validation change**: start at `Outcome.Validation.OrderValidator`, preserve its `IOrderValidator` contract and relevant validation test, and change one validation rule.
+2. **Handler/DTO modification**: start at `Outcome.Application.OrderHandler`, include `IOrderHandler`, `IOrderValidator`, and the handler test, and change the request DTO plus handler behavior.
+3. **DI implementation replacement**: start at `Outcome.Composition.ServiceRegistration.Configure`, identify the registered validator implementation, and declare the hosted-service runtime vector as unknown.
 
 The machine-readable scenario contract, including the expected test symbols and patch scope, is in `scenarios.json`.
 

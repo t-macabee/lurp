@@ -83,9 +83,9 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
                     }
 
                     // The caller reaches the anchor through interface/abstract
-                    // dispatch. The composed claim is possible — the compiler
+                    // dispatch. The composed claim is possible : the compiler
                     // proves the structural edges, not the runtime dispatch
-                    // target — and the item is presented as an indirect
+                    // target : and the item is presented as an indirect
                     // dispatch candidate, never as a direct caller.
                     var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
                         [hop.Provenance], dispatchProvenance);

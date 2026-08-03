@@ -1,4 +1,4 @@
-# Capsule Provenance Fix — Dispatch-Path Evidence Composition
+# Capsule Provenance Fix: Dispatch-Path Evidence Composition
 
 **Date:** 2026-08-03 (revised)
 **Scope:** Context-capsule provenance for callers reached through interface dispatch.
@@ -9,7 +9,7 @@
 
 A single layered defect caused a caller reached through an interface dispatch chain to be presented as a direct `compiler_proved` caller of the concrete implementation:
 
-**Capsule composition** (`DirectCallersTierBuilder.cs`, `SecondDegreeContextTierBuilder.cs`) walked the incoming `MayDispatchTo` edge to find the interface member, then traced upstream `Calls` edges and built the capsule item from `hop.Provenance` alone — `compiler_proved` for a real call. The `MayDispatchTo` hop's meaning was discarded: the item was collapsed into a single direct-caller claim that the compiler never made.
+**Capsule composition** (`DirectCallersTierBuilder.cs`, `SecondDegreeContextTierBuilder.cs`) walked the incoming `MayDispatchTo` edge to find the interface member, then traced upstream `Calls` edges and built the capsule item from `hop.Provenance` alone: `compiler_proved` for a real call. The `MayDispatchTo` hop's meaning was discarded: the item was collapsed into a single direct-caller claim that the compiler never made.
 
 Result: a path `Controller --Calls/compiler_proved--> Iface --MayDispatchTo/compiler_proved--> Impl` was projected as a single `compiler_proved` direct-caller item. The reachability is legitimate; the *presentation as a direct compiler-proved call* is not.
 
@@ -24,7 +24,7 @@ The stored graph facts were never wrong: `MayDispatchTo` produced through Roslyn
 | `src/Workspace/DirectCallersTierBuilder.cs` | Dispatch-mediated callers projected as direct `compiler_proved` callers; dispatch hop meaning discarded |
 | `src/Workspace/SecondDegreeContextTierBuilder.cs` | Same misprojection for upstream dependencies reached through dispatch |
 
-Deliberately unchanged: `src/Workspace/InterfaceDispatchExtractor.cs` keeps emitting `compiler_proved` for direct implementations — the edge is a compiler-established structural fact, and the grade must not be laundered at write time.
+Deliberately unchanged: `src/Workspace/InterfaceDispatchExtractor.cs` keeps emitting `compiler_proved` for direct implementations: the edge is a compiler-established structural fact, and the grade must not be laundered at write time.
 
 ---
 
@@ -39,10 +39,10 @@ Deliberately unchanged: `src/Workspace/InterfaceDispatchExtractor.cs` keeps emit
 
 ## Scope of potentially affected capsule sections
 
-- `directCallers` — interface-mediated callers were mislabeled direct `compiler_proved` callers. **Fixed.**
-- `secondDegreeContext` — same mislabeling for upstream dependencies reached through dispatch. **Fixed.**
-- `registeredImplementations` — unchanged: dispatch sources are presented under the persisted edge's own provenance (`compiler_proved`), which is the structural fact.
-- `directCallees` — **fixed.** `DirectCalleesTierBuilder.AddMayDispatchTargets` projects a call-site dispatch target under `global_implementation_relation` (never `compiler_proved`): the candidate is included only because it globally implements the called interface member. Receiver-type constraint filtering is retained — it narrows which global implementations are candidates, but reachability from this specific call is still not compiler-established. Directly invoked callees stay `compiler_proved` / `direct_callee` / `direct: true`.
+- `directCallers`: interface-mediated callers were mislabeled direct `compiler_proved` callers. **Fixed.**
+- `secondDegreeContext`: same mislabeling for upstream dependencies reached through dispatch. **Fixed.**
+- `registeredImplementations`: unchanged: dispatch sources are presented under the persisted edge's own provenance (`compiler_proved`), which is the structural fact.
+- `directCallees`: **fixed.** `DirectCalleesTierBuilder.AddMayDispatchTargets` projects a call-site dispatch target under `global_implementation_relation` (never `compiler_proved`): the candidate is included only because it globally implements the called interface member. Receiver-type constraint filtering is retained: it narrows which global implementations are candidates, but reachability from this specific call is still not compiler-established. Directly invoked callees stay `compiler_proved` / `direct_callee` / `direct: true`.
 
 ---
 
@@ -104,17 +104,17 @@ A path can contain individually compiler-proved structural edges while its proje
 
 ## Implemented fix
 
-1. **`CapsuleModels.cs`** — added `CapsuleRelationship` vocabulary (`direct_caller`, `direct_callee`, `indirect_dispatch_candidate`) and `relationship` / `direct` fields on `CapsuleItem` (omitted when not part of the claim).
+1. **`CapsuleModels.cs`**: added `CapsuleRelationship` vocabulary (`direct_caller`, `direct_callee`, `indirect_dispatch_candidate`) and `relationship` / `direct` fields on `CapsuleItem` (omitted when not part of the claim).
 
-2. **`EdgeDedup.cs`** — replaced the weakest-edge composition helper with `ComposeDispatchClaimProvenance(pathProvenances, dispatchProvenance)`: `framework_derived` if any edge in the path is framework-derived, otherwise `possible` — regardless of individually compiler-proved structural edges. `ProvenanceRank` now also ranks the canonical `global_implementation_relation` (above `possible`, below `framework_derived`).
+2. **`EdgeDedup.cs`**: replaced the weakest-edge composition helper with `ComposeDispatchClaimProvenance(pathProvenances, dispatchProvenance)`: `framework_derived` if any edge in the path is framework-derived, otherwise `possible`: regardless of individually compiler-proved structural edges. `ProvenanceRank` now also ranks the canonical `global_implementation_relation` (above `possible`, below `framework_derived`).
 
-3. **`DirectCallersTierBuilder.cs`** — direct `Calls` items stay `direct_caller` / `direct: true` with the hop's own provenance. Callers traced through an incoming `MayDispatchTo` edge are classified `indirect_dispatch_candidate` / `direct: false` with the composed claim provenance. The inclusion reason names both underlying edges and their grades.
+3. **`DirectCallersTierBuilder.cs`**: direct `Calls` items stay `direct_caller` / `direct: true` with the hop's own provenance. Callers traced through an incoming `MayDispatchTo` edge are classified `indirect_dispatch_candidate` / `direct: false` with the composed claim provenance. The inclusion reason names both underlying edges and their grades.
 
-4. **`SecondDegreeContextTierBuilder.cs`** — same classification for upstream dependencies reached through dispatch; the framework check spans every hop of the composed path.
+4. **`SecondDegreeContextTierBuilder.cs`**: same classification for upstream dependencies reached through dispatch; the framework check spans every hop of the composed path.
 
-5. **`CapsuleBudgetEnforcer.cs`** — source-bounding preserves the new `relationship`/`direct` fields.
+5. **`CapsuleBudgetEnforcer.cs`**: source-bounding preserves the new `relationship`/`direct` fields.
 
-6. **`DirectCalleesTierBuilder.cs`** — directly invoked `Calls`/`Constructs` callees stay `direct_callee` / `direct: true` with the hop's own provenance (`compiler_proved`). `AddMayDispatchTargets` projects dispatch targets under `global_implementation_relation` with `relationship: indirect_dispatch_candidate` / `direct: false`; the inclusion reason names the `Calls` edge, the `MayDispatchTo` edge, and the receiver-type narrowing, and states that the candidate is not a direct callee. Receiver-type constraint filtering (PR-6) is retained. The direct pass runs unconditionally before the projection pass, so a target that is both directly called and dispatch-reachable always keeps the direct label regardless of edge enumeration order.
+6. **`DirectCalleesTierBuilder.cs`**: directly invoked `Calls`/`Constructs` callees stay `direct_callee` / `direct: true` with the hop's own provenance (`compiler_proved`). `AddMayDispatchTargets` projects dispatch targets under `global_implementation_relation` with `relationship: indirect_dispatch_candidate` / `direct: false`; the inclusion reason names the `Calls` edge, the `MayDispatchTo` edge, and the receiver-type narrowing, and states that the candidate is not a direct callee. Receiver-type constraint filtering (PR-6) is retained. The direct pass runs unconditionally before the projection pass, so a target that is both directly called and dispatch-reachable always keeps the direct label regardless of edge enumeration order.
 
 ---
 
@@ -136,20 +136,20 @@ New file: `tests/CapsuleProvenanceCompositionTests.cs` (11 tests):
 | `DispatchProjectedCallee_IsGlobalImplementationRelationNotDirectCallee` | Dispatch-projected callee is `global_implementation_relation`, `indirect_dispatch_candidate`, `direct: false`; reason names both steps |
 | `DirectCalleeThatIsAlsoDispatchTarget_KeepsDirectLabel` | A target that is both directly called and dispatch-reachable keeps the direct label, regardless of edge enumeration order |
 
-Updated: `tests/ContextTypeAnchorContractTests.cs` —
+Updated: `tests/ContextTypeAnchorContractTests.cs` :
 `TypeAnchor_DirectCallees_IncludeInterfaceMemberAndItsDispatchImplementations`
 asserts `global_implementation_relation` for the receiver-compatible dispatch
 target (and `!= compiler_proved`), keeps the receiver-incompatible
 `RootOnlyHelper` exclusion, and asserts the directly invoked concrete callee
 remains `compiler_proved` / `direct_callee` / `direct: true`.
 
-Restored: `tests/UnitTest1.cs` — `InterfaceDispatch_ClassImplementsInterface_EmitsMayDispatchTo` asserts `compiler_proved` again, matching the unchanged extraction.
+Restored: `tests/UnitTest1.cs`: `InterfaceDispatch_ClassImplementsInterface_EmitsMayDispatchTo` asserts `compiler_proved` again, matching the unchanged extraction.
 
 ---
 
 ## Migration / snapshot rebuild
 
-None. The stored facts are unchanged, so existing snapshots remain current — the capsule composition reads the persisted `MayDispatchTo` provenance and grades the claim at read time. No re-index is required.
+None. The stored facts are unchanged, so existing snapshots remain current: the capsule composition reads the persisted `MayDispatchTo` provenance and grades the claim at read time. No re-index is required.
 
 ---
 
@@ -166,11 +166,11 @@ Capsule anchored on `T:Modern.CourseService`, `directCallers`:
   "symbolId": "M:Modern.Api.InstructorCourseController.GetById(System.Guid)|...",
   "provenance": "compiler_proved",
   "edgeKind": "Calls",
-  "inclusionReason": "Caller of a dispatched-from interface/abstract member. Weaker evidence than a direct call — the runtime dispatch target may differ from the anchor."
+  "inclusionReason": "Caller of a dispatched-from interface/abstract member. Weaker evidence than a direct call: the runtime dispatch target may differ from the anchor."
 }
 ```
 
-The `provenance` field said `compiler_proved` while the `inclusionReason` warned of weaker evidence — contradictory, and the dispatch hop's meaning was invisible.
+The `provenance` field said `compiler_proved` while the `inclusionReason` warned of weaker evidence: contradictory, and the dispatch hop's meaning was invisible.
 
 ### After
 

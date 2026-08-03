@@ -24,8 +24,8 @@ internal enum CompilationReadability
 /// MSBuildWorkspace does not throw when project evaluation fails. It returns a
 /// project whose metadata references were never resolved, and Roslyn then reports
 /// CS0518 ("predefined type 'System.Object' is not defined") across every document.
-/// Extraction over such a compilation still succeeds mechanically — it yields
-/// declarations with almost no edges — and a capsule built from it reports
+/// Extraction over such a compilation still succeeds mechanically : it yields
+/// declarations with almost no edges : and a capsule built from it reports
 /// "directCallers: []" as a proved absence rather than as an inability to look.
 /// This gate exists to make that state unrepresentable.
 /// </remarks>
@@ -90,7 +90,7 @@ internal static class WorkspaceLoadGate
         var names = string.Join(", ", blindProjects.OrderBy(static name => name, StringComparer.Ordinal));
         return $"No metadata references resolved for: {names}. "
              + "The compilation had no corlib, so no call graph can be derived from it. "
-             + "This is a build-environment fault, not a source defect — run 'dotnet restore' on the "
+             + "This is a build-environment fault, not a source defect : run 'dotnet restore' on the "
              + "solution and confirm the required SDK and target frameworks are installed, then re-index.";
     }
 }

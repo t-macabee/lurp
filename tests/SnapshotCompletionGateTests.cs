@@ -102,8 +102,8 @@ public sealed class SnapshotCompletionGateTests : IDisposable
     // made failures explicit (MarkSnapshotFailed) but left
     // DeleteIncompleteSnapshots selecting only 'in_progress', so partial data
     // from every failed index accumulated indefinitely. Failed snapshots are
-    // now reclaimed as tombstones: the payload is deleted, the row — and with
-    // it the failure reason P2-9 exists to expose — is retained.
+    // now reclaimed as tombstones: the payload is deleted, the row : and with
+    // it the failure reason P2-9 exists to expose : is retained.
     [Fact]
     public void DeleteIncompleteSnapshots_FailedSnapshotKeepsTombstoneAndReclaimsPayload()
     {
@@ -334,7 +334,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
         {
             await foreach (var _ in CompilationHelper.GetAllAsync(solution))
             {
-                // Should not reach here — the loader must throw.
+                // Should not reach here : the loader must throw.
             }
         });
 
@@ -414,7 +414,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
                 && targetMethod.Name == nameof(IIndexStore.SaveSemanticChanges))
             {
                 throw new InvalidOperationException(
-                    "Injected failure for testing — SaveSemanticChanges is disabled.");
+                    "Injected failure for testing : SaveSemanticChanges is disabled.");
             }
 
             return targetMethod?.Invoke(_inner, args);

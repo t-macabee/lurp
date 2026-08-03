@@ -81,7 +81,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
     // the reason-coded OmittedTiers channel instead of a vacuous Assert.NotNull
     // on a collection that is non-null by construction. The reason is "empty"
     // when the region's bindings were observable, "unresolved" when the anchor
-    // sits in a region where bindings were lost — both are honest reason-coded
+    // sits in a region where bindings were lost : both are honest reason-coded
     // omissions, and which one applies depends on the persisted completeness.
     private static void AssertSectionPresentOrOmitted(
         ContextCapsule capsule, string category, List<CapsuleItem> items)

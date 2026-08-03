@@ -9,7 +9,7 @@ namespace Lurp.Storage.Tests;
 
 /// <summary>
 /// Harness that drives the real <see cref="IndexRunner.RunAsync"/> entrypoint
-/// against a committed fixture solution. This is the point of T19 — previous
+/// against a committed fixture solution. This is the point of T19 : previous
 /// integration tests hand-rolled the pipeline (CompilationFactExtractor + save
 /// calls) and never exercised the CLI's actual code path.
 /// </summary>
@@ -115,7 +115,7 @@ public static class IntegrationHarness
     /// <summary>
     /// Returns true when MSBuild is available (registered or registrable).
     /// Callers should combine with <c>Skip.IfNot()</c> inside a
-    /// <c>[SkippableFact]</c> so the test is skipped — not failed — when
+    /// <c>[SkippableFact]</c> so the test is skipped : not failed : when
     /// the environment lacks a .NET SDK.
     /// </summary>
     public static bool TryRegisterMSBuild()

@@ -1,4 +1,4 @@
-﻿using Lurp.Adapters;
+using Lurp.Adapters;
 using Lurp.Shared;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
@@ -1432,7 +1432,7 @@ public class MigrationRunnerTests : IDisposable
             // ux_snapshot_documents from Migration 019). On the handful of rows this fixture
             // creates, SQLite's cost-based planner can legitimately prefer a full scan over
             // either index, so this asserts the indexes are present rather than asserting
-            // EXPLAIN QUERY PLAN chose one — planner choice on tiny tables is not a
+            // EXPLAIN QUERY PLAN chose one : planner choice on tiny tables is not a
             // meaningful regression signal, index availability is.
             var store = CreateStore();
             CreateThreeRetainedAlphaVersions(store);
@@ -1881,7 +1881,7 @@ public class MigrationRunnerTests : IDisposable
             store.UpsertExtractors(ExtractorRegistry.All);
             var countAfterFirst = GetExtractorCount();
 
-            // Second call — should not duplicate
+            // Second call : should not duplicate
             store.UpsertExtractors(ExtractorRegistry.All);
             var countAfterSecond = GetExtractorCount();
 
@@ -2423,7 +2423,7 @@ class Foo {
         }
 
         // filtered_external was declared as a reason code but never recorded at
-        // any call site — the constant existed while the report and TRUST_KERNEL
+        // any call site : the constant existed while the report and TRUST_KERNEL
         // listed it as a live reason. A resolved binding whose target lives in an
         // assembly outside the compilation is filtered from the persisted graph
         // (external symbols are never declared in the snapshot), so the reason
@@ -4012,10 +4012,10 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         /// symbol identity rather than metadata for a common symbol.
         ///
         /// Every consumer key is produced:
-        ///   accessibility — all five symbol kinds
-        ///   signature     — IMethodSymbol, IPropertySymbol, IEventSymbol
-        ///   base_type     — INamedTypeSymbol
-        ///   attributes    — all five symbol kinds (when non-empty)
+        ///   accessibility : all five symbol kinds
+        ///   signature     : IMethodSymbol, IPropertySymbol, IEventSymbol
+        ///   base_type     : INamedTypeSymbol
+        ///   attributes    : all five symbol kinds (when non-empty)
         /// </summary>
         [Fact]
         public void MetadataContract_AllConsumerKeysAreProduced()

@@ -6,7 +6,7 @@ namespace Lurp.Storage;
 /// <summary>
 /// Opaque keyset-pagination cursor for symbol search. Snapshots are immutable, so a
 /// cursor into one stays valid indefinitely and does not need to encode a timestamp.
-/// The fingerprint binds the cursor to the exact request that produced it — resuming
+/// The fingerprint binds the cursor to the exact request that produced it : resuming
 /// with a different query, kind, snapshot, or generated-flag would silently reorder
 /// or reinterpret the keyset, so that mismatch is rejected rather than guessed at.
 /// </summary>
@@ -38,7 +38,7 @@ public sealed record SearchCursor(string SnapshotId, string Fingerprint, string 
     /// Throws when the cursor does not describe this request. Parity with
     /// <see cref="SequenceCursor.Validate"/>: returning wrong rows silently is
     /// the failure this guards against. The mode check matters as much as the
-    /// fingerprint — mode selects which keyset decoder reads the cursor's sort
+    /// fingerprint : mode selects which keyset decoder reads the cursor's sort
     /// key, so an unrecognised mode would fall through to the substring decoder
     /// and reinterpret a rank-keyed cursor as an FQN-keyed one.
     /// </summary>

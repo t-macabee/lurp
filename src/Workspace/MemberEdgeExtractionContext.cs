@@ -49,7 +49,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         if (syntaxRefs.IsEmpty)
         {
             // Compiler-synthesized members (implicit constructors, auto-property
-            // backing fields) have no declaring syntax of their own — fall back to
+            // backing fields) have no declaring syntax of their own : fall back to
             // the containing type's scope.
             var containingType = member.ContainingType;
             if (containingType == null)

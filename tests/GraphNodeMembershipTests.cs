@@ -296,7 +296,7 @@ public sealed class GraphNodeMembershipTests : IDisposable
     {
         // Transaction characterization: SaveEdges writes graph nodes, membership,
         // and edge rows inside one transaction. A mid-write failure must roll the
-        // whole write back — a failed edge write can never publish partial
+        // whole write back : a failed edge write can never publish partial
         // graph-node membership for that write.
         var store = CreateStore();
         var snapshotId = "snap-gnm-atomic";

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -9,6 +11,9 @@ internal static class ContextHandler
 {
     private const string CursorKind = "capsule-tier";
     private const int DefaultTierLimit = 25;
+    // Keep ordinary capsule paths below the legacy Windows MAX_PATH boundary even
+    // when the output directory itself is moderately nested.
+    private const int MaxCapsuleFileNameLength = 128;
 
     public static void Run(string[] args)
     {
@@ -64,7 +69,7 @@ internal static class ContextHandler
 
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
             // Resolve the git root from the requested snapshot, not from the
-            // latest complete snapshot — the capsule's verification suggestions
+            // latest complete snapshot : the capsule's verification suggestions
             // (owning test project, solution path) must describe the workspace
             // the snapshot was taken from. Falling back to LoadLatestSnapshot()
             // silently attributed the wrong workspace when --snapshot= pointed
@@ -225,16 +230,10 @@ internal static class ContextHandler
         return ln;
     }
 
-    private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet)
+    internal static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet)
     {
         var json = ContextCapsuleJson.Serialize(capsule);
-        var safeName = capsule.Anchor.SymbolId
-            .Replace('|', '_')
-            .Replace(':', '_')
-            .Replace('/', '_')
-            .Replace('\\', '_');
-        var outputFileName = $"capsule-{safeName}.json";
-        var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
+        var outputPath = GetCapsuleOutputPath(outputDirArg, capsule.Anchor.SymbolId);
         File.WriteAllText(outputPath, json);
 
         // The capsule file is always written; only the stdout echo is optional. --quiet
@@ -253,6 +252,22 @@ internal static class ContextHandler
         }
 
         Console.WriteLine(json);
+    }
+
+    internal static string GetCapsuleOutputPath(string outputDirArg, string symbolId)
+    {
+        var safeName = string.Concat(symbolId.Select(c =>
+            c is '|' or ':' or '/' or '\\' || Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c));
+        var outputFileName = $"capsule-{safeName}.json";
+
+        if (outputFileName.Length > MaxCapsuleFileNameLength)
+        {
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(symbolId)))[..16];
+            var prefixLength = MaxCapsuleFileNameLength - "capsule-".Length - 1 - hash.Length - ".json".Length;
+            outputFileName = $"capsule-{safeName[..prefixLength]}-{hash}.json";
+        }
+
+        return Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
     }
 
     private static void WriteCapsuleSummary(ContextCapsule capsule, string outputPath)
@@ -284,10 +299,10 @@ internal static class ContextHandler
             // Only budget-bounded tiers have anything to recover. Offering the
             // continuation for an "empty" or "unresolved" tier would suggest the
             // content is behind a budget when it is either proved absent or
-            // unobservable — refetching returns the same nothing.
+            // unobservable : refetching returns the same nothing.
             var recoverable = omitted.Reason is "budget_exhausted" or "summarized"
                 && ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal);
-            var continuation = recoverable ? $" — fetch with --tier={omitted.Category}" : string.Empty;
+            var continuation = recoverable ? $" : fetch with --tier={omitted.Category}" : string.Empty;
             Console.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
         }
 

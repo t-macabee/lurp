@@ -65,9 +65,9 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                     }
 
                     // The neighbor reaches the anchor through interface/abstract
-                    // dispatch. The composed claim is possible — the compiler
+                    // dispatch. The composed claim is possible : the compiler
                     // proves the structural edges, not the runtime dispatch
-                    // target — unless a framework edge participates anywhere in
+                    // target : unless a framework edge participates anywhere in
                     // the path. The item is never a direct compiler-proved
                     // dependency of the anchor.
                     var provenance = EdgeDedup.ComposeDispatchClaimProvenance(

@@ -1,6 +1,13 @@
-# lurp
+# Lurp CLI reference
 
-Roslyn-based semantic indexer for .NET solutions. Indexes a solution into a SQLite database (`index.db`) and provides query, diff, impact-analysis, simulation, and audit commands over the indexed facts.
+This is the operational reference for Lurp's command-line interface. For the
+product overview, see the [root README](../README.md). For implementation
+status and design context, see the [reference index](../docs/reference/README.md).
+
+Lurp loads .NET solutions through Roslyn, stores snapshot-bound symbols,
+relationships, and source spans in SQLite (`index.db`), and exposes commands
+for retrieval, semantic diffing, impact analysis, simulation, context capsules,
+and audits.
 
 ## Quick Start
 
@@ -12,13 +19,13 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 ## Read-command options
 
-Accepted by every read command — `--mode=search`, `--mode=find-symbol`, `--mode=impact`, and `--mode=context`.
+Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=impact`, and `--mode=context`.
 
 | Argument | Required | Description |
 |---|---|---|
 | `--output=<summary\|json\|jsonl>` | No | Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{"type":"meta"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document. |
 | `--quiet` | No | Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself. |
-| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto` — stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
+| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
 Every read response carries a `freshness` block reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, so a stale read is never presented as a current one.
@@ -183,12 +190,12 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000), reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens` — size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000), reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
-| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied — this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `directCallees`, `directCallers`, `registeredImplementations`, `relevantTests`, `secondDegreeContext`, `surroundingSource`. |
+| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `directCallees`, `directCallers`, `registeredImplementations`, `relevantTests`, `secondDegreeContext`, `surroundingSource`. |
 | `--tier-limit=<n>` | No | Items per tier page (default: 25). |
 | `--cursor=<token>` | No | Continue a tier from its `next_cursor` (`--tier` only). |
 
@@ -196,7 +203,7 @@ Assemble a context capsule for a symbol or source location.
 
 Also accepts the shared [read-command options](#read-command-options).
 
-The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout; `--quiet` and `--output=summary` replace the stdout copy, never the file.
+The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout. Long symbol IDs are shortened with a stable hash suffix so the path remains valid on Windows; `--quiet` and `--output=summary` replace the stdout copy, never the file.
 
 #### Capsule token estimates
 
@@ -204,7 +211,7 @@ A capsule reports two different numbers, and they are not interchangeable:
 
 | Field | What it measures | Use it for |
 |---|---|---|
-| `estimatedTokens` | **Content only** — anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--budget` bounded. This is the budget basis. |
+| `estimatedTokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--budget` bounded. This is the budget basis. |
 | `estimatedArtifactTokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
 
 `estimatedArtifactTokens` is always the larger of the two, typically by a wide
@@ -222,7 +229,7 @@ the emitted capsule rather than the history of how it settled. Reasons:
 |---|---|
 | `empty` | Proved absence. The relation was observable and there is none. Safe to act on. |
 | `unresolved` | Unobservable. Bindings were lost over the anchor's region, or no anchor resolved at all (gap capsules mark every tier this way). **Not** evidence that the relation does not exist. |
-| `summarized` | Present but bounded — paths clipped, or item source truncated at the per-item cap. |
+| `summarized` | Present but bounded: paths clipped, or item source truncated at the per-item cap. |
 | `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
 
 Both `budget_exhausted` shapes are recovered the same way: refetch that one tier
@@ -381,7 +388,7 @@ Retrieve annotations for a symbol.
 
 ## Snapshot Lifecycle
 
-Each indexing run (full or incremental) creates a **new** snapshot. The last 3 snapshots are retained; older ones are pruned automatically. Snapshots are never mutated — incremental indexing creates a new snapshot, it does not modify the previous one.
+Each indexing run (full or incremental) creates a **new** snapshot. The last 3 snapshots are retained; older ones are pruned automatically. Snapshots are never mutated: incremental indexing creates a new snapshot, it does not modify the previous one.
 
 ## Environment Variables
 

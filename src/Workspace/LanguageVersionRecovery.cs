@@ -20,7 +20,7 @@ namespace Lurp.Workspace;
 /// <c>&lt;LangVersion&gt;</c> property is authoritative, and an SDK-style
 /// project with no explicit <c>LangVersion</c> uses the SDK default
 /// (<c>latest</c>, mapped to <see cref="LanguageVersion.LatestMajor"/>).
-/// Non-SDK (legacy) projects are left untouched — C# 7.3 is their correct
+/// Non-SDK (legacy) projects are left untouched : C# 7.3 is their correct
 /// default. Projects whose parse options were already resolved to a language
 /// version other than the C# 7.3 fallback are also untouched.
 /// </summary>

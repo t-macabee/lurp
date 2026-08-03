@@ -33,7 +33,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
     private void CollectTypeEdges(INamedTypeSymbol typeSymbol, List<EdgeRecord> edges)
     {
-        // Skip types not in scope — they'll produce edges with no SourceDocumentPath
+        // Skip types not in scope : they'll produce edges with no SourceDocumentPath
         // and their structural relationships (inherits, implements) are global per compilation anyway.
         if (!IsTypeInScope(typeSymbol))
             return;
@@ -87,7 +87,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     {
         // Compiler-synthesized backing fields (auto-properties, record positional
         // properties) share their declaring syntax location with the property that
-        // owns them — counting both produces exact-duplicate edges at the same
+        // owns them : counting both produces exact-duplicate edges at the same
         // source location for one logical fact.
         if (member is IFieldSymbol { IsImplicitlyDeclared: true })
             return;

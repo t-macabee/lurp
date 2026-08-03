@@ -137,7 +137,7 @@ public sealed class OutputContinuationTests : IDisposable
         var dir = CreateImpactDatabase();
 
         // A page of one path, so grouping can only be complete if it was computed
-        // before the page was cut — which is the whole point of the group summary.
+        // before the page was cut : which is the whole point of the group summary.
         using var document = RunImpact(dir, "--max-paths=1");
         var root = document.RootElement;
 
@@ -209,7 +209,7 @@ public sealed class OutputContinuationTests : IDisposable
     private const string TierSnapshot = "snap-pr7-tier";
 
     /// <summary>
-    /// One anchor with five direct callers — enough to page, and enough that the
+    /// One anchor with five direct callers : enough to page, and enough that the
     /// pages must partition the tier rather than repeat its head.
     /// </summary>
     private SqliteIndexStore CreateTierStore()

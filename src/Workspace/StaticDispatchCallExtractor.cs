@@ -12,7 +12,7 @@ namespace Lurp.Workspace;
 /// an interface member, an abstract member, or a virtual (non-sealed) member.
 ///
 /// These edges are complementary to the Calls edges emitted by
-/// MemberEdgeExtractor — Calls covers every invocation (concrete + dispatch),
+/// MemberEdgeExtractor : Calls covers every invocation (concrete + dispatch),
 /// while this edge explicitly marks the dispatch-point calls so that the
 /// graph can be traversed as:
 ///

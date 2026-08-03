@@ -122,7 +122,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         var versionId = $"doc-foo:{hash}";
         SeedDocumentVersion(_dbPath, "doc-foo", "Foo.cs", versionId, hash);
         store.SaveSnapshotDocuments("snap-touched", [("doc-foo", versionId)]);
-        // WriteSourceFile already left the file's mtime "now" (after builtAt) —
+        // WriteSourceFile already left the file's mtime "now" (after builtAt) :
         // same bytes, but the stat-only tier cannot tell touched from changed.
 
         var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-touched", FreshnessMode.Auto);

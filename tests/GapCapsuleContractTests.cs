@@ -8,8 +8,8 @@ namespace Lurp.Storage.Tests;
 /// <summary>
 /// A capsule anchored on an unresolvable <c>--file/--line</c> is still a capsule
 /// and obeys the same finalization contract as any other. It is emitted on a
-/// routine consumer miss — a comment, whitespace, an unindexed region, a wrong
-/// path — so its trust properties are load-bearing, not an edge case.
+/// routine consumer miss : a comment, whitespace, an unindexed region, a wrong
+/// path : so its trust properties are load-bearing, not an edge case.
 /// </summary>
 public sealed class GapCapsuleContractTests : IDisposable
 {
@@ -79,7 +79,7 @@ public sealed class GapCapsuleContractTests : IDisposable
             .Select(entry => entry.GetProperty("category").GetString())
             .ToHashSet(StringComparer.Ordinal);
 
-        // Each tier serializes as [] — the honest reading of that [] comes from
+        // Each tier serializes as [] : the honest reading of that [] comes from
         // the paired omittedTiers record, which must exist for every one of them.
         foreach (var tier in ContextAssembler.TierNames)
         {

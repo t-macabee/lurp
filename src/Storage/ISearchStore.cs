@@ -33,7 +33,7 @@ namespace Lurp.Storage
         /// <summary>
         /// Keyset-paginated symbol search. Fetches one extra row beyond <paramref name="limit"/>
         /// to determine whether a next page exists, then returns an opaque cursor for it rather
-        /// than an offset — offsets shift under duplicate-free re-ordering, cursors do not.
+        /// than an offset : offsets shift under duplicate-free re-ordering, cursors do not.
         /// </summary>
         SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor);
 

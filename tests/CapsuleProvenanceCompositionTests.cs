@@ -56,7 +56,7 @@ public sealed class CapsuleProvenanceCompositionTests : IDisposable
 
         // IRootHelper.Do --MayDispatchTo/compiler_proved--> HelperImpl.Do.
         // Service.Execute calls IRootHelper.Do, so Service.Execute is an
-        // interface-mediated caller of HelperImpl — not a direct caller.
+        // interface-mediated caller of HelperImpl : not a direct caller.
         var mediatedCaller = Assert.Single(capsule.DirectCallers,
             item => item.SymbolId == "M:MyApp.Service.Execute|prod");
         Assert.Equal(EdgeKind.Calls.ToString(), mediatedCaller.EdgeKind);
@@ -208,7 +208,7 @@ public sealed class CapsuleProvenanceCompositionTests : IDisposable
 
         // FrameworkEntry.Run reaches the dispatch source through a
         // framework-derived Calls edge, so its composed claim is
-        // framework_derived — the only case where dispatch mediation does not
+        // framework_derived : the only case where dispatch mediation does not
         // collapse the claim to possible.
         var frameworkCaller = Assert.Single(capsule.DirectCallers,
             item => item.SymbolId == "M:MyApp.FrameworkEntry.Run|prod");
@@ -241,7 +241,7 @@ public sealed class CapsuleProvenanceCompositionTests : IDisposable
 
         // HelperImpl.Do is included only because it globally implements the
         // called interface member. The projection is a
-        // global_implementation_relation — never a direct callee — and both
+        // global_implementation_relation : never a direct callee : and both
         // underlying steps stay visible in the inclusion reason.
         var dispatchTarget = Assert.Single(capsule.DirectCallees,
             item => item.SymbolId == "M:MyApp.HelperImpl.Do|prod");

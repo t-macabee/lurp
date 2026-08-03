@@ -63,7 +63,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         RunGitCommand(_testDir, "add -A");
         RunGitCommand(_testDir, "commit -m init");
 
-        // Build so generated files (obj/bin) are present — exercises T7 exclusion.
+        // Build so generated files (obj/bin) are present : exercises T7 exclusion.
         RunDotNetBuild(solutionPath);
 
         return (_dbPath, solutionPath, _testDir);
@@ -100,7 +100,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         return (_dbPath, solutionPath, _testDir);
     }
 
-    // Deliberately short (well under 512 bytes) — exercises the fix for
+    // Deliberately short (well under 512 bytes) : exercises the fix for
     // DeriveGeneratorIdentity/IsGeneratedHeader bailing out on short files.
     private const string GeneratedFileSource = """
         using System.CodeDom.Compiler;
@@ -184,7 +184,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, outputDir);
 
         // Drive the real --mode=status path (StatusHandler.Run) rather than
-        // asserting on the database directly — this is what the CLI's status
+        // asserting on the database directly : this is what the CLI's status
         // command actually executes, and C5 is about that path not crashing
         // and reporting freshness correctly right after an index run.
         var originalOut = Console.Out;
@@ -244,7 +244,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
         var snapshotB = await IntegrationHarness.RunIncrementalIndexAsync(dbPath, solutionPath, outputDir);
 
-        // Read the old snapshot's source — it must still be the original
+        // Read the old snapshot's source : it must still be the original
         using (var store = IntegrationHarness.OpenReadStore(dbPath))
         {
             var oldSource = store.GetSymbolSource(symbolId, snapshotA, ViewKind.Declaration);
@@ -278,7 +278,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         // Delete db so incremental starts fresh (it needs an existing snapshot,
         // but RunAsync with incremental strategy auto-falls-back to full if none exists).
         // We want a clean compare: full(A) → mutate → incremental(B) → full(C).
-        // Don't delete — we need the previous snapshot for incremental to work.
+        // Don't delete : we need the previous snapshot for incremental to work.
         var snapshotB = await IntegrationHarness.RunIncrementalIndexAsync(dbPath, solutionPath, outputDir);
 
         // Full rebuild with same state as B. With deterministic snapshot ids,
@@ -417,12 +417,12 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var docPaths = results.Select(r => r.DocumentPath).ToList();
         Assert.Equal(docPaths.Distinct(StringComparer.Ordinal).Count(), docPaths.Count);
 
-        // Each snippet must be bounded — no full-file dumps (> 2000 chars is suspicious)
+        // Each snippet must be bounded : no full-file dumps (> 2000 chars is suspicious)
         const int maxSnippetLength = 2000;
         foreach (var result in results)
         {
             Assert.True(result.Snippet.Length <= maxSnippetLength,
-                $"Snippet for {result.DocumentPath} is {result.Snippet.Length} chars — expected <= {maxSnippetLength}");
+                $"Snippet for {result.DocumentPath} is {result.Snippet.Length} chars : expected <= {maxSnippetLength}");
         }
     }
 
@@ -472,7 +472,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
 
     // ── Test 8: FullIndex_Has_No_Orphan_Edge_Targets ─────────────────────
     // Edge endpoints must be present in snapshot_symbols or snapshot_graph_nodes.
-    // An endpoint in neither membership table is orphaned — a sign that the
+    // An endpoint in neither membership table is orphaned : a sign that the
     // refresher or extractor produced a stale target id.
 
     [SkippableFact]
@@ -505,7 +505,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
     // Catches D5 (project failures are swallowed, leaving snapshot "complete"
     // when it should be "failed"). Post-gate (commit 287bb99): when every
     // project fails extraction the failure is reclassified as
-    // workspace-unreadable — the snapshot row must still be marked failed with
+    // workspace-unreadable : the snapshot row must still be marked failed with
     // the unreadable reason code, never complete.
 
     [SkippableFact]
@@ -516,7 +516,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var (dbPath, solutionPath, outputDir) = SetupFixture();
 
         // Create a real store and wrap it in a proxy that throws on
-        // SaveDeclarations — simulates a per-project extraction failure.
+        // SaveDeclarations : simulates a per-project extraction failure.
         using var innerStore = new SqliteIndexStore(dbPath);
         innerStore.Open();
         innerStore.RunMigrations();
@@ -558,7 +558,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         Assert.Equal("workspace_unreadable", reader.GetString(2));
         Assert.Contains("No metadata references resolved for", reader.GetString(3));
 
-        // LoadLatestSnapshot only returns complete snapshots — must be null.
+        // LoadLatestSnapshot only returns complete snapshots : must be null.
         using var readStore = IntegrationHarness.OpenReadStore(dbPath);
         var latest = readStore.LoadLatestSnapshot(workspaceId);
         Assert.Null(latest);
@@ -678,7 +678,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
                 && targetMethod.Name == nameof(IIndexStore.SaveDeclarations))
             {
                 throw new InvalidOperationException(
-                    "Injected failure for testing — SaveDeclarations is disabled.");
+                    "Injected failure for testing : SaveDeclarations is disabled.");
             }
 
             return targetMethod?.Invoke(_inner, args);

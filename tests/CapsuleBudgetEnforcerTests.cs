@@ -346,7 +346,7 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
 
     // The capsule that omits the most is the one that most needs to say how to
     // recover the omissions, so the omittedTiers.* meta-entries outlive the
-    // pressure that creates them — even when every other section is cleared.
+    // pressure that creates them : even when every other section is cleared.
     [Fact]
     public void UnderFullPressure_OmissionRecoveryHintsSurviveWhileOtherReasonsAreCleared()
     {
@@ -367,7 +367,7 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
     }
 
     // Zeroed topology counts beside a populated caller tier read as "no incoming
-    // references" — a claim the capsule never established. Dropped, not zeroed.
+    // references" : a claim the capsule never established. Dropped, not zeroed.
     [Fact]
     public void DroppedTopology_IsOmittedFromTheArtifactRatherThanSerializedAsZeroCounts()
     {

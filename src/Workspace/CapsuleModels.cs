@@ -81,7 +81,7 @@ namespace Lurp.Workspace
         /// may dispatch to the anchor at runtime (MayDispatchTo edge). As a
         /// callee: the anchor calls an interface/abstract member that may
         /// dispatch to this implementation at runtime. In both directions the
-        /// composed claim is possible — the runtime dispatch target is not
+        /// composed claim is possible : the runtime dispatch target is not
         /// compiler-established.
         /// </summary>
         public const string IndirectDispatchCandidate = "indirect_dispatch_candidate";
@@ -258,8 +258,8 @@ namespace Lurp.Workspace
         [property: JsonPropertyName("reason")] string Reason);
 
     /// <summary>
-    /// One capsule tier, fetched on its own and paged. Carries anchor identity only —
-    /// no anchor source, no other tiers, no paths — because the caller already has the
+    /// One capsule tier, fetched on its own and paged. Carries anchor identity only :
+    /// no anchor source, no other tiers, no paths : because the caller already has the
     /// capsule this continues and is asking for the one section it could not fit.
     /// </summary>
     internal sealed record CapsuleTierPage(
@@ -380,7 +380,7 @@ namespace Lurp.Workspace
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
 
-        // Same field contract, one line per document — used by --output=jsonl on the
+        // Same field contract, one line per document : used by --output=jsonl on the
         // single-tier continuation, never for the capsule itself.
         internal static readonly System.Text.Json.JsonSerializerOptions CompactOptions = new()
         {

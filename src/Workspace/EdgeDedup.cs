@@ -47,7 +47,7 @@ internal static class EdgeDedup
     /// interface/abstract dispatch path (one or more Calls hops plus a
     /// MayDispatchTo edge).
     ///
-    /// This is not the strongest — or weakest — edge in the path. The
+    /// This is not the strongest : or weakest : edge in the path. The
     /// structural edges may each be individually compiler-proved while the
     /// projected runtime-target claim remains "possible", because the compiler
     /// establishes that an implementation exists, not that this call site

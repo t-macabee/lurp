@@ -137,7 +137,7 @@ public static class IndexRunner
         swManifest.Stop();
         timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
 
-        // Populate extractor registry (idempotent — no-op on re-runs)
+        // Populate extractor registry (idempotent : no-op on re-runs)
         store.UpsertExtractors(ExtractorRegistry.All);
 
         try

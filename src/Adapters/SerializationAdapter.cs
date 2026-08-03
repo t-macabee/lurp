@@ -110,7 +110,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             targetId = SymbolIdFactory.Make(namedType, ctx.AssemblyIdentity);
         }
 
-        // Resolve location from the syntax node (property/field decl) — the evidence site
+        // Resolve location from the syntax node (property/field decl) : the evidence site
         var evidenceLocation = memberNode.GetLocation();
 
         foreach (var attrList in attributeLists)

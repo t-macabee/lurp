@@ -1,6 +1,6 @@
 # Sample Fixture Solution
 
-Committed fixture for integration tests (T19, T21-R). Not compiled as part of the test assembly — opened only through `MSBuildWorkspace`.
+Committed fixture for integration tests (T19, T21-R). Not compiled as part of the test assembly: opened only through `MSBuildWorkspace`.
 
 ## Structure
 
@@ -14,4 +14,4 @@ Committed fixture for integration tests (T19, T21-R). Not compiled as part of th
 ## Adapter strategy
 
 - **MediatR**: real NuGet package (adapter checks `ReferencedAssemblyNames` for "MediatR").
-- **ASP.NET Core / EF Core**: local stand-in base types (`Controller`, `DbContext`) — adapters match by short name only.
+- **ASP.NET Core / EF Core**: local stand-in base types (`Controller`, `DbContext`): adapters match by short name only.

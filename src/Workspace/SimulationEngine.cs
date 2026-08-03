@@ -159,7 +159,7 @@ public sealed class SimulationEngine
             }
         }
 
-        // 4. Implements (outgoing — interfaces this type fulfills, contract broken)
+        // 4. Implements (outgoing : interfaces this type fulfills, contract broken)
         var outgoingImplements = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId)
             .Where(e => e.Kind == "Implements");
         foreach (var edge in outgoingImplements)

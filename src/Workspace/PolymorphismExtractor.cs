@@ -6,19 +6,19 @@ namespace Lurp.Workspace;
 /// <summary>
 /// Extracts polymorphism-related edges:
 ///
-///   1. may_dispatch_to  — from an interface member (or virtual root) to its
+///   1. may_dispatch_to  : from an interface member (or virtual root) to its
 ///      concrete implementations / overrides.
-///   2. statically_calls — from a calling method to the interface/abstract/virtual
+///   2. statically_calls : from a calling method to the interface/abstract/virtual
 ///      member it invokes (the "dispatch point").
 ///
 /// Provenance on may_dispatch_to:
-///   - "compiler_proved"   — the implementing member is directly declared on the
+///   - "compiler_proved"   : the implementing member is directly declared on the
 ///                            type (not inherited through a base), or the override
 ///                            is reachable through a known virtual-chain root.
-///   - "possible"          — the implementation is inherited from a base type;
+///   - "possible"          : the implementation is inherited from a base type;
 ///                            it is a valid dispatch target but a future re-implementation
 ///                            in a derived type could shadow it.
-///   - "framework_derived" — (NOT emitted here) emitted by DependencyInjectionAdapter
+///   - "framework_derived" : (NOT emitted here) emitted by DependencyInjectionAdapter
 ///                            as a separate may_dispatch_to edge when DI registration
 ///                            evidence narrows the candidate set.  See the adapter
 ///                            for details.

@@ -20,7 +20,7 @@ namespace Lurp.Workspace
     // recorded in omittedTiers and truncatedCategories. The anchor is never
     // dropped; if it alone overflows the budget, that overflow is declared with
     // budget_exhausted. estimatedTokens is set to the settled CONTENT measure of
-    // the capsule — the serialized artifact is larger, because per-item identity
+    // the capsule : the serialized artifact is larger, because per-item identity
     // and provenance framing is uncounted navigation metadata; the whole-artifact
     // figure is reported separately as estimatedArtifactTokens.
     //
@@ -185,7 +185,7 @@ namespace Lurp.Workspace
             };
 
         // Dropped, not zeroed. A retained topology whose counts are all zero
-        // reads as "no incoming or outgoing references" — a positive claim, and a
+        // reads as "no incoming or outgoing references" : a positive claim, and a
         // false one beside a populated directCallers tier. Absence plus the
         // omittedTiers record says what is true: the section was not emitted.
         private static Func<ContextCapsule, bool> TopologyResetStep(ContextCapsule capsule)
@@ -226,7 +226,7 @@ namespace Lurp.Workspace
 
         // The omittedTiers.* entries are how a consumer interprets and recovers
         // the omissions this trim pass creates, so they must outlive the pressure
-        // that makes them necessary — clearing them first (they are the
+        // that makes them necessary : clearing them first (they are the
         // lowest-priority section) left the capsule that omitted the most as the
         // one with no instructions for recovering anything. They cost ~50 tokens.
         private static Func<ContextCapsule, bool> ClearDictionaryStep(Dictionary<string, string> items)

@@ -69,7 +69,7 @@ public sealed class LanguageVersionRegressionTests : IDisposable
         conn.Open();
 
         // Completion criterion part 1: the snapshot must not be complete while
-        // carrying the mass C#-language-version failure pattern — the pattern
+        // carrying the mass C#-language-version failure pattern : the pattern
         // must be absent and the snapshot complete.
         var status = ScalarString(conn, "SELECT status FROM snapshots WHERE snapshot_id = @id", snapshotId);
         Assert.Equal("complete", status);
@@ -98,7 +98,7 @@ public sealed class LanguageVersionRegressionTests : IDisposable
 
         // The second fixture project pins LangVersion=9.0 explicitly. Even though
         // its MSBuild evaluation also fails, the explicit version must be honored
-        // (C# 9 record source extracts; no CS8370) — not clobbered by recovery.
+        // (C# 9 record source extracts; no CS8370) : not clobbered by recovery.
         var explicitLangCs8370 = ScalarLong(conn,
             "SELECT COUNT(*) FROM diagnostics WHERE snapshot_id = @id AND project_name = 'ExplicitLang' AND id = 'CS8370'", snapshotId);
         Assert.Equal(0L, explicitLangCs8370);
