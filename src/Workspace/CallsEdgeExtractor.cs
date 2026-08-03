@@ -12,6 +12,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
     {
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
+        var callEdges = new Dictionary<(string source, string target, string kind), EdgeRecord>();
         var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
         foreach (var (methodSymbol, methodSyntax) in context.EnumerateMethodDeclarations())
@@ -32,13 +33,13 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                 switch (node)
                 {
                     case InvocationExpressionSyntax invocation:
-                        AddCallEdge(invocation, semanticModel, callerId, edges, seen);
+                        AddCallEdge(invocation, semanticModel, methodSymbol, callerId, edges, seen, callEdges);
                         break;
                     case BinaryExpressionSyntax binary:
-                        AddCallEdge(binary, semanticModel, callerId, edges, seen);
+                        AddCallEdge(binary, semanticModel, methodSymbol, callerId, edges, seen, callEdges);
                         break;
                     case CastExpressionSyntax cast:
-                        AddCallEdge(cast, semanticModel, callerId, edges, seen);
+                        AddCallEdge(cast, semanticModel, methodSymbol, callerId, edges, seen, callEdges);
                         break;
                     case ElementAccessExpressionSyntax elementAccess:
                         AddIndexerEdge(elementAccess, semanticModel, callerId, edges, seen);
@@ -47,6 +48,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             }
         }
 
+        edges.AddRange(callEdges.Values);
         return edges;
     }
 
@@ -88,9 +90,11 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
     private void AddCallEdge(
         SyntaxNode syntax,
         SemanticModel semanticModel,
+        IMethodSymbol caller,
         string callerId,
         List<EdgeRecord> edges,
-        HashSet<(string source, string target, string kind)> seen)
+        HashSet<(string source, string target, string kind)> seen,
+        Dictionary<(string source, string target, string kind), EdgeRecord> callEdges)
     {
         var symbolInfo = semanticModel.GetSymbolInfo(syntax);
         if (symbolInfo.Symbol is not IMethodSymbol callee)
@@ -110,11 +114,18 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             return;
 
         var kind = EdgeKind.Calls.ToString();
-        if (!seen.Add((callerId, calleeId, kind)))
-            return;
-
         var location = context.GetLocationInfo(syntax.GetLocation());
-        edges.Add(context.MakeEdge(callerId, calleeId, kind, ExtractorConstants.CallsExtractor, location));
+        var receiverConstraints = GetReceiverTypeConstraints(syntax, callee, caller, semanticModel);
+        var key = (callerId, calleeId, kind);
+        if (callEdges.TryGetValue(key, out var existingCall))
+        {
+            callEdges[key] = ReceiverTypeConstraints.WithMergedConstraints(existingCall, receiverConstraints);
+        }
+        else
+        {
+            var call = context.MakeEdge(callerId, calleeId, kind, ExtractorConstants.CallsExtractor, location);
+            callEdges.Add(key, ReceiverTypeConstraints.WithMergedConstraints(call, receiverConstraints));
+        }
 
         // Extension-method receiver edge: when a method is called with
         // extension-method syntax (e.g. foo.Bar()), emit a distinct edge from
@@ -144,5 +155,33 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                 }
             }
         }
+    }
+
+    private string? GetReceiverTypeConstraints(
+        SyntaxNode syntax,
+        IMethodSymbol callee,
+        IMethodSymbol caller,
+        SemanticModel semanticModel)
+    {
+        if (syntax is not InvocationExpressionSyntax invocation ||
+            (callee.IsStatic && callee.ReducedFrom == null))
+        {
+            return null;
+        }
+
+        ITypeSymbol? receiverType = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } => null,
+            MemberAccessExpressionSyntax memberAccess
+                when semanticModel.GetSymbolInfo(memberAccess.Expression).Symbol is INamedTypeSymbol => null,
+            MemberAccessExpressionSyntax memberAccess => semanticModel.GetTypeInfo(memberAccess.Expression).Type,
+            MemberBindingExpressionSyntax => invocation.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>() is { } conditional
+                ? semanticModel.GetTypeInfo(conditional.Expression).Type
+                : null,
+            IdentifierNameSyntax or GenericNameSyntax when !caller.IsStatic => caller.ContainingType,
+            _ => null,
+        };
+
+        return ReceiverTypeConstraints.FromReceiverType(receiverType, context);
     }
 }

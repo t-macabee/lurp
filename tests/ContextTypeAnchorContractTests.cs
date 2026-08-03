@@ -49,17 +49,16 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         var capsule = Assemble(store, "T:MyApp.Service|prod");
 
         // The directly called interface member is surfaced via the member-level Calls edge.
-        Assert.Contains(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.IHelper.Do|prod");
+        Assert.Contains(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.IRootHelper.Do|prod");
 
-        // Interface dispatch rule: the persisted MayDispatchTo implementation of a
-        // called interface member is surfaced with the MayDispatchTo edge's own
-        // kind, and no type-level edge is synthesized. Its provenance is NOT
-        // compiler_proved: the candidate is not filtered by this call site's static
-        // receiver type, so reachability from this specific call is not proven.
+        // The called member is declared on the broader IRootHelper contract, but
+        // the call receiver is statically IHelper. Only HelperImpl is assignable to
+        // IHelper; RootOnlyHelper remains a valid global implementation relation but
+        // is not a receiver-compatible candidate for this call site.
         var dispatchTarget = Assert.Single(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.HelperImpl.Do|prod");
         Assert.Equal(EdgeKind.MayDispatchTo.ToString(), dispatchTarget.EdgeKind);
-        Assert.Equal("global_implementation_relation", dispatchTarget.Provenance);
-        Assert.NotEqual("compiler_proved", dispatchTarget.Provenance);
+        Assert.Equal("compiler_proved", dispatchTarget.Provenance);
+        Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.RootOnlyHelper.Do|prod");
         Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "T:MyApp.Service|prod");
 
         // Facts on a sibling member (GetById) are also reached from the type anchor.
@@ -79,12 +78,23 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
     }
 
     [Fact]
+    public void TypeAnchor_DeclaresMissingReceiverEvidenceInsteadOfEmittingGlobalCandidates()
+    {
+        var store = CreateSeededStore();
+        var capsule = Assemble(store, "T:MyApp.Service|prod");
+
+        Assert.Contains(capsule.Uncertainties, uncertainty =>
+            uncertainty.RelationshipKind == "receiver_constraints_unavailable" &&
+            uncertainty.SymbolIds.Contains("M:MyApp.Service.Helper|prod"));
+    }
+
+    [Fact]
     public void MethodAnchor_DoesNotExpandAcrossSiblingMembers()
     {
         var store = CreateSeededStore();
         var capsule = Assemble(store, "M:MyApp.Service.Execute|prod");
 
-        Assert.Contains(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.IHelper.Do|prod");
+        Assert.Contains(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.IRootHelper.Do|prod");
         Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == "M:MyApp.Repo.GetById|prod");
     }
 
@@ -170,7 +180,7 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         };
     }
 
-    private static EdgeRecord Edge(string source, string target, string kind, string provenance)
+    private static EdgeRecord Edge(string source, string target, string kind, string provenance, string? receiverConstraintsJson = null)
         => new()
         {
             SourceSymbolId = source,
@@ -179,6 +189,7 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
             Provenance = provenance,
             SnapshotId = SnapshotId,
             ExtractorVersion = "v1",
+            ReceiverTypeConstraintsJson = receiverConstraintsJson,
         };
 
     private static IEnumerable<EdgeRecord> Edges()
@@ -189,8 +200,16 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         yield return Edge("T:MyApp.Service|prod", "M:MyApp.Service.Helper|prod", EdgeKind.Declares.ToString(), "compiler_proved");
 
         // Execute calls an interface member, which dispatches to a concrete impl.
-        yield return Edge("M:MyApp.Service.Execute|prod", "M:MyApp.IHelper.Do|prod", EdgeKind.Calls.ToString(), "compiler_proved");
-        yield return Edge("M:MyApp.IHelper.Do|prod", "M:MyApp.HelperImpl.Do|prod", EdgeKind.MayDispatchTo.ToString(), "compiler_proved");
+        yield return Edge("M:MyApp.Service.Execute|prod", "M:MyApp.IRootHelper.Do|prod", EdgeKind.Calls.ToString(), "compiler_proved",
+            ReceiverTypeConstraints.SerializeForTests("T:MyApp.IHelper|prod"));
+        yield return Edge("M:MyApp.Service.Helper|prod", "M:MyApp.IRootHelper.Do|prod", EdgeKind.Calls.ToString(), "compiler_proved");
+        yield return Edge("M:MyApp.IRootHelper.Do|prod", "M:MyApp.HelperImpl.Do|prod", EdgeKind.MayDispatchTo.ToString(), "compiler_proved");
+        yield return Edge("M:MyApp.IRootHelper.Do|prod", "M:MyApp.RootOnlyHelper.Do|prod", EdgeKind.MayDispatchTo.ToString(), "compiler_proved");
+        yield return Edge("T:MyApp.IHelper|prod", "T:MyApp.IRootHelper|prod", EdgeKind.Implements.ToString(), "compiler_proved");
+        yield return Edge("T:MyApp.HelperImpl|prod", "T:MyApp.IHelper|prod", EdgeKind.Implements.ToString(), "compiler_proved");
+        yield return Edge("T:MyApp.RootOnlyHelper|prod", "T:MyApp.IRootHelper|prod", EdgeKind.Implements.ToString(), "compiler_proved");
+        yield return Edge("T:MyApp.HelperImpl|prod", "M:MyApp.HelperImpl.Do|prod", EdgeKind.Declares.ToString(), "compiler_proved");
+        yield return Edge("T:MyApp.RootOnlyHelper|prod", "M:MyApp.RootOnlyHelper.Do|prod", EdgeKind.Declares.ToString(), "compiler_proved");
 
         // GetById calls a concrete member on a sibling member.
         yield return Edge("M:MyApp.Service.GetById|prod", "M:MyApp.Repo.GetById|prod", EdgeKind.Calls.ToString(), "compiler_proved");
@@ -212,9 +231,12 @@ public sealed class ContextTypeAnchorContractTests : IDisposable
         "M:MyApp.Service.GetById|prod",
         "M:MyApp.Service.Helper|prod",
         "T:MyApp.IHelper|prod",
-        "M:MyApp.IHelper.Do|prod",
+        "T:MyApp.IRootHelper|prod",
+        "M:MyApp.IRootHelper.Do|prod",
         "T:MyApp.HelperImpl|prod",
         "M:MyApp.HelperImpl.Do|prod",
+        "T:MyApp.RootOnlyHelper|prod",
+        "M:MyApp.RootOnlyHelper.Do|prod",
         "T:MyApp.Repo|prod",
         "M:MyApp.Repo.GetById|prod",
         "T:MyApp.IService|prod",

@@ -401,6 +401,7 @@ internal static class SnapshotAssertions
         Assert.Equal(expected.SourceEndLine, actual.SourceEndLine);
         Assert.Equal(expected.SourceStartColumn, actual.SourceStartColumn);
         Assert.Equal(expected.SourceEndColumn, actual.SourceEndColumn);
+        Assert.Equal(expected.ReceiverTypeConstraintsJson, actual.ReceiverTypeConstraintsJson);
     }
 
     public static void AssertEqual(DiagnosticRecord expected, DiagnosticRecord actual)

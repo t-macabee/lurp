@@ -105,6 +105,7 @@ namespace Lurp.Storage
                 new Migration_022_BindingIncompleteness(),
                 new Migration_023_FailedSnapshotState(),
                 new Migration_024_FailedSnapshotTombstone(),
+                new Migration_025_CallReceiverConstraints(),
             ];
     }
 }

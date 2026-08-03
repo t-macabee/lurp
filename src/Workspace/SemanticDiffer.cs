@@ -264,12 +264,14 @@ namespace Lurp.Workspace
             static bool EvidenceEquals(EdgeRecord left, EdgeRecord right)
                 => string.Equals(left.Provenance, right.Provenance, StringComparison.Ordinal)
                    && string.Equals(left.TypeArgumentsJson, right.TypeArgumentsJson, StringComparison.Ordinal)
+                   && string.Equals(left.ReceiverTypeConstraintsJson, right.ReceiverTypeConstraintsJson, StringComparison.Ordinal)
                    && left.IsCrossGenerated == right.IsCrossGenerated;
 
             static object EvidencePayload(EdgeRecord edge) => new
             {
                 provenance = edge.Provenance,
                 type_arguments_json = edge.TypeArgumentsJson,
+                receiver_type_constraints_json = edge.ReceiverTypeConstraintsJson,
                 is_cross_generated = edge.IsCrossGenerated,
             };
 

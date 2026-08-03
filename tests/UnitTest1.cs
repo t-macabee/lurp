@@ -2213,6 +2213,78 @@ class Foo {
         }
 
         [Fact]
+        public void Calls_InterfaceInvocation_PersistsStaticReceiverType()
+        {
+            var source = @"
+interface IBase { void Run(); }
+interface INarrow : IBase { }
+class Caller { void Execute(INarrow receiver) { receiver.Run(); } }";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-receiver", "/");
+
+            var call = Assert.Single(extractor.ExtractAll(), e =>
+                e.Kind == "Calls" && e.SourceSymbolId.Contains("Execute") && e.TargetSymbolId.Contains("Run"));
+            var alternatives = ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson);
+
+            var requiredType = Assert.Single(Assert.Single(alternatives));
+            Assert.Contains("INarrow", requiredType, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Calls_GenericReceiver_PersistsAllNamedTypeConstraints()
+        {
+            var source = @"
+interface IRun { void Run(); }
+interface IMarker { }
+class Caller { void Execute<T>(T receiver) where T : IRun, IMarker { receiver.Run(); } }";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-generic-receiver", "/");
+
+            var call = Assert.Single(extractor.ExtractAll(), e =>
+                e.Kind == "Calls" && e.SourceSymbolId.Contains("Execute") && e.TargetSymbolId.Contains("Run"));
+            var requiredTypes = Assert.Single(ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson));
+
+            Assert.Equal(2, requiredTypes.Count);
+            Assert.Contains(requiredTypes, id => id.Contains("IRun", StringComparison.Ordinal));
+            Assert.Contains(requiredTypes, id => id.Contains("IMarker", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void Calls_GenericReceiverWithUnpersistedSpecialConstraint_EmitsNoCandidateEvidence()
+        {
+            var source = @"
+interface IRun { void Run(); }
+class Caller { void Execute<T>(T receiver) where T : class, IRun { receiver.Run(); } }";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-special-constraint", "/");
+
+            var call = Assert.Single(extractor.ExtractAll(), e =>
+                e.Kind == "Calls" && e.SourceSymbolId.Contains("Execute") && e.TargetSymbolId.Contains("Run"));
+
+            Assert.Null(call.ReceiverTypeConstraintsJson);
+        }
+
+        [Fact]
+        public void Calls_SameRelationThroughDifferentReceivers_PreservesAlternativeReceiverSets()
+        {
+            var source = @"
+interface IBase { void Run(); }
+interface ILeft : IBase { }
+interface IRight : IBase { }
+class Caller { void Execute(ILeft left, IRight right) { left.Run(); right.Run(); } }";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-receiver-alternatives", "/");
+
+            var call = Assert.Single(extractor.ExtractAll(), e =>
+                e.Kind == "Calls" && e.SourceSymbolId.Contains("Execute") && e.TargetSymbolId.Contains("Run"));
+            var alternatives = ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson);
+
+            Assert.Equal(2, alternatives.Count);
+            Assert.Contains(alternatives, constraint => constraint.Single().Contains("ILeft", StringComparison.Ordinal));
+            Assert.Contains(alternatives, constraint => constraint.Single().Contains("IRight", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void BindingIncompleteness_AmbiguousOverload_IsReasonCoded()
         {
             var source = @"
@@ -2373,6 +2445,7 @@ class Foo {
                     .ToList();
 
                 Assert.Single(persisted);
+                Assert.Equal(edges[0].ReceiverTypeConstraintsJson, persisted[0].ReceiverTypeConstraintsJson);
             }
             finally
             {
@@ -3106,14 +3179,16 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
         }
 
         [Theory]
-        [InlineData("possible", null, false, ChangeType.EdgeEvidenceChanged)]
-        [InlineData("compiler_proved", "[\"Customer\"]", false, ChangeType.EdgeEvidenceChanged)]
-        [InlineData("compiler_proved", null, true, ChangeType.EdgeEvidenceChanged)]
-        [InlineData("compiler_proved", null, false, ChangeType.EdgeLocationChanged)]
+        [InlineData("possible", null, false, null, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", "[\"Customer\"]", false, null, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", null, true, null, ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", null, false, "[[\"T:Ns.IReceiver|asm1\"]]", ChangeType.EdgeEvidenceChanged)]
+        [InlineData("compiler_proved", null, false, null, ChangeType.EdgeLocationChanged)]
         public void SemanticDiffer_SameRelationChangedPayload_ReportsSpecificChange(
             string toProvenance,
             string? toTypeArgumentsJson,
             bool toIsCrossGenerated,
+            string? toReceiverTypeConstraintsJson,
             string expectedChangeType)
         {
             using var store = new SqliteIndexStore(_dbPath);
@@ -3142,6 +3217,7 @@ class MyMapper : IMapper<Source, Dest> { public Dest Map(Source input) => new De
                 Kind = fromEdge.Kind,
                 Provenance = toProvenance,
                 TypeArgumentsJson = toTypeArgumentsJson,
+                ReceiverTypeConstraintsJson = toReceiverTypeConstraintsJson,
                 IsCrossGenerated = toIsCrossGenerated,
                 SourceDocumentPath = locationOnly ? "src/MovedFoo.cs" : fromEdge.SourceDocumentPath,
                 SourceStartLine = locationOnly ? 12 : fromEdge.SourceStartLine,
@@ -5266,6 +5342,7 @@ public class CourseEnrollmentServiceTests
                 SourceStartColumn = 5,
                 SourceEndLine = 10,
                 SourceEndColumn = 20,
+                ReceiverTypeConstraintsJson = "[[\"T:Ns.IReceiver|asm1\"]]",
             };
 
             Assert.Equal("RoutesTo", edge.Kind);
@@ -5274,6 +5351,7 @@ public class CourseEnrollmentServiceTests
             Assert.Equal("aspnetcore-v1", edge.ExtractorVersion);
             Assert.Equal("src/Test.cs", edge.SourceDocumentPath);
             Assert.Equal(10, edge.SourceStartLine);
+            Assert.Equal("[[\"T:Ns.IReceiver|asm1\"]]", edge.ReceiverTypeConstraintsJson);
         }
     }
 

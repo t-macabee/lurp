@@ -5,6 +5,7 @@ namespace Lurp.Workspace;
 internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated)
 {
     private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
+    private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
     private IReadOnlyList<string>? _effectiveSymbolIds;
 
     internal IEdgeStore EdgeStore { get; } = edgeStore;
@@ -27,6 +28,49 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         => EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
             .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
             .ToList();
+
+    internal List<string> GetDeclaringTypeIds(string memberSymbolId)
+        => EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
+            .Where(edge => edge.Kind == EdgeKind.Declares.ToString())
+            .Select(edge => edge.SourceSymbolId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    internal bool IsReceiverCompatible(string candidateTypeId, IReadOnlyList<IReadOnlyList<string>> receiverAlternatives)
+        => receiverAlternatives.Any(requiredTypes =>
+            requiredTypes.Count > 0 && requiredTypes.All(receiverTypeId => IsAssignableTo(candidateTypeId, receiverTypeId)));
+
+    private bool IsAssignableTo(string candidateTypeId, string receiverTypeId)
+    {
+        var cacheKey = (candidateTypeId, receiverTypeId);
+        if (_assignabilityCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        var visited = new HashSet<string>(StringComparer.Ordinal) { candidateTypeId };
+        var queue = new Queue<string>();
+        queue.Enqueue(candidateTypeId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (string.Equals(current, receiverTypeId, StringComparison.Ordinal))
+            {
+                _assignabilityCache[cacheKey] = true;
+                return true;
+            }
+
+            foreach (var edge in EdgeStore.GetOutgoingEdges(SnapshotId, current))
+            {
+                if (edge.Kind is not (nameof(EdgeKind.Implements) or nameof(EdgeKind.Inherits)))
+                    continue;
+                if (visited.Add(edge.TargetSymbolId))
+                    queue.Enqueue(edge.TargetSymbolId);
+            }
+        }
+
+        _assignabilityCache[cacheKey] = false;
+        return false;
+    }
 
     // For a given concrete symbol, returns the interface/abstract members that
     // dispatch TO it. An incoming MayDispatchTo edge <source → this symbol>

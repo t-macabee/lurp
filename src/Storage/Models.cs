@@ -48,6 +48,7 @@ namespace Lurp.Storage
         public int? SourceEndColumn { get; init; }
         public bool IsCrossGenerated { get; init; }
         public string? TypeArgumentsJson { get; init; }
+        public string? ReceiverTypeConstraintsJson { get; init; }
         public GraphNodeKind? SourceNodeKind { get; init; }
         public GraphNodeKind? TargetNodeKind { get; init; }
     }

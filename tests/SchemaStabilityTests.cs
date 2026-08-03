@@ -44,6 +44,8 @@ public sealed class SchemaStabilityTests : IDisposable
         using var columns = upgraded.CreateCommand();
         columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name IN ('failure_reason_code', 'failure_message');";
         Assert.Equal(2L, (long)columns.ExecuteScalar()!);
+        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('edges') WHERE name = 'receiver_type_constraints_json';";
+        Assert.Equal(1L, (long)columns.ExecuteScalar()!);
     }
 
     [Fact]

@@ -20,3 +20,20 @@ CREATE TABLE snapshots (
     status TEXT NOT NULL DEFAULT 'in_progress',
     skipped_adapters TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE edges (
+    edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id TEXT NOT NULL,
+    source_symbol_id TEXT NOT NULL,
+    target_symbol_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    provenance TEXT,
+    extractor_version TEXT,
+    source_document_path TEXT,
+    source_start_line INTEGER,
+    source_start_column INTEGER,
+    source_end_line INTEGER,
+    source_end_column INTEGER,
+    is_cross_generated INTEGER NOT NULL DEFAULT 0,
+    type_arguments_json TEXT
+);

@@ -16,25 +16,18 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
             EdgeKind.Constructs.ToString()
         };
 
-        var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
-
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
-            var paths = traverser.TraceImpact(symbolId, ImpactDirection.Downstream, allowedKinds, maxDepth: 1);
-            foreach (var path in paths)
+            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
-                foreach (var hop in path.Hops)
-                {
-                    AddItem(hop.TargetSymbolId, hop.EdgeKind, hop.Provenance,
-                        "Direct call or construction target of the anchor.");
+                if (!allowedKinds.Contains(edge.Kind))
+                    continue;
 
-                    // Interface dispatch rule: a Calls hop that lands on an
-                    // interface/abstract member surfaces that member's persisted
-                    // MayDispatchTo implementations. Each target keeps the
-                    // MayDispatchTo edge's own kind and provenance.
-                    if (hop.EdgeKind == EdgeKind.Calls.ToString())
-                        AddMayDispatchTargets(hop.TargetSymbolId);
-                }
+                AddItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
+                    "Direct call or construction target of the anchor.");
+
+                if (edge.Kind == EdgeKind.Calls.ToString())
+                    AddMayDispatchTargets(edge);
             }
         }
 
@@ -52,19 +45,27 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
             }
         }
 
-        void AddMayDispatchTargets(string calledSymbolId)
+        void AddMayDispatchTargets(Lurp.Storage.EdgeRecord callEdge)
         {
-            foreach (var edge in context.GetMayDispatchEdges(calledSymbolId))
+            var receiverAlternatives = ReceiverTypeConstraints.Deserialize(callEdge.ReceiverTypeConstraintsJson)
+                .Select(static alternative => (IReadOnlyList<string>)alternative)
+                .ToList();
+            if (receiverAlternatives.Count == 0)
+                return;
+
+            foreach (var edge in context.GetMayDispatchEdges(callEdge.TargetSymbolId))
             {
-                // This projects a global implementation relation onto a specific call
-                // site without filtering by the call site's static receiver type, so it
-                // must not carry compiler_proved — that label would claim the candidate
-                // is reachable from here, which is not established. See PR-6 for
-                // receiver-type-constrained candidates.
-                AddItem(edge.TargetSymbolId, edge.Kind, Provenance.GlobalImplementationRelation,
-                    "Implementation of a called interface member, from the global implementation relation. " +
-                    "Not filtered by this call site's static receiver type — inclusion here does not prove " +
-                    "the candidate is reachable from this call.");
+                var declaringTypes = context.GetDeclaringTypeIds(edge.TargetSymbolId);
+                if (!declaringTypes.Any(candidateTypeId =>
+                        context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))
+                {
+                    continue;
+                }
+
+                AddItem(edge.TargetSymbolId, edge.Kind, Provenance.CompilerProved,
+                    "Implementation of a called interface or virtual member whose containing type is " +
+                    "assignable to the call site's persisted static receiver-type constraints. This proves " +
+                    "receiver compatibility, not the runtime target.");
             }
         }
     }

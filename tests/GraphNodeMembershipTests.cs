@@ -200,6 +200,7 @@ public sealed class GraphNodeMembershipTests : IDisposable
                 TargetSymbolId = knownSymbol,
                 Kind = "RoutesTo",
                 Provenance = "framework_derived",
+                ReceiverTypeConstraintsJson = "[[\"T:Ns.IReceiver|asm1\"]]",
                 SourceNodeKind = GraphNodeKind.Route,
             },
             new EdgeRecord
@@ -220,6 +221,7 @@ public sealed class GraphNodeMembershipTests : IDisposable
         Assert.Equal(2, edges.Count);
         Assert.Contains(edges, e => e.Kind == "RoutesTo");
         Assert.Contains(edges, e => e.Kind == "Registers");
+        Assert.Contains(edges, e => e.ReceiverTypeConstraintsJson == "[[\"T:Ns.IReceiver|asm1\"]]");
 
         Assert.Equal(2, Scalar<long>(
             $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{targetSnapshot}';"));

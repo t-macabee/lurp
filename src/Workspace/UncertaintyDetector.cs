@@ -45,6 +45,7 @@ namespace Lurp.Workspace
 
             CollectReflectionUncertainties(capsule, neighborhood);
             CollectDispatchUncertainties(capsule, neighborhood);
+            CollectMissingReceiverConstraintUncertainties(capsule, neighborhood);
             CollectFrameworkConventionUncertainties(capsule, neighborhood);
             CollectBindingIncompletenessUncertainties(capsule);
 
@@ -117,6 +118,36 @@ namespace Lurp.Workspace
                         continue;
 
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
+                }
+            }
+        }
+
+        private void CollectMissingReceiverConstraintUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+        {
+            var seen = new HashSet<(string Source, string Target)>();
+            foreach (var symbolId in neighborhood)
+            {
+                foreach (var call in _edgeStore.GetOutgoingEdges(_snapshotId, symbolId))
+                {
+                    if (call.Kind != EdgeKind.Calls.ToString() ||
+                        ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson).Count > 0 ||
+                        !seen.Add((call.SourceSymbolId, call.TargetSymbolId)))
+                    {
+                        continue;
+                    }
+
+                    var hasDispatchRelation = _edgeStore.GetOutgoingEdges(_snapshotId, call.TargetSymbolId)
+                        .Any(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString());
+                    if (!hasDispatchRelation)
+                        continue;
+
+                    capsule.Uncertainties.Add(new UncertaintyEntry(
+                        [call.SourceSymbolId, call.TargetSymbolId],
+                        "receiver_constraints_unavailable",
+                        "No call-site dispatch candidates were emitted because this Calls relation has no persisted " +
+                        "static receiver-type constraints. This is expected for legacy snapshots, dynamic/base/static " +
+                        "dispatch, or generic constraints the persisted type graph cannot prove; query the called " +
+                        "member's global implementations separately if needed."));
                 }
             }
         }

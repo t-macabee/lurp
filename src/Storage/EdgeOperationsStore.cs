@@ -19,7 +19,7 @@ internal sealed class EdgeOperationsStore
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = @"
-                INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson);
+                INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson);
             ";
             var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
             var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
@@ -34,6 +34,7 @@ internal sealed class EdgeOperationsStore
             var sourceEndColumnParam = command.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
             var isCrossGeneratedParam = command.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
             var typeArgumentsJsonParam = command.Parameters.Add(new SqliteParameter("@typeArgumentsJson", null));
+            var receiverTypeConstraintsJsonParam = command.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
 
             using var nodeCmd = _connection.CreateCommand();
             nodeCmd.Transaction = transaction;
@@ -71,6 +72,7 @@ internal sealed class EdgeOperationsStore
                 sourceEndColumnParam.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
                 isCrossGeneratedParam.Value = edge.IsCrossGenerated;
                 typeArgumentsJsonParam.Value = (object?)edge.TypeArgumentsJson ?? DBNull.Value;
+                receiverTypeConstraintsJsonParam.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
                 command.ExecuteNonQuery();
             }
 
@@ -109,7 +111,7 @@ internal sealed class EdgeOperationsStore
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
                        source_end_line, source_end_column,
-                       is_cross_generated, type_arguments_json
+                       is_cross_generated, type_arguments_json, receiver_type_constraints_json
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                   AND (source_symbol_id = @symbolId OR target_symbol_id = @symbolId)
@@ -124,7 +126,7 @@ internal sealed class EdgeOperationsStore
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
                        source_end_line, source_end_column,
-                       is_cross_generated, type_arguments_json
+                       is_cross_generated, type_arguments_json, receiver_type_constraints_json
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                 ORDER BY edge_id;
@@ -151,7 +153,7 @@ internal sealed class EdgeOperationsStore
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
                    source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json
+                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @snapshotId AND kind = @kind
             ORDER BY edge_id;
@@ -170,7 +172,7 @@ internal sealed class EdgeOperationsStore
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
                    source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json
+                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @snapshotId AND target_symbol_id = @symbolId
             ORDER BY edge_id;
@@ -189,7 +191,7 @@ internal sealed class EdgeOperationsStore
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
                    source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json
+                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @snapshotId AND source_symbol_id = @symbolId
             ORDER BY edge_id;
@@ -277,12 +279,12 @@ internal sealed class EdgeOperationsStore
     {
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json)
+            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
             SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
                    extractor_version, source_document_path,
                    source_start_line, source_start_column,
                    source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json
+                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @fromSnapshotId;
         ";
@@ -343,6 +345,7 @@ internal sealed class EdgeOperationsStore
                 SourceEndColumn = reader.IsDBNull(10) ? null : reader.GetInt32(10),
                 IsCrossGenerated = reader.GetBoolean(11),
                 TypeArgumentsJson = reader.IsDBNull(12) ? null : reader.GetString(12),
+                ReceiverTypeConstraintsJson = reader.IsDBNull(13) ? null : reader.GetString(13),
             });
         }
         return results;
