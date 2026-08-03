@@ -151,6 +151,8 @@ namespace Lurp.Storage
             { EnsureOpen(); _symbols!.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds); }
         public List<string> GetSymbolIdsInSnapshot(string snapshotId)
             { EnsureOpen(); return _symbols!.GetSymbolIdsInSnapshot(snapshotId); }
+        public int CountSymbolsInSnapshot(string snapshotId)
+            { EnsureOpen(); return _symbols!.CountSymbolsInSnapshot(snapshotId); }
         public void DeleteIncompleteSnapshots()
             { EnsureOpen(); _pruner!.DeleteIncompleteSnapshots(); }
         public void PruneOldSnapshots(int keep = 3)
@@ -207,6 +209,10 @@ namespace Lurp.Storage
             { EnsureOpen(); return _edgeStore!.GetDiagnostics(snapshotId, projectName); }
         public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
             { EnsureOpen(); return _edgeStore!.GetAnnotations(snapshotId, symbolId); }
+        public int CountEdges(string snapshotId)
+            { EnsureOpen(); return _edgeStore!.CountEdges(snapshotId); }
+        public int CountDiagnostics(string snapshotId)
+            { EnsureOpen(); return _edgeStore!.CountDiagnostics(snapshotId); }
         public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
             { EnsureOpen(); return _edgeStore!.GetEdgesByKind(snapshotId, kind); }
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)

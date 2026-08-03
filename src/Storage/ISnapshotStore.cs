@@ -31,6 +31,7 @@
         void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId);
         void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds);
         List<string> GetSymbolIdsInSnapshot(string snapshotId);
+        int CountSymbolsInSnapshot(string snapshotId);
 
         void DeleteIncompleteSnapshots();
         void PruneOldSnapshots(int keep = 3);

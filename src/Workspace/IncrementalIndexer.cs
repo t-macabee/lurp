@@ -193,13 +193,19 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         try { _store.SaveTimings(newSnapshotIdStr, timings); }
         catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
 
+        var declarationsInSnapshot = _store.CountSymbolsInSnapshot(newSnapshotIdStr);
+        var edgesInSnapshot = _store.CountEdges(newSnapshotIdStr);
+        var diagnosticsInSnapshot = _store.CountDiagnostics(newSnapshotIdStr);
+        var projectsInSnapshot = solution.Projects.Count();
+
         Console.WriteLine();
         Console.WriteLine($"Incremental index complete for snapshot {newSnapshotIdStr}");
         Console.WriteLine($"  Previous snapshot: {previousSnapshotId}");
-        Console.WriteLine($"  Changed documents: {changedDocs.Count}");
-        Console.WriteLine($"  Declarations:      {totalDeclarations}");
-        Console.WriteLine($"  Edges:             {totalEdges}");
-        Console.WriteLine($"  Diagnostics:       {totalDiagnostics}");
+        Console.WriteLine($"  documents_changed_this_run:          {changedDocs.Count}      documents_in_snapshot: {workspaceInfo.Documents.Count}");
+        Console.WriteLine($"  projects_reextracted_this_run:       {affectedProjects.Count}/{projectsInSnapshot}");
+        Console.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
+        Console.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
+        Console.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
         return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics);
     }

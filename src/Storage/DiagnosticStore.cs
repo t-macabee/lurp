@@ -94,6 +94,14 @@ internal sealed class DiagnosticStore
         return results;
     }
 
+    public int CountDiagnostics(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM diagnostics WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();

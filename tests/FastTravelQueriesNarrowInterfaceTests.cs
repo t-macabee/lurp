@@ -161,6 +161,7 @@ public sealed class FastTravelQueriesNarrowInterfaceTests
         public void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId) => throw new NotSupportedException();
         public void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds) => throw new NotSupportedException();
         public List<string> GetSymbolIdsInSnapshot(string snapshotId) => throw new NotSupportedException();
+        public int CountSymbolsInSnapshot(string snapshotId) => throw new NotSupportedException();
         public void DeleteIncompleteSnapshots() => throw new NotSupportedException();
         public void PruneOldSnapshots(int keep = 3) => throw new NotSupportedException();
         public void DeleteSnapshotData(string snapshotId) => throw new NotSupportedException();

@@ -36,6 +36,12 @@ public sealed class EdgeStore : IEdgeStore
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
         => _annotations.GetAnnotations(snapshotId, symbolId);
 
+    public int CountEdges(string snapshotId)
+        => _edges.CountEdges(snapshotId);
+
+    public int CountDiagnostics(string snapshotId)
+        => _diagnostics.CountDiagnostics(snapshotId);
+
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
         => _edges.GetEdgesByKind(snapshotId, kind);
 

@@ -57,10 +57,10 @@ public static class IndexRunner
                     Console.WriteLine();
                     Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
                     Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-                    Console.WriteLine($"  Changed documents: {result.ChangedDocumentCount}");
-                    Console.WriteLine($"  Declarations:      {result.DeclarationsExtracted}");
-                    Console.WriteLine($"  Edges:             {result.EdgesExtracted}");
-                    Console.WriteLine($"  Diagnostics:       {result.DiagnosticsExtracted}");
+                    Console.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
+                    Console.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
+                    Console.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edge_relations_in_snapshot: {store.CountEdges(result.NewSnapshotId)}");
+                    Console.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
                     Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
                     Console.Write("Pruning old snapshots... ");
 
@@ -247,13 +247,6 @@ public static class IndexRunner
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
 
-            Console.WriteLine();
-            Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
-            Console.WriteLine($"  Declarations: {totalDeclarations}");
-            Console.WriteLine($"  Edges:        {totalEdges}");
-            Console.WriteLine($"  Diagnostics:  {totalDiagnostics}");
-            Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
 
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
@@ -277,6 +270,19 @@ public static class IndexRunner
             // Step: Remove edges targeting symbols not declared in this snapshot
             cancellationToken.ThrowIfCancellationRequested();
             store.DeleteOrphanEdges(snapshotIdStr);
+
+            var totalProjects = extractedProjects + blindProjects.Count;
+            var declarationsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);
+            var edgesInSnapshot = store.CountEdges(snapshotIdStr);
+            var diagnosticsInSnapshot = store.CountDiagnostics(snapshotIdStr);
+
+            Console.WriteLine();
+            Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
+            Console.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
+            Console.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
+            Console.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
+            Console.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
+            Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
 
             // Step: Build FTS search index
             // Preconditions: declarations, document/symbol snapshot membership,

@@ -135,6 +135,14 @@ internal sealed class EdgeOperationsStore
         return ReadEdgeRecords(command);
     }
 
+    public int CountEdges(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM edges WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
     {
         using var command = _connection.CreateCommand();

@@ -1079,6 +1079,70 @@ build src/Lurp.csproj -c Release` — 0 warnings, 0 errors.
 Remaining from the remediation plan (PR-1, PR-2 landed separately; PR-4
 through PR-8) are out of scope for this change — not started.
 
+### PR-4 — Unambiguous metrics in console output (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` finding D7, prioritized as PR-4 in
+`LURP-REMEDIATION-PLAN.md` (external planning artifact, user's desktop, not
+part of this repository).
+
+**Defect:** `IndexRunner` and `IncrementalIndexer` printed `Declarations`,
+`Edges`, and `Diagnostics` totals computed mid-run — before orphan-edge
+deletion for the full-index path — and labelled them as if they were the
+snapshot's final persisted counts. The evaluation's reproduction showed the
+gap directly: console reported 22,948 edges, the snapshot held 10,347 after
+orphan cleanup. A consumer trusting the printed number had no way to tell
+"this run's extraction total" from "what actually landed in the snapshot."
+
+**Fix:**
+- `src/Storage/ISnapshotStore.cs` / `SnapshotSymbolStore.cs` /
+  `SqliteIndexStore.cs` — added `CountSymbolsInSnapshot(snapshotId)`, a plain
+  `COUNT(*) FROM snapshot_symbols WHERE snapshot_id = ...` (declarations are
+  keyed by `document_version_id`, but `snapshot_symbols` is already the
+  correct per-snapshot membership table, so no join is needed here).
+- `src/Storage/IEdgeStore.cs` / `EdgeOperationsStore.cs` /
+  `DiagnosticStore.cs` / `EdgeStore.cs` / `SqliteIndexStore.cs` — added
+  `CountEdges(snapshotId)` and `CountDiagnostics(snapshotId)`; both tables
+  are already keyed directly by `snapshot_id`, so each is a single scoped
+  `COUNT(*)`, no fan-out risk analogous to PR-1's `declarations` join.
+- `src/Workspace/IndexRunner.cs` — moved the full-index summary print from
+  immediately after the extraction loop (pre-cleanup) to after
+  `DeleteOrphanEdges`, and renamed the printed fields to
+  `declarations_extracted_this_run` / `declarations_in_snapshot`,
+  `edge_relations_after_dedup_this_run` / `edge_relations_in_snapshot`,
+  `diagnostics_extracted_this_run` / `diagnostics_in_snapshot`, plus
+  `projects_reextracted_this_run: N/total`. The incremental-strategy print
+  in `RunAsync` got the same field renames and now queries the same
+  in-snapshot counts for the completed snapshot.
+- `src/Workspace/IncrementalIndexer.cs` — `RunIncrementalAsync`'s final
+  summary (already printed after `FinalizeSnapshotAsync`, i.e. after orphan
+  cleanup, FTS rebuild, and diff) got the same renames, plus
+  `documents_changed_this_run` / `documents_in_snapshot` and
+  `projects_reextracted_this_run` / `projects_in_snapshot`.
+
+No JSON export field changes (index-time JSON export is the snapshot
+manifest, not this console metrics block); no schema migration; no
+write-path change. `FastTravelQueriesNarrowInterfaceTests`'s test fake for
+`ISnapshotStore` was updated with a `NotSupportedException` stub for the new
+`CountSymbolsInSnapshot` member, matching its existing pattern for every
+other interface method.
+
+**Tests:** new `tests/SnapshotFactCountTests.cs` —
+`CountEdges_ScopesToRequestedSnapshot`,
+`CountDiagnostics_ScopesToRequestedSnapshot`,
+`CountSymbolsInSnapshot_ScopesToRequestedSnapshot`, and
+`EdgesInSnapshot_CanDifferFromRawExtractedCount_AfterOrphanCleanup` (pins
+the exact D7 shape: the this-run edge count and the post-cleanup in-snapshot
+count are legitimately different numbers for the same run).
+
+Validation (narrow filter, not a full run): `dotnet test
+tests/Lurp.Storage.Tests.csproj -c Release --filter
+"FullyQualifiedName~SnapshotFactCountTests|FullyQualifiedName~SqliteUpsertTests|FullyQualifiedName~GraphNodeMembershipTests|FullyQualifiedName~FastTravelQueriesNarrowInterfaceTests"`
+— 22/22 pass. `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
+errors.
+
+Remaining from the remediation plan (PR-1 through PR-4 landed; PR-5 through
+PR-8) are out of scope for this change — not started.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.
