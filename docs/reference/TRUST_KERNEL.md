@@ -910,6 +910,65 @@ now-serialized, ~13-minute suite) after the Debug/Release path and
 `Console.Out` fixes above; the equivalence-test filter fix landed in a
 separate, later commit (`d648d26`) and has not yet had its own CI run.
 
+### PR-1 — Snapshot-scoped declaration joins in search and FQN resolution (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` (2026-08-03) findings D1/D2, prioritized
+as PR-1 in `LURP-REMEDIATION-PLAN.md`. Both documents are external planning
+artifacts (user's desktop), not part of this repository.
+
+**Defect:** `SearchStore.SearchSymbols`, `SearchSymbolsBySubstring`, and
+`ResolveSymbolByFqn` joined/subqueried `declarations` on `symbol_id` alone.
+`declarations` rows are keyed to immutable document versions and are retained
+across snapshots (retention keeps 3 by default), while `symbol_fts`/
+`snapshot_symbols` are correctly snapshot-scoped. With N retained declaration
+rows for one symbol, search returned that symbol N times and
+`ResolveSymbolByFqn` reported `declarationCount` summed across all retained
+snapshots, not the requested one.
+
+**Fix (`src/Storage/SearchStore.cs`):** every declaration predicate is now
+scoped through `snapshot_documents(snapshot_id, document_version_id)`.
+- `SearchSymbols` / `SearchSymbolsBySubstring`: the unscoped `LEFT JOIN
+  declarations` (which existed solely to evaluate `is_generated`, no
+  projected column) is replaced with a scoped `NOT EXISTS`/`EXISTS`
+  predicate pair — preserving admission of declaration-less (metadata-only
+  external) symbols, which a naive scoped inner join would have dropped.
+- `ResolveSymbolByFqn`: `decl_count` and `is_partial` subqueries and the
+  existence check are scoped the same way, in both the exact-match and
+  prefix-match branches.
+
+No schema migration, no write-path change, no `DISTINCT`/application-side
+dedup (rejected per the plan — would mask the defect and collapse genuine
+partial-type multiplicity). Existing indexes
+(`idx_declarations_symbol_id`, Migration 003; `ux_snapshot_documents`,
+Migration 019) already support the scoped predicates.
+
+**Tests added** (`tests/UnitTest1.cs`, `SymbolStoreTests`/`FtsSearchTests`
+region, 12 new `[Fact]`s): a three-retained-snapshot fixture (`Retain.Alpha`,
+one symbol, one declaration per snapshot) proving search returns each symbol
+once and `ResolveSymbolByFqn` reports the requested snapshot's own
+declaration count; a partial-type contract (`Retain.Beta`, two current
+declarations) proving multiplicity is preserved, not just removed; a
+declaration-less symbol (raw-SQL fixture, no public API inserts a
+symbol without a declaration) proving external/metadata-only symbols remain
+searchable; a `--limit` test proving retained-history fan-out no longer
+consumes the result window; a generated-declaration scoping test; an
+older-snapshot-view test; and an index-existence check
+(`SearchSymbols_QueryPlan_DeclarationAndSnapshotDocumentIndexesExist`) — this
+asserts index presence via `PRAGMA index_list`, not `EXPLAIN QUERY PLAN`
+index usage, because SQLite's cost-based planner legitimately prefers a full
+scan over either index on the handful of rows a unit-test fixture creates;
+planner choice on a tiny table is not a meaningful regression signal.
+
+Validation: `dotnet test tests/Lurp.Storage.Tests.csproj -c Release --filter
+...` (narrow, PR-1-scoped) — new tests 16/16 pass; existing FTS/FQN suite
+13/13 pass; equivalence + pruning suite 21/21 pass. An unfiltered
+`dotnet test tests/Lurp.Storage.Tests.csproj -c Release` was also run
+against project convention (full runs are user-run, not Claude — see the CI
+section above); its result is not cited as evidence here.
+
+Remaining from the remediation plan (PR-2 through PR-8) are out of scope for
+this change — not started.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.
