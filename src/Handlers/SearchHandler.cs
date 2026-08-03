@@ -61,7 +61,11 @@ internal static class SearchHandler
                     results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
             }
 
-            var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results }, new JsonSerializerOptions { WriteIndented = true });
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            HandlerBootstrap.EnforceRequireFresh(args, freshness);
+            HandlerBootstrap.PrintFreshnessLine(freshness);
+
+            var json = JsonSerializer.Serialize(new { snapshotId, query = queryArg, type = typeArg, results, freshness = HandlerBootstrap.FreshnessJson(freshness) }, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }
         finally

@@ -33,6 +33,10 @@ internal static class FindSymbolHandler
                 Environment.Exit(1);
             }
 
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            HandlerBootstrap.EnforceRequireFresh(args, freshness);
+            HandlerBootstrap.PrintFreshnessLine(freshness);
+
             var json = JsonSerializer.Serialize(new
             {
                 symbolId = info.SymbolId.Value,
@@ -43,7 +47,8 @@ internal static class FindSymbolHandler
                 metadataJson = info.MetadataJson,
                 declarationCount = info.DeclarationCount,
                 isPartial = info.IsPartial,
-                snapshotId
+                snapshotId,
+                freshness = HandlerBootstrap.FreshnessJson(freshness)
             }, new JsonSerializerOptions { WriteIndented = true });
 
             Console.WriteLine(json);

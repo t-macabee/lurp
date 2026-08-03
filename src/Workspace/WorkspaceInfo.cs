@@ -157,6 +157,11 @@ public sealed class WorkspaceInfo
         return false;
     }
 
+    /// <summary>Exposed for <see cref="WorkspaceFreshness.CheckFreshnessCheap"/>, which re-hashes a
+    /// touched file without loading a full Roslyn workspace and must normalize bytes identically.</summary>
+    internal static byte[] NormalizeSourceBytesForFreshnessCheck(string relativePath, byte[] rawBytes)
+        => NormalizeSourceBytes(relativePath, rawBytes);
+
     private static byte[] NormalizeSourceBytes(string relativePath, byte[] rawBytes)
     {
         if (rawBytes.Length >= 3

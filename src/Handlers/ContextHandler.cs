@@ -58,6 +58,11 @@ internal static class ContextHandler
                 scopeArg, affectedProjects, changeObjective, constraints,
                 targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
+
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            HandlerBootstrap.EnforceRequireFresh(args, freshness);
+            HandlerBootstrap.PrintFreshnessLine(freshness);
+
             WriteCapsuleOutput(capsule, outputDirArg);
         }
         finally

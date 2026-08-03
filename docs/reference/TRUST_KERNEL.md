@@ -1143,6 +1143,83 @@ errors.
 Remaining from the remediation plan (PR-1 through PR-4 landed; PR-5 through
 PR-8) are out of scope for this change — not started.
 
+### PR-5 — Freshness stamp on every read (2026-08-03)
+
+Source: `LURP-INDEPENDENT-EVALUATION.md` finding D6, prioritized as PR-5 in
+`LURP-REMEDIATION-PLAN.md` (external planning artifact, user's desktop, not
+part of this repository).
+
+**Defect:** reads served whatever a snapshot said with no signal that the
+workspace on disk had since diverged. The only freshness check that existed,
+`WorkspaceFreshness.CheckFreshness(WorkspaceInfo, ...)`, requires a live
+`Solution` — `StatusHandler.CheckCurrentWorkspaceAsync` builds one by calling
+`MSBuildWorkspace.Create()` / `OpenSolutionAsync`, the same cost as a fresh
+index run. That made it usable only behind explicit `status --solution=`,
+never as a default on every read.
+
+**Fix — a second, cheap tier that never loads Roslyn:**
+- `src/Workspace/WorkspaceFreshness.cs` — added `FreshnessMode` (`Auto` /
+  `Hash` / `Off`), `FreshnessStamp` (the `state`/`method`/
+  `changed_document_count`/`changed_documents_sample`/`checked_at_utc`/
+  `snapshot_id` shape from the plan's §3.4 design), and
+  `CheckFreshnessCheap(ISnapshotStore, snapshotId, mode)`. It loads only
+  `LoadSnapshotMetadata` (git root, build time — already the
+  no-document-read query per its own doc comment) and
+  `GetDocumentVersionIdsByPath` (a plain `snapshot_documents` ⋈
+  `document_versions` ⋈ `documents` join, already used elsewhere), then does
+  one `File.Exists` / `GetLastWriteTimeUtc` per document. A file whose
+  `LastWriteTimeUtc` is newer than the snapshot's `BuiltAtUtc` is flagged
+  `stale` in `Auto` mode; in `Hash` mode it is instead re-hashed
+  (`DocumentVersionId.Compute` over `WorkspaceInfo`'s own byte-normalization,
+  now exposed as `NormalizeSourceBytesForFreshnessCheck`) and only reported
+  changed if the content actually differs from the persisted
+  `document_version_id`. `document_version_id` is stored as
+  `"{documentId}:{contentHash}"` (Migration_016) — the check compares against
+  the substring after the final colon, not the whole composite string.
+- `src/Handlers/HandlerBootstrap.cs` — added `ParseFreshnessMode` (reads
+  `--freshness=auto|hash|off`, default `auto`), `ComputeFreshnessStamp`,
+  `FreshnessJson` (the snake_case wire shape), `EnforceRequireFresh` (exits 2
+  when `--require-fresh` is passed and state isn't `fresh`), and
+  `PrintFreshnessLine` (the one-line stderr summary the design calls for
+  alongside the JSON block).
+- Wired into the four highest-traffic read paths named in the plan:
+  `SearchHandler`, `FindSymbolHandler`, `ImpactHandler` (all three gained a
+  `freshness` field in their existing JSON output) and `ContextHandler` (the
+  capsule's JSON shape is a fixed, separately-serialized schema
+  (`ContextCapsuleJson.Serialize`) already covered by acceptance tests, so
+  freshness is surfaced there only via the stderr line and `--require-fresh`,
+  not as a new capsule field — avoids widening that contract in this change).
+  `StatusHandler`'s existing `--solution=`-gated full check is untouched.
+
+Not done (correctly scoped out): auto-reindexing on read, refusing stale
+reads by default, wiring freshness into every remaining handler
+(`GetSourceHandler`, `GetSymbolHandler`, `NavigateHandler`, `DiffHandler`,
+the `Simulate*Handlers`, `AuditHandler`, `AnnotationHandler`, `TimingsHandler`)
+— left for a follow-up once the four-handler shape has been used in
+practice. Session-level freshness caching (plan item 6, a TTL memo across a
+burst of reads) also not done. The plan's open question 7 (actual stat-scan
+latency on a large solution) remains unmeasured — this change adds the
+mechanism, not a benchmark of it.
+
+**Tests:** new `tests/FreshnessCheapCheckTests.cs` — six tests covering
+fresh (back-dated mtime), `Auto`-mode false-stale on a touched-but-unchanged
+file (the known limit of stat-only checking, documented rather than
+"fixed"), `Hash`-mode resolving that same touch to `fresh`, `Hash`-mode
+correctly catching a real content change, a removed document, and `Off`
+mode. Writing the first version of these against the naive implementation
+(comparing the current hash to the raw `document_version_id` column) failed
+immediately — it caught that the stored value is the `id:hash` composite,
+not a bare hash, which the fix above accounts for.
+
+Validation (narrow filter, not a full run): `dotnet test
+tests/Lurp.Storage.Tests.csproj -c Release --filter
+"FullyQualifiedName~SnapshotFactCountTests|FullyQualifiedName~SqliteUpsertTests|FullyQualifiedName~GraphNodeMembershipTests|FullyQualifiedName~FastTravelQueriesNarrowInterfaceTests|FullyQualifiedName~FreshnessCheapCheckTests"`
+— 28/28 pass. `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
+errors.
+
+Remaining from the remediation plan (PR-1 through PR-5 landed; PR-6 through
+PR-8) are out of scope for this change — not started.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

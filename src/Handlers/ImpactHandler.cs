@@ -51,9 +51,14 @@ internal static class ImpactHandler
             var traverser = new ImpactTraverser(store, snapshotId, store);
             var paths = traverser.TraceImpact(symbolId: symbolArg, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
 
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            HandlerBootstrap.EnforceRequireFresh(args, freshness);
+            HandlerBootstrap.PrintFreshnessLine(freshness);
+
             var json = JsonSerializer.Serialize(new
             {
                 snapshot_id = snapshotId,
+                freshness = HandlerBootstrap.FreshnessJson(freshness),
                 symbol_id = symbolArg,
                 direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",
                 max_depth = maxDepth,

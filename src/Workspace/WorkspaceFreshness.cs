@@ -2,10 +2,86 @@
 using Lurp.Storage;
 namespace Lurp.Workspace;
 
+public enum FreshnessMode { Auto, Hash, Off }
+
+public sealed record FreshnessStamp(
+    string State,
+    string Method,
+    int ChangedDocumentCount,
+    IReadOnlyList<string> ChangedDocumentsSample,
+    DateTime CheckedAtUtc,
+    string SnapshotId);
+
 public static class WorkspaceFreshness
 {
 
     public sealed record FreshnessResult(bool IsFresh,IReadOnlyList<SnapshotMismatch> Mismatches,WorkspaceId CurrentWorkspaceId,SnapshotId? StoredSnapshotId,WorkspaceId? StoredWorkspaceId);
+
+    /// <summary>
+    /// Cheap read-path freshness check: no Roslyn workspace load. Compares each
+    /// document's on-disk last-write time against the snapshot's build time;
+    /// in <see cref="FreshnessMode.Hash"/> mode, files that look touched are
+    /// re-hashed to confirm an actual content change (avoids false "stale" on
+    /// a touch-but-unchanged file).
+    /// </summary>
+    public static FreshnessStamp CheckFreshnessCheap(ISnapshotStore store, string snapshotId, FreshnessMode mode)
+    {
+        var checkedAt = DateTime.UtcNow;
+
+        if (mode == FreshnessMode.Off)
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+
+        var metadata = store.LoadSnapshotMetadata(snapshotId);
+        if (metadata == null)
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+
+        try
+        {
+            var gitRoot = metadata.GitRoot;
+            var builtAtUtc = metadata.CreatedAtUtc;
+            var versionsByPath = store.GetDocumentVersionIdsByPath(snapshotId);
+
+            var changed = new List<string>();
+            foreach (var (relativePath, storedVersionId) in versionsByPath)
+            {
+                var fullPath = Path.GetFullPath(Path.Combine(gitRoot, relativePath));
+
+                if (!File.Exists(fullPath))
+                {
+                    changed.Add(relativePath);
+                    continue;
+                }
+
+                var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+                if (lastWriteUtc <= builtAtUtc)
+                    continue;
+
+                if (mode == FreshnessMode.Auto)
+                {
+                    changed.Add(relativePath);
+                    continue;
+                }
+
+                var rawBytes = File.ReadAllBytes(fullPath);
+                var normalized = WorkspaceInfo.NormalizeSourceBytesForFreshnessCheck(relativePath, rawBytes);
+                var currentHash = DocumentVersionId.Compute(new DocumentId(relativePath), normalized).Hash;
+                // document_version_id is persisted as "{documentId}:{contentHash}"
+                // (Migration_016); the hash is always the substring after the
+                // final colon, since content_hash itself never contains one.
+                var storedHash = storedVersionId[(storedVersionId.LastIndexOf(':') + 1)..];
+                if (!string.Equals(currentHash, storedHash, StringComparison.Ordinal))
+                    changed.Add(relativePath);
+            }
+
+            var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
+            var state = changed.Count == 0 ? "fresh" : "stale";
+            return new FreshnessStamp(state, method, changed.Count, changed.Take(10).ToList(), checkedAt, snapshotId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+        }
+    }
 
     public static FreshnessResult CheckFreshness(WorkspaceInfo current,ISnapshotStore store)
     {

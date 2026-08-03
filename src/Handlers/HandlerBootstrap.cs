@@ -1,4 +1,5 @@
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -7,6 +8,47 @@ internal static class HandlerBootstrap
     public static string? GetArgValue(string[] args, string prefix)
     {
         return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
+    }
+
+    public static FreshnessMode ParseFreshnessMode(string[] args)
+    {
+        var raw = GetArgValue(args, "--freshness=");
+        return raw?.ToLowerInvariant() switch
+        {
+            "hash" => FreshnessMode.Hash,
+            "off" => FreshnessMode.Off,
+            _ => FreshnessMode.Auto,
+        };
+    }
+
+    public static FreshnessStamp ComputeFreshnessStamp(ISnapshotStore store, string snapshotId, string[] args)
+        => WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, ParseFreshnessMode(args));
+
+    public static object FreshnessJson(FreshnessStamp stamp) => new
+    {
+        state = stamp.State,
+        method = stamp.Method,
+        changed_document_count = stamp.ChangedDocumentCount,
+        changed_documents_sample = stamp.ChangedDocumentsSample,
+        checked_at_utc = stamp.CheckedAtUtc,
+        snapshot_id = stamp.SnapshotId,
+    };
+
+    public static void EnforceRequireFresh(string[] args, FreshnessStamp stamp)
+    {
+        if (!args.Contains("--require-fresh"))
+            return;
+
+        if (stamp.State != "fresh")
+        {
+            Console.Error.WriteLine($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.");
+            Environment.Exit(2);
+        }
+    }
+
+    public static void PrintFreshnessLine(FreshnessStamp stamp)
+    {
+        Console.Error.WriteLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}");
     }
 
     public static string RequireArg(string[] args, string prefix, params string[] errorLines)
