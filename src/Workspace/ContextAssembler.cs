@@ -118,6 +118,20 @@ namespace Lurp.Workspace
             capsule.InclusionReasons["secondDegreeContext"] = "Bounded upstream paths within the requested hop limit.";
             capsule.InclusionReasons["surroundingSource"] = "Sibling declarations sharing the anchor's containing declaration.";
 
+            // A budget_exhausted omission is only honest if it is also actionable, so the
+            // capsule states the continuation in-band: a consumer holding just this capsule
+            // can recover the omitted section without widening the budget and re-reading
+            // everything it already has.
+            //
+            // Emitted unconditionally and kept terse. Conditioning it on an omission having
+            // already happened would miss the ones CapsuleBudgetEnforcer adds later (it runs
+            // after this method), and moving it after the enforcer would leave its own cost
+            // outside the measurement that estimatedTokens reports. One short line, always
+            // present, always counted, is the version with no gap between the two.
+            capsule.InclusionReasons["omittedTiers.budget_exhausted"] =
+                "Fetch an omitted tier on its own, unbudgeted: --mode=context --tier=<category> "
+              + "--symbol=<anchor symbolId> [--cursor=<next_cursor>].";
+
             if (anchorBindingIsIncomplete)
             {
                 capsule.InclusionReasons["omittedTiers.unresolved"] =
@@ -275,6 +289,71 @@ namespace Lurp.Workspace
                     relevantTests, secondDegreeContext, surroundingSiblings,
                 ],
             };
+        }
+
+        /// <summary>
+        /// Every tier name a capsule can carry. Ordering here is presentation only —
+        /// the assembly priority is intent-dependent and lives in <c>GetTierBuilders</c>.
+        /// </summary>
+        internal static readonly string[] TierNames =
+        [
+            "contracts", "directCallees", "directCallers", "registeredImplementations",
+            "relevantTests", "secondDegreeContext", "surroundingSource",
+        ];
+
+        internal static IContextTierBuilder? ResolveTierBuilder(ContextTierContext context, string tierName) => tierName switch
+        {
+            "contracts" => new ContractsTierBuilder(context),
+            "directCallees" => new DirectCalleesTierBuilder(context),
+            "directCallers" => new DirectCallersTierBuilder(context),
+            "registeredImplementations" => new RegisteredImplementationsTierBuilder(context),
+            "relevantTests" => new RelevantTestsTierBuilder(context),
+            "secondDegreeContext" => new SecondDegreeContextTierBuilder(context),
+            "surroundingSource" => new SurroundingSiblingsTierBuilder(context),
+            _ => null,
+        };
+
+        /// <summary>
+        /// Builds one tier on its own, outside the capsule budget, and returns a page of it.
+        ///
+        /// This exists because a capsule that reports a tier as <c>budget_exhausted</c>
+        /// previously left the consumer no way to act on that admission except to widen the
+        /// whole budget and re-read the entire capsule to recover one section. The tier is
+        /// rebuilt from the same immutable snapshot by the same builder, so a page fetched
+        /// this way is the same evidence the capsule would have carried — it is bounded by
+        /// <paramref name="limit"/> rather than by the capsule's token budget, because the
+        /// caller asked for exactly this one section.
+        /// </summary>
+        internal static CapsuleTierPage BuildTierPage(
+            IEdgeStore edgeStore,
+            IDeclarationStore declarationStore,
+            string snapshotId,
+            SymbolId symbolId,
+            string tierName,
+            int maxHops,
+            bool includeGenerated,
+            int offset,
+            int limit)
+        {
+            var info = declarationStore.GetSymbolInfo(symbolId.Value, snapshotId)
+                ?? throw new InvalidOperationException($"Symbol '{symbolId.Value}' not found in snapshot '{snapshotId}'.");
+
+            var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated);
+            var builder = ResolveTierBuilder(context, tierName)
+                ?? throw new ArgumentException($"Unknown tier '{tierName}'. Valid tiers: {string.Join(", ", TierNames)}.");
+
+            var items = builder.Build();
+            var page = items.Skip(offset).Take(limit).ToList();
+
+            return new CapsuleTierPage(
+                tierName,
+                symbolId.Value,
+                info.FullyQualifiedName ?? symbolId.Value,
+                info.Kind.ToString(),
+                items.Count,
+                offset,
+                page,
+                offset + page.Count < items.Count);
         }
 
         internal static void AddTierToCapsule(ContextCapsule capsule, string tierName, List<CapsuleItem> items)

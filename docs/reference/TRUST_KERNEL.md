@@ -1272,15 +1272,92 @@ tests/Lurp.Storage.Tests.csproj --filter
 — 29/29 pass. `dotnet build src/Lurp.csproj -c Release` — 0 warnings, 0
 errors.
 
-Not done (out of scope for this slice): `impact` path grouping/truncation
-cursor, context-capsule `--tier=<name>&--cursor=<c>` continuation, `status
---detail=documents`, and `--output=summary|json|jsonl`/`--quiet` — all
-listed in the plan's §3.6 but not implemented here.
+Not done in this slice: `impact` path grouping/truncation cursor,
+context-capsule `--tier=<name>&--cursor=<c>` continuation, `status
+--detail=documents`, and `--output=summary|json|jsonl`/`--quiet` — all listed
+in the plan's §3.6. **These landed separately; see §PR-7 (remainder) below.**
 
-Remaining from the remediation plan (PR-1 through PR-5 landed; this PR-7
-slice covers only the pagination mechanism for symbol search; PR-6, PR-8,
-and the rest of PR-7's §3.6 surfaces are out of scope for this change — not
-started).
+Remaining from the remediation plan as of this slice (PR-1 through PR-5
+landed; this slice covers only the pagination mechanism for symbol search;
+PR-6, PR-8, and the rest of PR-7's §3.6 surfaces were out of scope here).
+
+### PR-7 (remainder) — impact grouping, tier continuation, and output modes (2026-08-03)
+
+Completes the plan's §3.6 surfaces left out of the pagination slice above.
+Source: `LURP-INDEPENDENT-EVALUATION.md` finding D8 (external planning
+artifact, user's desktop, not part of this repository).
+
+**Defect:** a budget-exhausted capsule tier was honestly declared in
+`omittedTiers` but could not be fetched; a 1,700-line impact payload had no
+grouping or page boundary; `status --json` always emitted the full
+196-document manifest; and every read wrote its whole payload to stdout with
+no concise or streaming form.
+
+**Fix:**
+- `src/Storage/SequenceCursor.cs` (new) — `SequenceCursor`
+  (`SnapshotId`, `Fingerprint`, `Kind`, `Offset`) with base64-JSON
+  `Encode`/`TryDecode` and a `Validate(snapshotId, fingerprint, kind)` that
+  rejects a cursor from a different snapshot, query, or sequence kind. Used
+  for the two offset-shaped sequences (impact paths, tier items), distinct
+  from `SearchCursor`'s keyset shape; each handler decodes with its own type
+  only, so there is no shared cross-decoding path.
+- `src/Handlers/ImpactHandler.cs` — `--max-paths=<n>` (default 50) with
+  `truncated.{reason,total,remaining,cursor}` and `--cursor=`. `groups`
+  (paths by first hop) is computed over *all* paths before the page is cut,
+  so the fan-out summary stays complete under truncation. Paths are sorted by
+  path key for cursor stability.
+- `src/Handlers/ContextHandler.cs`, `src/Workspace/ContextAssembler.cs` —
+  `--tier=<name> --tier-limit=<n> --cursor=` fetches one tier on its own with
+  no budget applied, which is how an `omittedTiers` `budget_exhausted` entry
+  is acted on. The capsule states that continuation in-band via an
+  `InclusionReasons["omittedTiers.budget_exhausted"]` entry.
+- `src/Handlers/StatusHandler.cs` — `--detail=<list>`; the per-document
+  version map is summarized as `documentCount` unless `documents`/`all` is
+  requested. Separate from `SnapshotManifest.Save`, so the order-7
+  `--output-json=` one-way export is untouched.
+- `src/Handlers/HandlerBootstrap.cs`, `src/Program.cs` —
+  `--output=<summary|json|jsonl>` and `--quiet` shared across the four read
+  commands, plus a consolidated READ-COMMAND OPTIONS help block. `jsonl` is
+  rejected for a whole capsule (single-document payload). `--quiet` gates the
+  freshness stderr line and reduces `--mode=context` stdout to the written
+  capsule path — never the file itself.
+- `src/README.md` — documents these flags and the pre-existing
+  `--cursor`/`--freshness`/`--require-fresh` from PR-5/PR-7, which the README
+  had never carried, in one shared read-command-options section.
+
+**Budget truthfulness is preserved, not asserted.** The unconditional
+inclusion-reason entry is emitted in `PopulateContractSections`, which runs
+*before* `CapsuleBudgetEnforcer.Enforce` — conditioning it on an existing
+omission would miss the tiers the enforcer clears later, and emitting it
+after the enforcer would leave its own cost outside the measurement.
+`CapsuleBudgetEnforcer.Measure` counts it via
+`SerializedChars(capsule.InclusionReasons)`, so `estimatedTokens` still
+describes the emitted artifact. Verified as a uniform **+49** token shift
+across all three baseline scenarios (1828→1877, 1776→1825, 3733→3782), which
+matches the entry's ~196 serialized chars ÷ 4.
+
+**Tests:** `tests/OutputContinuationTests.cs` (new) covers impact grouping,
+`path_count_total`, page truncation and continuation, tier continuation,
+`status --detail`, and the output modes. It is the only consumer of the
+changed impact JSON shape — the outcome benchmark uses `--mode=context`, and
+no doc or handler parses impact output.
+
+Validation (narrow filter, not a full run): `dotnet test
+tests/Lurp.Storage.Tests.csproj -c Release --filter
+"FullyQualifiedName~OutcomeBenchmark|FullyQualifiedName~OutputContinuation|FullyQualifiedName~ContextCapsuleAcceptance|FullyQualifiedName~CapsuleBudgetEnforcer"`
+— 21/21 pass, with `tests/benchmark-runs/baseline.json` unchanged by the run
+(so the checked-in baseline matches the code on disk). A wider filter adding
+`ContextBudgeter`/`ContextTypeAnchorContract` passed 30/30. `dotnet build
+src/Lurp.csproj -c Release` — 0 warnings, 0 errors.
+
+**Open follow-up:** `SearchCursor` has no `Validate` counterpart to
+`SequenceCursor`'s — it trusts its decoded values. No CLI path feeds a cursor
+to the wrong decoder today, so this is a latent asymmetry rather than a
+defect, but the guard belongs on both.
+
+Remaining from the remediation plan: PR-1 through PR-5 and PR-7 landed; PR-6
+landed as commit `bdf252c` but has no section in this document; PR-8
+(semantic-surface invalidation) is not started.
 
 ## Explicitly postponed
 

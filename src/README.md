@@ -10,6 +10,19 @@ lurp --mode=index --solution=MySolution.sln --output-dir=./out
 
 This creates `./out/index.db` containing all indexed symbols, edges, and source facts.
 
+## Read-command options
+
+Accepted by every read command — `--mode=search`, `--mode=find-symbol`, `--mode=impact`, and `--mode=context`.
+
+| Argument | Required | Description |
+|---|---|---|
+| `--output=<summary\|json\|jsonl>` | No | Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{"type":"meta"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document. |
+| `--quiet` | No | Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself. |
+| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto` — stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
+| `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
+
+Every read response carries a `freshness` block reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, so a stale read is never presented as a current one.
+
 ## Modes
 
 ### `--mode=index`
@@ -85,6 +98,9 @@ Full-text search over source text and symbols.
 | `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
+| `--cursor=<token>` | No | Continue from a previous page's `nextCursor` (`--type=symbol` only). |
+
+Also accepts the shared [read-command options](#read-command-options).
 
 ---
 
@@ -102,6 +118,10 @@ Resolve a symbol by fully qualified name.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
+
+Also accepts the shared [read-command options](#read-command-options).
+
+`declarationCount` is scoped to the requested snapshot, so a non-partial type reports `1` however many historical declarations retention still holds; a partial type reports its true multiplicity in that snapshot.
 
 ---
 
@@ -138,7 +158,13 @@ Trace the impact path of a changed symbol.
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 10). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
+| `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
+| `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+Also accepts the shared [read-command options](#read-command-options).
+
+Every response carries `groups`: the paths grouped by first hop, computed over *all* paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated.
 
 ---
 
@@ -162,10 +188,15 @@ Assemble a context capsule for a symbol or source location.
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
+| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied — this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `directCallees`, `directCallers`, `registeredImplementations`, `relevantTests`, `secondDegreeContext`, `surroundingSource`. |
+| `--tier-limit=<n>` | No | Items per tier page (default: 25). |
+| `--cursor=<token>` | No | Continue a tier from its `next_cursor` (`--tier` only). |
 
 \* Either `--symbol` or both `--file` and `--line` must be provided.
 
-The capsule is written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout.
+Also accepts the shared [read-command options](#read-command-options).
+
+The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout; `--quiet` and `--output=summary` replace the stdout copy, never the file.
 
 ---
 
@@ -182,6 +213,7 @@ Show the current database status.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
 | `--json` | No | Emit structured JSON instead of plain text. |
+| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output. `documents` restores the per-document version map, which is otherwise summarized as `documentCount`; `all` expands every section. |
 
 ---
 

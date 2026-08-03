@@ -16,6 +16,7 @@ internal static class FindSymbolHandler
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var includeGenerated = args.Contains("--include-generated");
+        var outputMode = HandlerBootstrap.ParseOutputMode(args);
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
@@ -35,9 +36,9 @@ internal static class FindSymbolHandler
 
             var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(freshness);
+            HandlerBootstrap.PrintFreshnessLine(args, freshness);
 
-            var json = JsonSerializer.Serialize(new
+            var payload = new
             {
                 symbolId = info.SymbolId.Value,
                 docCommentId = info.SymbolId.DocCommentId,
@@ -49,9 +50,27 @@ internal static class FindSymbolHandler
                 isPartial = info.IsPartial,
                 snapshotId,
                 freshness = HandlerBootstrap.FreshnessJson(freshness)
-            }, new JsonSerializerOptions { WriteIndented = true });
+            };
 
-            Console.WriteLine(json);
+            switch (outputMode)
+            {
+                case OutputMode.Summary:
+                    Console.WriteLine($"{payload.fullyQualifiedName} ({payload.kind})");
+                    Console.WriteLine($"  symbolId: {payload.symbolId}");
+                    Console.WriteLine($"  declarations: {payload.declarationCount}  partial: {payload.isPartial}");
+                    Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
+                    break;
+
+                // A single symbol is one record, so jsonl is that record on one line —
+                // the same field contract, just streamable alongside other jsonl output.
+                case OutputMode.Jsonl:
+                    Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
+                    break;
+
+                default:
+                    Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
+                    break;
+            }
         }
         finally
         {

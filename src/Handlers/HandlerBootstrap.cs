@@ -3,11 +3,119 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
+/// <summary>
+/// How a read handler renders its payload. <see cref="Json"/> is the historical
+/// default and stays the default everywhere, so no existing consumer changes shape
+/// unless it asks to.
+/// </summary>
+internal enum OutputMode
+{
+    /// <summary>Human/agent-readable digest — counts, names, and the continuation token.</summary>
+    Summary,
+
+    /// <summary>One indented JSON document (the historical output).</summary>
+    Json,
+
+    /// <summary>
+    /// Newline-delimited JSON: a leading <c>{"type":"meta",...}</c> envelope followed by
+    /// one compact object per result, so a consumer can stream and stop early.
+    /// </summary>
+    Jsonl,
+}
+
 internal static class HandlerBootstrap
 {
     public static string? GetArgValue(string[] args, string prefix)
     {
         return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
+    }
+
+    public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+    public static readonly System.Text.Json.JsonSerializerOptions CompactJson = new() { WriteIndented = false };
+
+    /// <summary>
+    /// Parses <c>--output=summary|json|jsonl</c>. <paramref name="allowJsonl"/> is false for
+    /// surfaces whose payload is a single document rather than a sequence (the context
+    /// capsule): claiming to stream one object per line there would be a lie about the
+    /// shape, so it is rejected instead of silently degraded to <see cref="OutputMode.Json"/>.
+    /// </summary>
+    public static OutputMode ParseOutputMode(string[] args, bool allowJsonl = true)
+    {
+        var raw = GetArgValue(args, "--output=");
+        if (string.IsNullOrEmpty(raw))
+            return OutputMode.Json;
+
+        switch (raw.ToLowerInvariant())
+        {
+            case "summary":
+                return OutputMode.Summary;
+            case "json":
+                return OutputMode.Json;
+            case "jsonl" when allowJsonl:
+                return OutputMode.Jsonl;
+            case "jsonl":
+                Console.Error.WriteLine("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
+                Environment.Exit(1);
+                return OutputMode.Json;
+            default:
+                Console.Error.WriteLine($"ERROR: --output must be one of: summary, json{(allowJsonl ? ", jsonl" : "")}.");
+                Environment.Exit(1);
+                return OutputMode.Json;
+        }
+    }
+
+    /// <summary>
+    /// <c>--quiet</c> suppresses everything that is not the payload — the freshness
+    /// stderr line here, and additionally the stdout echo of an artifact that was also
+    /// written to a file (see <c>--mode=context</c>).
+    /// </summary>
+    public static bool IsQuiet(string[] args) => args.Contains("--quiet");
+
+    public static int ParsePositiveIntArg(string[] args, string prefix, int defaultValue)
+    {
+        var raw = GetArgValue(args, prefix);
+        if (string.IsNullOrEmpty(raw))
+            return defaultValue;
+
+        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
+        {
+            Console.Error.WriteLine($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
+            Environment.Exit(1);
+        }
+
+        return value;
+    }
+
+    /// <summary>
+    /// Decodes and validates a <see cref="SequenceCursor"/>, exiting 1 with an explicit
+    /// message rather than resuming an offset against a sequence it was not issued for.
+    /// </summary>
+    public static SequenceCursor? ResolveSequenceCursor(string[] args, string snapshotId, string fingerprint, string kind)
+    {
+        var raw = GetArgValue(args, "--cursor=");
+        if (string.IsNullOrEmpty(raw))
+            return null;
+
+        var cursor = SequenceCursor.TryDecode(raw);
+        if (cursor == null)
+        {
+            Console.Error.WriteLine("ERROR: --cursor is not a valid continuation token.");
+            Environment.Exit(1);
+            return null;
+        }
+
+        try
+        {
+            cursor.Validate(snapshotId, fingerprint, kind);
+        }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine($"ERROR: {ex.Message}");
+            Environment.Exit(1);
+            return null;
+        }
+
+        return cursor;
     }
 
     public static FreshnessMode ParseFreshnessMode(string[] args)
@@ -46,8 +154,11 @@ internal static class HandlerBootstrap
         }
     }
 
-    public static void PrintFreshnessLine(FreshnessStamp stamp)
+    public static void PrintFreshnessLine(string[] args, FreshnessStamp stamp)
     {
+        if (IsQuiet(args))
+            return;
+
         Console.Error.WriteLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}");
     }
 

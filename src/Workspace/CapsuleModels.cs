@@ -197,6 +197,21 @@ namespace Lurp.Workspace
         [property: JsonPropertyName("category")] string Category,
         [property: JsonPropertyName("reason")] string Reason);
 
+    /// <summary>
+    /// One capsule tier, fetched on its own and paged. Carries anchor identity only —
+    /// no anchor source, no other tiers, no paths — because the caller already has the
+    /// capsule this continues and is asking for the one section it could not fit.
+    /// </summary>
+    internal sealed record CapsuleTierPage(
+        string TierName,
+        string SymbolId,
+        string FullyQualifiedName,
+        string Kind,
+        int TotalItems,
+        int Offset,
+        List<CapsuleItem> Items,
+        bool HasMore);
+
     internal sealed class ContextCapsule
     {
         [JsonPropertyName("anchor")]
@@ -282,6 +297,14 @@ namespace Lurp.Workspace
         internal static readonly System.Text.Json.JsonSerializerOptions Options = new()
         {
             WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
+
+        // Same field contract, one line per document — used by --output=jsonl on the
+        // single-tier continuation, never for the capsule itself.
+        internal static readonly System.Text.Json.JsonSerializerOptions CompactOptions = new()
+        {
+            WriteIndented = false,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
 

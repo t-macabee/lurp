@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
 
@@ -6,6 +7,9 @@ namespace Lurp.Handlers;
 
 internal static class ContextHandler
 {
+    private const string CursorKind = "capsule-tier";
+    private const int DefaultTierLimit = 25;
+
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
@@ -23,6 +27,11 @@ internal static class ContextHandler
         var constraints = GetRepeatableArgs(args, "--constraint=");
         var topologyAnnotations = GetRepeatableArgs(args, "--topology-annotation=");
         var targetTopology = ParseTargetTopology(GetRepeatableArgs(args, "--target-hop="));
+        var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
+        // A capsule is one document, not a sequence, so jsonl is rejected rather than
+        // faked. A single-tier continuation *is* a sequence, so it may stream.
+        var outputMode = HandlerBootstrap.ParseOutputMode(args, allowJsonl: !string.IsNullOrEmpty(tierArg));
+        var quiet = HandlerBootstrap.IsQuiet(args);
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         bool hasSymbol = !string.IsNullOrEmpty(symbolArg);
@@ -45,6 +54,14 @@ internal static class ContextHandler
         try
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
+
+            if (!string.IsNullOrEmpty(tierArg))
+            {
+                RunTierContinuation(store, args, snapshotId, tierArg, symbolArg, fileArg, lineNumber,
+                    maxHops, includeGenerated, outputMode);
+                return;
+            }
+
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
             // Resolve the git root from the requested snapshot, not from the
             // latest complete snapshot — the capsule's verification suggestions
@@ -61,14 +78,112 @@ internal static class ContextHandler
 
             var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(freshness);
+            HandlerBootstrap.PrintFreshnessLine(args, freshness);
 
-            WriteCapsuleOutput(capsule, outputDirArg);
+            WriteCapsuleOutput(capsule, outputDirArg, outputMode, quiet);
         }
         finally
         {
             store.Close();
         }
+    }
+
+    /// <summary>
+    /// Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>): one capsule tier,
+    /// rebuilt outside the capsule budget and paged. This is the action a capsule's
+    /// <c>omittedTiers: budget_exhausted</c> entry previously admitted to but offered no
+    /// way to take.
+    /// </summary>
+    private static void RunTierContinuation(
+        SqliteIndexStore store, string[] args, string snapshotId, string tierArg,
+        string? symbolArg, string? fileArg, int? lineNumber, int maxHops, bool includeGenerated,
+        OutputMode outputMode)
+    {
+        if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal))
+        {
+            Console.Error.WriteLine($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
+            Environment.Exit(1);
+        }
+
+        var resolvedSymbol = !string.IsNullOrEmpty(symbolArg)
+            ? symbolArg
+            : store.ResolveSymbolByLocation(fileArg!, lineNumber!.Value, snapshotId, includeGenerated);
+        if (string.IsNullOrEmpty(resolvedSymbol))
+        {
+            Console.Error.WriteLine($"ERROR: no symbol found at {fileArg}:{lineNumber}; --tier needs an anchor symbol.");
+            Environment.Exit(1);
+            return;
+        }
+
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--tier-limit=", DefaultTierLimit);
+        var fingerprint = SequenceCursor.ComputeFingerprint(
+            resolvedSymbol, tierArg,
+            maxHops.ToString(CultureInfo.InvariantCulture),
+            includeGenerated.ToString());
+        var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
+        var offset = cursor?.Offset ?? 0;
+
+        var page = ContextAssembler.BuildTierPage(
+            store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tierArg,
+            maxHops, includeGenerated, offset, limit);
+
+        var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+        HandlerBootstrap.EnforceRequireFresh(args, freshness);
+        HandlerBootstrap.PrintFreshnessLine(args, freshness);
+
+        var nextCursor = page.HasMore
+            ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
+            : null;
+
+        if (outputMode == OutputMode.Summary)
+        {
+            Console.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
+            Console.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
+            foreach (var item in page.Items)
+                Console.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
+            if (nextCursor != null)
+                Console.WriteLine("  more available: re-run with --cursor=<nextCursor from --output=json>.");
+            return;
+        }
+
+        var meta = new
+        {
+            snapshot_id = snapshotId,
+            freshness = HandlerBootstrap.FreshnessJson(freshness),
+            symbol_id = page.SymbolId,
+            fully_qualified_name = page.FullyQualifiedName,
+            kind = page.Kind,
+            tier = page.TierName,
+            total_items = page.TotalItems,
+            offset = page.Offset,
+            next_cursor = nextCursor,
+            // The tier is rebuilt in isolation, so no capsule token budget applies here.
+            // Saying so keeps this page from being mistaken for a budgeted capsule section.
+            budget_applied = false,
+        };
+
+        if (outputMode == OutputMode.Jsonl)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+            foreach (var item in page.Items)
+                Console.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, ContextCapsuleJson.CompactOptions));
+            return;
+        }
+
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            meta.snapshot_id,
+            meta.freshness,
+            meta.symbol_id,
+            meta.fully_qualified_name,
+            meta.kind,
+            meta.tier,
+            meta.total_items,
+            meta.offset,
+            meta.next_cursor,
+            meta.budget_applied,
+            items = page.Items,
+        }, ContextCapsuleJson.Options));
     }
 
     private static ContextIntent ParseIntent(string intentArg)
@@ -110,7 +225,7 @@ internal static class ContextHandler
         return ln;
     }
 
-    private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg)
+    private static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet)
     {
         var json = ContextCapsuleJson.Serialize(capsule);
         var safeName = capsule.Anchor.SymbolId
@@ -121,7 +236,56 @@ internal static class ContextHandler
         var outputFileName = $"capsule-{safeName}.json";
         var outputPath = Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
         File.WriteAllText(outputPath, json);
+
+        // The capsule file is always written; only the stdout echo is optional. --quiet
+        // exists because the default duplicates an 81 KB artifact into the caller's
+        // context for no gain when the file path is all they needed.
+        if (quiet)
+        {
+            Console.WriteLine(outputPath);
+            return;
+        }
+
+        if (outputMode == OutputMode.Summary)
+        {
+            WriteCapsuleSummary(capsule, outputPath);
+            return;
+        }
+
         Console.WriteLine(json);
+    }
+
+    private static void WriteCapsuleSummary(ContextCapsule capsule, string outputPath)
+    {
+        Console.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
+        Console.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
+        Console.WriteLine($"  tokens: {capsule.EstimatedTokens}/{capsule.Budget}  truncated: {capsule.Truncated}");
+
+        foreach (var (name, count) in new (string, int)[]
+                 {
+                     ("contracts", capsule.Contracts.Count),
+                     ("directCallees", capsule.DirectCallees.Count),
+                     ("directCallers", capsule.DirectCallers.Count),
+                     ("registeredImplementations", capsule.RegisteredImplementations.Count),
+                     ("relevantTests", capsule.RelevantTests.Count),
+                     ("secondDegreeContext", capsule.SecondDegreeContext.Count),
+                     ("surroundingSource", capsule.SurroundingSource.Count),
+                 })
+        {
+            Console.WriteLine($"  {name,-28} {count}");
+        }
+
+        Console.WriteLine($"  incomingPaths: {capsule.IncomingPaths.Count}  outgoingPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
+
+        foreach (var omitted in capsule.OmittedTiers)
+        {
+            var continuation = ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal)
+                ? $" — fetch with --tier={omitted.Category}"
+                : string.Empty;
+            Console.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
+        }
+
+        Console.WriteLine($"  written: {outputPath}");
     }
 
     private static List<string> GetRepeatableArgs(string[] args, string prefix)
