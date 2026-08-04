@@ -57,6 +57,20 @@ The capsule is written to `./out` and includes the anchor source, contracts,
 callers and callees, relevant tests, likely change sites, evidence levels, and
 uncertainties within the requested budget.
 
+Hand a capsule over as a digest, and fetch any budget-exhausted tier unbudgeted:
+
+```bash
+# Summary mode prints the handoff facts instead of the full JSON: anchor,
+# snapshot, the two token estimates (content = what --budget bounded,
+# delivery = the whole emitted file, size the context window from it), and
+# each omitted tier with its fetch command.
+lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --output=summary
+
+# When the summary reports a tier as budget_exhausted, fetch that tier alone
+# with no budget applied; --tier= takes the category named in the summary.
+lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --tier=directCallers
+```
+
 ## What an agent gets
 
 - Exact source retrieved from the indexed document version.

@@ -220,4 +220,49 @@ public sealed class TestedByContractTests : IDisposable
         Assert.Contains("dotnet test", step.Command, StringComparison.Ordinal);
         Assert.Contains("FullyQualifiedName=", step.Command, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MethodAnchor_WithFullyQualifiedParameterTypes_ReceivesTypeLevelTestedByEvidence()
+    {
+        const string snapId = "snap-tc-fqparam";
+        const string methodId =
+            "M:eNote.App.StateMachine.Fire(eNote.Domain.InstrumentRental)|prod";
+        const string typeId = "T:eNote.App.StateMachine|prod";
+        const string testId = "M:eNote.Tests.StateMachineTests.Fire_Works|test";
+        var store = CreateStore();
+        SeedFkReferences(snapId);
+        store.SaveDeclarations(snapId, [MakeDecl(methodId), MakeDecl(typeId), MakeDecl(testId)]);
+        store.SaveEdges(snapId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = typeId,
+                TargetSymbolId = testId,
+                Kind = EdgeKind.TestedBy.ToString(),
+                Provenance = "framework_derived",
+                SnapshotId = snapId,
+                ExtractorVersion = "test-v3",
+            },
+        ]);
+
+        var symbolId = SymbolId.Parse(methodId);
+        var assembler = new ContextAssembler
+        {
+            EdgeStore = store,
+            DeclarationStore = store,
+            BindingIncompletenessStore = store,
+            SnapshotId = snapId,
+            SymbolId = symbolId,
+            Intent = ContextIntent.Inspect,
+            Budget = 100_000,
+            MaxHops = 3,
+            IncludeGenerated = false,
+        };
+
+        var capsule = assembler.Assemble();
+
+        Assert.Contains(
+            capsule.RelevantTests,
+            t => t.SymbolId == testId);
+    }
 }

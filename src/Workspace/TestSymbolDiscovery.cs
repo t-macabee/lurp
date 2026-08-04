@@ -25,7 +25,9 @@ internal static class TestSymbolDiscovery
             return null;
 
         var afterPrefix = docCommentId[2..];
-        var lastDot = afterPrefix.LastIndexOf('.');
+        var parenIndex = afterPrefix.IndexOf('(');
+        var methodNamePart = parenIndex >= 0 ? afterPrefix[..parenIndex] : afterPrefix;
+        var lastDot = methodNamePart.LastIndexOf('.');
         if (lastDot < 0)
             return null;
 

@@ -129,7 +129,7 @@ internal static class ImpactHandler
             {
                 case OutputMode.Summary:
                     WriteSummary(meta.symbol_id!, meta.direction, paths.Count, offset, page.Count, groups.Count,
-                        groups.Select(group => ($"{group.first_hop_target_symbol_id} [{group.edge_kind}]", group.path_count)),
+                        groups.Select(group => ($"{group.first_hop_source_symbol_id} → {group.first_hop_target_symbol_id} [{group.edge_kind}]", group.path_count)),
                         truncated);
                     break;
 

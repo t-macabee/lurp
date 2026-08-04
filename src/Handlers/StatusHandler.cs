@@ -39,15 +39,16 @@ internal static class StatusHandler
             }
 
             var includeDocuments = WantsDetail(args, "documents");
+            var includeCompleteness = WantsDetail(args, "completeness");
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
-                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments);
+                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeCompleteness);
                 return;
             }
 
             var freshness = await CheckCurrentWorkspaceAsync(store, solutionPathArg!);
-            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments);
+            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments, includeCompleteness);
         }
         finally
         {
@@ -89,7 +90,7 @@ internal static class StatusHandler
         Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
-    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments)
+    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeCompleteness)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
@@ -107,7 +108,7 @@ internal static class StatusHandler
                 note = "Pass --solution=path or set INDEXER_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot), includeDocuments),
+                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
                 latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
             }, JsonOutputOptions));
             return;
@@ -120,7 +121,7 @@ internal static class StatusHandler
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
-    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments)
+    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeCompleteness)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
@@ -144,7 +145,7 @@ internal static class StatusHandler
                 }),
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot), includeDocuments),
+                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
                 latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
             }, JsonOutputOptions));
             return;
@@ -190,11 +191,11 @@ internal static class StatusHandler
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot)
+    private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot, bool includeDetail)
     {
         var manifest = SnapshotManifest.FromStorageManifest(snapshot);
         var records = store.GetBindingIncompleteness(snapshot.SnapshotId);
-        manifest.Completeness = manifest.Completeness?.WithBindingIncompleteness(records, includeDetail: true);
+        manifest.Completeness = manifest.Completeness?.WithBindingIncompleteness(records, includeDetail);
         return manifest;
     }
 

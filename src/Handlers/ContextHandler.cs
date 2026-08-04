@@ -47,6 +47,11 @@ internal static class ContextHandler
             Environment.Exit(1);
         }
 
+        if (hasSymbol)
+        {
+            ValidateSymbolIdFormat(symbolArg!);
+        }
+
         var intent = ParseIntent(intentArg);
         var budget = ParsePositiveInt(budgetArg, 8000, "--budget");
         var maxHops = ParsePositiveInt(maxHopsArg, 3, "--max-hops");
@@ -202,6 +207,23 @@ internal static class ContextHandler
         };
     }
 
+    // SymbolId.Parse throws an unhandled FormatException on anything without the
+    // 'docCommentId|assemblyIdentity' pipe separator it requires. The easy mistake
+    // this catches: passing the fully-qualified name --mode=search prints (e.g.
+    // "T:Some.Type") instead of the resolvable symbolId --mode=find-symbol returns.
+    // Fail cleanly here instead of surfacing a raw stack trace out of ContextAssembler.
+    private static void ValidateSymbolIdFormat(string symbolArg)
+    {
+        if (!symbolArg.Contains('|'))
+        {
+            Console.Error.WriteLine(
+                $"ERROR: --symbol value '{symbolArg}' is not a resolvable symbolId " +
+                "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
+                "--fqn=<name> first and pass its exact symbolId, not a bare FQN or search result.");
+            Environment.Exit(1);
+        }
+    }
+
     private static int ParsePositiveInt(string? arg, int defaultValue, string flagName)
     {
         if (string.IsNullOrEmpty(arg))
@@ -274,9 +296,13 @@ internal static class ContextHandler
     {
         Console.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
         Console.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
-        // Both numbers, because they answer different questions: the first is what
-        // the budget bounded (content), the second is what loading the file costs.
-        Console.WriteLine($"  content tokens: {capsule.EstimatedTokens}/{capsule.Budget}  artifact tokens: ~{capsule.EstimatedArtifactTokens}  truncated: {capsule.Truncated}");
+        // The two numbers answer different questions and are not interchangeable:
+        // content is what --budget bounded, delivery is what loading the emitted
+        // file costs. The delivery number is always the larger; size a context
+        // window from it, never from content.
+        Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimatedTokens: the budget basis)");
+        Console.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimatedArtifactTokens: whole emitted file; size the context window from this)");
+        Console.WriteLine($"  truncated: {capsule.Truncated}");
 
         foreach (var (name, count) in new (string, int)[]
                  {

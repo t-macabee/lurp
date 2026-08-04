@@ -265,7 +265,7 @@ Show the current database status.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
 | `--json` | No | Emit structured JSON instead of plain text. |
-| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output. `documents` restores the per-document version map, which is otherwise summarized as `documentCount`; `all` expands every section. |
+| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output. `documents` restores the per-document version map; `completeness` restores per-document binding-incompleteness rows. Both are summarized by default; `all` expands every section. |
 
 ---
 

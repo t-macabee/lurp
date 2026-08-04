@@ -99,7 +99,7 @@ internal static class SearchHandler
                     foreach (var r in page.Items)
                     {
                         results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
-                        summaryLines.Add($"symbol  {r.FullyQualifiedName}  ({r.Kind})");
+                        summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
                     }
                     nextCursor = page.NextCursor;
                 }
@@ -109,7 +109,7 @@ internal static class SearchHandler
                     foreach (var r in symbolResults)
                     {
                         results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
-                        summaryLines.Add($"symbol  {r.FullyQualifiedName}  ({r.Kind})");
+                        summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
                     }
                 }
             }

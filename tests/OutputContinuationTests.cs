@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
@@ -131,6 +132,34 @@ public sealed class OutputContinuationTests : IDisposable
         return JsonDocument.Parse(captured.ToString());
     }
 
+    private static string RunImpactSummary(string outputDir, string symbolId, string direction)
+    {
+        string[] args =
+        [
+            $"--output-dir={outputDir}",
+            $"--symbol={symbolId}",
+            $"--direction={direction}",
+            $"--snapshot={ImpactSnapshot}",
+            "--freshness=off",
+            "--quiet",
+            "--output=summary",
+        ];
+
+        var originalOut = Console.Out;
+        using var captured = new StringWriter();
+        Console.SetOut(captured);
+        try
+        {
+            ImpactHandler.Run(args);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        return captured.ToString();
+    }
+
     [Fact]
     public void Impact_GroupsPathsByFirstHop_OverEveryPathNotJustTheReturnedPage()
     {
@@ -202,6 +231,103 @@ public sealed class OutputContinuationTests : IDisposable
         Assert.Contains("M:B|asm>M:B2|asm", seen);
         Assert.Contains("M:B|asm>M:B3|asm", seen);
         Assert.Contains("M:C|asm>M:C1|asm", seen);
+    }
+
+    [Fact]
+    public void ImpactSummary_LabelsBothEndsOfAnUpstreamFirstHop()
+    {
+        var dir = CreateImpactDatabase();
+
+        var summary = RunImpactSummary(dir, "M:B1|asm", "upstream");
+
+        Assert.Contains("M:B|asm → M:B1|asm [Calls]", summary, StringComparison.Ordinal);
+    }
+
+    // ---- search: actionable summary -----------------------------------------
+
+    private string CreateSearchDatabase()
+    {
+        var dir = NewTempDir();
+        var snapshotId = "snap-pr7-search";
+        using var store = new SqliteIndexStore(Path.Combine(dir, "index.db"));
+        store.Open();
+        store.RunMigrations();
+
+        var workspace = WorkspaceId.Create(dir, Path.Combine(dir, "Sample.slnx"));
+        store.SaveSnapshot(new SnapshotRow
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = workspace.Value,
+            GitRoot = workspace.GitRoot,
+            SolutionPath = workspace.SolutionPath,
+            CreatedAtUtc = DateTime.UtcNow,
+            Documents =
+            [
+                new DocumentVersion(System.Text.Encoding.UTF8.GetBytes("namespace Example; public class SearchTarget { }"))
+                {
+                    DocumentId = "doc-pr7-search",
+                    FilePath = "src/SearchTarget.cs",
+                    ContentHash = "hash-pr7-search",
+                    Encoding = "utf-8",
+                    LineStart = "[0]",
+                    LineStarts = "[0]",
+                    CreatedAtUtc = DateTime.UtcNow,
+                },
+            ],
+        });
+        store.SaveDeclarations(snapshotId,
+        [
+            new SymbolDeclaration
+            {
+                SymbolId = new SymbolId("T:Example.SearchTarget", "asm", "Example.SearchTarget"),
+                Kind = IndexedSymbolKind.Type,
+                DocumentVersionId = "doc-pr7-search:hash-pr7-search",
+                FullSpan = new DeclarationSpan(0, 48),
+                SignatureSpan = new DeclarationSpan(0, 48),
+                BodySpan = new DeclarationSpan(null, null),
+                NameSpan = new DeclarationSpan(32, 44),
+            },
+        ]);
+        store.BuildSearchIndex(snapshotId);
+        store.MarkSnapshotComplete(snapshotId);
+        store.Close();
+        return dir;
+    }
+
+    private static string RunSearchSummary(string outputDir)
+    {
+        var originalOut = Console.Out;
+        using var captured = new StringWriter();
+        Console.SetOut(captured);
+        try
+        {
+            SearchHandler.Run(
+            [
+                "--query=SearchTarget",
+                "--type=symbol",
+                $"--output-dir={outputDir}",
+                "--output=summary",
+                "--freshness=off",
+                "--quiet",
+            ]);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        return captured.ToString();
+    }
+
+    [Fact]
+    public void SearchSummary_IncludesTheSymbolIdForFollowUpQueries()
+    {
+        var dir = CreateSearchDatabase();
+
+        var summary = RunSearchSummary(dir);
+
+        Assert.Contains("T:Example.SearchTarget|asm", summary, StringComparison.Ordinal);
+        Assert.Contains("Example.SearchTarget", summary, StringComparison.Ordinal);
     }
 
     // ---- capsule: single-tier continuation ----------------------------------

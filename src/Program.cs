@@ -237,8 +237,9 @@ public class Program
         Console.WriteLine("                          ID are reported.");
         Console.WriteLine("    --json                Emit structured JSON instead of plain text.");
         Console.WriteLine("    --detail=<list>       Comma-separated sections to expand in --json output.");
-        Console.WriteLine("                          'documents' restores the per-document version map,");
-        Console.WriteLine("                          which is otherwise summarized as documentCount.");
+        Console.WriteLine("                          'documents' restores the per-document version map;");
+        Console.WriteLine("                          'completeness' restores per-document binding rows.");
+        Console.WriteLine("                          Both are summarized by default.");
         Console.WriteLine("                          'all' expands every section.");
         Console.WriteLine();
         Console.WriteLine("TIMINGS (--mode=timings)");

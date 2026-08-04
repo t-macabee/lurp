@@ -27,6 +27,38 @@ public sealed class CapsuleOutputPathTests : IDisposable
         Assert.NotEqual(outputPath, alternatePath);
     }
 
+    [Fact]
+    public void Summary_ExplainsContentAndDeliveryEstimates_AndTierRecovery()
+    {
+        var capsule = new ContextCapsule(new CapsuleAnchor("M:Example.Service.Run|asm", "global::Example.Service.Run", "Method", ""))
+        {
+            Budget = 4_000,
+            EstimatedTokens = 3_600,
+            EstimatedArtifactTokens = 9_200,
+            Truncated = true,
+        };
+        capsule.OmittedTiers.Add(new TruncationEntry("directCallers", "budget_exhausted"));
+
+        Directory.CreateDirectory(_outputDir);
+        var originalOut = Console.Out;
+        using var captured = new StringWriter();
+        Console.SetOut(captured);
+        try
+        {
+            ContextHandler.WriteCapsuleOutput(capsule, _outputDir, OutputMode.Summary, quiet: false);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        var summary = captured.ToString();
+        Assert.Contains("content tokens:  3600/4000", summary, StringComparison.Ordinal);
+        Assert.Contains("delivery tokens: ~9200", summary, StringComparison.Ordinal);
+        Assert.Contains("size the context window from this", summary, StringComparison.Ordinal);
+        Assert.Contains("fetch with --tier=directCallers", summary, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_outputDir))

@@ -673,6 +673,42 @@ public class MigrationRunnerTests : IDisposable
         }
 
         [Fact]
+        public void GetContainingTypeSource_MethodWithFullyQualifiedParameter_ReturnsContainingType()
+        {
+            var store = CreateStore();
+            var snapshotId = "snap-sym-containing-qualified-parameter";
+            const string methodId = "M:TestNs.Foo.Bar(TestNs.Models.Argument)|assembly1";
+            CreateSnapshotWithDocument(store, snapshotId);
+
+            var type = MakeDecl(
+                symbolId: "T:TestNs.Foo|assembly1",
+                docCommentId: "T:TestNs.Foo",
+                assembly: "assembly1",
+                kind: IndexedSymbolKind.Type,
+                docVersionId: "doc1:hash1",
+                fullS: 33, fullE: 112,
+                sigS: 33, sigE: 54,
+                bodyS: 54, bodyE: 112,
+                nameS: 50, nameE: 53);
+            var method = MakeDecl(
+                symbolId: methodId,
+                docCommentId: "M:TestNs.Foo.Bar(TestNs.Models.Argument)",
+                assembly: "assembly1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc1:hash1",
+                fullS: 56, fullE: 107,
+                sigS: 56, sigE: 82,
+                bodyS: 82, bodyE: 106,
+                nameS: 76, nameE: 79);
+            store.SaveDeclarations(snapshotId, [type, method]);
+
+            var source = store.GetContainingTypeSource(methodId, snapshotId);
+
+            Assert.NotNull(source);
+            Assert.Contains("public class Foo", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GetSymbolInfo_SymbolNotFound_ReturnsNull()
         {
             var store = CreateStore();

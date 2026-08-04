@@ -130,4 +130,27 @@ public sealed class CliDispatchTests
         Assert.Equal(1, exitCode);
         Assert.Contains("--output-dir", stdErr);
     }
+
+    /// <summary>
+    /// Regression for a real crash hit while testing against an external solution:
+    /// <c>SymbolId.Parse</c> throws an unhandled <see cref="FormatException"/> (raw
+    /// stack trace on stdout, no exit-code discipline) when <c>--symbol</c> is a bare
+    /// FQN/doc-comment ID instead of the 'docCommentId|assemblyIdentity' value
+    /// <c>--mode=find-symbol</c> returns. <c>--mode=get-source</c> needs no live
+    /// solution/database, so this doesn't need an indexed fixture to reach the check.
+    /// </summary>
+    [Fact]
+    public void Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace()
+    {
+        var (exitCode, _, stdErr) = Run(
+            "--mode=context",
+            "--symbol=T:eNote.Application.Features.Rentals.InstrumentRentals.Services.RentalCommandService",
+            "--output-dir=.");
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("ERROR:", stdErr);
+        Assert.Contains("not a resolvable symbolId", stdErr);
+        Assert.DoesNotContain("Unhandled exception", stdErr);
+        Assert.DoesNotContain("FormatException", stdErr);
+    }
 }

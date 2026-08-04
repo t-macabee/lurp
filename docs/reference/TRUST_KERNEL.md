@@ -1551,6 +1551,47 @@ class rename until `d648d26` and has not had its own green run since). The local
 equivalence evidence above is not a substitute: the defect was in the CI
 filter, not in the test.
 
+### External test against eNoteV2 and a `--mode=context` crash fix (2026-08-04)
+
+Ran Lurp's read path against a small slice of the external `eNoteV2` checkout
+(`eNote.sln`, 7 projects, indexed clean: 3,656 declarations, 10,193 edges, 128
+diagnostics, no CS8370 — confirms the language-version fix above still holds
+on a fresh external checkout). `search`, `find-symbol`, `--mode=context`
+(type anchor, `RentalCommandService`), and `--mode=impact` (234 upstream
+paths, paginated) all behaved correctly.
+
+**Found and fixed:** `--mode=context --symbol=<value>` crashed with an
+**unhandled `FormatException`** (raw .NET stack trace to stdout, no exit-code
+discipline) whenever `--symbol` was a bare FQN/doc-comment ID instead of the
+`docCommentId|assemblyIdentity` value `--mode=find-symbol` returns —
+`SymbolId.Parse` (`src/Storage/SymbolModels.cs:76`) throws directly and
+nothing on the `--mode=context` path caught it. Every other bad-input case in
+`ContextHandler` (missing `--symbol`/`--file`, bad `--budget`, unknown
+`--tier`) already degrades to a clean `ERROR:` line + exit 1; this one didn't.
+Likely trigger: copying the fully-qualified name `--mode=search` prints
+instead of running `--mode=find-symbol` first.
+
+Fixed with `ContextHandler.ValidateSymbolIdFormat` (`src/Handlers/ContextHandler.cs`):
+validates `--symbol` contains the `|` separator immediately after the
+existing `hasSymbol`/`hasFile` required-arg check, before any store or
+`SymbolId.Parse` call, and fails with a clean `ERROR:` message pointing at
+`--mode=find-symbol` as the fix. Regression test
+`Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace` added to
+`tests/CliDispatchTests.cs` (subprocess-level, matching that file's existing
+pattern) asserts exit 1, an `ERROR:` message, and no `FormatException`/
+`Unhandled exception` in stderr.
+
+**Investigated and not a bug:** the capsule output filename
+(`GetCapsuleOutputPath`, same file) appeared to embed an unsanitized assembly
+identity (commas, spaces, `=`) past the documented 128-char cap during the
+first eNoteV2 run. Root cause was a stale `src/bin/Release` binary predating
+the existing sanitize-and-hash logic, not a live defect — a clean rebuild
+reproduces the correct `capsule-...-<16-hex-hash>.json` shortened name.
+Recorded here only so this false lead isn't re-investigated.
+
+Validation: `CliDispatchTests` 8/8, `CapsuleOutputPathTests` unaffected
+(9/9). Full suite not re-run (targeted filter only, per house rule).
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

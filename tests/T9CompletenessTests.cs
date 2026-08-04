@@ -62,38 +62,7 @@ public sealed class T9CompletenessTests
         var testDir = CreateTempDirectory();
         try
         {
-            var dbPath = Path.Combine(testDir, "index.db");
-            var workspaceId = WorkspaceId.Create(testDir, Path.Combine(testDir, "Sample.slnx"));
-            var snapshotId = SnapshotId.New().ToString();
-
-            using (var store = OpenStore(dbPath))
-            {
-                store.SaveSnapshot(new SnapshotRow
-                {
-                    SnapshotId = snapshotId,
-                    WorkspaceId = workspaceId.Value,
-                    GitRoot = workspaceId.GitRoot,
-                    SolutionPath = workspaceId.SolutionPath,
-                    SdkVersion = "10.0.100",
-                    CompilerVersion = "5.6.0",
-                    CreatedAtUtc = DateTime.UtcNow,
-                    DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
-                    OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
-                    ExtractorVersion = "extractor-test-v2",
-                    ToolVersion = "tool-test-v2",
-                    Projects =
-                    [
-                        new ProjectRow { Name = "App", TargetFramework = "net10.0" },
-                    ],
-                    SkippedAdapters = ["EF Core"],
-                });
-                store.MarkSnapshotComplete(snapshotId);
-                store.SaveBindingIncompleteness(snapshotId,
-                [
-                    new BindingIncompletenessRecord("App", "A.cs", BindingIncompletenessReason.CompilerError, 3, "extractor-test-v2"),
-                    new BindingIncompletenessRecord("App", "B.cs", BindingIncompletenessReason.CompilerError, 5, "extractor-test-v2"),
-                ]);
-            }
+            (string dbPath, string snapshotId) = SeedStore(testDir);
 
             var originalOut = Console.Out;
             using var capturedOut = new StringWriter();
@@ -124,11 +93,98 @@ public sealed class T9CompletenessTests
             // rows, not silently read as zero while rows exist alongside it.
             Assert.Equal(8, completeness.GetProperty("binding_incompleteness_total").GetInt32());
             Assert.True(completeness.GetProperty("binding_incompleteness_summary").GetArrayLength() > 0);
+
+            // Compact by default: per-document detail rows are omitted.
+            Assert.Empty(completeness.GetProperty("binding_incompleteness").EnumerateArray());
         }
         finally
         {
             DeleteTempDirectory(testDir);
         }
+    }
+
+    [Fact]
+    public async Task StatusJson_WithDetailCompleteness_IncludesPerDocumentRows()
+    {
+        var testDir = CreateTempDirectory();
+        try
+        {
+            (string dbPath, string snapshotId) = SeedStore(testDir);
+
+            var originalOut = Console.Out;
+            using var capturedOut = new StringWriter();
+            Console.SetOut(capturedOut);
+            try
+            {
+                await Lurp.Handlers.StatusHandler.Run(
+                [
+                    $"--output-dir={testDir}",
+                    "--json",
+                    "--detail=completeness",
+                ]);
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
+
+            using var document = JsonDocument.Parse(capturedOut.ToString());
+            var manifest = document.RootElement.GetProperty("manifest");
+            var completeness = manifest.GetProperty("completeness");
+
+            Assert.Equal(8, completeness.GetProperty("binding_incompleteness_total").GetInt32());
+            Assert.True(completeness.GetProperty("binding_incompleteness_summary").GetArrayLength() > 0);
+
+            var detail = completeness.GetProperty("binding_incompleteness").EnumerateArray().ToList();
+            Assert.Equal(2, detail.Count);
+            Assert.Contains(detail, r =>
+                r.GetProperty("ProjectName").GetString() == "App" &&
+                r.GetProperty("DocumentPath").GetString() == "A.cs" &&
+                r.GetProperty("Reason").GetString() == "compiler_error" &&
+                r.GetProperty("Count").GetInt32() == 3);
+        }
+        finally
+        {
+            DeleteTempDirectory(testDir);
+        }
+    }
+
+    private static (string DbPath, string SnapshotId) SeedStore(string testDir)
+    {
+        var dbPath = Path.Combine(testDir, "index.db");
+        var workspaceId = WorkspaceId.Create(testDir, Path.Combine(testDir, "Sample.slnx"));
+        var snapshotId = SnapshotId.New().ToString();
+
+        using (var store = OpenStore(dbPath))
+        {
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = snapshotId,
+                WorkspaceId = workspaceId.Value,
+                GitRoot = workspaceId.GitRoot,
+                SolutionPath = workspaceId.SolutionPath,
+                SdkVersion = "10.0.100",
+                CompilerVersion = "5.6.0",
+                CreatedAtUtc = DateTime.UtcNow,
+                DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
+                OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
+                ExtractorVersion = "extractor-test-v2",
+                ToolVersion = "tool-test-v2",
+                Projects =
+                [
+                    new ProjectRow { Name = "App", TargetFramework = "net10.0" },
+                ],
+                SkippedAdapters = ["EF Core"],
+            });
+            store.MarkSnapshotComplete(snapshotId);
+            store.SaveBindingIncompleteness(snapshotId,
+            [
+                new BindingIncompletenessRecord("App", "A.cs", BindingIncompletenessReason.CompilerError, 3, "extractor-test-v2"),
+                new BindingIncompletenessRecord("App", "B.cs", BindingIncompletenessReason.CompilerError, 5, "extractor-test-v2"),
+            ]);
+        }
+
+        return (dbPath, snapshotId);
     }
 
     private static SnapshotManifest CreateManifest(string testDir, SnapshotCompleteness? completeness)
