@@ -10,12 +10,42 @@ namespace Lurp.Handlers;
 
 internal static class StatusHandler
 {
+    /// <summary>
+    /// Status renders one document, not a sequence, so it accepts the same
+    /// <c>--output=summary|json</c> vocabulary other read commands use (jsonl is rejected,
+    /// same as <c>--mode=context</c> for its non-tier path). <c>--json</c> is kept working
+    /// as a back-compat alias so existing callers are unaffected; the historical default
+    /// (neither flag given) stays the human-readable summary text.
+    /// </summary>
+    private static bool ResolveAsJson(string[] args)
+    {
+        var outputRaw = HandlerBootstrap.GetArgValue(args, "--output=");
+        if (string.IsNullOrEmpty(outputRaw))
+            return args.Contains("--json");
+
+        switch (outputRaw.ToLowerInvariant())
+        {
+            case "json":
+                return true;
+            case "summary":
+                return false;
+            case "jsonl":
+                Console.Error.WriteLine("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
+                Environment.Exit(1);
+                return false;
+            default:
+                Console.Error.WriteLine("ERROR: --output must be one of: summary, json.");
+                Environment.Exit(1);
+                return false;
+        }
+    }
+
     public static async Task Run(string[] args)
     {
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        var asJson = args.Contains("--json");
+        var asJson = ResolveAsJson(args);
 
         if (!File.Exists(dbPath))
         {

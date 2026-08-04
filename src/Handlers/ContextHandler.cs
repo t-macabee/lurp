@@ -15,6 +15,21 @@ internal static class ContextHandler
     // when the output directory itself is moderately nested.
     private const int MaxCapsuleFileNameLength = 128;
 
+    internal const int DefaultBudget = 8000;
+    // A type anchor's callee/caller tiers scale with member fan-out, so a capsule
+    // for a type routinely needs more room than a method anchor's. This default
+    // only applies when the caller omits --budget=; an explicit budget is always
+    // honored as-is.
+    internal const int DefaultTypeAnchorBudget = 16000;
+
+    internal static int DefaultBudgetFor(string? symbolArg) =>
+        symbolArg is not null && symbolArg.StartsWith("T:", StringComparison.Ordinal)
+            ? DefaultTypeAnchorBudget
+            : DefaultBudget;
+
+    internal static int DefaultBudgetFor(SymbolId symbolId) =>
+        symbolId.IsType ? DefaultTypeAnchorBudget : DefaultBudget;
+
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
@@ -53,7 +68,9 @@ internal static class ContextHandler
         }
 
         var intent = ParseIntent(intentArg);
-        var budget = ParsePositiveInt(budgetArg, 8000, "--budget");
+        var budget = string.IsNullOrEmpty(budgetArg)
+            ? DefaultBudgetFor(symbolArg)
+            : ParsePositiveInt(budgetArg, DefaultBudget, "--budget");
         var maxHops = ParsePositiveInt(maxHopsArg, 3, "--max-hops");
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
@@ -124,6 +141,13 @@ internal static class ContextHandler
             Environment.Exit(1);
             return;
         }
+
+        // Belt-and-suspenders: Run() already calls ValidateSymbolIdFormat(symbolArg) before
+        // ever dispatching here whenever --symbol is supplied (audited: this method is
+        // unreachable with an unvalidated user-supplied symbolArg today), and the file/line
+        // branch above always resolves to a well-formed persisted value. Re-validating here
+        // means this call stays safe even if a future caller stops going through Run()'s gate.
+        ValidateSymbolIdFormat(resolvedSymbol);
 
         var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--tier-limit=", DefaultTierLimit);
         var fingerprint = SequenceCursor.ComputeFingerprint(

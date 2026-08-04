@@ -14,7 +14,7 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
     {
         var results = new List<CapsuleItem>();
 
-        if (IsTypeAnchor(context.SymbolId))
+        if (context.SymbolId.IsType)
         {
             // A type anchor's surrounding/local source is its own declared
             // members (and the nested types it contains). Namespaces are not
@@ -40,11 +40,6 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
         AddSiblings(results, parentId, includeNestedTypes: true);
         return results;
     }
-
-    private static bool IsTypeAnchor(SymbolId symbolId)
-        => symbolId.DocCommentId.Length >= 2
-           && symbolId.DocCommentId[0] == 'T'
-           && symbolId.DocCommentId[1] == ':';
 
     private string? FindContainingParentId()
     {

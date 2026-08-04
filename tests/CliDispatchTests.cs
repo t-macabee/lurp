@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using Lurp.Storage;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace Lurp.Storage.Tests;
@@ -152,5 +154,67 @@ public sealed class CliDispatchTests
         Assert.Contains("not a resolvable symbolId", stdErr);
         Assert.DoesNotContain("Unhandled exception", stdErr);
         Assert.DoesNotContain("FormatException", stdErr);
+    }
+
+    /// <summary>
+    /// Regression for the same defect as <see cref="Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace"/>,
+    /// but through the <c>--tier=</c> continuation path: <c>ContextHandler.RunTierContinuation</c>
+    /// calls <c>SymbolId.Parse</c> directly on a user-supplied <c>--symbol</c> without going
+    /// through <c>ContextAssembler.ResolveAndAssemble</c>'s guarded path, so it did not inherit
+    /// the fix above. Unlike the plain-context case, reaching this call requires an open store
+    /// with a resolvable snapshot, so this needs a real (minimal) indexed fixture.
+    /// </summary>
+    [Fact]
+    public void ContextTierContinuation_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace()
+    {
+        var outputDir = CreateMinimalIndexDb();
+
+        var (exitCode, _, stdErr) = Run(
+            "--mode=context",
+            "--symbol=T:eNote.Application.Features.Rentals.InstrumentRentals.Services.RentalCommandService",
+            "--tier=directCallers",
+            $"--output-dir={outputDir}");
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("ERROR:", stdErr);
+        Assert.Contains("not a resolvable symbolId", stdErr);
+        Assert.DoesNotContain("Unhandled exception", stdErr);
+        Assert.DoesNotContain("FormatException", stdErr);
+    }
+
+    /// <summary>
+    /// The smallest fixture that gets a subprocess CLI call past store-open and snapshot
+    /// resolution: one workspace and one snapshot row, no symbols or edges. Sufficient because
+    /// the regression above needs to reach <c>RunTierContinuation</c>'s validation, not any
+    /// symbol data.
+    /// </summary>
+    private static string CreateMinimalIndexDb()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "lurp-cli-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var dbPath = Path.Combine(dir, "index.db");
+
+        var seed = new SqliteIndexStore(dbPath);
+        seed.Open();
+        seed.RunMigrations();
+        seed.Close();
+        seed.Dispose();
+        SqliteConnection.ClearAllPools();
+
+        using (var conn = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                VALUES ('ws-cli-dispatch', '/fake/root', 'test.sln');
+                INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, status)
+                VALUES ('snap-cli-dispatch', 'ws-cli-dispatch', '2026-01-01T00:00:00Z', 'complete');
+            ";
+            cmd.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+
+        return dir;
     }
 }

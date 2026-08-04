@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -163,7 +164,7 @@ public sealed class OutcomeBenchmarkTests : IDisposable
                 baselineStore,
                 baselineStore,
                 new ContextLookup(baselineSnapshot, anchor.SymbolId.Value, null, null),
-                new ContextAssemblyOptions(scenario.Intent, Budget: 8000),
+                new ContextAssemblyOptions(scenario.Intent, ContextHandler.DefaultBudgetFor(anchor.SymbolId)),
                 baselineStore);
         }
 

@@ -26,7 +26,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          dotnet test tests/Lurp.Storage.Tests.csproj
+          dotnet test tests/Lurp.Tests.csproj
           --no-build --configuration Release --verbosity normal
 
       - name: Flake guard (storage suite × 20)
@@ -35,7 +35,7 @@ jobs:
         shell: pwsh
         run: |
           for ($i = 1; $i -le 20; $i++) {
-            dotnet test tests/Lurp.Storage.Tests.csproj --no-build --configuration Release --nologo
+            dotnet test tests/Lurp.Tests.csproj --no-build --configuration Release --nologo
             if ($LASTEXITCODE -ne 0) { Write-Error "Flake detected on run $i"; exit 1 }
           }
 
@@ -43,7 +43,7 @@ jobs:
         # This test loads MSBuildWorkspace and exercises the real incremental/full
         # indexing paths end-to-end. A failure here blocks the merge.
         run: >
-          dotnet test tests/Lurp.Storage.Tests.csproj
+          dotnet test tests/Lurp.Tests.csproj
           --no-build
           --configuration Release
           --filter "FullyQualifiedName=Lurp.Storage.Tests.PipelineEquivalenceTest.IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange"

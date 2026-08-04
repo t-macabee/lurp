@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Lurp.Storage.Tests" />
+    <InternalsVisibleTo Include="Lurp.Tests" />
   </ItemGroup>
 
   <ItemGroup>

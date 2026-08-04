@@ -544,6 +544,25 @@ public sealed class OutputContinuationTests : IDisposable
         return JsonDocument.Parse(captured.ToString());
     }
 
+    private static async Task<string> RunStatusRaw(string outputDir, params string[] extraArgs)
+    {
+        string[] args = [$"--output-dir={outputDir}", .. extraArgs];
+
+        var originalOut = Console.Out;
+        using var captured = new StringWriter();
+        Console.SetOut(captured);
+        try
+        {
+            await Lurp.Handlers.StatusHandler.Run(args);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        return captured.ToString();
+    }
+
     [Fact]
     public async Task StatusJson_SummarizesTheDocumentManifestByDefault()
     {
@@ -574,5 +593,42 @@ public sealed class OutputContinuationTests : IDisposable
         var versions = manifest.GetProperty("documentVersions");
         Assert.Equal(3, versions.EnumerateObject().Count());
         Assert.False(manifest.TryGetProperty("documentCount", out _));
+    }
+
+    /// <summary>
+    /// Status historically required the bare <c>--json</c> flag while every other read
+    /// command accepts <c>--output=</c>; this locks in the added <c>--output=json</c> alias
+    /// producing the same manifest, and confirms <c>--json</c> still works unchanged.
+    /// </summary>
+    [Fact]
+    public async Task StatusOutputJson_MatchesTheLegacyJsonFlag()
+    {
+        var dir = CreateStatusDatabase();
+
+        var viaOutputFlag = await RunStatusRaw(dir, "--output=json");
+        var viaLegacyFlag = await RunStatusRaw(dir, "--json");
+
+        using var outputDoc = JsonDocument.Parse(viaOutputFlag);
+        using var legacyDoc = JsonDocument.Parse(viaLegacyFlag);
+        Assert.Equal(
+            legacyDoc.RootElement.GetProperty("manifest").GetProperty("extractorVersion").GetString(),
+            outputDoc.RootElement.GetProperty("manifest").GetProperty("extractorVersion").GetString());
+    }
+
+    /// <summary>
+    /// Neither flag and <c>--output=summary</c> must both fall through to the historical
+    /// human-readable text, not JSON: the default must not silently change shape for
+    /// existing callers that never pass either flag.
+    /// </summary>
+    [Fact]
+    public async Task StatusOutputSummary_AndNoFlag_BothStayHumanReadable()
+    {
+        var dir = CreateStatusDatabase();
+
+        var noFlag = await RunStatusRaw(dir);
+        var viaOutputFlag = await RunStatusRaw(dir, "--output=summary");
+
+        Assert.ThrowsAny<JsonException>(() => JsonDocument.Parse(noFlag));
+        Assert.ThrowsAny<JsonException>(() => JsonDocument.Parse(viaOutputFlag));
     }
 }

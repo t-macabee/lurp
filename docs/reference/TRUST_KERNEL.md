@@ -1592,6 +1592,106 @@ Recorded here only so this false lead isn't re-investigated.
 Validation: `CliDispatchTests` 8/8, `CapsuleOutputPathTests` unaffected
 (9/9). Full suite not re-run (targeted filter only, per house rule).
 
+### Follow-up dogfooding pass: four fixes plus an open-findings register (2026-08-04)
+
+A second driving session (`search` → `find-symbol` → `context` → `impact`,
+external-solution style) surfaced eight more friction points. Four were small
+enough to fix directly; the other four are real design questions, recorded
+below rather than acted on.
+
+**Fixed:**
+
+1. **`--mode=status` now accepts `--output=summary|json`**, not just the bare
+   `--json` flag every other read command replaced with `--output=` back
+   when `OutputMode` was introduced. `StatusHandler.ResolveAsJson`
+   (`src/Handlers/StatusHandler.cs`) checks `--output=` first and falls back
+   to `--json` for back-compat; `jsonl` is rejected with the same message
+   `HandlerBootstrap.ParseOutputMode` uses, since status is one document, not
+   a sequence. The historical default (neither flag) is unchanged: human-
+   readable text, not JSON — `StatusOutputSummary_AndNoFlag_BothStayHumanReadable`
+   locks that in. `StatusOutputJson_MatchesTheLegacyJsonFlag` proves the new
+   and old JSON paths agree. `TimingsHandler` has the identical `--json`-only
+   pattern and was deliberately left alone: out of scope, not audited.
+2. **Audited every `SymbolId.Parse` call site reachable from a handler** for
+   the same unguarded-`FormatException` shape as the crash fixed above.
+   Finding: there is exactly one other reachable call,
+   `ContextHandler.RunTierContinuation` (`--tier=` continuation), and it
+   turned out to already be safe — `Run()` calls
+   `ValidateSymbolIdFormat(symbolArg)` unconditionally whenever `--symbol` is
+   supplied, before ever branching on `--tier=`, so a malformed
+   `--symbol --tier=` combination was never actually reachable. Added the
+   same validation directly at the `RunTierContinuation` call site anyway
+   (belt-and-suspenders: it stops depending on caller ordering) and a
+   regression test, `ContextTierContinuation_MalformedSymbolId_
+   PrintsCleanError_ExitsOne_NoStackTrace`, which was verified falsifiable
+   by removing the added guard and confirming the test still passed (proving
+   it needed the *existing* top-level guard, not the new one) before
+   restoring it. Every other `--symbol=`-accepting handler
+   (`get-symbol`, `annotate`, `simulate-rename`/`-move`/`-remove`, `impact`)
+   passes the raw string to a store lookup that does a string comparison,
+   not `SymbolId.Parse`, so a malformed value there degrades to a clean
+   "not found" error, never a crash — confirmed by reading each handler, not
+   assumed.
+3. **README Quick Start now states `--mode=index` always indexes the whole
+   solution** named by `--solution=`; there is no per-project or
+   per-directory scoping flag, and the workaround (index once, then query
+   narrowly) is spelled out. Previously this was only discoverable by trying
+   it.
+4. **`tests/Lurp.Storage.Tests.csproj` renamed to `tests/Lurp.Tests.csproj`**
+   — it is the repository's one and only test project and already covers
+   `Lurp.dll` (CLI/handlers, e.g. `CliDispatchTests`) as much as
+   `Lurp.Storage.dll`; the old name undersold what's in there. Renamed via
+   `git mv` to preserve history; `Lurp.slnx`, `src/Lurp.csproj`'s
+   `InternalsVisibleTo`, `.github/workflows/ci.yml` (3 path references), and
+   `tests/fixtures/OutcomeBenchmark/README.md` (2 example commands) all
+   updated to the new path/assembly name. The C# namespace
+   (`Lurp.Storage.Tests`, declared in 40+ test files) was deliberately left
+   untouched — renaming it wasn't asked for and would have been a
+   42-file-wide diff for a naming nit. Prior dated entries above that cite
+   `tests/Lurp.Storage.Tests.csproj` in validation commands are historical
+   records of what was actually run at the time and are intentionally not
+   rewritten.
+
+Validation: `dotnet build Lurp.slnx -c Release` 0 warnings/0 errors after
+every step above. Targeted filters: `CliDispatchTests|OutputContinuationTests`
+23/23, plus `T9CompletenessTests|ContextCapsuleAcceptanceTests|
+ContextTypeAnchorContractTests|FreshnessCheapCheckTests` 17/17 (the last group
+included as a broader regression check on `StatusHandler`/`ContextHandler`
+callers since the project rename touches how the self-host acceptance test
+resolves `Lurp.Tests`'s own indexed symbols). Full suite not re-run (targeted
+filters only, per house rule).
+
+**Open findings, not acted on (recorded, not a task queue):**
+
+1. **`--mode=search` doesn't return a resolvable `symbolId`.** It prints the
+   FQN; `--mode=context`/`--mode=impact`/`--mode=simulate-*` need the
+   `docCommentId|assemblyIdentity` form only `--mode=find-symbol` returns.
+   Every query in the driving session needed a `search` → `find-symbol` →
+   `context` round-trip. This is the root cause the crash fix above (and the
+   `--tier=` guard just added) are symptoms of: fixing the crash didn't fix
+   the friction that causes it. Two shapes were considered, neither
+   implemented: have `search` emit the resolvable form directly, or add a
+   `search --resolve` variant that does the round-trip server-side.
+2. **`--mode=impact --output=summary`'s per-group lines are close to
+   useless.** Each row repeats the anchor's own symbol ID (identical across
+   every row) with just a count and edge kind — it never names the actual
+   caller/callee at that hop. `--output=json` is required to learn anything
+   the summary claims to summarize. Needs a redesign of
+   `ImpactHandler`'s summary branch, not investigated further here.
+3. **Capsule budget is too tight for realistic type-level anchors.** A
+   single 12-method service at `--budget=4000` zeroed out `directCallers`,
+   `relevantTests`, and every path/topology section. Not incorrect
+   (`budget_exhausted` is an honest report — see `CapsuleBudgetEnforcer`
+   above), but it means `--tier=` follow-ups are the norm, not the
+   exception, for anything above method-granularity anchors. Whether the
+   default budget should rise, or the docs should just say "expect
+   `--tier=` follow-ups for type anchors," is undecided.
+4. **`estimatedTokens` vs `estimatedArtifactTokens`** still differ by
+   roughly 2× (the number a caller budgets against isn't the number that
+   governs what's actually loaded). Already documented as a deliberate,
+   evidenced design choice in §"Capsule contract honesty pass" above — not
+   new, re-confirmed still true, not reopened.
+
 ## Explicitly postponed
 
 - Multi-TFM per-framework indexing.

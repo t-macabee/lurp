@@ -6,6 +6,6 @@
     <Project Path="src/Storage/Lurp.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Lurp.Storage.Tests.csproj" />
+    <Project Path="tests/Lurp.Tests.csproj" />
   </Folder>
 </Solution>

@@ -17,6 +17,11 @@ lurp --mode=index --solution=MySolution.sln --output-dir=./out
 
 This creates `./out/index.db` containing all indexed symbols, edges, and source facts.
 
+`--mode=index` always indexes the entire solution named by `--solution=`; there is
+no per-project or per-directory scoping flag. To point Lurp at one part of a larger
+codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=search`,
+`--mode=context`, `--scope=`, etc.) — you cannot index a subset up front.
+
 ## Read-command options
 
 Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=impact`, and `--mode=context`.
@@ -190,7 +195,7 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000), reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached — typically `relevantTests` and `secondDegreeContext`. That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |

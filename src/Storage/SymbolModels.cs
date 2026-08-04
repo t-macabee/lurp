@@ -54,6 +54,9 @@ namespace Lurp.Storage
         public string AssemblyIdentity { get; }
         public string? FullyQualifiedName { get; }
 
+        public bool IsType =>
+            DocCommentId.Length >= 2 && DocCommentId[0] == 'T' && DocCommentId[1] == ':';
+
         public SymbolId(string docCommentId, string assemblyIdentity, string? fullyQualifiedName = null)
         {
             DocCommentId = docCommentId ?? throw new ArgumentNullException(nameof(docCommentId));

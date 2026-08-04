@@ -27,14 +27,14 @@ The ten architecture measures are recorded as named measures in the output. The 
 ## Run
 
 ```powershell
-dotnet test tests/Lurp.Storage.Tests.csproj --filter "FullyQualifiedName~OutcomeBenchmarkTests" --no-restore --no-build --verbosity normal -m:1
+dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutcomeBenchmarkTests" --no-restore --no-build --verbosity normal -m:1
 ```
 
 To choose an output path:
 
 ```powershell
 $env:LURP_OUTCOME_BENCHMARK_OUTPUT = "tests/benchmark-runs/baseline.json"
-dotnet test tests/Lurp.Storage.Tests.csproj --filter "FullyQualifiedName~OutcomeBenchmarkTests" --no-restore --no-build --verbosity normal -m:1
+dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutcomeBenchmarkTests" --no-restore --no-build --verbosity normal -m:1
 ```
 
 The runner uses a fresh temporary copy for each scenario, indexes it fully, assembles the capsule, applies the scenario edit, indexes incrementally, then performs a clean full index and compares the two snapshots with the repository's canonical equivalence assertion.
