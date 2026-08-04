@@ -301,6 +301,37 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         Assert.True(capsule.EstimatedArtifactTokens > capsule.EstimatedTokens);
     }
 
+    // The two figures answer different questions and a JSON-only consumer (an
+    // MCP tool result, no --help or summary line) must not have to know the
+    // distinction from prose. The tokenEstimate advisory restates both under
+    // role-named fields and is kept in sync by construction, so a consumer
+    // reading it cannot mistake the budget basis for the delivery size.
+    [Fact]
+    public void SettledCapsule_EmitsTokenEstimateAdvisoryRestatingBothFiguresUnderRoleNames()
+    {
+        var capsule = Capsule("public sealed class C { }");
+        for (var i = 0; i < 20; i++)
+            capsule.DirectCallers.Add(new CapsuleItem(
+                $"M:Caller{i}.Run|prod", "Method", $"Namespace.Caller{i}.Run", "compiler_proved", "Calls",
+                $"void Run{i}() {{ }}", null, "Direct compiler-resolved call.",
+                CapsuleRelationship.DirectCaller, direct: true));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100_000, tierPriority: ["directCallers"]);
+
+        var document = JsonDocument.Parse(ContextCapsuleJson.Serialize(capsule));
+        var advisory = document.RootElement.GetProperty("tokenEstimate");
+
+        // The advisory restates the two integer fields under role names, never
+        // duplicates a third independent figure: drift is impossible by design.
+        Assert.Equal(capsule.EstimatedTokens, advisory.GetProperty("budgetBasis").GetInt32());
+        Assert.Equal(capsule.EstimatedArtifactTokens, advisory.GetProperty("delivery").GetInt32());
+
+        // The advisory points the consumer at the field to size from, and
+        // declares what the budget basis measures, inline in the payload.
+        Assert.Equal("delivery", advisory.GetProperty("windowSizingField").GetString());
+        Assert.Contains("identity/provenance framing excluded", advisory.GetProperty("basis").GetString());
+    }
+
     [Fact]
     public void RepeatedTrimOfOneCategory_LeavesExactlyOneTerminalRecord()
     {

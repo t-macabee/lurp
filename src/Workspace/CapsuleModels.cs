@@ -272,6 +272,26 @@ namespace Lurp.Workspace
         List<CapsuleItem> Items,
         bool HasMore);
 
+    /// <summary>
+    /// Advisory restatement of the capsule's two token figures under role-named
+    /// fields. <c>budgetBasis</c> is what <c>--budget</c> bounded (the content
+    /// measure; per-item identity/provenance framing is excluded navigation
+    /// metadata). <c>delivery</c> is the whole emitted file the consumer must
+    /// reserve a context window for. The two are not interchangeable and
+    /// <c>delivery</c> is always the larger; <c>windowSizingField</c> names the
+    /// one to size from.
+    /// </summary>
+    internal sealed record TokenEstimateAdvisory(
+        [property: JsonPropertyName("budgetBasis")] int BudgetBasis,
+        [property: JsonPropertyName("delivery")] int Delivery)
+    {
+        [JsonPropertyName("basis")]
+        public string Basis => "content; per-item identity/provenance framing excluded";
+
+        [JsonPropertyName("windowSizingField")]
+        public string WindowSizingField => "delivery";
+    }
+
     internal sealed class ContextCapsule
     {
         [JsonPropertyName("anchor")]
@@ -345,6 +365,20 @@ namespace Lurp.Workspace
         /// </summary>
         [JsonPropertyName("estimatedArtifactTokens")]
         public int EstimatedArtifactTokens { get; set; }
+
+        /// <summary>
+        /// Advisory block restating <see cref="EstimatedTokens"/> and
+        /// <see cref="EstimatedArtifactTokens"/> under names that carry their
+        /// roles, so a consumer reading only the JSON payload : without
+        /// <c>--help</c> or the summary line : cannot mistake the budget basis
+        /// for the delivery size. Computed from the two integer fields, so it
+        /// is always in sync with them; <see cref="CapsuleBudgetEnforcer"/>'s
+        /// artifact-estimate fixed point converges on the full serialization
+        /// including this block.
+        /// </summary>
+        [JsonPropertyName("tokenEstimate")]
+        public TokenEstimateAdvisory TokenEstimate
+            => new(EstimatedTokens, EstimatedArtifactTokens);
 
         [JsonPropertyName("truncated")]
         public bool Truncated { get; set; }

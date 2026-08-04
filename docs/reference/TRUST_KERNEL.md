@@ -359,6 +359,24 @@ re-run: do that before merging.
    authority, but the tier-level greedy-prefix decisions are made on an
    incomplete measure, so tier *selection* can still be skewed. Low severity,
    worth tidying when that area is next touched.
+4. **`search` output cannot round-trip directly into `context`/`impact`/
+   `simulate-*`.** `search` prints a fully-qualified name, but those commands
+   need the `docCommentId|assemblyIdentity` form only `find-symbol` returns.
+   Confirmed during the eNoteV2 external read-path test (see "External test
+   against eNoteV2 and a `--mode=context` crash fix"): every query needed a
+   `search` → `find-symbol` → `context` round trip, and this mismatch was the
+   structural cause of the unhandled crash fixed in `ContextHandler.cs` in
+   that pass. Worth deciding whether `context`/`impact`/`simulate-*` should
+   accept a bare FQN or file+line directly and resolve the symbol ID
+   internally, rather than requiring the caller to already hold one.
+5. **Capsule budget defaults exhaust quickly on type-level anchors.** A single
+   mid-sized service type (12 methods) at `--budget=4000` zeroed out
+   `directCallers`, `relevantTests`, and every path/topology section in the
+   eNoteV2 test above. Not incorrect (`budget_exhausted` is honestly
+   reported per "Capsule budget truthfulness"), but it means a `--tier=`
+   follow-up is the norm rather than the exception for anything above method
+   granularity. Worth deciding whether the default budget should scale with
+   anchor kind, or whether type anchors should auto-tier.
 
 ### Convention-based DI and helper-mediated test evidence: framework-evidence contract (2026-08-01)
 
