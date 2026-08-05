@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-05T18:30:43.8597167Z",
+  "generatedAtUtc": "2026-08-05T22:23:24.8912386Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "f1dcab97eeecdf283cc9bd89561bcea8",
-        "fullSnapshot": "f1dcab97eeecdf283cc9bd89561bcea8",
+        "incrementalSnapshot": "febd30dcb26c872d09fb18f20212dd3c",
+        "fullSnapshot": "febd30dcb26c872d09fb18f20212dd3c",
         "equivalent": true,
         "error": null
       },
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "2fe7390f8d8a6dcf74d1df4f7ca10f77",
-        "fullSnapshot": "2fe7390f8d8a6dcf74d1df4f7ca10f77",
+        "incrementalSnapshot": "13330b0a7d2ff1128828ebf725d4a2db",
+        "fullSnapshot": "13330b0a7d2ff1128828ebf725d4a2db",
         "equivalent": true,
         "error": null
       },
@@ -314,9 +314,57 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 3963,
+        "estimatedTokens": 5126,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "runtime:unknown"
+            ]
+          },
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "T:Outcome.Composition.BackgroundRefreshService|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          },
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "runtime:unknown"
+            ]
+          },
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "T:Outcome.Composition.BackgroundRefreshService|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+            ]
+          },
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "runtime:unknown"
+            ]
+          },
+          {
+            "RelationshipKind": "Registers",
+            "Description": "Unmodeled registration construct: the \u0027Registers\u0027 edge was emitted with \u0027runtime_unknown\u0027 provenance because the registration form (e.g. AddHostedService\u003CT\u003E, Configure\u003CT\u003E) is not fully modeled. The concrete type was resolved but the runtime semantics of how the container activates it are not captured.",
+            "SymbolIds": [
+              "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+              "runtime:unknown"
+            ]
+          },
           {
             "RelationshipKind": "binding_incompleteness",
             "Description": "131 binding(s) in Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
@@ -350,6 +398,14 @@
             "Relevance": "relevant"
           },
           {
+            "Tier": "registeredImplementations",
+            "Fqn": "global::Outcome.Composition.BackgroundRefreshService",
+            "SymbolId": "T:Outcome.Composition.BackgroundRefreshService|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Registers",
+            "Provenance": "runtime_unknown",
+            "Relevance": "unclassified"
+          },
+          {
             "Tier": "relevantTests",
             "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
             "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -368,7 +424,7 @@
         ],
         "relevantCount": 1,
         "irrelevantCount": 0,
-        "unclassifiedCount": 3
+        "unclassifiedCount": 4
       },
       "contracts": {
         "expected": [],
@@ -396,8 +452,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "3b8f4050a15b635549d4db874d7fce85",
-        "fullSnapshot": "3b8f4050a15b635549d4db874d7fce85",
+        "incrementalSnapshot": "05a2f8b68890bf371a2d33e8327f0311",
+        "fullSnapshot": "05a2f8b68890bf371a2d33e8327f0311",
         "equivalent": true,
         "error": null
       },

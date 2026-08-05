@@ -11,14 +11,17 @@ namespace Lurp.Storage.Tests;
 /// tests/fixtures/CapsuleAudit (see its README for the finding→pattern map).
 ///
 /// Test labels follow AGENTS.md:
-/// - ACCEPTANCE (findings 1, 6, 7): the intended product behavior. Finding 1
+/// - ACCEPTANCE (findings 1, 2, 6, 7): the intended product behavior. Finding 1
 ///   became acceptable when Task #1 landed (unmodeled registrations must never
-///   report "empty"); findings 6 and 7 guard against regression.
-/// - CHARACTERIZATION (findings 2, 3, 4, 5): proves the current behavior,
-///   including the deficiency. These are NOT acceptance tests. When Task #4
-///   (framework contract facts) or Task #5 (EF declarative constraints) lands,
-///   the corresponding characterization assertion must be flipped to its
-///   acceptance form — that flip is the scoreboard doing its job.
+///   report "empty"); finding 2 became acceptable when Task #4 landed
+///   (framework contract facts: BackgroundService base type and the
+///   ExecuteAsync override in the contracts tier); findings 6 and 7 guard
+///   against regression.
+/// - CHARACTERIZATION (findings 3, 4, 5): proves the current behavior,
+///   including the deficiency. These are NOT acceptance tests. When Task #5
+///   (EF declarative constraints) lands, the corresponding characterization
+///   assertion must be flipped to its acceptance form — that flip is the
+///   scoreboard doing its job.
 /// </summary>
 public sealed class CapsuleAuditScoreboardTests : IDisposable
 {
@@ -61,21 +64,28 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
             u => u.Description.Contains("Unmodeled registration construct", StringComparison.Ordinal));
     }
 
-    // CHARACTERIZATION — Finding 2 (High), Task #4 pending. Current behavior:
-    // the ExecuteAsync code is shown ("code shown") but the BackgroundService
-    // base-type contract (framework entry point, StopHost exception behavior)
-    // is NOT carried by the contracts tier ("contract missing"). When Task #4
-    // lands, flip the DoesNotContain below into its acceptance form.
+    // ACCEPTANCE — Finding 2 (High), Task #4 landed. The contracts tier now
+    // carries the BackgroundService base-type fact (the framework entry point
+    // with the StopHost exception contract), and the ExecuteAsync override is
+    // identifiable as a framework contract member (edgeKind Overrides) rather
+    // than merely a caller of ProcessBatchAsync.
     [SkippableFact]
-    public async Task Finding2_RethrowStopsHost_CodeShownContractMissing_Characterization()
+    public async Task Finding2_RethrowStopsHost_CodeShownContractPresent_Acceptance()
     {
         var capsule = await CapsuleForAsync(OutboxPublisherFqn);
 
         Assert.Contains("ExecuteAsync", capsule.Anchor.Source, StringComparison.Ordinal);
 
-        // The deficiency being characterized: no BackgroundService contract fact.
-        Assert.DoesNotContain(capsule.Contracts,
+        // The BackgroundService base-type contract fact.
+        Assert.Contains(capsule.Contracts,
             i => i.FullyQualifiedName.Contains("BackgroundService", StringComparison.Ordinal));
+
+        // The ExecuteAsync override is identifiable as a framework entry point:
+        // carried by the contracts tier as an override of the framework member,
+        // not only as a caller of ProcessBatchAsync.
+        Assert.Contains(capsule.Contracts,
+            i => i.FullyQualifiedName.Contains("ExecuteAsync", StringComparison.Ordinal)
+              && i.EdgeKind == EdgeKind.Overrides.ToString());
     }
 
     // MIXED — Finding 3 (High), Task #5 pending. Acceptance part (audit "what
