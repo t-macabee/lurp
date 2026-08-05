@@ -11,15 +11,13 @@ internal static class SimulateRenameHandler
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
-            Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-rename.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-rename.");
         }
 
         var newNameArg = HandlerBootstrap.GetArgValue(args, "--new-name=");
         if (string.IsNullOrEmpty(newNameArg))
         {
-            Console.Error.WriteLine("ERROR: --new-name=<name> is required for --mode=simulate-rename.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --new-name=<name> is required for --mode=simulate-rename.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");

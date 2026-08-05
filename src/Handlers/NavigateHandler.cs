@@ -15,8 +15,7 @@ internal static class NavigateHandler
         var outputDir = HandlerBootstrap.ResolveOutputDir(args);
         if (string.IsNullOrEmpty(file) || !int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out line) || line < 1)
         {
-            Console.Error.WriteLine("ERROR: --file=<relative-path> and positive --line=<number> are required for --mode=navigate.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --file=<relative-path> and positive --line=<number> are required for --mode=navigate.");
         }
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDir);
@@ -28,8 +27,7 @@ internal static class NavigateHandler
             var target = new FastTravelQueries(store, store).Navigate(file!, line, snapshot!, args.Contains("--include-generated"));
             if (target == null)
             {
-                Console.Error.WriteLine($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
             }
             Console.WriteLine(JsonSerializer.Serialize(new { snapshotId = snapshot, target }, new JsonSerializerOptions { WriteIndented = true }));
         }

@@ -10,8 +10,7 @@ internal static class FindSymbolHandler
         var fqnArg = HandlerBootstrap.GetArgValue(args, "--fqn=");
         if (string.IsNullOrEmpty(fqnArg))
         {
-            Console.Error.WriteLine("ERROR: --fqn=<name> is required for --mode=find-symbol.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --fqn=<name> is required for --mode=find-symbol.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
@@ -30,8 +29,7 @@ internal static class FindSymbolHandler
             var info = store.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
             if (info == null)
             {
-                Console.Error.WriteLine($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
             }
 
             var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);

@@ -25,6 +25,20 @@ internal enum OutputMode
 
 internal static class HandlerBootstrap
 {
+    /// <summary>
+    /// The single error+exit idiom for handlers: writes <paramref name="message"/> to stderr
+    /// and terminates with <paramref name="code"/>. Marked <c>[DoesNotReturn]</c> so callers
+    /// keep the definite-assignment and nullability behaviour they had when calling
+    /// <see cref="Environment.Exit(int)"/> inline.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+    public static void Fail(string message, int code = 1)
+    {
+        Console.Error.WriteLine(message);
+        Environment.Exit(code);
+        throw new InvalidOperationException("unreachable: Environment.Exit does not return");
+    }
+
     public static string? GetArgValue(string[] args, string prefix)
     {
         return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
@@ -54,12 +68,10 @@ internal static class HandlerBootstrap
             case "jsonl" when allowJsonl:
                 return OutputMode.Jsonl;
             case "jsonl":
-                Console.Error.WriteLine("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
-                Environment.Exit(1);
+                Fail("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
                 return OutputMode.Json;
             default:
-                Console.Error.WriteLine($"ERROR: --output must be one of: summary, json{(allowJsonl ? ", jsonl" : "")}.");
-                Environment.Exit(1);
+                Fail($"ERROR: --output must be one of: summary, json{(allowJsonl ? ", jsonl" : "")}.");
                 return OutputMode.Json;
         }
     }
@@ -79,8 +91,7 @@ internal static class HandlerBootstrap
 
         if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
         {
-            Console.Error.WriteLine($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
-            Environment.Exit(1);
+            Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
         }
 
         return value;
@@ -99,8 +110,7 @@ internal static class HandlerBootstrap
         var cursor = SequenceCursor.TryDecode(raw);
         if (cursor == null)
         {
-            Console.Error.WriteLine("ERROR: --cursor is not a valid continuation token.");
-            Environment.Exit(1);
+            Fail("ERROR: --cursor is not a valid continuation token.");
             return null;
         }
 
@@ -110,8 +120,7 @@ internal static class HandlerBootstrap
         }
         catch (ArgumentException ex)
         {
-            Console.Error.WriteLine($"ERROR: {ex.Message}");
-            Environment.Exit(1);
+            Fail($"ERROR: {ex.Message}");
             return null;
         }
 
@@ -149,8 +158,7 @@ internal static class HandlerBootstrap
 
         if (stamp.State != "fresh")
         {
-            Console.Error.WriteLine($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.");
-            Environment.Exit(2);
+            Fail($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.", 2);
         }
     }
 
@@ -180,8 +188,7 @@ internal static class HandlerBootstrap
         var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
         if (string.IsNullOrEmpty(outputDirArg))
         {
-            Console.Error.WriteLine("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
-            Environment.Exit(1);
+            Fail("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
         }
 
         return outputDirArg;
@@ -192,8 +199,7 @@ internal static class HandlerBootstrap
         var dbPath = Path.Combine(Path.GetFullPath(outputDir), "index.db");
         if (!File.Exists(dbPath))
         {
-            Console.Error.WriteLine("ERROR: Index database not found at " + dbPath);
-            Environment.Exit(1);
+            Fail("ERROR: Index database not found at " + dbPath);
         }
 
         return dbPath;
@@ -214,8 +220,7 @@ internal static class HandlerBootstrap
         var snapshotId = store.GetLatestSnapshotId();
         if (snapshotId == null)
         {
-            Console.Error.WriteLine("ERROR: No snapshots found in the database.");
-            Environment.Exit(1);
+            Fail("ERROR: No snapshots found in the database.");
         }
 
         return snapshotId;

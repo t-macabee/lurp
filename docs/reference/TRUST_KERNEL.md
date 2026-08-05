@@ -85,7 +85,7 @@ way: evidence here cites git commits and named tests directly.
 | String literal matching known name | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` | `StringLiteral_MatchingTypeName_EmitsNameCandidateEdge` |
 | Runtime-unknown reflection target | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
 
-- All extractors in `src/Workspace/`; registered in `ExtractorRegistry` as `"reflection-v1"`; 9 unit tests in `UnitTest1.cs` lines 4580–4748; integrated with `UncertaintyDetector` for capsule uncertainty reporting.
+- All extractors in `src/Workspace/`; registered in `ExtractorRegistry` as `"reflection-v1"`; 9 unit tests in `tests/B6ReflectionExtractorTests.cs` (`MigrationRunnerTests.B6ReflectionTests`); integrated with `UncertaintyDetector` for capsule uncertainty reporting.
 
 ### Phase 15 verification: Context Capsules
 
@@ -364,6 +364,7 @@ surfaced by the existing header-based detection.
     What's missing is the human-readable fully-qualified name alongside the opaque
     symbol ID. Low severity; `--output=json` remains the richer view.
 3. **`ContextBudgeter` tier costing is still source-only.**
+   (Now `src/Workspace/ContextBudgeter.cs`, extracted from `ContextAssembler`.)
    `EstimateTokens(item.Source)` charges nothing for path-shaped tiers that
    carry no `Source`. Not observable in emitted capsules (`CapsuleBudgetEnforcer`
    re-measures the settled artifact and is the authority), but tier-level
@@ -404,7 +405,7 @@ surfaced by the existing header-based detection.
 ## Reclassified as done (2026-08-05)
 
 - **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests`.
-- **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeStore`, `SearchStore`, `SemanticDiffStore`, `BindingIncompletenessStore`.
+- **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeStore`, `SearchStore`, `SemanticDiffStore`, `BindingIncompletenessStore`. `SearchStore` has since become a facade in the same style (see the 2026-08-05 structural-decomposition change-log row).
 
 ## Change log (2026-07-27 → 2026-08-04)
 
@@ -413,6 +414,7 @@ Dated implementation records, newest first. Full text in
 
 | Date | Topic | Current state |
 |---|---|---|
+| 2026-08-05 | Structural decomposition pass (behavior-preserving) | Seven responsibility splits, no behavior change, `ISearchStore`/`IFrameworkAdapter` contracts untouched. `SearchStore` (695 lines) → facade over `SearchSourceStore` / `SearchSymbolStore` / `SearchIndexMaintenance`. `DependencyInjectionAdapter` → explicit/helper tiers + `DependencyInjectionConventionMatcher` (its private nested `ExtractionContext` renamed `DiExtractionContext` to avoid colliding with the top-level `Lurp.Adapters.ExtractionContext`). `ContextBudgeter`, `ContextCapsuleJson` (→ `CapsuleJsonSerialization.cs`), the four snapshot-manifest `JsonConverter`s (→ `SnapshotManifestJsonConverters.cs`), and `PrintHelp`/`PrintUnknownModeError` (→ `src/HelpText.cs`) each moved to their own file. New `HandlerBootstrap.Fail(message, code = 1)` (`[DoesNotReturn]`) is now the single handler error+exit idiom; all 49 inline `Console.Error.WriteLine` + `Environment.Exit` sites across 15 handler files migrated (`Program.cs`/`IndexRunner.cs` exits are not handler paths and were left alone). `tests/UnitTest1.cs` (6,620 lines) renamed `tests/MigrationRunnerTests.cs`; `B1MemberEdgeExtractorTests` and `B6ReflectionTests` extracted to their own files as `partial class MigrationRunnerTests` members, so every test's fully-qualified name is unchanged. **Correction to `ARCHITECTURE_ANALYSIS.md` §3.1:** its "6+ duplicate `IService`/`Service`/`Startup`/`FactAttribute` fixtures" are not C# declarations — they live inside `@"..."` verbatim strings as per-test Roslyn input source, which is why a dozen same-named types coexist in one namespace. Deduping them would merge deliberately-varying snippets and change what each test compiles; not done, and that row of the analysis should be treated as a misread. |
 | 2026-08-05 | Trust-kernel claim verification and correction | Two "Explicitly postponed" items reclassified as done: deterministic snapshot IDs are the production default (`SnapshotIdentity.Create` in `IndexRunner.RunFullIndexAsync:109`); `SqliteIndexStore` is already a facade over twelve decomposed stores. Open finding #2 (impact summary) corrected: the summary names caller/callee symbol IDs per hop, so "close to useless" was overstated — the gap is missing human-readable names, not missing structure. |
 | 2026-08-04 | Follow-up dogfooding pass: four fixes + open-findings register | `--mode=status` accepts `--output=summary\|json` (legacy `--json` still works); every `SymbolId.Parse` call site audited and double-guarded; README states `--mode=index` indexes the whole solution; test project renamed `tests/Lurp.Storage.Tests.csproj` → `tests/Lurp.Tests.csproj` (namespaces untouched). |
 | 2026-08-04 | External test against eNoteV2 and a `--mode=context` crash fix | `ContextHandler.ValidateSymbolIdFormat` fails cleanly (ERROR + exit 1, no stack trace) on malformed `--symbol`; regression test `Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace`. eNoteV2 indexed clean (3,656 declarations, 10,193 edges, 0 CS8370 — language-version fix holds externally). Capsule-filename false lead recorded as not-a-bug. |

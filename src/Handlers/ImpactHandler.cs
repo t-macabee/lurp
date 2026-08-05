@@ -15,8 +15,7 @@ internal static class ImpactHandler
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
-            Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
         }
 
         var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
@@ -32,8 +31,7 @@ internal static class ImpactHandler
         int maxDepth = 10;
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
         {
-            Console.Error.WriteLine("ERROR: --max-depth must be a positive integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
         }
 
         var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");

@@ -10,8 +10,7 @@ internal static class IndexHandler
         var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
         {
-            Console.Error.WriteLine("ERROR: --solution=path or INDEXER_SOLUTION_PATH is required and must point to an existing .sln file.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --solution=path or INDEXER_SOLUTION_PATH is required and must point to an existing .sln file.");
         }
 
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);

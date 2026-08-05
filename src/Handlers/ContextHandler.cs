@@ -58,8 +58,7 @@ internal static class ContextHandler
         bool hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
         if (!hasSymbol && !hasFile)
         {
-            Console.Error.WriteLine("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
         }
 
         if (hasSymbol)
@@ -128,8 +127,7 @@ internal static class ContextHandler
     {
         if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal))
         {
-            Console.Error.WriteLine($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
         }
 
         var resolvedSymbol = !string.IsNullOrEmpty(symbolArg)
@@ -137,8 +135,7 @@ internal static class ContextHandler
             : store.ResolveSymbolByLocation(fileArg!, lineNumber!.Value, snapshotId, includeGenerated);
         if (string.IsNullOrEmpty(resolvedSymbol))
         {
-            Console.Error.WriteLine($"ERROR: no symbol found at {fileArg}:{lineNumber}; --tier needs an anchor symbol.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: no symbol found at {fileArg}:{lineNumber}; --tier needs an anchor symbol.");
             return;
         }
 
@@ -240,11 +237,10 @@ internal static class ContextHandler
     {
         if (!symbolArg.Contains('|'))
         {
-            Console.Error.WriteLine(
+            HandlerBootstrap.Fail(
                 $"ERROR: --symbol value '{symbolArg}' is not a resolvable symbolId " +
                 "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
                 "--fqn=<name> first and pass its exact symbolId, not a bare FQN or search result.");
-            Environment.Exit(1);
         }
     }
 
@@ -255,8 +251,7 @@ internal static class ContextHandler
 
         if (!int.TryParse(arg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value < 1)
         {
-            Console.Error.WriteLine($"ERROR: {flagName} must be a positive integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: {flagName} must be a positive integer.");
         }
 
         return value;
@@ -269,8 +264,7 @@ internal static class ContextHandler
 
         if (!int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ln) || ln < 1)
         {
-            Console.Error.WriteLine("ERROR: --line must be a positive integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --line must be a positive integer.");
         }
 
         return ln;

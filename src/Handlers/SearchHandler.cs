@@ -11,8 +11,7 @@ internal static class SearchHandler
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg))
         {
-            Console.Error.WriteLine("ERROR: --query=<term> is required for --mode=search.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
         }
 
         var typeArg = HandlerBootstrap.GetArgValue(args, "--type=") ?? "all";
@@ -27,21 +26,18 @@ internal static class SearchHandler
         int limit = 20;
         if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit))
         {
-            Console.Error.WriteLine("ERROR: --limit must be an integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
         }
 
         int snippetTokens = 64;
         if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens))
         {
-            Console.Error.WriteLine("ERROR: --snippet-tokens must be an integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --snippet-tokens must be an integer.");
         }
 
         if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol")
         {
-            Console.Error.WriteLine("ERROR: --cursor is only supported with --type=symbol.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
         }
 
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
@@ -60,8 +56,7 @@ internal static class SearchHandler
                 cursor = SearchCursor.TryDecode(cursorArg);
                 if (cursor == null)
                 {
-                    Console.Error.WriteLine("ERROR: --cursor is not a valid cursor for this database.");
-                    Environment.Exit(1);
+                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid cursor for this database.");
                 }
             }
 
@@ -92,8 +87,7 @@ internal static class SearchHandler
                     }
                     catch (ArgumentException ex)
                     {
-                        Console.Error.WriteLine($"ERROR: {ex.Message}");
-                        Environment.Exit(1);
+                        HandlerBootstrap.Fail($"ERROR: {ex.Message}");
                         return;
                     }
                     foreach (var r in page.Items)

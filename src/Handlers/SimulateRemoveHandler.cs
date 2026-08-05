@@ -11,8 +11,7 @@ internal static class SimulateRemoveHandler
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
-            Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-remove.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-remove.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");

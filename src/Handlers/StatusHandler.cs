@@ -30,12 +30,10 @@ internal static class StatusHandler
             case "summary":
                 return false;
             case "jsonl":
-                Console.Error.WriteLine("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
                 return false;
             default:
-                Console.Error.WriteLine("ERROR: --output must be one of: summary, json.");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail("ERROR: --output must be one of: summary, json.");
                 return false;
         }
     }

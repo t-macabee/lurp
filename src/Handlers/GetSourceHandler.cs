@@ -9,8 +9,7 @@ internal static class GetSourceHandler
         var documentArg = HandlerBootstrap.GetArgValue(args, "--document=");
         if (string.IsNullOrEmpty(documentArg))
         {
-            Console.Error.WriteLine("ERROR: --document=<relative-path> is required for --mode=get-source.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=get-source.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
@@ -27,8 +26,7 @@ internal static class GetSourceHandler
 
             if (source == null)
             {
-                Console.Error.WriteLine($"ERROR: Document '{documentArg}' not found in snapshot.");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot.");
             }
 
             Console.Write(source);

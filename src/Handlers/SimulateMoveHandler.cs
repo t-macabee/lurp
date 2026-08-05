@@ -11,15 +11,13 @@ internal static class SimulateMoveHandler
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
-            Console.Error.WriteLine("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
         }
 
         var newNamespaceArg = HandlerBootstrap.GetArgValue(args, "--new-namespace=");
         if (string.IsNullOrEmpty(newNamespaceArg))
         {
-            Console.Error.WriteLine("ERROR: --new-namespace=<namespace> is required for --mode=simulate-move.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --new-namespace=<namespace> is required for --mode=simulate-move.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");

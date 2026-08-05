@@ -56,9 +56,8 @@ internal static class GetSymbolHandler
                     contextLines = parsed;
                 return new ViewSelection(ViewKind.Declaration, false, false, true, contextLines);
             default:
-                Console.Error.WriteLine($"ERROR: Unknown view kind '{viewArg}'.");
-                Console.Error.WriteLine("  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
-                Environment.Exit(1);
+                HandlerBootstrap.Fail($"ERROR: Unknown view kind '{viewArg}'." + Environment.NewLine +
+                    "  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
                 return new ViewSelection(ViewKind.Declaration, false, false, false, 3);
         }
     }
@@ -80,8 +79,7 @@ internal static class GetSymbolHandler
         var info = store.GetSymbolInfo(symbolArg, snapshotId);
         if (info == null)
         {
-            Console.Error.WriteLine($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
         }
 
         var json = JsonSerializer.Serialize(new
@@ -105,8 +103,7 @@ internal static class GetSymbolHandler
         var source = store.GetContainingTypeSource(symbolArg, snapshotId);
         if (source == null)
         {
-            Console.Error.WriteLine($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
         }
         Console.Write(source);
     }
@@ -116,8 +113,7 @@ internal static class GetSymbolHandler
         var source = store.GetSurroundingLines(symbolArg, snapshotId, contextLines);
         if (source == null)
         {
-            Console.Error.WriteLine($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
         }
         Console.Write(source);
     }
@@ -127,8 +123,7 @@ internal static class GetSymbolHandler
         var source = store.GetSymbolSource(symbolArg, snapshotId, viewKind, includeGenerated);
         if (source == null)
         {
-            Console.Error.WriteLine($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
         }
         Console.Write(source);
     }

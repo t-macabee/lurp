@@ -18,8 +18,7 @@ internal static class AuditHandler
         int fanOutThreshold = 20;
         if (!string.IsNullOrEmpty(fanOutThresholdArg) && !int.TryParse(fanOutThresholdArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out fanOutThreshold))
         {
-            Console.Error.WriteLine("ERROR: --fan-out-threshold must be an integer.");
-            Environment.Exit(1);
+            HandlerBootstrap.Fail("ERROR: --fan-out-threshold must be an integer.");
         }
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
