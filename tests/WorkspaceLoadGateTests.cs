@@ -145,9 +145,27 @@ public sealed class WorkspaceLoadGateTests
     private static ContextCapsule Capsule()
         => new(new CapsuleAnchor("anchor", "Anchor", "Type", ""));
 
-    private sealed class Tier(string name, List<CapsuleItem> items) : IContextTierBuilder
+    private sealed class Tier(string name, List<CapsuleItem> items, string? emptyReason = null) : IContextTierBuilder
     {
         public string Name => name;
+        string? IContextTierBuilder.EmptyReason => emptyReason;
         public List<CapsuleItem> Build() => items;
+    }
+
+    [Fact]
+    public void EmptyTier_WithUnmodeledConstructs_ReportsUnmodeledConstructReason()
+    {
+        var capsule = Capsule();
+        var tiers = new IContextTierBuilder[]
+        {
+            new Tier("directCallers", []),
+            new Tier("registeredImplementations", [], "unmodeled_construct"),
+        };
+
+        ContextBudgeter.Apply(capsule, tiers, budget: 100, runningTotal: 0, anchorBindingIsIncomplete: false);
+
+        Assert.Equal(2, capsule.OmittedTiers.Count);
+        Assert.Equal("empty", capsule.OmittedTiers[0].Reason);
+        Assert.Equal("unmodeled_construct", capsule.OmittedTiers[1].Reason);
     }
 }

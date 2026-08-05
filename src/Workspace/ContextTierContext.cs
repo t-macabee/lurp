@@ -7,6 +7,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
     private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
     private IReadOnlyList<string>? _effectiveSymbolIds;
+    private bool? _hasUnmodeledRegistrations;
 
     internal IEdgeStore EdgeStore { get; } = edgeStore;
     internal IDeclarationStore DeclarationStore { get; } = declarationStore;
@@ -81,6 +82,36 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         => EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
             .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
             .ToList();
+
+    internal bool HasUnmodeledRegistrations()
+    {
+        if (_hasUnmodeledRegistrations.HasValue)
+            return _hasUnmodeledRegistrations.Value;
+
+        foreach (var symbolId in EffectiveSymbolIds)
+        {
+            var incoming = EdgeStore.GetIncomingEdges(SnapshotId, symbolId);
+            foreach (var edge in incoming)
+            {
+                var sourceOutgoing = EdgeStore.GetOutgoingEdges(SnapshotId, edge.SourceSymbolId);
+                if (sourceOutgoing.Any(e => e.Kind == EdgeKind.Registers.ToString() && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
+                {
+                    _hasUnmodeledRegistrations = true;
+                    return true;
+                }
+            }
+
+            var outgoing = EdgeStore.GetOutgoingEdges(SnapshotId, symbolId);
+            if (outgoing.Any(e => e.Kind == EdgeKind.Registers.ToString() && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
+            {
+                _hasUnmodeledRegistrations = true;
+                return true;
+            }
+        }
+
+        _hasUnmodeledRegistrations = false;
+        return false;
+    }
 
     private IReadOnlyList<string> ComputeEffectiveSymbolIds()
     {

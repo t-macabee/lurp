@@ -23,7 +23,8 @@ namespace Lurp.Workspace
                 var items = tier.Build();
                 if (items.Count == 0)
                 {
-                    omittedTiers.Add(new TruncationEntry(tier.Name, emptyReason));
+                    var reason = tier.EmptyReason ?? emptyReason;
+                    omittedTiers.Add(new TruncationEntry(tier.Name, reason));
                     continue;
                 }
                 if (budgetExhausted)

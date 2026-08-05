@@ -6,6 +6,9 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 {
     string IContextTierBuilder.Name => "registeredImplementations";
 
+    string? IContextTierBuilder.EmptyReason =>
+        context.HasUnmodeledRegistrations() ? "unmodeled_construct" : null;
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

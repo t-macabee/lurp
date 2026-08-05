@@ -243,6 +243,36 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 TargetNodeKind = GraphNodeKind.RuntimePlaceholder,
             });
         }
+
+        var typeArgs = ResolveRegistrationTypeArgs(invocation, semanticModel);
+        if (typeArgs.Count == 0)
+            return;
+
+        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.AssemblyIdentity);
+        if (implTypeId == null)
+            return;
+
+        var concreteKey = (sourceId, implTypeId, EdgeKind.Registers.ToString());
+        if (ctx.Seen.Add(concreteKey))
+        {
+            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
+
+            ctx.Edges.Add(new EdgeRecord
+            {
+                SourceSymbolId = sourceId,
+                TargetSymbolId = implTypeId,
+                Kind = EdgeKind.Registers.ToString(),
+                Provenance = Provenance.RuntimeUnknown,
+                SnapshotId = ctx.SnapshotId,
+                ExtractorVersion = ctx.ExtractorVersion,
+                SourceDocumentPath = path,
+                SourceStartLine = sl,
+                SourceStartColumn = sc,
+                SourceEndLine = el,
+                SourceEndColumn = ec,
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+            });
+        }
     }
 
     /// <summary>

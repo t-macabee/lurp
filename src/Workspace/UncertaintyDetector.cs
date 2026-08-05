@@ -47,6 +47,7 @@ namespace Lurp.Workspace
             CollectDispatchUncertainties(capsule, neighborhood);
             CollectMissingReceiverConstraintUncertainties(capsule, neighborhood);
             CollectFrameworkConventionUncertainties(capsule, neighborhood);
+            CollectRuntimeUnknownUncertainties(capsule, neighborhood);
             CollectBindingIncompletenessUncertainties(capsule);
 
             if (!_includeGenerated)
@@ -174,6 +175,30 @@ namespace Lurp.Workspace
                         continue;
 
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
+                }
+            }
+        }
+
+        private void CollectRuntimeUnknownUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+        {
+            foreach (var symbolId in neighborhood)
+            {
+                var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
+                    .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
+
+                foreach (var edge in edges)
+                {
+                    if (edge.Kind != EdgeKind.Registers.ToString())
+                        continue;
+                    if (edge.Provenance != Provenance.RuntimeUnknown)
+                        continue;
+
+                    capsule.Uncertainties.Add(new UncertaintyEntry(
+                        [edge.SourceSymbolId, edge.TargetSymbolId],
+                        edge.Kind,
+                        $"Unmodeled registration construct: the '{edge.Kind}' edge was emitted with 'runtime_unknown' provenance " +
+                        "because the registration form (e.g. AddHostedService<T>, Configure<T>) is not fully modeled. " +
+                        "The concrete type was resolved but the runtime semantics of how the container activates it are not captured."));
                 }
             }
         }
