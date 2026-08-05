@@ -16,8 +16,13 @@ namespace Lurp.Storage
         private DeclarationWriteStore? _declWriter;
         private DeclarationReadStore? _declReader;
         private DeclarationMaintenanceStore? _declMaintenance;
-        private EdgeStore? _edgeStore;
-        private SearchStore? _searchStore;
+        private EdgeOperationsStore? _edgeOps;
+        private DiagnosticStore? _diagnostics;
+        private AnnotationStore? _annotations;
+        private ExtractorRegistryStore? _extractors;
+        private SearchSourceStore? _searchSource;
+        private SearchSymbolStore? _searchSymbols;
+        private SearchIndexMaintenance? _searchMaintenance;
         private SemanticDiffStore? _semanticDiffStore;
         private BindingIncompletenessStore? _bindingIncompletenessStore;
 
@@ -46,8 +51,13 @@ namespace Lurp.Storage
             _declWriter = new DeclarationWriteStore(_connection);
             _declReader = new DeclarationReadStore(_connection);
             _declMaintenance = new DeclarationMaintenanceStore(_connection);
-            _edgeStore = new EdgeStore(_connection);
-            _searchStore = new SearchStore(_connection);
+            _edgeOps = new EdgeOperationsStore(_connection);
+            _diagnostics = new DiagnosticStore(_connection);
+            _annotations = new AnnotationStore(_connection);
+            _extractors = new ExtractorRegistryStore(_connection);
+            _searchSource = new SearchSourceStore(_connection);
+            _searchSymbols = new SearchSymbolStore(_connection);
+            _searchMaintenance = new SearchIndexMaintenance(_connection);
             _semanticDiffStore = new SemanticDiffStore(_connection);
             _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
         }
@@ -73,8 +83,13 @@ namespace Lurp.Storage
             _declWriter = null;
             _declReader = null;
             _declMaintenance = null;
-            _edgeStore = null;
-            _searchStore = null;
+            _edgeOps = null;
+            _diagnostics = null;
+            _annotations = null;
+            _extractors = null;
+            _searchSource = null;
+            _searchSymbols = null;
+            _searchMaintenance = null;
             _semanticDiffStore = null;
             _bindingIncompletenessStore = null;
         }
@@ -198,67 +213,67 @@ namespace Lurp.Storage
         // ── IEdgeStore ─────────────────────────────────────────────────────
 
         public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
-            { EnsureOpen(); _edgeStore!.SaveEdges(snapshotId, edges); }
+            { EnsureOpen(); _edgeOps!.SaveEdges(snapshotId, edges); }
         public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
-            { EnsureOpen(); _edgeStore!.SaveDiagnostics(snapshotId, diagnostics); }
+            { EnsureOpen(); _diagnostics!.SaveDiagnostics(snapshotId, diagnostics); }
         public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
-            { EnsureOpen(); _edgeStore!.SaveAnnotations(snapshotId, annotations); }
+            { EnsureOpen(); _annotations!.SaveAnnotations(snapshotId, annotations); }
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
-            { EnsureOpen(); return _edgeStore!.GetEdges(snapshotId, symbolId); }
+            { EnsureOpen(); return _edgeOps!.GetEdges(snapshotId, symbolId); }
         public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
-            { EnsureOpen(); return _edgeStore!.GetDiagnostics(snapshotId, projectName); }
+            { EnsureOpen(); return _diagnostics!.GetDiagnostics(snapshotId, projectName); }
         public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
-            { EnsureOpen(); return _edgeStore!.GetAnnotations(snapshotId, symbolId); }
+            { EnsureOpen(); return _annotations!.GetAnnotations(snapshotId, symbolId); }
         public int CountEdges(string snapshotId)
-            { EnsureOpen(); return _edgeStore!.CountEdges(snapshotId); }
+            { EnsureOpen(); return _edgeOps!.CountEdges(snapshotId); }
         public int CountDiagnostics(string snapshotId)
-            { EnsureOpen(); return _edgeStore!.CountDiagnostics(snapshotId); }
+            { EnsureOpen(); return _diagnostics!.CountDiagnostics(snapshotId); }
         public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
-            { EnsureOpen(); return _edgeStore!.GetEdgesByKind(snapshotId, kind); }
+            { EnsureOpen(); return _edgeOps!.GetEdgesByKind(snapshotId, kind); }
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
-            { EnsureOpen(); return _edgeStore!.GetIncomingEdges(snapshotId, symbolId); }
+            { EnsureOpen(); return _edgeOps!.GetIncomingEdges(snapshotId, symbolId); }
         public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
-            { EnsureOpen(); return _edgeStore!.GetOutgoingEdges(snapshotId, symbolId); }
+            { EnsureOpen(); return _edgeOps!.GetOutgoingEdges(snapshotId, symbolId); }
         public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-            { EnsureOpen(); _edgeStore!.DeleteEdgesByDocumentPaths(snapshotId, documentPaths); }
+            { EnsureOpen(); _edgeOps!.DeleteEdgesByDocumentPaths(snapshotId, documentPaths); }
         public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
-            { EnsureOpen(); _edgeStore!.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities); }
+            { EnsureOpen(); _edgeOps!.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities); }
         public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
-            { EnsureOpen(); _edgeStore!.DeleteEdgesWithNullDocumentPathForSymbols(snapshotId, symbolIds); }
+            { EnsureOpen(); _edgeOps!.DeleteEdgesWithNullDocumentPathForSymbols(snapshotId, symbolIds); }
         public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
-            { EnsureOpen(); _edgeStore!.CopyEdgesToSnapshot(fromSnapshotId, toSnapshotId); }
+            { EnsureOpen(); _edgeOps!.CopyEdgesToSnapshot(fromSnapshotId, toSnapshotId); }
         public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
-            { EnsureOpen(); _edgeStore!.CopySnapshotDiagnostics(fromSnapshotId, toSnapshotId); }
+            { EnsureOpen(); _diagnostics!.CopySnapshotDiagnostics(fromSnapshotId, toSnapshotId); }
         public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
-            { EnsureOpen(); _edgeStore!.DeleteDiagnosticsByProjectNames(snapshotId, projectNames); }
+            { EnsureOpen(); _diagnostics!.DeleteDiagnosticsByProjectNames(snapshotId, projectNames); }
         public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
-            { EnsureOpen(); _edgeStore!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId); }
+            { EnsureOpen(); _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId); }
         public void DeleteOrphanEdges(string snapshotId)
-            { EnsureOpen(); _edgeStore!.DeleteOrphanEdges(snapshotId); }
+            { EnsureOpen(); _edgeOps!.DeleteOrphanEdges(snapshotId); }
         public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
-            { EnsureOpen(); _edgeStore!.UpsertExtractors(extractors); }
+            { EnsureOpen(); _extractors!.UpsertExtractors(extractors); }
         public bool HasStaleExtractorVersions(string snapshotId)
-            { EnsureOpen(); return _edgeStore!.HasStaleExtractorVersions(snapshotId); }
+            { EnsureOpen(); return _extractors!.HasStaleExtractorVersions(snapshotId); }
 
         // ── ISearchStore ───────────────────────────────────────────────────
 
         /// <inheritdoc/>
         public void BuildSearchIndex(string snapshotId)
-            { EnsureOpen(); _searchStore!.BuildSearchIndex(snapshotId); }
+            { EnsureOpen(); _searchMaintenance!.BuildSearchIndex(snapshotId); }
         /// <inheritdoc/>
         public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
-            { EnsureOpen(); _searchStore!.BuildSearchIndex(snapshotId, changedDocumentPaths, changedSymbolIds); }
+            { EnsureOpen(); _searchMaintenance!.BuildSearchIndex(snapshotId, changedDocumentPaths, changedSymbolIds); }
         /// <inheritdoc/>
         public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
-            { EnsureOpen(); _searchStore!.CopySearchIndexToSnapshot(fromSnapshotId, toSnapshotId); }
+            { EnsureOpen(); _searchMaintenance!.CopySearchIndexToSnapshot(fromSnapshotId, toSnapshotId); }
         public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
-            { EnsureOpen(); return _searchStore!.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens); }
+            { EnsureOpen(); return _searchSource!.SearchSource(query, snapshotId, limit, includeGenerated, snippetTokens); }
         public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
-            { EnsureOpen(); return _searchStore!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind); }
+            { EnsureOpen(); return _searchSymbols!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind); }
         public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
-            { EnsureOpen(); return _searchStore!.SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor); }
+            { EnsureOpen(); return _searchSymbols!.SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor); }
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
-            { EnsureOpen(); return _searchStore!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
+            { EnsureOpen(); return _searchSymbols!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
 
         // ── ISemanticDiffReadStore ─────────────────────────────────────────
 
