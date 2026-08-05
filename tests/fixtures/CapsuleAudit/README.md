@@ -1,0 +1,38 @@
+# Capsule audit scoreboard fixture
+
+This fixture implements Task #2 of `docs/reference/CAPSULE_AUDIT_MITIGATION.md`:
+it freezes the seven eNoteV2 audit findings (the headline table in
+`lurp_audit.txt`) as an in-repo regression scoreboard. The eNoteV2 corpus is
+external, so each finding's pattern is reproduced here with stand-in framework
+types (`BackgroundService`, `DbContext`, `IServiceCollection`, …) that Lurp's
+adapters match by short name — no external package dependencies.
+
+## Finding → pattern map
+
+| # | Finding | Sev | Reproduced by |
+|---|---------|-----|---------------|
+| 1 | Outbox registered in both hosts | Crit | `Infrastructure/RentalNotificationOutboxPublisher.cs` — `AddHostedService<T>` in a shared `AddApplicationServices()` extension called by both `Api/Program.cs` and `Worker/Program.cs` |
+| 2 | Rethrow stops host | High | Same file — `: BackgroundService` override of `ExecuteAsync` with a rethrow (`BackgroundServiceExceptionBehavior.StopHost` contract) |
+| 3 | Store reads fail open | High | `Infrastructure/ENoteContext.cs` — `HasQueryFilter` on `InstrumentRental`; `Infrastructure/RentalQueryService.cs` — `CurrentActor.StoreId` always resolves; corroborating `TenantIsolationTests` |
+| 4 | Unreachable `GuardInstrumentActive` | Med | Same filter plus `HasIndex(...).IsUnique().HasDatabaseName("UX_InstrumentRental_InstrumentId_ActiveOrApproved")`, string-matched by `InstrumentRentalRepository.SaveWithLockConflictMessageAsync` |
+| 5 | `ForStoreAudit` dead | Low | `RentalQueryService.GetForStoreAuditAsync` — declared, never called |
+| 6 | Cancel writes `ReturnedAt` | Low | `Infrastructure/RentalStateMachine.cs` — `Cancel` mutator |
+| 7 | Note-handling asymmetry | Low | Same file — `Reject` records `RejectionNote`, `Approve` drops the note |
+
+## Runner
+
+`tests/CapsuleAuditScoreboardTests.cs` indexes a temporary copy of this fixture
+(full strategy), assembles a `--intent=diagnose` capsule per anchor, and
+asserts one scoreboard entry per finding:
+
+- Findings 1, 6, 7 are **acceptance** tests (intended behavior today).
+- Findings 2, 3, 4, 5 are **characterization** tests of the current boundary
+  (Tasks #4/#5 pending; Finding 5 is an accepted declared boundary). They are
+  labelled as such in the test source. When the corresponding mitigation task
+  lands, flip the characterization assertion to its acceptance form.
+
+Run:
+
+```powershell
+dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~CapsuleAuditScoreboardTests" --verbosity normal
+```
