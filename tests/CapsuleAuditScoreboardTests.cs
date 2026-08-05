@@ -61,7 +61,7 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
         }
 
         Assert.Contains(capsule.Uncertainties,
-            u => u.Description.Contains("Unmodeled registration construct", StringComparison.Ordinal));
+            u => u.Description.Contains("Unmodeled construct:", StringComparison.Ordinal));
     }
 
     // ACCEPTANCE — Finding 2 (High), Task #4 landed. The contracts tier now

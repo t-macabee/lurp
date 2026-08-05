@@ -196,9 +196,7 @@ namespace Lurp.Workspace
                     capsule.Uncertainties.Add(new UncertaintyEntry(
                         [edge.SourceSymbolId, edge.TargetSymbolId],
                         edge.Kind,
-                        $"Unmodeled registration construct: the '{edge.Kind}' edge was emitted with 'runtime_unknown' provenance " +
-                        "because the registration form (e.g. AddHostedService<T>, Configure<T>) is not fully modeled. " +
-                        "The concrete type was resolved but the runtime semantics of how the container activates it are not captured."));
+                        DeclaredBoundaries.UncertaintyDescription(edge.Kind)));
                 }
             }
         }

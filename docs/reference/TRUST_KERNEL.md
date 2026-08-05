@@ -402,6 +402,28 @@ surfaced by the existing header-based detection.
 - Concurrency, daemon, or server architecture.
 - Explicit source-generator execution with a `GeneratorDriver`.
 
+## Declared boundaries registry (capsule audit Task 7)
+
+**Source:** `src/Workspace/DeclaredBoundaries.cs`
+
+This is the closed, single-source registry of construct classes Lurp
+deliberately does not model. The `RegisteredImplementationsTierBuilder`
+reports `"unmodeled_construct"` (not `"empty"`) when detected, and the
+`UncertaintyDetector` derives its runtime-unknown uncertainty descriptions
+from this registry.
+
+**Policy:** encountering a new unmodeled construct in the wild → add a
+registry entry here, not a new extractor. Extractor work requires an
+explicit scope decision recorded in `CAPSULE_AUDIT_MITIGATION.md`.
+
+| Id | Construct Class | Description |
+|---|---|---|
+| `di_hosted_service` | `AddHostedService<T>` | Hosted-service lifecycle registration — concrete type resolved, activation semantics not captured |
+| `di_options` | `Configure<T>` / `AddOptions<T>` | Options-pattern registration — options type resolved, configuration-binding semantics not captured |
+| `di_external_extension` | External IServiceCollection extension methods | External DI extension method detected — source outside compilation, registration semantics unknown |
+| `masstransit_consumer` | MassTransit consumer registration | No MassTransit adapter exists — consumer wiring edges never emitted |
+| `ef_convention` | EF Core model conventions beyond query filters and indexes | Fluent API model building (IsRequired, HasMaxLength, HasDefaultSchema, etc.) not modeled |
+
 ## Reclassified as done (2026-08-05)
 
 - **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests`.
@@ -414,6 +436,7 @@ Dated implementation records, newest first. Full text in
 
 | Date | Topic | Current state |
 |---|---|---|
+| 2026-08-06 | Capsule audit mitigation Task 7: declared boundaries registry | `DeclaredBoundaries.Known` (5 entries) in `src/Workspace/DeclaredBoundaries.cs` is the single-source registry of construct classes deliberately not modeled: DI hosted-service, options-pattern, external IServiceCollection extensions, MassTransit consumer, and EF conventions beyond query filters/indexes. `UncertaintyDetector.CollectRuntimeUnknownUncertainties` now reads its uncertainty description from the registry via `UncertaintyDescription()`. `RegisteredImplementationsTierBuilder` already reported `"unmodeled_construct"` (Task 1); this task makes the boundary list canonical and documented. Policy: encountering a new unmodeled construct → registry entry, not extractor. Documented in TRUST_KERNEL.md §Declared boundaries registry.
 | 2026-08-06 | Capsule audit mitigation Task 4: framework contract facts land in the contracts tier | `ContractsTierBuilder` now iterates `EffectiveSymbolIds` (member-level `Overrides` reach a type anchor), accepts `Inherits` edges (base-type contract facts), and surfaces unresolvable external targets (framework base types from referenced assemblies) as externally marked items derived from the persisted edge instead of dropping them — an external contract is never reported as absent. No new adapter: `SymbolStructuralEdgeExtractor` (`Inherits`/`Implements` with the target's own assembly identity) and `OverridesEdgeExtractor` already persisted the closed-list facts (BackgroundService, `IConsumer<T>`, `IEntityTypeConfiguration<T>`, DbContext overrides) compiler-proved per snapshot; the existing override machinery was reused, not duplicated. Scoreboard finding 2 flipped from characterization to acceptance (`Finding2_RethrowStopsHost_CodeShownContractPresent_Acceptance`). Tests: new `ContractsTierBuilderTests` (3); verified scoreboard + tier filter 10/10 and adjacent capsule filters 43/43; full-suite run pending user-side. |
 | 2026-08-05 | Capsule audit mitigation Task 3: budget bounds its stated basis | `CapsuleBudgetEnforcer` no longer delivers an over-budget `estimatedTokens`: when every trimmable section is cleared and the capsule still exceeds `--budget`, the anchor source itself is bounded to fit (recorded as `anchor`/`summarized`; the anchor is never dropped), and `anchor`/`budget_exhausted` is reserved for the pathological case where residual non-anchor content alone exceeds the budget. Trim order changed: `surroundingSource` (low-value bulk overlapping the anchor) is cleared before `inclusionReasons` and `affectedPublicSurfaces`, regardless of tier priority. `CapsuleAnchor.Source` gained a setter for the in-place bound; the `--budget` help text restates the guarantee. Tests: `AnchorAloneOverBudget_BoundsAnchorSourceToFitAndNeverDropsTheAnchor` (replaces the overflow-declaration test), new `AuditShapedCapsule_DeliversEstimateWithinBudgetOnTheStatedBasis` and `ForcedDrops_InclusionReasonsAndAffectedPublicSurfacesSurviveSurroundingSource`. Verified: `CapsuleBudgetEnforcerTests` 17/17, `GapCapsuleContract\|ContextCapsuleAcceptance\|ContextBudgeter\|ContextDefaultBudget` 16/16, `CapsuleAuditScoreboardTests` 7/7; full-suite run pending user-side. |
 | 2026-08-05 | `EdgeStore`/`SearchStore` middle facades collapsed (TASK_LIST 10) | `src/Storage/EdgeStore.cs` and `src/Storage/SearchStore.cs` deleted — both were pure one-line forwarding layers whose only non-delegating code was a constructor null-check. `SqliteIndexStore` now holds the seven leaf stores directly (`_edgeOps`, `_diagnostics`, `_annotations`, `_extractors`, `_searchSource`, `_searchSymbols`, `_searchMaintenance`), constructed in `Open()` and nulled in `Close()` alongside the snapshot-side leaves, and every `IEdgeStore`/`ISearchStore` member forwards straight to its leaf. `IEdgeStore`/`ISearchStore` contracts unchanged; no consumer held the concrete facade types, so this is consumer-invisible and zero call sites changed. Adding an edge-store method is now 3 edits (interface, leaf, `SqliteIndexStore`) instead of 4. Verified: build 4 projects / 0 warnings / 0 errors; edge+search filter 134/134 pass unmodified. |
