@@ -350,7 +350,6 @@ namespace Lurp.Workspace
                 .ToList();
             if (projects.Count >= 3)
             {
-                capsule.SuggestedVerification.Clear();
                 var solution = ResolveSolutionPath();
                 var command = solution == null ? "dotnet test" : $"dotnet test \"{solution}\"";
                 capsule.SuggestedVerification.Add(new VerificationSuggestion(
