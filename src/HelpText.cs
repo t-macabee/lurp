@@ -2,13 +2,17 @@
 // Owns: the human-readable mode/option reference printed by --help.
 // Must not contain: dispatch logic or handler calls.
 
+using System.Linq;
+
 namespace Lurp;
 
 internal static class HelpText
 {
     internal static void PrintUnknownModeError()
     {
-        Console.Error.WriteLine("ERROR: Unknown mode. Use --mode=index, --mode=get-source, --mode=get-symbol, --mode=search, --mode=find-symbol, --mode=navigate, --mode=diff, --mode=impact, --mode=context, --mode=status, --mode=timings, --mode=simulate-rename, --mode=simulate-move, --mode=simulate-remove, --mode=audit, --mode=annotate, or --mode=get-annotations.");
+        var modes = Program.ModeRegistry.Select(entry => $"--mode={entry.Name}").ToList();
+        var modeList = string.Join(", ", modes.Take(modes.Count - 1)) + ", or " + modes[^1];
+        Console.Error.WriteLine($"ERROR: Unknown mode. Use {modeList}.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
         Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
@@ -21,23 +25,8 @@ internal static class HelpText
         Console.WriteLine("lurp : Roslyn-native semantic context engine for C#");
         Console.WriteLine();
         Console.WriteLine("MODES");
-        Console.WriteLine("  --mode=index              Index a solution and store facts in the database.");
-        Console.WriteLine("  --mode=get-source          Retrieve source text for a document by relative path (--document=).");
-        Console.WriteLine("  --mode=get-symbol          Look up symbol metadata.");
-        Console.WriteLine("  --mode=search              Full-text search over source and symbols.");
-        Console.WriteLine("  --mode=find-symbol         Resolve a symbol by FQN.");
-        Console.WriteLine("  --mode=navigate            Resolve an indexed declaration by file and line.");
-        Console.WriteLine("  --mode=diff                Show semantic changes between two snapshots.");
-        Console.WriteLine("  --mode=impact              Trace the impact path of a changed symbol.");
-        Console.WriteLine("  --mode=context             Assemble a context capsule for a symbol.");
-        Console.WriteLine("  --mode=status              Show the current database status.");
-        Console.WriteLine("  --mode=timings             Show step-by-step timing data for a snapshot.");
-        Console.WriteLine("  --mode=simulate-rename     Simulate renaming a symbol and show affected references.");
-        Console.WriteLine("  --mode=simulate-move       Simulate moving a symbol to a new namespace.");
-        Console.WriteLine("  --mode=simulate-remove     Simulate removing a symbol and show cascading impact.");
-        Console.WriteLine("  --mode=audit               Run static analysis checks on the index.");
-        Console.WriteLine("  --mode=annotate            Attach a user-authored annotation to a symbol.");
-        Console.WriteLine("  --mode=get-annotations     Retrieve annotations for a symbol.");
+        foreach (var entry in Program.ModeRegistry)
+            Console.WriteLine($"  --mode={entry.Name.PadRight(20)}{entry.HelpText}");
         Console.WriteLine();
         Console.WriteLine("SEARCH (--mode=search)");
         Console.WriteLine("  Required:");

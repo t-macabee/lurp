@@ -283,9 +283,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         foreach (var (projectName, compilation) in affectedCompilations)
         {
             Console.Write($"  [{projectName}] ");
-            var options = new CompilationFactExtractor.ExtractionOptions(_skipAdapters,
-                LogWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                LogError: msg => Console.Error.Write($"  ERROR: {msg} "));
+            var options = CompilationFactExtractor.CreateOptions(_skipAdapters);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
 

@@ -42,6 +42,21 @@ public static class CompilationFactExtractor
         Func<IReadOnlySet<string>?, IFrameworkAdapter[]>? AdapterProvider = null
     );
 
+    /// <summary>
+    /// Shared factory for the pipeline options : one WARNING/ERROR console format
+    /// (line-oriented, no padding) used by every indexing pipeline (full,
+    /// incremental, and the cross-document refresh), so the same extractor message
+    /// renders identically regardless of which pipeline emitted it.
+    /// </summary>
+    public static ExtractionOptions CreateOptions(
+        IReadOnlySet<string>? skipAdapters = null,
+        IReadOnlySet<string>? scopeDocuments = null)
+        => new(
+            SkipAdapters: skipAdapters,
+            ScopeDocuments: scopeDocuments,
+            LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
+            LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
         var skipAdapters = options?.SkipAdapters;

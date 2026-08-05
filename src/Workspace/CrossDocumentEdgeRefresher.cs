@@ -124,10 +124,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (perProjectAffectedPaths.TryGetValue(project.Name, out var projectAffected) && projectAffected.Count > 0)
                 scopeDocs = projectAffected;
 
-            var options = new CompilationFactExtractor.ExtractionOptions(_skipAdapters,
-                LogWarning: msg => Console.Error.Write($"  WARNING: {msg} "),
-                LogError: msg => Console.Error.Write($"  ERROR: {msg} "),
-                ScopeDocuments: scopeDocs);
+            var options = CompilationFactExtractor.CreateOptions(_skipAdapters, scopeDocs);
             cancellationToken.ThrowIfCancellationRequested();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             result.EnsureRequiredSuccess();

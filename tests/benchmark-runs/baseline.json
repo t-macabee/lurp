@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-05T15:15:34.9056766Z",
+  "generatedAtUtc": "2026-08-05T18:30:43.8597167Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "f7fce9141ceb3cd790cb905dfde4cc87",
-        "fullSnapshot": "f7fce9141ceb3cd790cb905dfde4cc87",
+        "incrementalSnapshot": "f1dcab97eeecdf283cc9bd89561bcea8",
+        "fullSnapshot": "f1dcab97eeecdf283cc9bd89561bcea8",
         "equivalent": true,
         "error": null
       },
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "cad2dc28153671cf78264e85a186b6fc",
-        "fullSnapshot": "cad2dc28153671cf78264e85a186b6fc",
+        "incrementalSnapshot": "2fe7390f8d8a6dcf74d1df4f7ca10f77",
+        "fullSnapshot": "2fe7390f8d8a6dcf74d1df4f7ca10f77",
         "equivalent": true,
         "error": null
       },
@@ -396,8 +396,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "38405731cf8ff6679241483b89fced35",
-        "fullSnapshot": "38405731cf8ff6679241483b89fced35",
+        "incrementalSnapshot": "3b8f4050a15b635549d4db874d7fce85",
+        "fullSnapshot": "3b8f4050a15b635549d4db874d7fce85",
         "equivalent": true,
         "error": null
       },

@@ -38,7 +38,6 @@ internal static class ContextHandler
         var intentArg = HandlerBootstrap.GetArgValue(args, "--intent=") ?? "inspect";
         var budgetArg = HandlerBootstrap.GetArgValue(args, "--budget=");
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
-        var maxHopsArg = HandlerBootstrap.GetArgValue(args, "--max-hops=");
         var includeGenerated = args.Contains("--include-generated");
         var includeCompletenessDetail = args.Contains("--completeness-detail");
         var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
@@ -69,8 +68,8 @@ internal static class ContextHandler
         var intent = ParseIntent(intentArg);
         var budget = string.IsNullOrEmpty(budgetArg)
             ? DefaultBudgetFor(symbolArg)
-            : ParsePositiveInt(budgetArg, DefaultBudget, "--budget");
-        var maxHops = ParsePositiveInt(maxHopsArg, 3, "--max-hops");
+            : HandlerBootstrap.ParsePositiveIntArg(args, "--budget=", DefaultBudget);
+        var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
@@ -242,19 +241,6 @@ internal static class ContextHandler
                 "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
                 "--fqn=<name> first and pass its exact symbolId, not a bare FQN or search result.");
         }
-    }
-
-    private static int ParsePositiveInt(string? arg, int defaultValue, string flagName)
-    {
-        if (string.IsNullOrEmpty(arg))
-            return defaultValue;
-
-        if (!int.TryParse(arg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value < 1)
-        {
-            HandlerBootstrap.Fail($"ERROR: {flagName} must be a positive integer.");
-        }
-
-        return value;
     }
 
     private static int? ParseLineNumber(bool hasFile, string? lineArg)

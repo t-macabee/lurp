@@ -175,7 +175,7 @@ public static class IndexRunner
 
                 try
                 {
-                    var options = new CompilationFactExtractor.ExtractionOptions(skipAdapters, LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"), LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+                    var options = CompilationFactExtractor.CreateOptions(skipAdapters);
                     var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
                     result.EnsureRequiredSuccess();
 

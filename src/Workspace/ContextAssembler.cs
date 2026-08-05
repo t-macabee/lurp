@@ -253,65 +253,61 @@ namespace Lurp.Workspace
             capsule.LikelyChangeSites.Add(new LikelyChangeSite(path, rank, role, symbolId));
         }
 
-        private List<IContextTierBuilder> GetTierBuilders(ContextTierContext context)
-        {
-            IContextTierBuilder contracts = new ContractsTierBuilder(context);
-            IContextTierBuilder directCallees = new DirectCalleesTierBuilder(context);
-            IContextTierBuilder directCallers = new DirectCallersTierBuilder(context);
-            IContextTierBuilder registeredImplementations = new RegisteredImplementationsTierBuilder(context);
-            IContextTierBuilder relevantTests = new RelevantTestsTierBuilder(context);
-            IContextTierBuilder secondDegreeContext = new SecondDegreeContextTierBuilder(context);
-            IContextTierBuilder surroundingSiblings = new SurroundingSiblingsTierBuilder(context);
+        /// <summary>
+        /// Single registry of every tier a capsule can carry : the canonical name,
+        /// the factory that builds its builder, and the capsule collection the
+        /// builder's items are added to. <c>GetTierBuilders</c>, <c>ResolveTierBuilder</c>,
+        /// <c>TierNames</c>, and <c>AddTierToCapsule</c> are all derived from this
+        /// list, so adding a tier is exactly one edit here.
+        /// </summary>
+        private static readonly (string Name, Func<ContextTierContext, IContextTierBuilder> Factory, Func<ContextCapsule, List<CapsuleItem>> Collection)[] TierBuilders =
+        [
+            ("contracts", static context => new ContractsTierBuilder(context), static capsule => capsule.Contracts),
+            ("directCallees", static context => new DirectCalleesTierBuilder(context), static capsule => capsule.DirectCallees),
+            ("directCallers", static context => new DirectCallersTierBuilder(context), static capsule => capsule.DirectCallers),
+            ("registeredImplementations", static context => new RegisteredImplementationsTierBuilder(context), static capsule => capsule.RegisteredImplementations),
+            ("relevantTests", static context => new RelevantTestsTierBuilder(context), static capsule => capsule.RelevantTests),
+            ("secondDegreeContext", static context => new SecondDegreeContextTierBuilder(context), static capsule => capsule.SecondDegreeContext),
+            ("surroundingSource", static context => new SurroundingSiblingsTierBuilder(context), static capsule => capsule.SurroundingSource),
+        ];
 
-            return Intent switch
-            {
-                ContextIntent.Inspect =>
-                [
-                    contracts, directCallees, directCallers, registeredImplementations,
-                    relevantTests, secondDegreeContext, surroundingSiblings,
-                ],
-
-                ContextIntent.Modify =>
-                [
-                    contracts, directCallers, registeredImplementations, relevantTests,
-                    directCallees, secondDegreeContext, surroundingSiblings,
-                ],
-
-                ContextIntent.Diagnose =>
-                [
-                    directCallers, registeredImplementations, contracts, directCallees,
-                    relevantTests, secondDegreeContext, surroundingSiblings,
-                ],
-
-                _ =>
-                [
-                    contracts, directCallees, directCallers, registeredImplementations,
-                    relevantTests, secondDegreeContext, surroundingSiblings,
-                ],
-            };
-        }
+        private static readonly Dictionary<string, (Func<ContextTierContext, IContextTierBuilder> Factory, Func<ContextCapsule, List<CapsuleItem>> Collection)> TierBuilderLookup =
+            TierBuilders.ToDictionary(entry => entry.Name, entry => (entry.Factory, entry.Collection), StringComparer.Ordinal);
 
         /// <summary>
         /// Every tier name a capsule can carry. Ordering here is presentation only :
         /// the assembly priority is intent-dependent and lives in <c>GetTierBuilders</c>.
         /// </summary>
         internal static readonly string[] TierNames =
-        [
-            "contracts", "directCallees", "directCallers", "registeredImplementations",
-            "relevantTests", "secondDegreeContext", "surroundingSource",
-        ];
+            TierBuilders.Select(static entry => entry.Name).ToArray();
 
-        internal static IContextTierBuilder? ResolveTierBuilder(ContextTierContext context, string tierName) => tierName switch
+        private List<IContextTierBuilder> GetTierBuilders(ContextTierContext context)
         {
-            "contracts" => new ContractsTierBuilder(context),
-            "directCallees" => new DirectCalleesTierBuilder(context),
-            "directCallers" => new DirectCallersTierBuilder(context),
-            "registeredImplementations" => new RegisteredImplementationsTierBuilder(context),
-            "relevantTests" => new RelevantTestsTierBuilder(context),
-            "secondDegreeContext" => new SecondDegreeContextTierBuilder(context),
-            "surroundingSource" => new SurroundingSiblingsTierBuilder(context),
-            _ => null,
-        };
+            return Intent switch
+            {
+                ContextIntent.Inspect => ResolveInOrder(context,
+                    "contracts", "directCallees", "directCallers", "registeredImplementations",
+                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+
+                ContextIntent.Modify => ResolveInOrder(context,
+                    "contracts", "directCallers", "registeredImplementations", "relevantTests",
+                    "directCallees", "secondDegreeContext", "surroundingSource"),
+
+                ContextIntent.Diagnose => ResolveInOrder(context,
+                    "directCallers", "registeredImplementations", "contracts", "directCallees",
+                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+
+                _ => ResolveInOrder(context,
+                    "contracts", "directCallees", "directCallers", "registeredImplementations",
+                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+            };
+        }
+
+        private static List<IContextTierBuilder> ResolveInOrder(ContextTierContext context, params string[] tierNames)
+            => tierNames.Select(name => ResolveTierBuilder(context, name)!).ToList();
+
+        internal static IContextTierBuilder? ResolveTierBuilder(ContextTierContext context, string tierName)
+            => TierBuilderLookup.TryGetValue(tierName, out var entry) ? entry.Factory(context) : null;
 
         /// <summary>
         /// Builds one tier on its own, outside the capsule budget, and returns a page of it.
@@ -358,30 +354,8 @@ namespace Lurp.Workspace
 
         internal static void AddTierToCapsule(ContextCapsule capsule, string tierName, List<CapsuleItem> items)
         {
-            switch (tierName)
-            {
-                case "contracts":
-                    capsule.Contracts.AddRange(items);
-                    break;
-                case "directCallees":
-                    capsule.DirectCallees.AddRange(items);
-                    break;
-                case "directCallers":
-                    capsule.DirectCallers.AddRange(items);
-                    break;
-                case "registeredImplementations":
-                    capsule.RegisteredImplementations.AddRange(items);
-                    break;
-                case "relevantTests":
-                    capsule.RelevantTests.AddRange(items);
-                    break;
-                case "secondDegreeContext":
-                    capsule.SecondDegreeContext.AddRange(items);
-                    break;
-                case "surroundingSource":
-                    capsule.SurroundingSource.AddRange(items);
-                    break;
-            }
+            if (TierBuilderLookup.TryGetValue(tierName, out var entry))
+                entry.Collection(capsule).AddRange(items);
         }
 
         private CapsuleAnchor BuildAnchor()

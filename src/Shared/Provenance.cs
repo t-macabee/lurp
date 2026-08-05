@@ -67,7 +67,7 @@ public static class Provenance
         return provenance switch
         {
             "roslyn" => CompilerProved,
-            _ => CanonicalValues.Contains(provenance) ? provenance : provenance,
+            _ => provenance,
         };
     }
 }
