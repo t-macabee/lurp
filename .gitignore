@@ -9,16 +9,8 @@ obj/
 
 # local tool configs
 .claude/
-.deepcode/
-.kimi-code/
-opencode.json
-sol-completed.md
-sol-remediation.md
 CLAUDE.md
 AGENTS.md
-CODEX.md
-QWEN.MD
-AGENTS.override.md
 
 
 # User-specific files
@@ -447,22 +439,3 @@ FodyWeavers.xsd
 *.msp
 
 .tokensave/
-.codeaudit/
-.output/
-.deepcode/
-.deepcodeignore
-
-# Repomix export and ad-hoc indexer output — source-bearing, not durable artifacts.
-repomix-output.xml
-repomix-output.md
-repomix.config.json
-test-output/
-
-# One-off generated audit report — not a durable reference doc (see its own auditor note).
-docs/reference/AUDIT_FINDINGS.md
-
-# Root-level .NET build output is reproducible and must not be committed.
-/bin/
-/obj/
-
-.aider*
