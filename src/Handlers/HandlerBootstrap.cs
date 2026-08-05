@@ -185,10 +185,12 @@ internal static class HandlerBootstrap
 
     public static string ResolveOutputDir(string[] args)
     {
-        var outputDirArg = GetArgValue(args, "--output-dir=") ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+        var outputDirArg = GetArgValue(args, "--output-dir=")
+            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR")
+            ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
         if (string.IsNullOrEmpty(outputDirArg))
         {
-            Fail("ERROR: --output-dir=path or INDEXER_OUTPUT_DIR is required.");
+            Fail("ERROR: --output-dir=path or LURP_OUTPUT_DIR is required (INDEXER_OUTPUT_DIR is accepted for back-compat).");
         }
 
         return outputDirArg;

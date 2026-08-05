@@ -68,7 +68,9 @@ internal static class StatusHandler
 
             var includeDocuments = WantsDetail(args, "documents");
             var includeCompleteness = WantsDetail(args, "completeness");
-            var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+            var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
+                ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH")
+                ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeCompleteness);
@@ -133,7 +135,7 @@ internal static class StatusHandler
                 schema_version = schemaVersion,
                 latest_snapshot_id = latestSnapshotId,
                 freshness_checked = false,
-                note = "Pass --solution=path or set INDEXER_SOLUTION_PATH to check freshness against the current workspace.",
+                note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
                 manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
@@ -145,7 +147,7 @@ internal static class StatusHandler
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
-        Console.WriteLine("Freshness: unknown : pass --solution=path or set INDEXER_SOLUTION_PATH to compare against the current workspace.");
+        Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 

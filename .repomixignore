@@ -29,3 +29,9 @@ docs/assets/**
 # Previous Repomix outputs
 repomix-output.*
 repomix-output-*
+
+# Historical documentation
+docs/reference/TRUST_KERNEL_CHANGELOG.md
+
+# Large test file not usually useful for architecture reviews
+tests/MigrationRunnerTests.cs

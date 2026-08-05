@@ -2,8 +2,32 @@
 
 [![CI](https://github.com/t-macabee/lurp/actions/workflows/ci.yml/badge.svg)](https://github.com/t-macabee/lurp/actions/workflows/ci.yml)
 
-Lurp is a Roslyn-backed semantic map for C# solutions that helps agents jump
+Lurp is a Roslyn-native semantic context engine for C# solutions that helps agents jump
 to relevant code, dependencies, callers, and tests.
+
+## Install / Build
+
+Prerequisites:
+
+- .NET 10 SDK (the repo's `global.json` pins SDK `10.0.301`).
+- A C# solution (`.sln` or `.slnx`) to index.
+
+Lurp is a console application, not a .NET global tool. Build and run it from the repo:
+
+```bash
+dotnet build Lurp.slnx
+dotnet run --project src -- --mode=index --solution=path/to/Your.sln --output-dir=./out
+```
+
+Or run the built binary directly:
+
+```bash
+./src/bin/Debug/net10.0/lurp --mode=index --solution=path/to/Your.sln --output-dir=./out
+```
+
+Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
+`--solution=` and `--output-dir=`. The older `INDEXER_SOLUTION_PATH` / `INDEXER_OUTPUT_DIR`
+names are accepted for backwards compatibility.
 
 ## Why Lurp
 

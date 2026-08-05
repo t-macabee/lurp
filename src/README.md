@@ -399,8 +399,10 @@ Each indexing run (full or incremental) creates a **new** snapshot. The last 3 s
 
 | Variable | Purpose |
 |---|---|
-| `INDEXER_SOLUTION_PATH` | Equivalent to `--solution=<path>`. |
-| `INDEXER_OUTPUT_DIR` | Equivalent to `--output-dir=<path>`. |
+| `LURP_SOLUTION_PATH` | Equivalent to `--solution=<path>`. |
+| `LURP_OUTPUT_DIR` | Equivalent to `--output-dir=<path>`. |
+| `INDEXER_SOLUTION_PATH` | Deprecated alias for `LURP_SOLUTION_PATH`. |
+| `INDEXER_OUTPUT_DIR` | Deprecated alias for `LURP_OUTPUT_DIR`. |
 
 ## Migration from Legacy Modes
 

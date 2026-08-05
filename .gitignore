@@ -439,3 +439,10 @@ FodyWeavers.xsd
 *.msp
 
 .tokensave/
+
+# Lurp index outputs
+index.db
+*.db-wal
+*.db-shm
+capsule-*.json
+

@@ -18,11 +18,11 @@ internal static class HelpText
 
     internal static void PrintHelp()
     {
-        Console.WriteLine("lurp : Roslyn-based code indexer");
+        Console.WriteLine("lurp : Roslyn-native semantic context engine for C#");
         Console.WriteLine();
         Console.WriteLine("MODES");
         Console.WriteLine("  --mode=index              Index a solution and store facts in the database.");
-        Console.WriteLine("  --mode=get-source          Retrieve source for a symbol by ID.");
+        Console.WriteLine("  --mode=get-source          Retrieve source text for a document by relative path (--document=).");
         Console.WriteLine("  --mode=get-symbol          Look up symbol metadata.");
         Console.WriteLine("  --mode=search              Full-text search over source and symbols.");
         Console.WriteLine("  --mode=find-symbol         Resolve a symbol by FQN.");
@@ -207,7 +207,9 @@ internal static class HelpText
         Console.WriteLine("  --require-fresh         Exit 2 when the snapshot is not fresh.");
         Console.WriteLine();
         Console.WriteLine("ENVIRONMENT VARIABLES");
-        Console.WriteLine("  INDEXER_SOLUTION_PATH   Equivalent to --solution=.");
-        Console.WriteLine("  INDEXER_OUTPUT_DIR      Equivalent to --output-dir=.");
+        Console.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
+        Console.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
+        Console.WriteLine("  INDEXER_SOLUTION_PATH   Deprecated alias for LURP_SOLUTION_PATH.");
+        Console.WriteLine("  INDEXER_OUTPUT_DIR      Deprecated alias for LURP_OUTPUT_DIR.");
     }
 }

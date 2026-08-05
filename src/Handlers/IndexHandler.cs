@@ -7,10 +7,12 @@ internal static class IndexHandler
 {
     public static async Task Run(string[] args, CancellationToken cancellationToken = default)
     {
-        var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+        var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
+            ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH")
+            ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
         {
-            HandlerBootstrap.Fail("ERROR: --solution=path or INDEXER_SOLUTION_PATH is required and must point to an existing .sln file.");
+            HandlerBootstrap.Fail("ERROR: --solution=path or LURP_SOLUTION_PATH is required and must point to an existing .sln or .slnx file (INDEXER_SOLUTION_PATH is accepted for back-compat).");
         }
 
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);

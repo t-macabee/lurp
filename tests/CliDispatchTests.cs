@@ -85,7 +85,7 @@ public sealed class CliDispatchTests
         var (exitCode, stdOut, _) = Run("--help");
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("Roslyn-based code indexer", stdOut);
+        Assert.Contains("Roslyn-native semantic context engine for C#", stdOut);
     }
 
     [Fact]
