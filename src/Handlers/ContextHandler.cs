@@ -101,7 +101,7 @@ internal static class ContextHandler
                 targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
             HandlerBootstrap.PrintFreshnessLine(args, freshness);
 
@@ -157,7 +157,7 @@ internal static class ContextHandler
             store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tierArg,
             maxHops, includeGenerated, offset, limit);
 
-        var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+        var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
         HandlerBootstrap.EnforceRequireFresh(args, freshness);
         HandlerBootstrap.PrintFreshnessLine(args, freshness);
 

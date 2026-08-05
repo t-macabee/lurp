@@ -24,14 +24,14 @@ public static class WorkspaceFreshness
     /// re-hashed to confirm an actual content change (avoids false "stale" on
     /// a touch-but-unchanged file).
     /// </summary>
-    public static FreshnessStamp CheckFreshnessCheap(ISnapshotStore store, string snapshotId, FreshnessMode mode)
+    public static FreshnessStamp CheckFreshnessCheap(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, FreshnessMode mode)
     {
         var checkedAt = DateTime.UtcNow;
 
         if (mode == FreshnessMode.Off)
             return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
 
-        var metadata = store.LoadSnapshotMetadata(snapshotId);
+        var metadata = manifests.LoadSnapshotMetadata(snapshotId);
         if (metadata == null)
             return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
 
@@ -39,7 +39,7 @@ public static class WorkspaceFreshness
         {
             var gitRoot = metadata.GitRoot;
             var builtAtUtc = metadata.CreatedAtUtc;
-            var versionsByPath = store.GetDocumentVersionIdsByPath(snapshotId);
+            var versionsByPath = documents.GetDocumentVersionIdsByPath(snapshotId);
 
             var changed = new List<string>();
             foreach (var (relativePath, storedVersionId) in versionsByPath)
@@ -83,9 +83,9 @@ public static class WorkspaceFreshness
         }
     }
 
-    public static FreshnessResult CheckFreshness(WorkspaceInfo current,ISnapshotStore store)
+    public static FreshnessResult CheckFreshness(WorkspaceInfo current,ISnapshotManifestStore manifests)
     {
-        var storageManifest = store.LoadLatestSnapshot(current.Id.Value);
+        var storageManifest = manifests.LoadLatestSnapshot(current.Id.Value);
 
         if (storageManifest == null)
         {

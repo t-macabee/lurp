@@ -32,7 +32,7 @@ internal static class FindSymbolHandler
                 HandlerBootstrap.Fail($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
             }
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
             HandlerBootstrap.PrintFreshnessLine(args, freshness);
 

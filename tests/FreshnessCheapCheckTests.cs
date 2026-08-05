@@ -102,7 +102,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         // to isolate the "genuinely untouched" case.
         File.SetLastWriteTimeUtc(Path.Combine(_gitRoot, "Foo.cs"), builtAt.AddMinutes(-1));
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-fresh", FreshnessMode.Auto);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-fresh", FreshnessMode.Auto);
 
         Assert.Equal("fresh", stamp.State);
         Assert.Equal("stat", stamp.Method);
@@ -125,7 +125,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         // WriteSourceFile already left the file's mtime "now" (after builtAt) :
         // same bytes, but the stat-only tier cannot tell touched from changed.
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-touched", FreshnessMode.Auto);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-touched", FreshnessMode.Auto);
 
         Assert.Equal("stale", stamp.State);
         Assert.Equal("stat", stamp.Method);
@@ -148,7 +148,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         store.SaveSnapshotDocuments("snap-hash", [("doc-foo", versionId)]);
         // Same content, newer mtime than builtAt (touch without edit).
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-hash", FreshnessMode.Hash);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-hash", FreshnessMode.Hash);
 
         Assert.Equal("fresh", stamp.State);
         Assert.Equal("stat+hash", stamp.Method);
@@ -172,7 +172,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         // Actually edit the file after the snapshot was built.
         WriteSourceFile("Foo.cs", "class Foo { void Bar() {} }");
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-realchange", FreshnessMode.Hash);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-realchange", FreshnessMode.Hash);
 
         Assert.Equal("stale", stamp.State);
         Assert.Equal("stat+hash", stamp.Method);
@@ -190,7 +190,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         store.SaveSnapshotDocuments("snap-removed", [("doc-gone", "doc-gone:v1")]);
         // Deliberately never write Gone.cs to disk.
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-removed", FreshnessMode.Auto);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-removed", FreshnessMode.Auto);
 
         Assert.Equal("stale", stamp.State);
         Assert.Equal(1, stamp.ChangedDocumentCount);
@@ -207,7 +207,7 @@ public sealed class FreshnessCheapCheckTests : IDisposable
         SeedDocumentVersion(_dbPath, "doc-gone", "Gone.cs", "doc-gone:v1", "irrelevant-hash");
         store.SaveSnapshotDocuments("snap-off", [("doc-gone", "doc-gone:v1")]);
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, "snap-off", FreshnessMode.Off);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, "snap-off", FreshnessMode.Off);
 
         Assert.Equal("unknown", stamp.State);
         Assert.Equal("skipped", stamp.Method);

@@ -138,8 +138,8 @@ internal static class HandlerBootstrap
         };
     }
 
-    public static FreshnessStamp ComputeFreshnessStamp(ISnapshotStore store, string snapshotId, string[] args)
-        => WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, ParseFreshnessMode(args));
+    public static FreshnessStamp ComputeFreshnessStamp(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, string[] args)
+        => WorkspaceFreshness.CheckFreshnessCheap(manifests, documents, snapshotId, ParseFreshnessMode(args));
 
     public static object FreshnessJson(FreshnessStamp stamp) => new
     {

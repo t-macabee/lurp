@@ -37,11 +37,11 @@ namespace Lurp.Workspace
         // Intentionally excluded from comparison (captured by signature):
         // - returnType: included in signature for methods, properties, events
         // - arity: generic type parameter count included in signature
-        private readonly ISnapshotStore _snapshotStore;
+        private readonly ISnapshotSymbolStore _snapshotStore;
         private readonly ISemanticDiffReadStore _readStore;
         private readonly IEdgeStore _edgeStore;
 
-        public SemanticDiffer(ISnapshotStore snapshotStore, ISemanticDiffReadStore readStore, IEdgeStore edgeStore)
+        public SemanticDiffer(ISnapshotSymbolStore snapshotStore, ISemanticDiffReadStore readStore, IEdgeStore edgeStore)
         {
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
             _readStore = readStore ?? throw new ArgumentNullException(nameof(readStore));

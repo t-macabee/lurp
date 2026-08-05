@@ -86,7 +86,7 @@ internal static class StatusHandler
         }
     }
 
-    private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(ISnapshotStore store, string solutionPath)
+    private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(ISnapshotManifestStore manifests, string solutionPath)
     {
         if (!MSBuildLocator.IsRegistered)
         {
@@ -98,7 +98,7 @@ internal static class StatusHandler
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
-        return WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
+        return WorkspaceFreshness.CheckFreshness(workspaceInfo, manifests);
     }
 
     private static void ReportNeverIndexed(string dbPath, bool asJson, int? schemaVersion = null, SnapshotFailureRow? latestFailure = null)

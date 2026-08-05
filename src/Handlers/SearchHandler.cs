@@ -108,7 +108,7 @@ internal static class SearchHandler
                 }
             }
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
             HandlerBootstrap.PrintFreshnessLine(args, freshness);
 

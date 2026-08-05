@@ -44,7 +44,7 @@ namespace Lurp.Workspace
         /// TFMs, skipped adapters, extractor version). Absent only in tests
         /// that construct a capsule without a backing snapshot store.
         /// </summary>
-        public ISnapshotStore? SnapshotStore { get; init; }
+        public ISnapshotManifestStore? SnapshotStore { get; init; }
 
         public string SnapshotId { get; init; } = string.Empty;
         public SymbolId SymbolId { get; init; } = null!;
@@ -419,7 +419,7 @@ namespace Lurp.Workspace
             return false;
         }
 
-        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null, ISnapshotStore? snapshotStore = null)
+        public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null, ISnapshotManifestStore? snapshotStore = null)
         {
             if (!string.IsNullOrEmpty(lookup.SymbolArg))
             {

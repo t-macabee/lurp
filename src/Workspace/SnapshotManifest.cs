@@ -93,7 +93,7 @@ public sealed partial class SnapshotManifest
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public void Save(ISnapshotStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
         if (snapshotStore == null)

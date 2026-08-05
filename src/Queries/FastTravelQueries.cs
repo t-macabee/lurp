@@ -5,9 +5,9 @@ namespace Lurp.Queries;
 public sealed class FastTravelQueries
 {
     private readonly IDeclarationStore _declarations;
-    private readonly ISnapshotStore _snapshots;
+    private readonly ISnapshotDocumentStore _snapshots;
 
-    public FastTravelQueries(IDeclarationStore declarations, ISnapshotStore snapshots)
+    public FastTravelQueries(IDeclarationStore declarations, ISnapshotDocumentStore snapshots)
     {
         _declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
         _snapshots = snapshots ?? throw new ArgumentNullException(nameof(snapshots));

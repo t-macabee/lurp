@@ -105,7 +105,7 @@ internal static class ImpactHandler
                 }
                 : null;
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, snapshotId, args);
+            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
             HandlerBootstrap.EnforceRequireFresh(args, freshness);
             HandlerBootstrap.PrintFreshnessLine(args, freshness);
 
