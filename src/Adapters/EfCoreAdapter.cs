@@ -7,7 +7,7 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
 
-public sealed class EfCoreAdapter : IFrameworkAdapter
+public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdapter
 {
     public string Name => "EF Core";
     public string Version => "efcore-v1";
@@ -18,13 +18,20 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
+        var annotations = new List<AnnotationRecord>();
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver, annotations);
 
         ExtractDbContextMappings(compilation, allTypes, ctx);
         ExtractEntityTypeConfigurations(allTypes, ctx);
 
+        _annotations = annotations;
         return edges;
     }
+
+    private List<AnnotationRecord>? _annotations;
+
+    List<AnnotationRecord> IAnnotationExtractingAdapter.ExtractAnnotations(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+        => _annotations ?? [];
 
     private static void ExtractDbContextMappings(Compilation compilation, List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
     {
@@ -75,6 +82,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             {
                 var semanticModel = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
                 ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, ctx);
+                ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, ctx);
             }
         }
     }
@@ -101,6 +109,20 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     continue;
 
                 AddMapsToEdge(configId, entityTypeId, ctx, type);
+
+                var configureMethod = type.GetMembers()
+                    .OfType<IMethodSymbol>()
+                    .FirstOrDefault(m => m.Name == "Configure");
+                if (configureMethod != null)
+                {
+                    foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
+                    {
+                        if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
+                        {
+                            ExtractEntityTypeConfigConstraints(methodSyntax, entityType, entityTypeId, ctx);
+                        }
+                    }
+                }
             }
         }
     }
@@ -263,6 +285,93 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
             });
         }
+    }
+
+    private static void ExtractMethodConstraints(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
+    {
+        foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+                continue;
+
+            if (memberAccess.Name.Identifier.Text == "HasQueryFilter")
+            {
+                string? entityTypeId = null;
+                string entityName = "Unknown";
+
+                if (invocation.ArgumentList.Arguments.Count > 0)
+                {
+                    var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                    if (symbolInfo.Symbol is IMethodSymbol methodSymbol
+                        && methodSymbol.ContainingType is INamedTypeSymbol containingType
+                        && containingType.TypeArguments.Length == 1)
+                    {
+                        var entityType = containingType.TypeArguments[0] as INamedTypeSymbol;
+                        entityTypeId = entityType != null
+                            ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)
+                            : null;
+                        entityName = containingType.TypeArguments[0].Name;
+                    }
+                }
+
+                var lambdaText = invocation.ArgumentList.Arguments.Count > 0
+                    ? invocation.ArgumentList.Arguments[0].Expression.ToString()
+                    : "";
+
+                AddConstraintAnnotation(
+                    entityTypeId ?? dbContextId,
+                    "ef_query_filter_constraint",
+                    $"{entityName}: HasQueryFilter: {lambdaText}",
+                    ctx);
+            }
+
+            if (memberAccess.Name.Identifier.Text == "HasDatabaseName"
+                && invocation.ArgumentList.Arguments.Count > 0)
+            {
+                var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                AddConstraintAnnotation(
+                    dbContextId,
+                    "ef_unique_index_constraint",
+                    nameArg.Trim('"'),
+                    ctx);
+            }
+        }
+    }
+
+    private static void ExtractEntityTypeConfigConstraints(MethodDeclarationSyntax methodSyntax, INamedTypeSymbol entityType, string entityTypeId, ExtractionContext ctx)
+    {
+        foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+                continue;
+
+            if (memberAccess.Name.Identifier.Text == "HasQueryFilter"
+                && invocation.ArgumentList.Arguments.Count > 0)
+            {
+                var lambdaText = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                AddConstraintAnnotation(
+                    entityTypeId,
+                    "ef_query_filter_constraint",
+                    $"{entityType.Name}: HasQueryFilter: {lambdaText}",
+                    ctx);
+            }
+
+            if (memberAccess.Name.Identifier.Text == "HasDatabaseName"
+                && invocation.ArgumentList.Arguments.Count > 0)
+            {
+                var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                AddConstraintAnnotation(
+                    entityTypeId,
+                    "ef_unique_index_constraint",
+                    nameArg.Trim('"'),
+                    ctx);
+            }
+        }
+    }
+
+    private static void AddConstraintAnnotation(string symbolId, string kind, string value, ExtractionContext ctx)
+    {
+        ctx.Annotations?.Add(new AnnotationRecord(symbolId, kind, value));
     }
 
 }

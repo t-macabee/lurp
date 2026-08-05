@@ -11,17 +11,17 @@ namespace Lurp.Storage.Tests;
 /// tests/fixtures/CapsuleAudit (see its README for the finding→pattern map).
 ///
 /// Test labels follow AGENTS.md:
-/// - ACCEPTANCE (findings 1, 2, 6, 7): the intended product behavior. Finding 1
+/// - ACCEPTANCE (findings 1, 2, 3, 4, 6, 7): the intended product behavior. Finding 1
 ///   became acceptable when Task #1 landed (unmodeled registrations must never
 ///   report "empty"); finding 2 became acceptable when Task #4 landed
 ///   (framework contract facts: BackgroundService base type and the
-///   ExecuteAsync override in the contracts tier); findings 6 and 7 guard
-///   against regression.
-/// - CHARACTERIZATION (findings 3, 4, 5): proves the current behavior,
-///   including the deficiency. These are NOT acceptance tests. When Task #5
-///   (EF declarative constraints) lands, the corresponding characterization
-///   assertion must be flipped to its acceptance form — that flip is the
-///   scoreboard doing its job.
+///   ExecuteAsync override in the contracts tier); findings 3 and 4 became
+///   acceptable when Task #5 landed (EF declarative constraints:
+///   HasQueryFilter and unique index names surfaced in the constraints tier);
+///   findings 6 and 7 guard against regression.
+/// - CHARACTERIZATION (finding 5): proves the current behavior,
+///   including the deficiency. This is NOT an acceptance test. Finding 5 is
+///   an accepted declared boundary (dead code has no call edges).
 /// </summary>
 public sealed class CapsuleAuditScoreboardTests : IDisposable
 {
@@ -88,13 +88,12 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
               && i.EdgeKind == EdgeKind.Overrides.ToString());
     }
 
-    // MIXED — Finding 3 (High), Task #5 pending. Acceptance part (audit "what
-    // the capsule does well" #2): relevantTests surfaces the corroborating
-    // TenantIsolationTests. Characterization part: the global query filter in
+    // ACCEPTANCE — Finding 3 (High), Task #5 landed. The global query filter in
     // ENoteContext.OnModelCreating that silently rewrites every
-    // Set<InstrumentRental>() is not surfaced in the constraints tier.
+    // Set<InstrumentRental>() is now surfaced in the constraints tier via the
+    // EF Core adapter's entity constraint annotations.
     [SkippableFact]
-    public async Task Finding3_StoreReadsFailOpen_TestsSurfaced_FilterInvisible_Characterization()
+    public async Task Finding3_StoreReadsFailOpen_TestsSurfaced_FilterVisible_Acceptance()
     {
         var capsule = await CapsuleForAsync(QueryServiceFqn);
 
@@ -105,19 +104,17 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
             t => t.FullyQualifiedName.Contains(
                 "TenantIsolationTests.GetByIdForStoreAsync_Throws_WhenRentalBelongsToOtherStore", StringComparison.Ordinal));
 
-        // The deficiency being characterized: no query-filter constraint.
-        Assert.DoesNotContain(capsule.Constraints,
+        Assert.Contains(capsule.Constraints,
             c => c.Value.Contains("HasQueryFilter", StringComparison.Ordinal)
-              || c.Value.Contains("IsActive", StringComparison.Ordinal));
+              && c.Value.Contains("IsActive", StringComparison.Ordinal));
     }
 
-    // CHARACTERIZATION — Finding 4 (Medium), Task #5 pending. The guard is
-    // shown, but the two facts that invalidate it are invisible: the global
-    // query filter (see Finding 3) and the unique-index database name that
-    // SaveWithLockConflictMessageAsync string-matches. Neither reaches the
-    // constraints tier. When Task #5 lands, flip the DoesNotContain below.
+    // ACCEPTANCE — Finding 4 (Medium), Task #5 landed. The unique-index
+    // database name string-matched by SaveWithLockConflictMessageAsync is now
+    // surfaced in the constraints tier via the EF Core adapter's entity
+    // constraint annotations.
     [SkippableFact]
-    public async Task Finding4_UnreachableGuard_GuardShownIndexNameInvisible_Characterization()
+    public async Task Finding4_UnreachableGuard_GuardShownIndexNameVisible_Acceptance()
     {
         var capsule = await CapsuleForAsync(QueryServiceFqn);
 
@@ -125,9 +122,7 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
             i => i.FullyQualifiedName.Contains("GuardInstrumentActive", StringComparison.Ordinal)
               && i.Source != null);
 
-        // The deficiency being characterized: the string-matched index name is
-        // not surfaced as a constraint.
-        Assert.DoesNotContain(capsule.Constraints,
+        Assert.Contains(capsule.Constraints,
             c => c.Value.Contains("UX_InstrumentRental_InstrumentId_ActiveOrApproved", StringComparison.Ordinal));
     }
 

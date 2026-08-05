@@ -16,6 +16,7 @@ public static class CompilationFactExtractor
         List<DiagnosticRecord> Diagnostics,
         List<BindingIncompletenessRecord> BindingIncompleteness,
         List<ExtractionMeasurement> Measurements,
+        List<AnnotationRecord> Annotations,
         IReadOnlyList<ExtractionFailure>? RequiredFailures = null)
     {
         public void EnsureRequiredSuccess()
@@ -195,8 +196,20 @@ public static class CompilationFactExtractor
                 () => edges.AddRange(adapter.Extract(compilation, snapshotId, locationResolver)));
         }
 
+        var annotations = new List<AnnotationRecord>();
+        foreach (var adapter in adapters)
+        {
+            if (adapter is IAnnotationExtractingAdapter annAdapter)
+            {
+                RunStage(
+                    ctx, "AdapterAnnotations", adapter.Name, logError,
+                    msg => $"Adapter annotations '{adapter.Name}' failed: {msg}",
+                    () => annotations.AddRange(annAdapter.ExtractAnnotations(compilation, snapshotId, locationResolver)));
+            }
+        }
+
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
 
-        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, RequiredFailures: failures.Count > 0 ? failures : null);
+        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, annotations, RequiredFailures: failures.Count > 0 ? failures : null);
     }
 }

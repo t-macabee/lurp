@@ -25,12 +25,11 @@ adapters match by short name — no external package dependencies.
 (full strategy), assembles a `--intent=diagnose` capsule per anchor, and
 asserts one scoreboard entry per finding:
 
-- Findings 1, 2, 6, 7 are **acceptance** tests (intended behavior today;
-  finding 2 flipped when Task #4 landed the framework contract facts).
-- Findings 3, 4, 5 are **characterization** tests of the current boundary
-  (Task #5 pending; Finding 5 is an accepted declared boundary). They are
-  labelled as such in the test source. When the corresponding mitigation task
-  lands, flip the characterization assertion to its acceptance form.
+- Findings 1, 2, 3, 4, 6, 7 are **acceptance** tests (intended behavior today;
+  findings 1, 2, 3, 4 were flipped when Tasks #1, #4, and #5 landed).
+- Finding 5 is a **characterization** test of the current boundary
+  (accepted declared boundary; dead code has no call edges). It is
+  labelled as such in the test source.
 
 Run:
 

@@ -147,6 +147,7 @@ public static class IndexRunner
             int totalDeclarations = 0;
             int totalEdges = 0;
             int totalDiagnostics = 0;
+            var allAnnotations = new List<AnnotationRecord>();
             var projectErrors = new List<Exception>();
 
             // Step: Full Extraction Loop (compilation load + fact extraction + db writes)
@@ -189,6 +190,7 @@ public static class IndexRunner
                     store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                     totalDiagnostics += result.Diagnostics.Count;
                     store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+                    allAnnotations.AddRange(result.Annotations);
                     foreach (var measurement in result.Measurements)
                     {
                         if (verbose)
@@ -229,6 +231,8 @@ public static class IndexRunner
             var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
             store.SaveEdges(snapshotIdStr, dedupedEdges);
             totalEdges = dedupedEdges.Count;
+            if (allAnnotations.Count > 0)
+                store.SaveAnnotations(snapshotIdStr, allAnnotations);
 
             // Hard stop only when nothing was readable. There is no lit ground to stand
             // on, so every capsule the snapshot could serve would be an empty graph

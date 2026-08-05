@@ -8,5 +8,6 @@ public sealed record ExtractionContext(
     string SnapshotId,
     List<EdgeRecord> Edges,
     HashSet<(string Source, string Target, string Kind)> Seen,
-    EdgeLocationResolver LocationResolver
+    EdgeLocationResolver LocationResolver,
+    List<AnnotationRecord>? Annotations = null
 );

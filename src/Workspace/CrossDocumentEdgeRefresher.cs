@@ -145,6 +145,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             _store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
             _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
             _store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
+            if (result.Annotations.Count > 0)
+                _store.SaveAnnotations(newSnapshotId, result.Annotations);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }

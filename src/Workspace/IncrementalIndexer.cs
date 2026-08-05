@@ -295,6 +295,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
             totalDiag += result.Diagnostics.Count;
             _store.SaveBindingIncompleteness(newSnapshotIdStr, result.BindingIncompleteness);
+            if (result.Annotations.Count > 0)
+                _store.SaveAnnotations(newSnapshotIdStr, result.Annotations);
             foreach (var measurement in result.Measurements)
             {
                 if (verbose)
