@@ -50,7 +50,7 @@ public sealed class WorkspaceInfo
         CompilerVersion = typeof(CSharpCompilation).Assembly.GetName().Version
                           ?? new Version(0, 0);
 
-        TargetFrameworks = BuildTargetFrameworkMap(solution);
+        TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot);
 
         ProjectGraph = BuildProjectGraph(solution);
 
@@ -267,7 +267,62 @@ public sealed class WorkspaceInfo
         }
     }
 
-    private static Dictionary<string, string> BuildTargetFrameworkMap(Solution solution)
+    private static string? ParseTfmFromProjectFile(string projectFilePath)
+    {
+        var doc = XDocument.Load(projectFilePath);
+        var root = doc.Root;
+        if (root == null) return null;
+
+        XNamespace ns = root.GetDefaultNamespace();
+
+        return root
+            .Elements(ns + "PropertyGroup")
+            .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
+            .Select(e => e.Value.Trim())
+            .FirstOrDefault()
+            ?? root
+                .Elements(ns + "PropertyGroup")
+                .SelectMany(pg => pg.Elements(ns + "TargetFrameworks"))
+                .Select(e => e.Value.Trim())
+                .FirstOrDefault();
+    }
+
+    private static string? FindTfmInDirectoryBuildProps(string projectFilePath, string repoRoot)
+    {
+        var dir = Path.GetDirectoryName(projectFilePath);
+        if (dir == null) return null;
+
+        var normalizedRoot = Path.GetFullPath(repoRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        while (dir.Length >= normalizedRoot.Length)
+        {
+            var propsPath = Path.Combine(dir, "Directory.Build.props");
+            if (File.Exists(propsPath))
+            {
+                try
+                {
+                    var tfm = ParseTfmFromProjectFile(propsPath);
+                    if (tfm != null)
+                        return tfm;
+                }
+                catch
+                {
+                }
+            }
+
+            if (string.Equals(dir, normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                break;
+
+            var parent = Path.GetDirectoryName(dir);
+            if (parent == null || parent == dir)
+                break;
+            dir = parent;
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, string> BuildTargetFrameworkMap(Solution solution, string gitRoot)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -281,23 +336,9 @@ public sealed class WorkspaceInfo
 
             try
             {
-                var doc = XDocument.Load(project.FilePath);
-                var root = doc.Root;
-                if (root == null) { map[project.Name] = UnknownValue; continue; }
+                var tf = ParseTfmFromProjectFile(project.FilePath);
 
-                XNamespace ns = root.GetDefaultNamespace();
-
-                var tf = root
-                    .Elements(ns + "PropertyGroup")
-                    .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
-                    .Select(e => e.Value.Trim())
-                    .FirstOrDefault();
-
-                tf ??= root
-                    .Elements(ns + "PropertyGroup")
-                    .SelectMany(pg => pg.Elements(ns + "TargetFrameworks"))
-                    .Select(e => e.Value.Trim())
-                    .FirstOrDefault();
+                tf ??= FindTfmInDirectoryBuildProps(project.FilePath, gitRoot);
 
                 map[project.Name] = tf ?? UnknownValue;
             }
