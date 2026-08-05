@@ -8,19 +8,21 @@ public static class IndexRunner
 {
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false)
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false, IOutputSink? output = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var sink = output ?? ConsoleOutputSink.Instance;
+
         using var loader = new WorkspaceLoader();
 
-        string strategy = ResolveStrategy(store, strategyArg);
+        string strategy = ResolveStrategy(store, strategyArg, sink);
 
-        Console.WriteLine($"Strategy: {strategy}");
+        sink.WriteLine($"Strategy: {strategy}");
 
         if (strategy == FullStrategy)
         {
-            Console.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
+            sink.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
         }
 
         var totalSw = Stopwatch.StartNew();
@@ -31,11 +33,11 @@ public static class IndexRunner
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
         var swWorkspaceInfo = Stopwatch.StartNew();
-        Console.Write("Building workspace info... ");
+        sink.Write("Building workspace info... ");
 
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
-        Console.WriteLine("done.");
+        sink.WriteLine("done.");
         swWorkspaceInfo.Stop();
 
         if (strategy == IncrementalStrategy)
@@ -44,39 +46,39 @@ public static class IndexRunner
 
             if (previousStorageManifest == null)
             {
-                Console.WriteLine("No previous snapshot found. Falling back to full index.");
+                sink.WriteLine("No previous snapshot found. Falling back to full index.");
                 strategy = FullStrategy;
             }
             else
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
 
-                    Console.WriteLine();
-                    Console.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
-                    Console.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-                    Console.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
-                    Console.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
-                    Console.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edge_relations_in_snapshot: {store.CountEdges(result.NewSnapshotId)}");
-                    Console.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
-                    Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
-                    Console.Write("Pruning old snapshots... ");
+                    sink.WriteLine();
+                    sink.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
+                    sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
+                    sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
+                    sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
+                    sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edge_relations_in_snapshot: {store.CountEdges(result.NewSnapshotId)}");
+                    sink.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
+                    sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+                    sink.Write("Pruning old snapshots... ");
 
                     store.DeleteIncompleteSnapshots();
                     store.PruneOldSnapshots(keep: 3);
 
-                    Console.WriteLine("done.");
+                    sink.WriteLine("done.");
 
                     totalSw.Stop();
 
-                    Console.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
+                    sink.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
                     return;
                 }
                 catch (FullRebuildRequiredException ex)
                 {
-                    Console.WriteLine($"Full rebuild required: {ex.Message}");
+                    sink.WriteLine($"Full rebuild required: {ex.Message}");
                     strategy = FullStrategy;
                 }
             }
@@ -89,22 +91,22 @@ public static class IndexRunner
                 new SnapshotTimingRow("solution_load", loaded.LoadElapsedMilliseconds, DateTime.UtcNow),
                 new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose);
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose, sink);
         }
 
-        Console.Write("Pruning old snapshots... ");
+        sink.Write("Pruning old snapshots... ");
 
         store.DeleteIncompleteSnapshots();
         store.PruneOldSnapshots(keep: 3);
 
-        Console.WriteLine("done.");
+        sink.WriteLine("done.");
 
         totalSw.Stop();
 
-        Console.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
+        sink.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose, IOutputSink sink)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
@@ -115,12 +117,12 @@ public static class IndexRunner
         var existingStatus = store.GetSnapshotStatus(snapshotIdStr, workspaceInfo.Id.Value);
         if (existingStatus == SnapshotStatusValues.Complete)
         {
-            Console.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
+            sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
             return;
         }
         if (existingStatus != null)
         {
-            Console.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existingStatus}'; removing it and retrying full index.");
+            sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existingStatus}'; removing it and retrying full index.");
             store.DeleteSnapshotData(snapshotIdStr);
         }
 
@@ -129,11 +131,11 @@ public static class IndexRunner
 
         // Step: Manifest Save (includes initial FTS build)
         var swManifest = Stopwatch.StartNew();
-        Console.Write("Saving snapshot to database... ");
+        sink.Write("Saving snapshot to database... ");
 
         manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
 
-        Console.WriteLine("done.");
+        sink.WriteLine("done.");
         swManifest.Stop();
         timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -158,7 +160,7 @@ public static class IndexRunner
                 cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;
 
-                Console.Write($"  [{projectName}] ");
+                sink.Write($"  [{projectName}] ");
 
                 // A blind compilation yields declarations with almost no edges. Indexing
                 // it would publish that emptiness as a proved absence of callers, so the
@@ -169,7 +171,7 @@ public static class IndexRunner
                     store.SaveBindingIncompleteness(
                         snapshotIdStr,
                         WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
-                    Console.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
+                    sink.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
                     continue;
                 }
 
@@ -190,12 +192,12 @@ public static class IndexRunner
                     foreach (var measurement in result.Measurements)
                     {
                         if (verbose)
-                            Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                            sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
                     }
 
                     extractedProjects++;
 
-                    Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+                    sink.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
                 }
                 catch (OperationCanceledException)
                 {
@@ -208,7 +210,7 @@ public static class IndexRunner
                     // one unreadable project. The failure is recorded against this
                     // project's documents so capsules anchored there report unresolved
                     // rather than empty.
-                    Console.Error.WriteLine($"FAILED: {ex.Message}");
+                    sink.WriteErrorLine($"FAILED: {ex.Message}");
                     projectErrors.Add(ex);
                     blindProjects.Add(projectName);
                     try
@@ -219,7 +221,7 @@ public static class IndexRunner
                     }
                     catch (Exception recordEx)
                     {
-                        Console.Error.WriteLine($"WARNING: Failed to record unreadable project '{projectName}': {recordEx.Message}");
+                        sink.WriteErrorLine($"WARNING: Failed to record unreadable project '{projectName}': {recordEx.Message}");
                     }
                 }
             }
@@ -238,11 +240,11 @@ public static class IndexRunner
 
             if (projectErrors.Count > 0 || blindProjects.Count > 0)
             {
-                Console.Error.WriteLine();
-                Console.Error.WriteLine($"WARNING: {blindProjects.Count} of {blindProjects.Count + extractedProjects} project(s) were unreadable and are excluded from the graph:");
+                sink.WriteErrorLine();
+                sink.WriteErrorLine($"WARNING: {blindProjects.Count} of {blindProjects.Count + extractedProjects} project(s) were unreadable and are excluded from the graph:");
                 foreach (var name in blindProjects.OrderBy(static name => name, StringComparer.Ordinal))
-                    Console.Error.WriteLine($"  - {name}");
-                Console.Error.WriteLine("Capsules anchored in those projects report 'unresolved', not 'empty'.");
+                    sink.WriteErrorLine($"  - {name}");
+                sink.WriteErrorLine("Capsules anchored in those projects report 'unresolved', not 'empty'.");
             }
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
@@ -253,18 +255,10 @@ public static class IndexRunner
             {
                 // Step: Semantic Diff
                 cancellationToken.ThrowIfCancellationRequested();
-                var swDiff = Stopwatch.StartNew();
-                Console.WriteLine();
-                Console.Write("Computing semantic diff from previous snapshot... ");
-
-                var differ = new SemanticDiffer(store, store, store);
-                var (diffChanges, skippedComparisons) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
-
-                store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
-
-                Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
-                swDiff.Stop();
-                timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, swDiff.ElapsedMilliseconds, DateTime.UtcNow));
+                sink.WriteLine();
+                SemanticDiffStep.ComputeAndPersist(
+                    store, sink, previousManifest.SnapshotId, snapshotIdStr,
+                    changedPaths: null, changedSymbolIds: null, timings);
             }
 
             // Step: Remove edges targeting symbols not declared in this snapshot
@@ -276,22 +270,22 @@ public static class IndexRunner
             var edgesInSnapshot = store.CountEdges(snapshotIdStr);
             var diagnosticsInSnapshot = store.CountDiagnostics(snapshotIdStr);
 
-            Console.WriteLine();
-            Console.WriteLine($"Index complete for snapshot {snapshotIdStr}");
-            Console.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
-            Console.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
-            Console.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
-            Console.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
-            Console.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+            sink.WriteLine();
+            sink.WriteLine($"Index complete for snapshot {snapshotIdStr}");
+            sink.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
+            sink.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
+            sink.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
+            sink.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
+            sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
 
             // Step: Build FTS search index
             // Preconditions: declarations, document/symbol snapshot membership,
             // semantic diff, and orphan cleanup are all persisted. Full FTS must
             // finish before MarkSnapshotComplete below.
             var swFts = Stopwatch.StartNew();
-            Console.Write("Building search index... ");
+            sink.Write("Building search index... ");
             store.BuildSearchIndex(snapshotIdStr);
-            Console.WriteLine("done.");
+            sink.WriteLine("done.");
             swFts.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -300,7 +294,7 @@ public static class IndexRunner
 
             // Persist all timings
             try { store.SaveTimings(snapshotIdStr, timings); }
-            catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
+            catch (Exception ex) { sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}"); }
 
             return;
         }
@@ -314,7 +308,7 @@ public static class IndexRunner
             };
             try { store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message); }
             catch { }
-            Console.Error.WriteLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
+            sink.WriteErrorLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
 
             // Try to save whatever timings we have
             try { store.SaveTimings(snapshotIdStr, timings); }
@@ -324,7 +318,7 @@ public static class IndexRunner
         }
     }
 
-    private static string ResolveStrategy(IIndexStore store, string? strategyArg)
+    private static string ResolveStrategy(IIndexStore store, string? strategyArg, IOutputSink sink)
     {
         if (strategyArg != null)
         {
@@ -332,7 +326,7 @@ public static class IndexRunner
 
             if (strategy != IncrementalStrategy && strategy != FullStrategy)
             {
-                Console.Error.WriteLine("ERROR: --strategy must be 'incremental' or 'full'.");
+                sink.WriteErrorLine("ERROR: --strategy must be 'incremental' or 'full'.");
                 Environment.Exit(1);
             }
             return strategy;
@@ -342,7 +336,7 @@ public static class IndexRunner
 
         if (latestSnapshotId == null)
         {
-            Console.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
+            sink.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
             return FullStrategy;
         }
 

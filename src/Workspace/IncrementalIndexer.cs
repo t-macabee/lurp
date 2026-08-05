@@ -3,12 +3,13 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false)
+public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly string? _jsonExportPath = jsonExportPath;
+    private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
 
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot);
 
@@ -83,26 +84,26 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var existingStatus = _store.GetSnapshotStatus(newSnapshotIdStr, workspaceInfo.Id.Value);
         if (existingStatus == SnapshotStatusValues.Complete)
         {
-            Console.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
+            _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
             return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0);
         }
         if (existingStatus != null)
         {
-            Console.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existingStatus}'; removing it and retrying incremental index.");
+            _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existingStatus}'; removing it and retrying incremental index.");
             _store.DeleteSnapshotData(newSnapshotIdStr);
         }
 
         // Step 2: Affected Project Resolution
         cancellationToken.ThrowIfCancellationRequested();
         var sw2 = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Identifying affected projects... ");
+        _output.Write("Identifying affected projects... ");
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         invalidationPaths.UnionWith(dependencyRefresher.FindAffectedDocPaths(previousSnapshotId, changedPaths));
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
-        Console.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
+        _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
         var oldDocVersionIdSet = new HashSet<string>(oldDocVersionIds);
@@ -120,9 +121,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Saving new snapshot manifest... ");
+        _output.Write("Saving new snapshot manifest... ");
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
-        Console.WriteLine("done.");
+        _output.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -185,34 +186,34 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             var reasonCode = ex is OperationCanceledException ? "cancelled" : "incremental_index_failure";
             try { _store.MarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message); }
             catch { }
-            Console.Error.WriteLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
+            _output.WriteErrorLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
             throw;
         }
 
         // Persist all timings
         try { _store.SaveTimings(newSnapshotIdStr, timings); }
-        catch (Exception ex) { Console.Error.WriteLine($"WARNING: Failed to save timings: {ex.Message}"); }
+        catch (Exception ex) { _output.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}"); }
 
         var declarationsInSnapshot = _store.CountSymbolsInSnapshot(newSnapshotIdStr);
         var edgesInSnapshot = _store.CountEdges(newSnapshotIdStr);
         var diagnosticsInSnapshot = _store.CountDiagnostics(newSnapshotIdStr);
         var projectsInSnapshot = solution.Projects.Count();
 
-        Console.WriteLine();
-        Console.WriteLine($"Incremental index complete for snapshot {newSnapshotIdStr}");
-        Console.WriteLine($"  Previous snapshot: {previousSnapshotId}");
-        Console.WriteLine($"  documents_changed_this_run:          {changedDocs.Count}      documents_in_snapshot: {workspaceInfo.Documents.Count}");
-        Console.WriteLine($"  projects_reextracted_this_run:       {affectedProjects.Count}/{projectsInSnapshot}");
-        Console.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
-        Console.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
-        Console.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
+        _output.WriteLine();
+        _output.WriteLine($"Incremental index complete for snapshot {newSnapshotIdStr}");
+        _output.WriteLine($"  Previous snapshot: {previousSnapshotId}");
+        _output.WriteLine($"  documents_changed_this_run:          {changedDocs.Count}      documents_in_snapshot: {workspaceInfo.Documents.Count}");
+        _output.WriteLine($"  projects_reextracted_this_run:       {affectedProjects.Count}/{projectsInSnapshot}");
+        _output.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
+        _output.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
+        _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
         return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics);
     }
 
     private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
     {
-        Console.Write("Loading compilations for affected projects... ");
+        _output.Write("Loading compilations for affected projects... ");
         var result = new Dictionary<string, Compilation>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
         {
@@ -224,13 +225,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
             result[project.Name] = compilation;
         }
-        Console.WriteLine($"done ({result.Count} compilations).");
+        _output.WriteLine($"done ({result.Count} compilations).");
         return result;
     }
 
     private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
     {
-        Console.Write("Preparing snapshot data (copy forward, remove stale)... ");
+        _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
         _store.CopyEdgesToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopySnapshotDiagnostics(previousSnapshotId, newSnapshotIdStr);
@@ -271,18 +272,18 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _store.CopySearchIndexToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 
-        Console.WriteLine("done.");
+        _output.WriteLine("done.");
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
         WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations)
     {
-        Console.WriteLine("Extracting replacement facts for affected projects...");
+        _output.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
 
         foreach (var (projectName, compilation) in affectedCompilations)
         {
-            Console.Write($"  [{projectName}] ");
+            _output.Write($"  [{projectName}] ");
             var options = CompilationFactExtractor.CreateOptions(_skipAdapters);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
@@ -297,10 +298,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             foreach (var measurement in result.Measurements)
             {
                 if (verbose)
-                    Console.Error.WriteLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                    _output.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
             }
 
-            Console.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
+            _output.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
         }
 
         return (totalDecl, totalEdge, totalDiag);
@@ -327,9 +328,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // documents were deleted), every old symbol must be removed from the snapshot.
         if (newDocVersionIdSet.Count == 0)
         {
-            Console.Write($"Pruning {oldSymbolIds.Count} removed symbols (all documents deleted)... ");
+            _output.Write($"Pruning {oldSymbolIds.Count} removed symbols (all documents deleted)... ");
             _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, oldSymbolIds);
-            Console.WriteLine("done.");
+            _output.WriteLine("done.");
             return oldSymbolIds;
         }
 
@@ -341,9 +342,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var removedSymbolIds = oldSymbolIds.Where(id => !newSymbolIds.Contains(id)).ToList();
         if (removedSymbolIds.Count > 0)
         {
-            Console.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
+            _output.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
             _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
-            Console.WriteLine("done.");
+            _output.WriteLine("done.");
             return removedSymbolIds;
         }
 
@@ -378,13 +379,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Updating cross-document edges... ");
+        _output.Write("Updating cross-document edges... ");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         var crossDocEdgesProcessed = await refresher.RefreshAsync(
             context.Solution, context.Workspace,
             context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId,
             (HashSet<string>)context.Changes.ChangedPaths, cancellationToken);
-        Console.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
+        _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));
         return crossDocEdgesProcessed;
@@ -393,31 +394,24 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private void RebuildSearchIndex(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Rebuilding FTS5 search index (incremental)... ");
+        _output.Write("Rebuilding FTS5 search index (incremental)... ");
         // Changed/deleted path and symbol sets are final; FTS must finish before MarkSnapshotComplete.
         _store.BuildSearchIndex(
             context.Snapshots.ToSnapshotId,
             (HashSet<string>)context.Changes.ChangedPaths,
             (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
-        Console.WriteLine("done.");
+        _output.WriteLine("done.");
         sw.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, sw.ElapsedMilliseconds, DateTime.UtcNow));
     }
 
     private void ComputeAndPersistSemanticChanges(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        Console.Write("Computing semantic diff from previous snapshot... ");
-        var differ = new SemanticDiffer(_store, _store, _store);
-        var (diffChanges, skippedComparisons) = differ.ComputeDiff(
-            context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId,
+        SemanticDiffStep.ComputeAndPersist(
+            _store, _output, context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId,
             (HashSet<string>)context.Changes.ChangedPaths,
-            (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
-        _store.SaveSemanticChanges(
-            context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId, diffChanges);
-        Console.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
-        sw.Stop();
-        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, sw.ElapsedMilliseconds, DateTime.UtcNow));
+            (HashSet<string>)context.Changes.DiffAndSearchSymbolIds,
+            timings);
     }
 
     private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)

@@ -57,6 +57,68 @@ public static class CompilationFactExtractor
             LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
             LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
 
+    /// <summary>
+    /// Shared state a <see cref="RunStage"/> call records a failure against:
+    /// the project a stage failed for, the accumulated failure list, and the
+    /// binding-incompleteness collector every stage degrades into on error.
+    /// </summary>
+    internal sealed record StageContext(string ProjectName, List<ExtractionFailure> Failures, BindingIncompletenessCollector Incompleteness);
+
+    /// <summary>
+    /// Runs one extraction stage, catching any exception so a single failing
+    /// stage degrades (recorded in <see cref="ExtractionFailure"/> and
+    /// <see cref="BindingIncompletenessCollector"/>) instead of aborting the
+    /// rest of <see cref="ExtractAll"/>. All six extraction stages —
+    /// including Polymorphism, previously unguarded — go through this so a
+    /// thrown exception in any one of them can never escape <c>ExtractAll</c>.
+    /// Internal (not private) so the failure/incompleteness contract can be
+    /// unit-tested directly rather than only through the six ExtractAll call
+    /// sites.
+    /// </summary>
+    internal static void RunStage(
+        StageContext ctx,
+        string stageName,
+        string? adapterName,
+        Action<string>? log,
+        Func<string, string> describeFailure,
+        Action stage)
+    {
+        try
+        {
+            stage();
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke(describeFailure(ex.Message));
+            ctx.Failures.Add(new ExtractionFailure(stageName, ctx.ProjectName, adapterName, ex.Message, ex));
+            ctx.Incompleteness.RecordExtractorFailure();
+        }
+    }
+
+    /// <inheritdoc cref="RunStage(StageContext, string, string?, Action{string}?, Func{string, string}, Action)"/>
+    /// <remarks>Value-returning overload for stages that produce a result rather than mutating a shared list; <paramref name="onFailure"/> is the result used when the stage throws.</remarks>
+    internal static T RunStage<T>(
+        StageContext ctx,
+        string stageName,
+        string? adapterName,
+        Action<string>? log,
+        Func<string, string> describeFailure,
+        Func<T> stage,
+        T onFailure)
+    {
+        try
+        {
+            return stage();
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke(describeFailure(ex.Message));
+            ctx.Failures.Add(new ExtractionFailure(stageName, ctx.ProjectName, adapterName, ex.Message, ex));
+            ctx.Incompleteness.RecordExtractorFailure();
+            return onFailure;
+        }
+    }
+
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
         var skipAdapters = options?.SkipAdapters;
@@ -68,67 +130,55 @@ public static class CompilationFactExtractor
         var failures = new List<ExtractionFailure>();
         var measurements = new List<ExtractionMeasurement>();
         var incompleteness = new BindingIncompletenessCollector(projectName, workspaceInfo.Id.GitRoot);
+        var ctx = new StageContext(projectName, failures, incompleteness);
 
         var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments, incompleteness);
 
-        List<SymbolDeclaration> declarations;
-        try
-        {
-            declarations = symbolExtractor.ExtractAll();
-        }
-        catch (Exception ex)
-        {
-            logError?.Invoke($"Symbol extraction failed for project '{projectName}': {ex.Message}");
-            failures.Add(new ExtractionFailure("SymbolDeclaration", projectName, null, ex.Message, ex));
-            declarations = new List<SymbolDeclaration>();
-        }
+        var declarations = RunStage(
+            ctx, "SymbolDeclaration", null, logError,
+            msg => $"Symbol extraction failed for project '{projectName}': {msg}",
+            symbolExtractor.ExtractAll,
+            new List<SymbolDeclaration>());
 
-        List<EdgeRecord> edges;
-        try
-        {
-            edges = symbolExtractor.ExtractEdges();
-        }
-        catch (Exception ex)
-        {
-            logError?.Invoke($"Edge extraction failed for project '{projectName}': {ex.Message}");
-            failures.Add(new ExtractionFailure("StructuralEdge", projectName, null, ex.Message, ex));
-            edges = new List<EdgeRecord>();
-        }
-
+        var edges = RunStage(
+            ctx, "StructuralEdge", null, logError,
+            msg => $"Edge extraction failed for project '{projectName}': {msg}",
+            symbolExtractor.ExtractEdges,
+            new List<EdgeRecord>());
 
         var gitRoot = workspaceInfo.Id.GitRoot;
 
         var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness);
 
-        try
-        {
-            edges.AddRange(memberEdgeExtractor.ExtractAll());
-            measurements.AddRange(memberEdgeExtractor.Measurements);
-        }
-        catch (Exception ex)
-        {
-            logError?.Invoke($"Member edge extraction failed for project '{projectName}': {ex.Message}");
-            failures.Add(new ExtractionFailure("MemberEdge", projectName, null, ex.Message, ex));
-            incompleteness.RecordExtractorFailure();
-        }
-
+        RunStage(
+            ctx, "MemberEdge", null, logError,
+            msg => $"Member edge extraction failed for project '{projectName}': {msg}",
+            () =>
+            {
+                edges.AddRange(memberEdgeExtractor.ExtractAll());
+                measurements.AddRange(memberEdgeExtractor.Measurements);
+            });
 
         var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
 
-        edges.AddRange(polyExtractor.ExtractAll());
+        // Polymorphism was previously unguarded: a thrown exception here
+        // escaped ExtractAll entirely. It now degrades like every other
+        // stage — recorded as a failure/incompleteness entry rather than
+        // being fatal — for consistency with the other five stages.
+        RunStage(
+            ctx, "Polymorphism", null, logError,
+            msg => $"Polymorphism extraction failed for project '{projectName}': {msg}",
+            () => edges.AddRange(polyExtractor.ExtractAll()));
 
-        try
-        {
-            var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
-            edges.AddRange(reflectionExtractor.Extract());
-            measurements.AddRange(reflectionExtractor.Measurements);
-        }
-        catch (Exception ex)
-        {
-            logWarning?.Invoke($"Reflection extraction failed: {ex.Message}");
-            failures.Add(new ExtractionFailure("Reflection", projectName, null, ex.Message, ex));
-            incompleteness.RecordExtractorFailure();
-        }
+        RunStage(
+            ctx, "Reflection", null, logWarning,
+            msg => $"Reflection extraction failed: {msg}",
+            () =>
+            {
+                var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
+                edges.AddRange(reflectionExtractor.Extract());
+                measurements.AddRange(reflectionExtractor.Measurements);
+            });
 
         var adapters = adapterProvider(skipAdapters);
 
@@ -139,16 +189,10 @@ public static class CompilationFactExtractor
 
         foreach (var adapter in adapters)
         {
-            try
-            {
-                edges.AddRange(adapter.Extract(compilation, snapshotId, locationResolver));
-            }
-            catch (Exception ex)
-            {
-                logError?.Invoke($"Adapter '{adapter.Name}' failed: {ex.Message}");
-                failures.Add(new ExtractionFailure("Adapter", projectName, adapter.Name, ex.Message, ex));
-                incompleteness.RecordExtractorFailure();
-            }
+            RunStage(
+                ctx, "Adapter", adapter.Name, logError,
+                msg => $"Adapter '{adapter.Name}' failed: {msg}",
+                () => edges.AddRange(adapter.Extract(compilation, snapshotId, locationResolver)));
         }
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
