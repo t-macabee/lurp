@@ -10,12 +10,15 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
 {
     private const string SnapshotId = "snap-budget-enforcer";
 
+    // Kept-prefix order: highest priority first. surroundingSource is last
+    // because the enforcer clears that low-value bulk before any other
+    // section, regardless of its position in the tier priority.
     private static readonly string[] PriorityOrder =
     [
         "contracts", "directCallees",
         "uncertainties", "suggestedVerification", "incomingPaths", "outgoingPaths",
         "topology", "constraints", "completeness", "likelyChangeSites",
-        "affectedPublicSurfaces", "inclusionReasons",
+        "affectedPublicSurfaces", "inclusionReasons", "surroundingSource",
     ];
 
     private readonly string _dbPath = Path.Combine(
@@ -43,16 +46,21 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
     }
 
     [Fact]
-    public void AnchorAloneOverBudget_DeclaresOverflowAndNeverDropsTheAnchor()
+    public void AnchorAloneOverBudget_BoundsAnchorSourceToFitAndNeverDropsTheAnchor()
     {
         var capsule = Capsule(new string('x', 40_000));
         CapsuleBudgetEnforcer.Enforce(capsule, budget: 1000, tierPriority: ["contracts"]);
 
+        // The anchor is never dropped, but its source is bounded as the
+        // last-resort trim step, so the delivered estimate honors the budget
+        // basis --budget is documented to bound.
         Assert.NotEmpty(capsule.Anchor.Source);
-        Assert.Contains(capsule.OmittedTiers, entry => entry.Category == "anchor" && entry.Reason == "budget_exhausted");
+        Assert.Contains("source truncated", capsule.Anchor.Source);
+        Assert.Contains(capsule.OmittedTiers, entry => entry.Category == "anchor" && entry.Reason == "summarized");
         Assert.True(capsule.Truncated);
         Assert.Equal(CapsuleBudgetEnforcer.Measure(capsule), capsule.EstimatedTokens);
-        Assert.True(capsule.EstimatedTokens > 1000);
+        Assert.True(capsule.EstimatedTokens <= 1000,
+            $"Delivered estimate {capsule.EstimatedTokens} exceeds the budget basis 1000.");
     }
 
     [Fact]
@@ -105,10 +113,11 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         Assert.NotEmpty(capsule.OmittedTiers);
 
         // Bounded: either the emitted estimate fits the budget, or the only
-        // remaining overage is the never-dropped anchor, which is declared.
+        // remaining overage is residual content that cannot be trimmed (the
+        // anchor is bounded as a last resort, never dropped), which is declared.
         Assert.True(
             capsule.EstimatedTokens <= 2000
-            || capsule.OmittedTiers.Any(entry => entry.Category == "anchor"));
+            || capsule.OmittedTiers.Any(entry => entry.Category == "anchor" && entry.Reason == "budget_exhausted"));
 
         // Greedy prefix: sections are dropped lowest-priority first, so every
         // section that originally had content and lies at or below the first
@@ -272,6 +281,55 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         Assert.Contains(capsule.OmittedTiers, entry => entry.Reason == "summarized");
         Assert.All(capsule.SurroundingSource, item =>
             Assert.True(item.Source == null || item.Source.Length <= 800 + "\n// … source truncated by token budget …".Length));
+    }
+
+    // Audit finding E shape: a bulk anchor, many retained surroundingSource
+    // entries, paths, and the small high-signal sections, requested at a
+    // budget the unbounded capsule heavily overshoots. The delivered
+    // estimatedTokens is the budget basis and must come back within budget.
+    [Fact]
+    public void AuditShapedCapsule_DeliversEstimateWithinBudgetOnTheStatedBasis()
+    {
+        var capsule = Capsule(new string('x', 6_000));
+        for (var i = 0; i < 14; i++)
+            capsule.SurroundingSource.Add(Item(new string('s', 2_000), $"surr{i}"));
+        for (var i = 0; i < 50; i++)
+            capsule.OutgoingPaths.Add(MakePath(8));
+        capsule.AffectedPublicSurfaces.Add(Item("public sealed class C", "surface"));
+        capsule.InclusionReasons["contracts"] = "reason";
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 2000, tierPriority:
+            ["contracts", "directCallees", "registeredImplementations", "surroundingSource"]);
+
+        Assert.True(capsule.EstimatedTokens <= 2000,
+            $"Delivered estimate {capsule.EstimatedTokens} exceeds the budget basis 2000.");
+        Assert.Equal(CapsuleBudgetEnforcer.Measure(capsule), capsule.EstimatedTokens);
+    }
+
+    // When the budget forces drops, the low-value surroundingSource bulk is
+    // dropped before the small high-signal sections: inclusionReasons and
+    // affectedPublicSurfaces must survive it.
+    [Fact]
+    public void ForcedDrops_InclusionReasonsAndAffectedPublicSurfacesSurviveSurroundingSource()
+    {
+        var capsule = Capsule("a");
+        for (var i = 0; i < 4; i++)
+            capsule.SurroundingSource.Add(Item(new string('s', 2_000), $"surr{i}"));
+        capsule.AffectedPublicSurfaces.Add(Item("public sealed class C", "surface"));
+        capsule.InclusionReasons["contracts"] = "reason";
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 500, tierPriority:
+            ["contracts", "surroundingSource"]);
+
+        Assert.Empty(capsule.SurroundingSource);
+        Assert.Contains(capsule.OmittedTiers,
+            entry => entry.Category == "surroundingSource" && entry.Reason == "budget_exhausted");
+
+        Assert.NotEmpty(capsule.AffectedPublicSurfaces);
+        Assert.Contains("contracts", capsule.InclusionReasons.Keys);
+        Assert.DoesNotContain(capsule.OmittedTiers,
+            entry => entry.Category == "inclusionReasons" || entry.Category == "affectedPublicSurfaces");
+        Assert.True(capsule.EstimatedTokens <= 500);
     }
 
     // estimatedTokens is the content basis the budget bounds; estimatedArtifactTokens

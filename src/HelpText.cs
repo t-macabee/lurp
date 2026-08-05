@@ -104,8 +104,11 @@ internal static class HelpText
         Console.WriteLine("                         is uncounted navigation metadata, so the emitted file is");
         Console.WriteLine("                         larger; size a context window from estimatedArtifactTokens");
         Console.WriteLine("                         instead. Over-budget capsules bound paths and item source,");
-        Console.WriteLine("                         then drop the lowest-priority sections; every truncated");
-        Console.WriteLine("                         category gets one terminal record in omittedTiers.");
+        Console.WriteLine("                         then drop the lowest-priority sections (surroundingSource");
+        Console.WriteLine("                         first); as a last resort the anchor source itself is");
+        Console.WriteLine("                         bounded, so estimatedTokens never exceeds the budget.");
+        Console.WriteLine("                         Every truncated category gets one terminal record in");
+        Console.WriteLine("                         omittedTiers.");
         Console.WriteLine("    --max-hops=<n>        Maximum graph hops to expand (default: 3).");
         Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
         Console.WriteLine("    --include-generated   Include source-generated symbols.");

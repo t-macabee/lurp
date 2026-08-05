@@ -17,12 +17,18 @@ namespace Lurp.Workspace
     // Over-budget capsules first bound the path sections (a "summarized"
     // entry), then bound tier-item source text to a per-item cap, then clear the
     // lowest-priority sections greedily; every omitted/summarized category is
-    // recorded in omittedTiers and truncatedCategories. The anchor is never
-    // dropped; if it alone overflows the budget, that overflow is declared with
-    // budget_exhausted. estimatedTokens is set to the settled CONTENT measure of
-    // the capsule : the serialized artifact is larger, because per-item identity
-    // and provenance framing is uncounted navigation metadata; the whole-artifact
-    // figure is reported separately as estimatedArtifactTokens.
+    // recorded in omittedTiers and truncatedCategories. surroundingSource is
+    // low-value bulk (sibling declarations that heavily overlap the anchor) and
+    // is cleared before high-signal small sections such as inclusionReasons and
+    // affectedPublicSurfaces. The anchor is never dropped; as a last resort its
+    // source is bounded to fit the remaining budget (a "summarized" entry), so
+    // --budget always bounds the content basis it is documented to bound. Only
+    // when the residual non-anchor content alone still exceeds the budget is the
+    // overflow declared with budget_exhausted. estimatedTokens is set to the
+    // settled CONTENT measure of the capsule : the serialized artifact is
+    // larger, because per-item identity and provenance framing is uncounted
+    // navigation metadata; the whole-artifact figure is reported separately as
+    // estimatedArtifactTokens.
     //
     // omittedTiers carries exactly ONE terminal record per category: a later trim
     // of a category supersedes its earlier record in place, so the list describes
@@ -88,9 +94,17 @@ namespace Lurp.Workspace
                 {
                     // Every trimmable section has been cleared and the capsule is
                     // still over budget. The anchor is priority 1 and is never
-                    // dropped; declare the overflow rather than hiding it.
-                    RecordTruncation(capsule, new TruncationEntry("anchor", "budget_exhausted"));
+                    // dropped; bound its source to fit the remaining budget so
+                    // the delivered estimate honors the basis --budget is
+                    // documented to bound. Only when the residual non-anchor
+                    // content alone still exceeds the budget (a pathologically
+                    // small budget) is the overflow declared, honestly, with
+                    // budget_exhausted.
+                    if (BoundAnchorSourceToFit(capsule, budget))
+                        RecordTruncation(capsule, new TruncationEntry("anchor", "summarized"));
                     capsule.EstimatedTokens = Measure(capsule);
+                    if (capsule.EstimatedTokens > budget)
+                        RecordTruncation(capsule, new TruncationEntry("anchor", "budget_exhausted"));
                     return capsule.EstimatedTokens;
                 }
                 RecordTruncation(capsule, entry);
@@ -123,6 +137,9 @@ namespace Lurp.Workspace
         /// sections. Per-item identity framing is not counted.
         /// </summary>
         internal static int Measure(ContextCapsule capsule)
+            => MeasureChars(capsule) / 4;
+
+        private static int MeasureChars(ContextCapsule capsule)
         {
             var chars = SourceChars(capsule.Anchor.Source);
             chars += SectionSourceChars(capsule.Contracts);
@@ -142,7 +159,29 @@ namespace Lurp.Workspace
             chars += SerializedChars(capsule.Completeness);
             chars += SerializedChars(capsule.Uncertainties);
             chars += SerializedChars(capsule.SuggestedVerification);
-            return chars / 4;
+            return chars;
+        }
+
+        /// <summary>
+        /// Last-resort trim: bounds the anchor's own source so the settled
+        /// content measure fits the budget, keeping the truncation marker
+        /// whenever it fits so the bounded source declares its own truncation
+        /// the same way tier item sources do. Returns false when the anchor
+        /// already fits and the overage is residual non-anchor content.
+        /// </summary>
+        private static bool BoundAnchorSourceToFit(ContextCapsule capsule, int budget)
+        {
+            var source = capsule.Anchor.Source;
+            var otherChars = MeasureChars(capsule) - source.Length;
+            var allowed = Math.Max(budget * 4 - otherChars, 0);
+            if (source.Length <= allowed)
+                return false;
+
+            var keepsMarker = allowed >= SourceTruncationMarker.Length;
+            var contentChars = keepsMarker ? allowed - SourceTruncationMarker.Length : allowed;
+            capsule.Anchor.Source = source.Substring(0, contentChars)
+                + (keepsMarker ? SourceTruncationMarker : string.Empty);
+            return true;
         }
 
         private static int SourceChars(string? text)
@@ -337,6 +376,21 @@ namespace Lurp.Workspace
                 ]);
 
                 _sections = sections;
+
+                // surroundingSource is low-value bulk: sibling declarations that
+                // heavily overlap the anchor. It must be cleared before the
+                // small high-signal sections (inclusionReasons,
+                // affectedPublicSurfaces), so it moves to the end of the list
+                // (the greedy loop trims from the end first) regardless of its
+                // position in the tier priority. Source bounding is unaffected:
+                // BoundTierSources looks sections up by name.
+                var surrounding = sections.FirstOrDefault(
+                    static section => section.Name == "surroundingSource");
+                if (surrounding != null)
+                {
+                    sections.Remove(surrounding);
+                    sections.Add(surrounding);
+                }
             }
 
             public TruncationEntry? TrimNextLowestPriority()

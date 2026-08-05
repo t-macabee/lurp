@@ -21,8 +21,10 @@ namespace Lurp.Workspace
         [JsonPropertyName("kind")]
         public string Kind { get; init; }
 
+        // Settable so the budget enforcer can bound the anchor's source as the
+        // last-resort trim step; the anchor itself is never dropped.
         [JsonPropertyName("source")]
-        public string Source { get; init; }
+        public string Source { get; set; }
 
         [JsonPropertyName("scope")]
         public string Scope { get; init; } = "symbol";
