@@ -192,6 +192,26 @@ public sealed class CapsuleAuditScoreboardTests : IDisposable
         Assert.DoesNotContain("ApprovalNote =", approve.Source, StringComparison.Ordinal);
     }
 
+    // ACCEPTANCE — Finding 1, member-anchor form. DI registration is a
+    // type-level fact (AddHostedService<TPublisher>()), so a capsule anchored
+    // on a *member* of the registered type must still surface the registration
+    // in the registeredImplementations tier. Before this test the tier
+    // consulted only the anchor's own symbol ids, so a member anchor saw the
+    // registration only as an uncertainty — honest, but buried outside the
+    // tier named after it.
+    [SkippableFact]
+    public async Task Finding1_MemberAnchor_SurfacesTypeLevelRegistration()
+    {
+        var capsule = await CapsuleForAsync(OutboxPublisherFqn + ".ExecuteAsync");
+
+        Assert.DoesNotContain(capsule.OmittedTiers,
+            entry => entry.Category == "registeredImplementations" && entry.Reason == "empty");
+
+        Assert.Contains(capsule.RegisteredImplementations,
+            i => i.FullyQualifiedName.Contains("AddApplicationServices", StringComparison.Ordinal)
+              && i.EdgeKind == EdgeKind.Registers.ToString());
+    }
+
     private async Task<ContextCapsule> CapsuleForAsync(string anchorFqn)
     {
         var fixture = await _fixture.Value;

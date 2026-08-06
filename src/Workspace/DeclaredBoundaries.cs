@@ -70,6 +70,21 @@ internal static class DeclaredBoundaries
                 "EF Core model conventions beyond query filters and indexes (e.g. IsRequired, HasMaxLength, " +
                 "HasDefaultSchema) are not modeled."
         ),
+        new(
+            Id: "shape_similarity",
+            ConstructClass: "Semantic sibling similarity",
+            Description:
+                "Lurp's graph is call/declare/implement-shaped and grounded in compiler-proved relations. " +
+                "Similarity between implementations (shared collaborator sets, naming patterns such as " +
+                "'*ForStoreAsync') is an inferred ranking: it has no compiler oracle, no provenance to " +
+                "attach, and no completeness claim that a full rebuild could verify. It is deliberately " +
+                "not modeled (Task 9, Option B — see docs/reference/CAPSULE_AUDIT_MITIGATION.md).",
+            UncertaintyReason:
+                "Semantic sibling similarity is not modeled: consistency audits requiring comparison against " +
+                "'similar' implementations are unsupported. Use the proved neighborhood instead — " +
+                "implementations of a shared interface, shared base types and overrides, callers/callees, " +
+                "and containing-declaration siblings."
+        ),
     ];
 
     internal static BoundaryEntry? FindById(string id)

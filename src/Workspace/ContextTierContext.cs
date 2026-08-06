@@ -88,7 +88,15 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         if (_hasUnmodeledRegistrations.HasValue)
             return _hasUnmodeledRegistrations.Value;
 
-        foreach (var symbolId in EffectiveSymbolIds)
+        // Registration is a type-level fact, so a member anchor must also
+        // consider its declaring type; otherwise an unmodeled registration on
+        // the type lets a member anchor's tier report "empty" (the exact false
+        // negative this method exists to prevent).
+        var scope = EffectiveSymbolIds
+            .Concat(EffectiveSymbolIds.SelectMany(GetDeclaringTypeIds))
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (var symbolId in scope)
         {
             var incoming = EdgeStore.GetIncomingEdges(SnapshotId, symbolId);
             foreach (var edge in incoming)

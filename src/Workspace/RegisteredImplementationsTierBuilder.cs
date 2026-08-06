@@ -26,7 +26,14 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             EdgeKind.Registers.ToString(),
         };
 
-        foreach (var symbolId in context.EffectiveSymbolIds)
+        // DI registration is a type-level fact: `AddHostedService<TPublisher>()`
+        // registers the type, never the member the capsule is anchored on. A
+        // member anchor must therefore also consult its declaring type, or the
+        // registration that put the anchor on the runtime path is invisible in
+        // the tier named after it (it would surface only as an uncertainty).
+        // The type-anchor direction is already covered: EffectiveSymbolIds
+        // expands a type anchor to its declared members.
+        foreach (var symbolId in RegistrationScopeIds())
         {
             var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
             foreach (var edge in incomingEdges)
@@ -66,5 +73,25 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
         }
 
         return results;
+    }
+
+    private List<string> RegistrationScopeIds()
+    {
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var symbolId in context.EffectiveSymbolIds)
+        {
+            if (seen.Add(symbolId))
+                ids.Add(symbolId);
+
+            foreach (var typeId in context.GetDeclaringTypeIds(symbolId))
+            {
+                if (seen.Add(typeId))
+                    ids.Add(typeId);
+            }
+        }
+
+        return ids;
     }
 }
