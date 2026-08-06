@@ -99,7 +99,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _output.Write("Identifying affected projects... ");
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        invalidationPaths.UnionWith(dependencyRefresher.FindAffectedDocPaths(previousSnapshotId, changedPaths));
+        var closurePaths = dependencyRefresher.FindAffectedDocPaths(previousSnapshotId, changedPaths);
+        invalidationPaths.UnionWith(closurePaths);
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
@@ -109,9 +110,25 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Kept distinct from invalidationPaths — the wide set driving FTS refresh,
         // the semantic diff, and the step-7 cross-document refresh seed — because
         // extraction and deletion must narrow in lockstep while those consumers stay
-        // project-wide. Today extraction is still unscoped, so this equals
-        // invalidationPaths and nothing changes behaviorally.
-        var extractionScopePaths = new HashSet<string>(invalidationPaths, StringComparer.OrdinalIgnoreCase);
+        // project-wide.
+        //
+        // Contents: changed documents, plus the reverse-edge closure, plus every
+        // document declaring any part of a type touched by that seed. The type-part
+        // expansion is required because two extraction guards are type-level
+        // (SymbolStructuralEdgeExtractor.IsTypeInScope, PolymorphismExtractionContext
+        // .IsTypeInScope) and StaticDispatchCallExtractor has no per-tree guard at
+        // all, so a purely file-granular scope would leave partial types half in and
+        // half out of scope while whole-symbol properties such as is_partial stay
+        // computed across all parts.
+        //
+        // Until extraction is actually scoped, this stays unioned with the wide
+        // project-level set so extraction and deletion still match. Partial parts
+        // cannot cross an assembly boundary, so the type-part expansion is already a
+        // subset of that widening and this union is behaviorally inert today.
+        var extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        extractionScopeSeed.UnionWith(closurePaths);
+        var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
+        extractionScopePaths.UnionWith(invalidationPaths);
         _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
@@ -476,6 +493,42 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             }
         }
         return paths;
+    }
+
+    /// <summary>
+    /// Widens a document set to whole-type granularity: for every type declared in
+    /// <paramref name="seedPaths"/> in the previous snapshot, adds every document
+    /// that declares any part of that type. Non-partial types contribute only the
+    /// document already in the seed, so the expansion is a no-op unless a partial
+    /// type spans files.
+    /// </summary>
+    /// <remarks>
+    /// Reads the previous snapshot, so types introduced by the current edit are not
+    /// expanded — their declaring documents are changed documents and are already in
+    /// the seed. Returned paths are git-root-relative, matching the seed's shape.
+    /// </remarks>
+    private HashSet<string> ExpandToDeclaringTypeParts(string previousSnapshotId, HashSet<string> seedPaths)
+    {
+        var expanded = new HashSet<string>(seedPaths, StringComparer.OrdinalIgnoreCase);
+        if (seedPaths.Count == 0)
+            return expanded;
+
+        var docVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, seedPaths);
+        if (docVersionIds.Count == 0)
+            return expanded;
+
+        foreach (var symbolId in _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, docVersionIds))
+        {
+            // Type symbol ids are prefixed "T:"; members cannot add parts their
+            // containing type does not already declare in the same document.
+            if (!symbolId.StartsWith("T:", StringComparison.Ordinal))
+                continue;
+
+            foreach (var location in _store.GetDeclarationLocations(symbolId, previousSnapshotId, includeGenerated: true))
+                expanded.Add(location.DocumentPath);
+        }
+
+        return expanded;
     }
 
 }
