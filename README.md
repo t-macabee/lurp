@@ -105,14 +105,7 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 ## Documentation and status
 
-The [CLI reference](src/README.md) documents every mode and option. The
-[reference index](docs/reference/README.md) groups the architecture guide,
-implementation status, operational notes, and historical investigations.
-
-The [Trust Kernel](docs/reference/TRUST_KERNEL.md) is the current,
-evidence-backed implementation status. The
-[architecture guide](docs/reference/LURP_ARCHITECTURE.md) describes the
-design model and longer-term direction.
+The [docs](docs/) folder contains the architecture guide and implementation status.
 
 ## License
 

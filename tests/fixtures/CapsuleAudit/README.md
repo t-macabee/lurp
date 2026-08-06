@@ -1,6 +1,6 @@
 # Capsule audit scoreboard fixture
 
-This fixture implements Task #2 of `docs/reference/CAPSULE_AUDIT_MITIGATION.md`:
+This fixture implements the capsule audit regression scoreboard:
 it freezes the seven eNoteV2 audit findings (the headline table in
 `lurp_audit.txt`) as an in-repo regression scoreboard. The eNoteV2 corpus is
 external, so each finding's pattern is reproduced here with stand-in framework

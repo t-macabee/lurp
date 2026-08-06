@@ -6,8 +6,7 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 namespace Lurp.Storage.Tests;
 
 /// <summary>
-/// Contract tests for Task #4 of docs/reference/CAPSULE_AUDIT_MITIGATION.md
-/// (framework contract facts): the contracts tier must surface base types
+/// Contract tests for framework contract facts: the contracts tier must surface base types
 /// (Inherits), implemented interfaces (Implements), and member-level overrides
 /// (Overrides) for a type anchor, and must surface framework targets declared
 /// outside the snapshot as externally marked items instead of dropping them

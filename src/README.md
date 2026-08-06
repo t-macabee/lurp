@@ -2,7 +2,7 @@
 
 This is the operational reference for Lurp's command-line interface. For the
 product overview, see the [root README](../README.md). For implementation
-status and design context, see the [reference index](../docs/reference/README.md).
+status and design context, see the [docs](../docs/).
 
 Lurp loads .NET solutions through Roslyn, stores snapshot-bound symbols,
 relationships, and source spans in SQLite (`index.db`), and exposes commands

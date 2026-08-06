@@ -78,7 +78,7 @@ internal static class DeclaredBoundaries
                 "Similarity between implementations (shared collaborator sets, naming patterns such as " +
                 "'*ForStoreAsync') is an inferred ranking: it has no compiler oracle, no provenance to " +
                 "attach, and no completeness claim that a full rebuild could verify. It is deliberately " +
-                "not modeled (Task 9, Option B — see docs/reference/CAPSULE_AUDIT_MITIGATION.md).",
+                "not modeled.",
             UncertaintyReason:
                 "Semantic sibling similarity is not modeled: consistency audits requiring comparison against " +
                 "'similar' implementations are unsupported. Use the proved neighborhood instead — " +

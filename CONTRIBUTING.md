@@ -19,11 +19,11 @@ dotnet test Lurp.slnx
 - `src/` — the application (`Lurp` Exe) and its CLI handlers.
 - `src/Storage/` — the `Lurp.Storage` library that owns the SQLite persistence layer.
 - `tests/` — the `Lurp.Tests` project (xunit) and its `tests/fixtures/` sample code.
-- `docs/reference/` — architecture and trust documents.
+- `docs/` — architecture and status documents.
 
 ## Conventions
 
-- Read `AGENTS.md` and `docs/reference/README.md` for the project's evidence-before-conclusions
+- Read `AGENTS.md` and `docs/README.md` for the project's evidence-before-conclusions
   rules and architectural invariants before changing behavior.
 - Handlers consume persisted facts; they must not create a second semantic-analysis engine.
 - Snapshots are immutable — do not alter persisted snapshots merely to make a test pass.

@@ -4,7 +4,7 @@ using Lurp.Workspace;
 namespace Lurp.Storage.Tests;
 
 /// <summary>
-/// Task #2 of docs/reference/CAPSULE_AUDIT_MITIGATION.md: freezes the seven
+/// Freezes the seven
 /// eNoteV2 audit findings (the headline table in lurp_audit.txt) as a
 /// regression scoreboard. The eNoteV2 corpus is external, so each finding's
 /// pattern is reproduced by the committed in-repo fixture under
