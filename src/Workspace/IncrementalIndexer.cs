@@ -103,6 +103,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
+
+        // Extraction scope: the set of documents that will be re-extracted, and
+        // whose copied-forward facts must therefore be deleted before re-extraction.
+        // Kept distinct from invalidationPaths — the wide set driving FTS refresh,
+        // the semantic diff, and the step-7 cross-document refresh seed — because
+        // extraction and deletion must narrow in lockstep while those consumers stay
+        // project-wide. Today extraction is still unscoped, so this equals
+        // invalidationPaths and nothing changes behaviorally.
+        var extractionScopePaths = new HashSet<string>(invalidationPaths, StringComparer.OrdinalIgnoreCase);
         _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
@@ -136,7 +145,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             // Step 5: Stale-Data Removal
             cancellationToken.ThrowIfCancellationRequested();
             var sw5 = System.Diagnostics.Stopwatch.StartNew();
-            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, invalidationPaths);
+            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, extractionScopePaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -229,7 +238,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return result;
     }
 
-    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
+    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> extractionScopePaths)
     {
         _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
@@ -238,22 +247,24 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _store.CopyAnnotationsToSnapshot(previousSnapshotId, newSnapshotIdStr);
         _store.CopyBindingIncompleteness(previousSnapshotId, newSnapshotIdStr);
 
-        // Only delete edges for the changed documents, not the entire affected project.
-        // We now scope re-extraction to changed documents only, so unchanged documents
-        // within affected projects keep their copied-forward edges intact.
-        if (changedPaths.Count > 0)
+        // Delete facts only for the documents in the extraction scope — the same
+        // set that is about to be re-extracted, so deleted rows are replaced by
+        // the re-extraction and nothing is silently lost. Extraction and deletion
+        // must always be scoped to exactly the same set; documents outside it
+        // keep their copied-forward edges intact.
+        if (extractionScopePaths.Count > 0)
         {
-            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, changedPaths);
-            _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotIdStr, changedPaths);
+            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
+            _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
         }
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
         // implicit default constructor) can't be scoped to a document by path, so we
-        // scope the delete to symbols declared in the documents that actually changed
+        // scope the delete to symbols declared in the extraction-scope documents
         // rather than the whole affected assembly : re-extraction is scoped the same
         // way, so an unchanged document elsewhere in the assembly must keep its
         // copied-forward null-path edges intact.
-        var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
+        var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, extractionScopePaths);
         if (invalidatedOldVersionIds.Count > 0)
         {
             var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, invalidatedOldVersionIds);
