@@ -36,16 +36,80 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             {
                 foreach (var edge in _store.GetIncomingEdges(previousSnapshotId, symbolId))
                 {
-                    if (edge.SourceDocumentPath != null && visitedPaths.Add(edge.SourceDocumentPath))
+                    foreach (var path in ResolveSourceDocumentPaths(previousSnapshotId, edge, visitedPaths))
                     {
-                        affectedPaths.Add(edge.SourceDocumentPath);
-                        next.Add(edge.SourceDocumentPath);
+                        affectedPaths.Add(path);
+                        next.Add(path);
                     }
                 }
             }
             frontier = next;
         }
         return affectedPaths;
+    }
+
+    private IEnumerable<string> ResolveSourceDocumentPaths(string previousSnapshotId, EdgeRecord edge, HashSet<string> visitedPaths)
+    {
+        if (edge.SourceDocumentPath != null)
+        {
+            if (visitedPaths.Add(edge.SourceDocumentPath))
+                yield return edge.SourceDocumentPath;
+            yield break;
+        }
+
+        if (string.IsNullOrEmpty(edge.SourceSymbolId))
+            yield break;
+
+        var locs = _store.GetDeclarationLocations(edge.SourceSymbolId, previousSnapshotId);
+        if (locs.Count > 0)
+        {
+            foreach (var loc in locs)
+            {
+                if (visitedPaths.Add(loc.DocumentPath))
+                    yield return loc.DocumentPath;
+            }
+            yield break;
+        }
+
+        var containingTypeSymbolId = DeriveContainingTypeSymbolId(edge.SourceSymbolId);
+        if (containingTypeSymbolId == null)
+            yield break;
+
+        var typeLocs = _store.GetDeclarationLocations(containingTypeSymbolId, previousSnapshotId);
+        foreach (var loc in typeLocs)
+        {
+            if (visitedPaths.Add(loc.DocumentPath))
+                yield return loc.DocumentPath;
+        }
+    }
+
+    private static string? DeriveContainingTypeSymbolId(string sourceSymbolId)
+    {
+        var pipeIndex = sourceSymbolId.IndexOf('|');
+        if (pipeIndex < 0)
+            return null;
+
+        var docCommentId = sourceSymbolId[..pipeIndex];
+        var assemblyIdentity = sourceSymbolId[(pipeIndex + 1)..];
+
+        if (docCommentId.Length < 3 || docCommentId[1] != ':')
+            return null;
+
+        char prefix = docCommentId[0];
+        if (prefix != 'M' && prefix != 'F' && prefix != 'P' && prefix != 'E')
+            return null;
+
+        var typeAndMember = docCommentId[2..];
+
+        var parenIndex = typeAndMember.IndexOf('(');
+        var searchEnd = parenIndex >= 0 ? parenIndex : typeAndMember.Length;
+
+        var lastDotIndex = typeAndMember.LastIndexOf('.', searchEnd - 1, Math.Min(searchEnd, typeAndMember.Length));
+        if (lastDotIndex < 0)
+            return null;
+
+        var typeDocCommentId = $"T:{typeAndMember[..lastDotIndex]}";
+        return $"{typeDocCommentId}|{assemblyIdentity}";
     }
 
     private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)
