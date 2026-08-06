@@ -186,6 +186,19 @@ earlier-deleted rows intact in the regression test. Storage suite: 139/139.
 from the snapshot's `snapshot_symbols`. `FullIndex_Has_No_Orphan_Edge_Targets`
 passes; the deletion path runs in every full-index pipeline invocation.
 
+2026-08-07 (extractor 1.5.0): `SymbolIdFactory.Make` now normalizes symbols to
+`OriginalDefinition` (and un-reduces extension methods via `ReducedFrom`) before
+building the ID. Previously, edge endpoints carrying constructed-generic IDs
+(`T:Base{System.Int32}`) or reduced extension-method IDs (receiver parameter
+omitted) could never match a snapshot member, so `DeleteOrphanEdges` silently
+removed real relationships — measured on a 7-project solution: `Inherits` to an
+internal generic base and `Calls`/`ExtensionReceiver` to user-written extension
+methods were absent from every snapshot. Verified by
+`SymbolIdNormalizationTests` (4 tests) and an audited re-index: internal
+non-synthesized orphan drops fell from 1,345 to 2, both legitimately outside
+the declared universe. Instantiation detail, where a consumer needs it, remains
+in `edges.type_arguments_json`.
+
 ### T4: Cross-project edge-relation deduplication
 
 `EdgeOperationsStore.SaveEdges` uses `INSERT OR IGNORE INTO edges`; `IndexRunner.RunFullIndexAsync`
