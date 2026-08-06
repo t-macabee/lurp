@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-06T06:03:53.5021739Z",
+  "generatedAtUtc": "2026-08-06T08:22:42.777083Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,7 +26,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 10095,
+        "estimatedTokens": 10046,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "60ee83daf8d1f2bcc7c1afe0d2efbd17",
-        "fullSnapshot": "60ee83daf8d1f2bcc7c1afe0d2efbd17",
+        "incrementalSnapshot": "c5130eb048e567d9277ccabaeea46971",
+        "fullSnapshot": "c5130eb048e567d9277ccabaeea46971",
         "equivalent": true,
         "error": null
       },
@@ -160,7 +160,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 1825,
+        "estimatedTokens": 1776,
         "truncated": true,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "c921dc26552b475c7ac61be6fe941c3e",
-        "fullSnapshot": "c921dc26552b475c7ac61be6fe941c3e",
+        "incrementalSnapshot": "dbd1f95d81f7905ddb392d767da83014",
+        "fullSnapshot": "dbd1f95d81f7905ddb392d767da83014",
         "equivalent": true,
         "error": null
       },
@@ -314,7 +314,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 5184,
+        "estimatedTokens": 5135,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -452,8 +452,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "61084dea316aa5eb14671126d3f4fafa",
-        "fullSnapshot": "61084dea316aa5eb14671126d3f4fafa",
+        "incrementalSnapshot": "748303283478e40850b7a8bc3c2e80fe",
+        "fullSnapshot": "748303283478e40850b7a8bc3c2e80fe",
         "equivalent": true,
         "error": null
       },

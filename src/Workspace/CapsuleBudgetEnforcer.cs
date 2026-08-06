@@ -56,34 +56,40 @@ namespace Lurp.Workspace
         private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
         {
             var trimmer = new SectionTrimmer(capsule, tierPriority);
-            var initialEstimate = Measure(capsule);
-            if (initialEstimate <= budget)
-            {
-                capsule.EstimatedTokens = initialEstimate;
-                return capsule.EstimatedTokens;
-            }
 
-            // The serialized path sections dominate a capsule and are the most
-            // compressible content. Bound them first so that lower-priority
-            // sections are not dropped merely to preserve an unbounded path blob.
-            foreach (var category in (string[])["incomingPaths", "outgoingPaths"])
+            if (Measure(capsule) > budget)
             {
-                if (trimmer.BoundPathSection(category) is { } bounded)
-                    RecordTruncation(capsule, bounded);
-            }
+                // The serialized path sections dominate a capsule and are the most
+                // compressible content. Bound them first so that lower-priority
+                // sections are not dropped merely to preserve an unbounded path blob.
+                foreach (var category in (string[])["incomingPaths", "outgoingPaths"])
+                {
+                    if (trimmer.BoundPathSection(category) is { } bounded)
+                        RecordTruncation(capsule, bounded);
+                }
 
-            // Then bound tier-item source text. Keeping every required section
-            // present (with bounded source) is preferred over dropping a whole
-            // section; the greedy loop below clears sections only when bounding
-            // no longer suffices.
-            foreach (var name in tierPriority)
-            {
-                if (trimmer.BoundTierSources(name, MaxItemSourceChars) is { } bounded)
-                    RecordTruncation(capsule, bounded);
+                // Then bound tier-item source text. Keeping every required section
+                // present (with bounded source) is preferred over dropping a whole
+                // section; the greedy loop below clears sections only when bounding
+                // no longer suffices.
+                foreach (var name in tierPriority)
+                {
+                    if (trimmer.BoundTierSources(name, MaxItemSourceChars) is { } bounded)
+                        RecordTruncation(capsule, bounded);
+                }
             }
 
             while (true)
             {
+                // The recovery instruction is (re)stamped here, from the CURRENT
+                // omittedTiers, so it only promises --tier=<category> for categories
+                // the CLI can serve and its own cost stays inside every measured
+                // estimate. Budget-governed sections outside the tier list
+                // (likelyChangeSites, affectedPublicSurfaces, paths, topology, ...)
+                // are dropped for budget, not fetchable: the instruction names them
+                // and states the only honest recovery, a larger --budget.
+                ComposeRecoveryInstruction(capsule, tierPriority);
+
                 var estimate = Measure(capsule);
                 capsule.EstimatedTokens = estimate;
                 if (estimate <= budget)
@@ -109,6 +115,42 @@ namespace Lurp.Workspace
                 }
                 RecordTruncation(capsule, entry);
             }
+        }
+
+        private static void ComposeRecoveryInstruction(ContextCapsule capsule, IReadOnlyList<string> tierPriority)
+        {
+            var fetchableOmitted = false;
+            var nonFetchableOmitted = new List<string>();
+            foreach (var entry in capsule.OmittedTiers)
+            {
+                if (entry.Reason is "budget_exhausted" or "summarized"
+                    && tierPriority.Contains(entry.Category, StringComparer.Ordinal))
+                {
+                    fetchableOmitted = true;
+                }
+                else if (entry.Reason == "budget_exhausted")
+                {
+                    nonFetchableOmitted.Add(entry.Category);
+                }
+            }
+
+            if (!fetchableOmitted && nonFetchableOmitted.Count == 0)
+                return;
+
+            var parts = new List<string>();
+            if (fetchableOmitted)
+            {
+                parts.Add("Fetch an omitted tier on its own, unbudgeted: --mode=context --tier=<category> "
+                    + "--symbol=<anchor symbolId> [--cursor=<next_cursor>].");
+            }
+            if (nonFetchableOmitted.Count > 0)
+            {
+                parts.Add("Sections not served by --tier ("
+                    + string.Join(", ", nonFetchableOmitted)
+                    + ") were dropped to fit the budget; re-run with a larger --budget to retain them.");
+            }
+
+            capsule.InclusionReasons["omittedTiers.budget_exhausted"] = string.Join(" ", parts);
         }
 
         /// <summary>

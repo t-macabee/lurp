@@ -433,6 +433,78 @@ public sealed class CapsuleBudgetEnforcerTests : IDisposable
         Assert.Empty(capsule.RelevantTests);
     }
 
+    // likelyChangeSites and affectedPublicSurfaces are budget-governed sections but
+    // are not fetchable via --tier: when budget pressure drops them, the instruction
+    // must not promise a continuation the CLI cannot serve. The only honest recovery
+    // it may state is a larger budget, naming the dropped sections.
+    [Fact]
+    public void NonTierBudgetDrops_DoNotPromiseAFetchableContinuation()
+    {
+        var capsule = Capsule(new string('x', 4_000));
+        capsule.LikelyChangeSites.Add(new LikelyChangeSite("doc.cs", 1, "anchor", "T:Anchor|prod"));
+        capsule.AffectedPublicSurfaces.Add(Item("public sealed class C", "surface"));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100, tierPriority: ["contracts"]);
+
+        Assert.Contains(capsule.OmittedTiers,
+            entry => entry.Category == "likelyChangeSites" && entry.Reason == "budget_exhausted");
+        Assert.Contains(capsule.OmittedTiers,
+            entry => entry.Category == "affectedPublicSurfaces" && entry.Reason == "budget_exhausted");
+
+        var instruction = capsule.InclusionReasons["omittedTiers.budget_exhausted"];
+        Assert.DoesNotContain("--tier=", instruction, StringComparison.Ordinal);
+        Assert.Contains("larger --budget", instruction, StringComparison.Ordinal);
+        Assert.Contains("likelyChangeSites", instruction, StringComparison.Ordinal);
+    }
+
+    // When a fetchable tier and non-tier sections are dropped together, the
+    // instruction carries both halves: the --tier= continuation for the tier and
+    // the larger-budget recovery for the sections the CLI cannot serve.
+    [Fact]
+    public void TierAndNonTierBudgetDrops_InstructionPromisesOnlyFetchableTiers()
+    {
+        var capsule = Capsule(new string('x', 4_000));
+        capsule.Contracts.Add(Item("public sealed class C", "contract"));
+        capsule.LikelyChangeSites.Add(new LikelyChangeSite("doc.cs", 1, "anchor", "T:Anchor|prod"));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100, tierPriority: ["contracts"]);
+
+        var instruction = capsule.InclusionReasons["omittedTiers.budget_exhausted"];
+        Assert.Contains("--tier=", instruction, StringComparison.Ordinal);
+        Assert.Contains("--cursor=", instruction, StringComparison.Ordinal);
+        Assert.Contains("larger --budget", instruction, StringComparison.Ordinal);
+        Assert.Contains("likelyChangeSites", instruction, StringComparison.Ordinal);
+    }
+
+    // An under-budget capsule omits nothing, so the recovery instruction is absent:
+    // the unconditional stamp would be a stale promise about omissions that do not
+    // exist, and would tax every roomy capsule with ~50 tokens of dead metadata.
+    [Fact]
+    public void UnderBudgetCapsule_CarriesNoRecoveryInstruction()
+    {
+        var capsule = Capsule("public sealed class C { }");
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100_000, tierPriority: ["contracts"]);
+
+        Assert.False(capsule.Truncated);
+        Assert.DoesNotContain("omittedTiers.budget_exhausted", capsule.InclusionReasons.Keys);
+    }
+
+    // Omissions recorded before the enforcer runs (the tier budgeter's entries) must
+    // stamp the instruction even when the enforcer itself trims nothing: the capsule
+    // that admitted a dropped tier already owes the consumer the continuation.
+    [Fact]
+    public void PreExistingOmissions_StampTheInstructionEvenWithoutFurtherTrimming()
+    {
+        var capsule = Capsule("public sealed class C { }");
+        capsule.OmittedTiers.Add(new TruncationEntry("directCallers", "budget_exhausted"));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, budget: 100_000, tierPriority: ["directCallers"]);
+
+        var instruction = capsule.InclusionReasons["omittedTiers.budget_exhausted"];
+        Assert.Contains("--tier=", instruction, StringComparison.Ordinal);
+        Assert.DoesNotContain("larger --budget", instruction, StringComparison.Ordinal);
+    }
+
     // The capsule that omits the most is the one that most needs to say how to
     // recover the omissions, so the omittedTiers.* meta-entries outlive the
     // pressure that creates them : even when every other section is cleared.

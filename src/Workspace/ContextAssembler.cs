@@ -123,14 +123,13 @@ namespace Lurp.Workspace
             // can recover the omitted section without widening the budget and re-reading
             // everything it already has.
             //
-            // Emitted unconditionally and kept terse. Conditioning it on an omission having
-            // already happened would miss the ones CapsuleBudgetEnforcer adds later (it runs
-            // after this method), and moving it after the enforcer would leave its own cost
-            // outside the measurement that estimatedTokens reports. One short line, always
-            // present, always counted, is the version with no gap between the two.
-            capsule.InclusionReasons["omittedTiers.budget_exhausted"] =
-                "Fetch an omitted tier on its own, unbudgeted: --mode=context --tier=<category> "
-              + "--symbol=<anchor symbolId> [--cursor=<next_cursor>].";
+            // The instruction is composed by CapsuleBudgetEnforcer from the omissions the
+            // tier budgeter and this trim pass actually recorded, stamped before every
+            // measured estimate so its own cost is always counted. It promises
+            // --tier=<category> only for the tier-builder tiers the CLI can serve; sections
+            // that are budget-governed but not fetchable (likelyChangeSites,
+            // affectedPublicSurfaces) are named with the only honest recovery: re-running
+            // with a larger --budget.
 
             if (anchorBindingIsIncomplete)
             {

@@ -449,12 +449,18 @@ public sealed class OutputContinuationTests : IDisposable
         store.Close();
     }
 
+    // The omission channel is only honest if it is actionable. The instruction is
+    // stamped from the omissions the capsule actually carries: present and offering
+    // --tier= only when a fetchable tier was dropped, absent when nothing was
+    // omitted, and naming budget-governed non-tier sections with the only honest
+    // recovery (a larger --budget) instead of a --tier= continuation the CLI
+    // cannot serve for them.
     [Fact]
-    public void Capsule_StatesHowToContinueABudgetExhaustedTier()
+    public void Capsule_StatesHowToContinueBudgetDrops_WithoutPromisingUnfetchableTiers()
     {
         using var store = CreateTierStore();
 
-        var capsule = new ContextAssembler
+        var roomy = new ContextAssembler
         {
             EdgeStore = store,
             DeclarationStore = store,
@@ -466,11 +472,35 @@ public sealed class OutputContinuationTests : IDisposable
             MaxHops = 3,
         }.Assemble();
 
-        // The omission channel is only honest if it is actionable; the capsule must
-        // carry the continuation instruction, not just the admission.
-        var reason = capsule.InclusionReasons["omittedTiers.budget_exhausted"];
+        // Nothing was omitted, so there is nothing to instruct: the unconditional
+        // stamp is gone and the key is absent rather than stale.
+        Assert.DoesNotContain("omittedTiers.budget_exhausted", roomy.InclusionReasons.Keys);
+
+        var pressured = new ContextAssembler
+        {
+            EdgeStore = store,
+            DeclarationStore = store,
+            BindingIncompletenessStore = store,
+            SnapshotId = TierSnapshot,
+            SymbolId = SymbolId.Parse("M:MyApp.Target.Run|prod"),
+            Intent = ContextIntent.Inspect,
+            Budget = 30,
+            MaxHops = 3,
+        }.Assemble();
+
+        // directCallers was dropped for budget and IS a fetchable tier, so the
+        // --tier= continuation is promised for it; affectedPublicSurfaces and the
+        // path/topology sections were dropped too but are not fetchable, and the
+        // instruction says the recovery for those is a larger budget.
+        var reason = pressured.InclusionReasons["omittedTiers.budget_exhausted"];
         Assert.Contains("--tier=", reason, StringComparison.Ordinal);
         Assert.Contains("--cursor=", reason, StringComparison.Ordinal);
+        Assert.Contains("larger --budget", reason, StringComparison.Ordinal);
+        Assert.Contains("affectedPublicSurfaces", reason, StringComparison.Ordinal);
+        store.Close();
+        Assert.Contains("--cursor=", reason, StringComparison.Ordinal);
+        Assert.Contains("larger --budget", reason, StringComparison.Ordinal);
+        Assert.Contains("affectedPublicSurfaces", reason, StringComparison.Ordinal);
         store.Close();
     }
 
