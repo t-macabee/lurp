@@ -14,6 +14,21 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 
     internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance, string? typeArgumentsJson = null)
     {
+        int? startLine = null;
+        int? startColumn = null;
+        int? endLine = null;
+        int? endColumn = null;
+
+        var syntaxRef = targetSymbol.DeclaringSyntaxReferences.FirstOrDefault();
+        if (syntaxRef != null)
+        {
+            var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
+            startLine = span.StartLinePosition.Line;
+            startColumn = span.StartLinePosition.Character;
+            endLine = span.EndLinePosition.Line;
+            endColumn = span.EndLinePosition.Character;
+        }
+
         return new EdgeRecord
         {
             SourceSymbolId = sourceId,
@@ -23,10 +38,10 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             SnapshotId = SnapshotId,
             ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
             SourceDocumentPath = GetDocumentPath(targetSymbol),
-            SourceStartLine = GetStartLine(targetSymbol),
-            SourceStartColumn = GetStartColumn(targetSymbol),
-            SourceEndLine = GetEndLine(targetSymbol),
-            SourceEndColumn = GetEndColumn(targetSymbol),
+            SourceStartLine = startLine,
+            SourceStartColumn = startColumn,
+            SourceEndLine = endLine,
+            SourceEndColumn = endColumn,
             TypeArgumentsJson = typeArgumentsJson,
         };
     }
@@ -40,42 +55,6 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
         if (string.IsNullOrEmpty(path))
             return null;
         return DocumentChangeDetector.GetRelativePath(path, _gitRoot);
-    }
-
-    internal static int? GetStartLine(ISymbol symbol)
-    {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
-            return null;
-        var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
-        return span.StartLinePosition.Line;
-    }
-
-    internal static int? GetStartColumn(ISymbol symbol)
-    {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
-            return null;
-        var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
-        return span.StartLinePosition.Character;
-    }
-
-    internal static int? GetEndLine(ISymbol symbol)
-    {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
-            return null;
-        var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
-        return span.EndLinePosition.Line;
-    }
-
-    internal static int? GetEndColumn(ISymbol symbol)
-    {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
-            return null;
-        var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
-        return span.EndLinePosition.Character;
     }
 
     internal bool IsTypeInScope(INamedTypeSymbol typeSymbol)

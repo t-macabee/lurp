@@ -327,21 +327,39 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 .Select(p => pathToNewVersion[p]));
 
         // If no new document versions exist for any changed path (all changed
-        // documents were deleted), every old symbol must be removed from the snapshot.
+        // documents were deleted), every old symbol is a prune candidate;
+        // otherwise only those absent from the re-extracted document versions.
+        List<string> candidateIds;
         if (newDocVersionIdSet.Count == 0)
         {
-            _output.Write($"Pruning {oldSymbolIds.Count} removed symbols (all documents deleted)... ");
-            _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, oldSymbolIds);
-            _output.WriteLine("done.");
-            return oldSymbolIds;
+            candidateIds = oldSymbolIds;
+        }
+        else
+        {
+            var newSymbolIds = new HashSet<string>(
+                _store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, newDocVersionIdSet));
+            candidateIds = oldSymbolIds.Where(id => !newSymbolIds.Contains(id)).ToList();
         }
 
-        // Get symbols that are in the new document versions
-        var newSymbolIds = new HashSet<string>(
-            _store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, newDocVersionIdSet));
+        // A candidate may still be declared elsewhere in the new snapshot — a
+        // partial type keeps its identity when one part is edited or deleted.
+        // Prune only symbols that no longer have any declaration site at all,
+        // or the surviving part's row is deleted along with the removed one.
+        var removedSymbolIds = candidateIds;
+        if (candidateIds.Count > 0)
+        {
+            // Survivors are read from every document version in the new snapshot
+            // except the stale versions of the changed documents themselves —
+            // those rows are exactly what pruning exists to remove.
+            var otherVersionIds = pathToNewVersion.Values
+                .Where(v => !oldDocVersionIdSet.Contains(v))
+                .ToList();
+            var survivingSymbolIds = otherVersionIds.Count == 0
+                ? []
+                : new HashSet<string>(_store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, otherVersionIds));
+            removedSymbolIds = candidateIds.Where(id => !survivingSymbolIds.Contains(id)).ToList();
+        }
 
-        // Prune symbols that were in old but not in new
-        var removedSymbolIds = oldSymbolIds.Where(id => !newSymbolIds.Contains(id)).ToList();
         if (removedSymbolIds.Count > 0)
         {
             _output.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");

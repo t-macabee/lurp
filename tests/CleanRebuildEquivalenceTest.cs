@@ -330,6 +330,157 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 """));
     }
 
+    // Closure-validation fixture: removing a partial part. `is_partial` is a
+    // whole-symbol property (DeclaringSyntaxReferences.Length > 1), so a
+    // copied-forward declaration row for the surviving part would keep
+    // is_partial=1 where a full rebuild yields 0.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterPartialPartRemoval()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "partial part removal",
+            () => CreateSingleProjectSolution(
+                ("Part1.cs", """
+                namespace TestProject;
+
+                public partial class Widget
+                {
+                    public void First() { }
+                }
+                """),
+                ("Part2.cs", """
+                namespace TestProject;
+
+                public partial class Widget
+                {
+                    public void Second() { }
+                }
+                """)),
+            () => File.Delete(
+                Path.Combine(_testDir, "src", "TestProject", "Part2.cs")));
+    }
+
+    // Closure-validation fixture: the only link from the unchanged consumer to
+    // the changed type runs through an implicit default constructor, whose edge
+    // carries a null source document path and is dropped from the BFS.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterImplicitConstructorTargetEdit()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "implicit constructor target edit",
+            () => CreateSingleProjectSolution(
+                ("Model.cs", """
+                namespace TestProject;
+
+                public class Model
+                {
+                }
+                """),
+                ("Consumer.cs", """
+                namespace TestProject;
+
+                public class Consumer
+                {
+                    public Model Create() => new Model();
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Model.cs"),
+                """
+                namespace TestProject;
+
+                public class Model
+                {
+                    public int Value { get; set; }
+                }
+                """));
+    }
+
+    // Closure-validation fixture: the edit adds an interface member that an
+    // existing method in an unchanged file now implicitly implements. No
+    // previous edge runs from the implementing document to the new member, so
+    // the reverse-edge BFS has no arc to follow.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterImplicitImplementationAppears()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "implicit implementation appears",
+            () => CreateSingleProjectSolution(
+                ("IRunner.cs", """
+                namespace TestProject;
+
+                public interface IRunner
+                {
+                }
+                """),
+                ("Runner.cs", """
+                namespace TestProject;
+
+                public class Runner : IRunner
+                {
+                    public void Run() { }
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "IRunner.cs"),
+                """
+                namespace TestProject;
+
+                public interface IRunner
+                {
+                    void Run();
+                }
+                """));
+    }
+
+    // Closure-validation fixture: the unchanged caller holds a reference that
+    // does not bind before the edit. An unresolved binding produced no edge, so
+    // the closure — which reads only persisted edges — cannot reach it.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterUnresolvedReferenceBinds()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "unresolved reference binds",
+            () => CreateSingleProjectSolution(
+                ("Helper.cs", """
+                namespace TestProject;
+
+                public static class Helper
+                {
+                }
+                """),
+                ("Caller.cs", """
+                namespace TestProject;
+
+                public class Caller
+                {
+                    public int Invoke() => Helper.Compute();
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Helper.cs"),
+                """
+                namespace TestProject;
+
+                public static class Helper
+                {
+                    public static int Compute() => 42;
+                }
+                """));
+    }
+
     [SkippableFact]
     public async Task IncrementalIndex_Matches_FullRebuild_AfterBaseAndInterfaceEdit()
     {
