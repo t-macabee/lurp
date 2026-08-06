@@ -34,7 +34,7 @@ internal static class AuditHandler
             var engine = new AuditEngine(store, snapshotId);
             var report = engine.RunAudit(options);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-            Console.WriteLine(json);
+            HandlerBootstrap.Out.WriteLine(json);
         }
         finally
         {

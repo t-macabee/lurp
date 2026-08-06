@@ -29,7 +29,7 @@ internal static class GetSourceHandler
                 HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot.");
             }
 
-            Console.Write(source);
+            HandlerBootstrap.Out.Write(source);
         }
         finally
         {

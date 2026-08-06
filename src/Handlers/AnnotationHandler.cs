@@ -25,7 +25,7 @@ internal static class AnnotationHandler
             var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
             store.SaveAnnotations(snapshotId, new[] { annotation });
 
-            Console.WriteLine(JsonSerializer.Serialize(new
+            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
             {
                 status = "ok",
                 snapshot_id = snapshotId,
@@ -70,7 +70,7 @@ internal static class AnnotationHandler
                 }).ToList()
             };
 
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
         }
         finally
         {

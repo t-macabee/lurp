@@ -53,20 +53,20 @@ internal static class FindSymbolHandler
             switch (outputMode)
             {
                 case OutputMode.Summary:
-                    Console.WriteLine($"{payload.fullyQualifiedName} ({payload.kind})");
-                    Console.WriteLine($"  symbolId: {payload.symbolId}");
-                    Console.WriteLine($"  declarations: {payload.declarationCount}  partial: {payload.isPartial}");
-                    Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
+                    HandlerBootstrap.Out.WriteLine($"{payload.fullyQualifiedName} ({payload.kind})");
+                    HandlerBootstrap.Out.WriteLine($"  symbolId: {payload.symbolId}");
+                    HandlerBootstrap.Out.WriteLine($"  declarations: {payload.declarationCount}  partial: {payload.isPartial}");
+                    HandlerBootstrap.Out.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
                     break;
 
                 // A single symbol is one record, so jsonl is that record on one line :
                 // the same field contract, just streamable alongside other jsonl output.
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
+                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
+                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
                     break;
             }
         }

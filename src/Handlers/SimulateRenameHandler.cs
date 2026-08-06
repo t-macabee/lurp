@@ -34,7 +34,7 @@ internal static class SimulateRenameHandler
             var engine = new SimulationEngine(store, store, snapshotId);
             var report = engine.SimulateRename(symbolArg, newNameArg);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-            Console.WriteLine(json);
+            HandlerBootstrap.Out.WriteLine(json);
         }
         finally
         {

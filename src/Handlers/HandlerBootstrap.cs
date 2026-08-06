@@ -26,17 +26,37 @@ internal enum OutputMode
 internal static class HandlerBootstrap
 {
     /// <summary>
-    /// The single error+exit idiom for handlers: writes <paramref name="message"/> to stderr
-    /// and terminates with <paramref name="code"/>. Marked <c>[DoesNotReturn]</c> so callers
-    /// keep the definite-assignment and nullability behaviour they had when calling
-    /// <see cref="Environment.Exit(int)"/> inline.
+    /// The single error idiom for handlers: raises a diagnosed refusal carrying
+    /// <paramref name="code"/> as the process exit code. Marked <c>[DoesNotReturn]</c> so
+    /// callers keep the definite-assignment and nullability behaviour they had when this
+    /// called <see cref="Environment.Exit(int)"/> inline.
+    /// <para>
+    /// It throws rather than exiting so a long-lived host cannot be killed by one bad
+    /// request. <c>Program</c> catches <see cref="HandlerFailureException"/> and reproduces
+    /// the previous CLI behaviour exactly: the message on stderr, then that exit code.
+    /// </para>
     /// </summary>
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     public static void Fail(string message, int code = 1)
+        => throw new HandlerFailureException(message, code);
+
+    private static readonly AsyncLocal<TextWriter?> PayloadSink = new();
+
+    /// <summary>
+    /// Where handler payloads are written. Defaults to <see cref="Console.Out"/>, which is
+    /// what the CLI wants and what every existing consumer sees.
+    /// <para>
+    /// A host that speaks a protocol over stdout (MCP's stdio transport owns it) cannot
+    /// allow a stray payload write to corrupt its stream, so it redirects this instead of
+    /// the process-wide <see cref="Console"/>. Backed by <see cref="AsyncLocal{T}"/> so
+    /// concurrent requests each capture their own output rather than racing over one
+    /// global writer. Diagnostics stay on stderr and are deliberately not routed here.
+    /// </para>
+    /// </summary>
+    public static TextWriter Out
     {
-        Console.Error.WriteLine(message);
-        Environment.Exit(code);
-        throw new InvalidOperationException("unreachable: Environment.Exit does not return");
+        get => PayloadSink.Value ?? Console.Out;
+        set => PayloadSink.Value = value;
     }
 
     public static string? GetArgValue(string[] args, string prefix)
@@ -182,11 +202,7 @@ internal static class HandlerBootstrap
     {
         var value = GetArgValue(args, prefix);
         if (string.IsNullOrEmpty(value))
-        {
-            foreach (var line in errorLines)
-                Console.Error.WriteLine(line);
-            Environment.Exit(1);
-        }
+            Fail(string.Join(Environment.NewLine, errorLines));
 
         return value;
     }
@@ -222,10 +238,37 @@ internal static class HandlerBootstrap
         return store;
     }
 
+    private static readonly AsyncLocal<string?> SessionSnapshot = new();
+
+    /// <summary>
+    /// Pins every unqualified snapshot resolution in this async flow to one snapshot.
+    /// Null (the default, and the CLI's behaviour) means "resolve latest per call".
+    /// <para>
+    /// A one-shot CLI process cannot observe the difference. A long-lived host can:
+    /// re-indexing mid-session would otherwise move the ground under a caller partway
+    /// through reasoning about a symbol, with early and late answers describing
+    /// different snapshots and nothing marking the switch. A host pins at session start
+    /// and advances deliberately.
+    /// </para>
+    /// </summary>
+    public static string? PinnedSnapshotId
+    {
+        get => SessionSnapshot.Value;
+        set => SessionSnapshot.Value = value;
+    }
+
+    /// <summary>
+    /// Precedence: an explicit <c>--snapshot=</c> wins, then the session pin, then latest.
+    /// An explicit request always beats the pin, so a host can still ask about a specific
+    /// snapshot without unpinning.
+    /// </summary>
     public static string ResolveSnapshotId(SqliteIndexStore store, string? snapshotArg)
     {
         if (!string.IsNullOrEmpty(snapshotArg))
             return snapshotArg;
+
+        if (!string.IsNullOrEmpty(PinnedSnapshotId))
+            return PinnedSnapshotId;
 
         var snapshotId = store.GetLatestSnapshotId();
         if (snapshotId == null)

@@ -41,7 +41,7 @@ internal static class DiffHandler
                     created_at_utc = c.CreatedAtUtc
                 })
             }, new JsonSerializerOptions { WriteIndented = true });
-            Console.WriteLine(json);
+            HandlerBootstrap.Out.WriteLine(json);
         }
         finally
         {

@@ -35,20 +35,20 @@ internal static class IndexHandler
             foreach (var name in skipAdapters)
             {
                 if (!knownNames.Contains(name))
-                    Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+                    HandlerBootstrap.Out.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
             }
-            Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
+            HandlerBootstrap.Out.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
         }
 
         var strategyArg = HandlerBootstrap.GetArgValue(args, "--strategy=");
         var verbose = args.Contains("--verbose");
         var skipDiff = args.Contains("--skip-diff");
 
-        Console.WriteLine($"Solution: {solutionPathArg}");
-        Console.WriteLine($"Output DB: {dbPath}");
+        HandlerBootstrap.Out.WriteLine($"Solution: {solutionPathArg}");
+        HandlerBootstrap.Out.WriteLine($"Output DB: {dbPath}");
         if (jsonExportPath != null)
-            Console.WriteLine($"JSON export: {jsonExportPath}");
-        Console.WriteLine();
+            HandlerBootstrap.Out.WriteLine($"JSON export: {jsonExportPath}");
+        HandlerBootstrap.Out.WriteLine();
 
         var store = HandlerBootstrap.OpenStore(dbPath);
         store.RunMigrations();

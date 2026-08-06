@@ -118,18 +118,18 @@ internal static class SearchHandler
             {
                 case OutputMode.Summary:
                     foreach (var line in summaryLines)
-                        Console.WriteLine(line);
-                    Console.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
+                        HandlerBootstrap.Out.WriteLine(line);
+                    HandlerBootstrap.Out.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var result in results)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
+                        HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(
                         new { snapshotId, query = queryArg, type = typeArg, results, nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
