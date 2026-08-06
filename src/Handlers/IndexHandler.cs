@@ -42,6 +42,7 @@ internal static class IndexHandler
 
         var strategyArg = HandlerBootstrap.GetArgValue(args, "--strategy=");
         var verbose = args.Contains("--verbose");
+        var skipDiff = args.Contains("--skip-diff");
 
         Console.WriteLine($"Solution: {solutionPathArg}");
         Console.WriteLine($"Output DB: {dbPath}");
@@ -55,7 +56,7 @@ internal static class IndexHandler
 
         try
         {
-            await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg, cancellationToken, verbose);
+            await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg, cancellationToken, verbose, output: null, skipDiff: skipDiff);
         }
         finally
         {

@@ -9,6 +9,29 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     private readonly string _gitRoot = gitRoot;
     private readonly HashSet<string> _skipAdapters = skipAdapters;
 
+    /// <summary>
+    /// Ratio of a project's document count past which the reverse-edge closure
+    /// stops paying for itself: bookkeeping the narrowed set costs more than the
+    /// extraction it would have saved, so <see cref="FindAffectedDocPaths"/>
+    /// abandons the BFS and widens to project scope instead.
+    /// </summary>
+    private const double DefaultFallbackRatio = 0.6;
+
+    /// <param name="AffectedPaths">
+    /// The closure result: a narrowed document set when the BFS ran to
+    /// completion, or every document in every project the closure touched when
+    /// it hit <see cref="FellBackToProjectScope"/>.
+    /// </param>
+    /// <param name="FellBackToProjectScope">
+    /// True when the BFS abandoned itself because the closure exceeded
+    /// <see cref="DefaultFallbackRatio"/> of the documents in the projects it
+    /// had touched so far. Callers that narrow extraction scope on
+    /// <see cref="AffectedPaths"/> must skip that narrowing in this case — the
+    /// widened set already is project scope, so extraction and deletion stay in
+    /// lockstep with the pre-narrowing behavior instead of drifting apart.
+    /// </param>
+    internal readonly record struct DocumentClosureResult(HashSet<string> AffectedPaths, bool FellBackToProjectScope);
+
     /// <param name="changedPaths">
     /// Git-root-relative paths of the genuinely-changed documents — the BFS seed.
     /// Passing a set that already absorbed the closure makes this a no-op, because
@@ -21,7 +44,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     /// </param>
     internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, IReadOnlySet<string>? alreadyExtractedPaths, CancellationToken cancellationToken)
     {
-        var affectedPaths = FindAffectedDocPaths(previousSnapshotId, changedPaths);
+        var affectedPaths = FindAffectedDocPaths(solution, previousSnapshotId, changedPaths).AffectedPaths;
         if (alreadyExtractedPaths is { Count: > 0 })
             affectedPaths.ExceptWith(alreadyExtractedPaths);
         if (affectedPaths.Count == 0)
@@ -43,11 +66,13 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     /// incompleteness, which is persisted separately — seeding the frontier with
     /// them turns an absence the BFS cannot see into one it can.
     /// </remarks>
-    internal HashSet<string> FindAffectedDocPaths(string previousSnapshotId, HashSet<string> changedPaths)
+    internal DocumentClosureResult FindAffectedDocPaths(Solution solution, string previousSnapshotId, HashSet<string> changedPaths, double fallbackRatio = DefaultFallbackRatio)
     {
         var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visitedPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var frontier = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        var (pathToProject, projectDocCount) = BuildProjectDocIndex(solution);
+        var fellBack = false;
 
         foreach (var record in _store.GetBindingIncompleteness(previousSnapshotId))
         {
@@ -78,8 +103,85 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 }
             }
             frontier = next;
+
+            // A cycle in the call graph drags its whole strongly-connected
+            // component into the closure with no natural stopping point. Once the
+            // closure has outgrown the projects it has touched so far, document
+            // scope costs more in bookkeeping than it would save in extraction —
+            // stop the BFS here rather than let a cycle walk the entire solution.
+            if (ExceedsFallbackRatio(affectedPaths, changedPaths, pathToProject, projectDocCount, fallbackRatio))
+            {
+                fellBack = true;
+                break;
+            }
         }
-        return affectedPaths;
+
+        if (fellBack)
+            affectedPaths = WidenToProjectScope(affectedPaths, changedPaths, solution, pathToProject);
+
+        return new DocumentClosureResult(affectedPaths, fellBack);
+    }
+
+    private (Dictionary<string, string> PathToProject, Dictionary<string, int> ProjectDocCount) BuildProjectDocIndex(Solution solution)
+    {
+        var pathToProject = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var projectDocCount = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            var count = 0;
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                pathToProject[GetRelativePath(doc.FilePath, _gitRoot)] = project.Name;
+                count++;
+            }
+            projectDocCount[project.Name] = count;
+        }
+        return (pathToProject, projectDocCount);
+    }
+
+    private static bool ExceedsFallbackRatio(HashSet<string> affectedPaths, HashSet<string> changedPaths, Dictionary<string, string> pathToProject, Dictionary<string, int> projectDocCount, double fallbackRatio)
+    {
+        var touchedProjects = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in affectedPaths)
+            if (pathToProject.TryGetValue(path, out var project))
+                touchedProjects.Add(project);
+        foreach (var path in changedPaths)
+            if (pathToProject.TryGetValue(path, out var project))
+                touchedProjects.Add(project);
+
+        if (touchedProjects.Count == 0)
+            return false;
+
+        var denominator = touchedProjects.Sum(p => projectDocCount.TryGetValue(p, out var c) ? c : 0);
+        if (denominator == 0)
+            return false;
+
+        return affectedPaths.Count > fallbackRatio * denominator;
+    }
+
+    private HashSet<string> WidenToProjectScope(HashSet<string> affectedPaths, HashSet<string> changedPaths, Solution solution, Dictionary<string, string> pathToProject)
+    {
+        var touchedProjects = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in affectedPaths)
+            if (pathToProject.TryGetValue(path, out var project))
+                touchedProjects.Add(project);
+        foreach (var path in changedPaths)
+            if (pathToProject.TryGetValue(path, out var project))
+                touchedProjects.Add(project);
+
+        var widened = new HashSet<string>(affectedPaths, StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            if (!touchedProjects.Contains(project.Name))
+                continue;
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath == null) continue;
+                widened.Add(GetRelativePath(doc.FilePath, _gitRoot));
+            }
+        }
+        return widened;
     }
 
     private IEnumerable<string> ResolveSourceDocumentPaths(string previousSnapshotId, EdgeRecord edge, HashSet<string> visitedPaths)

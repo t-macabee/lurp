@@ -290,5 +290,88 @@ namespace Lurp.Storage
             { EnsureOpen(); return _semanticDiffStore!.GetSemanticChanges(fromSnapshotId, toSnapshotId); }
         public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
             { EnsureOpen(); return _semanticDiffStore!.GetSemanticChangesToSnapshot(toSnapshotId); }
+
+        // ── Cross-table batched maintenance ──────────────────────────────────
+
+        public void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+        {
+            EnsureOpen();
+            var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+            if (pathList.Count == 0)
+                return;
+
+            using var transaction = _connection!.BeginTransaction();
+            try
+            {
+                using (var setupCmd = _connection.CreateCommand())
+                {
+                    setupCmd.Transaction = transaction;
+                    setupCmd.CommandText = "CREATE TEMP TABLE IF NOT EXISTS lurp_stale_doc_paths (path TEXT NOT NULL); DELETE FROM lurp_stale_doc_paths;";
+                    setupCmd.ExecuteNonQuery();
+                }
+
+                using (var insertCmd = _connection.CreateCommand())
+                {
+                    insertCmd.Transaction = transaction;
+                    insertCmd.CommandText = "INSERT INTO lurp_stale_doc_paths (path) VALUES (@path);";
+                    var pathParam = insertCmd.Parameters.Add(new SqliteParameter("@path", System.Data.DbType.String));
+                    foreach (var path in pathList)
+                    {
+                        pathParam.Value = path;
+                        insertCmd.ExecuteNonQuery();
+                    }
+                }
+
+                using (var deleteEdgesCmd = _connection.CreateCommand())
+                {
+                    deleteEdgesCmd.Transaction = transaction;
+                    deleteEdgesCmd.CommandText = @"
+                        DELETE FROM edges
+                        WHERE snapshot_id = @snapshotId
+                          AND source_document_path IN (SELECT path FROM lurp_stale_doc_paths);
+                    ";
+                    deleteEdgesCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    deleteEdgesCmd.ExecuteNonQuery();
+                }
+
+                using (var deleteBindingCmd = _connection.CreateCommand())
+                {
+                    deleteBindingCmd.Transaction = transaction;
+                    deleteBindingCmd.CommandText = @"
+                        DELETE FROM binding_incompleteness
+                        WHERE snapshot_id = @snapshotId
+                          AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
+                    ";
+                    deleteBindingCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    deleteBindingCmd.ExecuteNonQuery();
+                }
+
+                using (var deleteAnnotationsCmd = _connection.CreateCommand())
+                {
+                    deleteAnnotationsCmd.Transaction = transaction;
+                    deleteAnnotationsCmd.CommandText = @"
+                        DELETE FROM annotations
+                        WHERE snapshot_id = @snapshotId
+                          AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
+                    ";
+                    deleteAnnotationsCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                    deleteAnnotationsCmd.ExecuteNonQuery();
+                }
+
+                using (var clearCmd = _connection.CreateCommand())
+                {
+                    clearCmd.Transaction = transaction;
+                    clearCmd.CommandText = "DELETE FROM lurp_stale_doc_paths;";
+                    clearCmd.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
     }
 }

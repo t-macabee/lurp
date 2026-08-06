@@ -3,13 +3,14 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null)
+public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly string? _jsonExportPath = jsonExportPath;
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
+    private readonly bool _skipDiff = skipDiff;
 
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot);
 
@@ -101,11 +102,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _output.Write("Identifying affected projects... ");
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        var closurePaths = dependencyRefresher.FindAffectedDocPaths(previousSnapshotId, changedPaths);
+        var closureResult = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, changedPaths);
+        var closurePaths = closureResult.AffectedPaths;
         invalidationPaths.UnionWith(closurePaths);
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
+        timings.Add(new SnapshotTimingRow(
+            closureResult.FellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
+            0, DateTime.UtcNow));
 
         // Extraction scope: the set of documents that will be re-extracted, and
         // whose copied-forward facts must therefore be deleted before re-extraction.
@@ -128,6 +133,12 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // their owning projects, and partial parts cannot cross an assembly
         // boundary. So step 6 loads a compilation for every document it must
         // re-extract.
+        // On the project-scope fallback, closurePaths already IS every document
+        // in every touched project (CrossDocumentEdgeRefresher widened it before
+        // returning), so unioning it here widens extraction to match invalidation
+        // exactly — the same lockstep the narrowed path keeps between deletion and
+        // re-extraction, just at the coarser granularity project scope used before
+        // the reverse-edge closure existed.
         var extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         extractionScopeSeed.UnionWith(closurePaths);
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
@@ -282,9 +293,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // keep their copied-forward edges intact.
         if (extractionScopePaths.Count > 0)
         {
-            _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
-            _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
-            _store.DeleteAnnotationsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
+            // Batched: one temp table populated once, joined by all three deletes,
+            // instead of each store rebuilding its own IN-list (or, for
+            // binding-incompleteness, issuing one DELETE per path) over the same set.
+            _store.DeleteFactsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
         }
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
@@ -428,9 +440,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Step 8a: FTS Rebuild (incremental)
         RebuildSearchIndex(context, timings);
 
-        // Step 8b: Semantic diff persistence
+        // Step 8b: Semantic diff persistence — skipped when the caller passed
+        // --skip-diff. Only --mode=diff (which recomputes live) and --mode=impact's
+        // semantic-causes annotation (which degrades to an empty list when absent)
+        // consume this; a run that needs neither shouldn't pay for it.
         cancellationToken.ThrowIfCancellationRequested();
-        ComputeAndPersistSemanticChanges(context, timings);
+        if (!_skipDiff)
+            ComputeAndPersistSemanticChanges(context, timings);
 
         // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();

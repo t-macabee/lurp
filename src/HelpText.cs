@@ -87,6 +87,10 @@ internal static class HelpText
         Console.WriteLine("    --skip-adapter=<name> Skip a named framework adapter.");
         Console.WriteLine("                          Valid: ASP.NET Core, Dependency Injection,");
         Console.WriteLine("                                 MediatR, EF Core, Serialization, Test.");
+        Console.WriteLine("    --skip-diff           Skip computing and persisting the semantic diff");
+        Console.WriteLine("                          against the previous snapshot. --mode=diff still");
+        Console.WriteLine("                          works (it recomputes live); --mode=impact's");
+        Console.WriteLine("                          semantic-causes annotation is empty for this snapshot.");
         Console.WriteLine();
         Console.WriteLine("CONTEXT (--mode=context)");
         Console.WriteLine("  Required (one of):");
