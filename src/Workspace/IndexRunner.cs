@@ -331,8 +331,10 @@ public static class IndexRunner
 
             if (strategy != IncrementalStrategy && strategy != FullStrategy)
             {
-                sink.WriteErrorLine("ERROR: --strategy must be 'incremental' or 'full'.");
-                Environment.Exit(1);
+                // A caller-contract violation, not a CLI refusal: the Workspace layer
+                // must not exit the process. The CLI validates --strategy before
+                // reaching here (IndexHandler), so a throw means a misbehaving host.
+                throw new InvalidOperationException($"Invalid strategy '{strategyArg}'. Must be '{IncrementalStrategy}' or '{FullStrategy}'.");
             }
             return strategy;
         }

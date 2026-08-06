@@ -167,12 +167,12 @@ internal static class ContextHandler
 
         if (outputMode == OutputMode.Summary)
         {
-            HandlerBootstrap.Out.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
-            HandlerBootstrap.Out.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
+            Console.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
+            Console.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
             foreach (var item in page.Items)
-                HandlerBootstrap.Out.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
+                Console.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
             if (nextCursor != null)
-                HandlerBootstrap.Out.WriteLine("  more available: re-run with --cursor=<nextCursor from --output=json>.");
+                Console.WriteLine("  more available: re-run with --cursor=<nextCursor from --output=json>.");
             return;
         }
 
@@ -194,13 +194,13 @@ internal static class ContextHandler
 
         if (outputMode == OutputMode.Jsonl)
         {
-            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+            Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
             foreach (var item in page.Items)
-                HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, ContextCapsuleJson.CompactOptions));
+                Console.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, ContextCapsuleJson.CompactOptions));
             return;
         }
 
-        HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
+        Console.WriteLine(JsonSerializer.Serialize(new
         {
             meta.snapshot_id,
             meta.freshness,
@@ -267,7 +267,7 @@ internal static class ContextHandler
         // context for no gain when the file path is all they needed.
         if (quiet)
         {
-            HandlerBootstrap.Out.WriteLine(outputPath);
+            Console.WriteLine(outputPath);
             return;
         }
 
@@ -277,7 +277,7 @@ internal static class ContextHandler
             return;
         }
 
-        HandlerBootstrap.Out.WriteLine(json);
+        Console.WriteLine(json);
     }
 
     internal static string GetCapsuleOutputPath(string outputDirArg, string symbolId)
@@ -298,15 +298,15 @@ internal static class ContextHandler
 
     private static void WriteCapsuleSummary(ContextCapsule capsule, string outputPath)
     {
-        HandlerBootstrap.Out.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
-        HandlerBootstrap.Out.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
+        Console.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
+        Console.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
         // The two numbers answer different questions and are not interchangeable:
         // content is what --budget bounded, delivery is what loading the emitted
         // file costs. The delivery number is always the larger; size a context
         // window from it, never from content.
-        HandlerBootstrap.Out.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimatedTokens: the budget basis)");
-        HandlerBootstrap.Out.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimatedArtifactTokens: whole emitted file; size the context window from this)");
-        HandlerBootstrap.Out.WriteLine($"  truncated: {capsule.Truncated}");
+        Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimatedTokens: the budget basis)");
+        Console.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimatedArtifactTokens: whole emitted file; size the context window from this)");
+        Console.WriteLine($"  truncated: {capsule.Truncated}");
 
         foreach (var (name, count) in new (string, int)[]
                  {
@@ -319,10 +319,10 @@ internal static class ContextHandler
                      ("surroundingSource", capsule.SurroundingSource.Count),
                  })
         {
-            HandlerBootstrap.Out.WriteLine($"  {name,-28} {count}");
+            Console.WriteLine($"  {name,-28} {count}");
         }
 
-        HandlerBootstrap.Out.WriteLine($"  incomingPaths: {capsule.IncomingPaths.Count}  outgoingPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
+        Console.WriteLine($"  incomingPaths: {capsule.IncomingPaths.Count}  outgoingPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
 
         foreach (var omitted in capsule.OmittedTiers)
         {
@@ -333,10 +333,10 @@ internal static class ContextHandler
             var recoverable = omitted.Reason is "budget_exhausted" or "summarized"
                 && ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal);
             var continuation = recoverable ? $" : fetch with --tier={omitted.Category}" : string.Empty;
-            HandlerBootstrap.Out.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
+            Console.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
         }
 
-        HandlerBootstrap.Out.WriteLine($"  written: {outputPath}");
+        Console.WriteLine($"  written: {outputPath}");
     }
 
     private static List<string> GetRepeatableArgs(string[] args, string prefix)

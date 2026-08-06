@@ -132,13 +132,13 @@ internal static class ImpactHandler
                     break;
 
                 case OutputMode.Jsonl:
-                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var path in pathJson)
-                        HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new { type = "path", path }, HandlerBootstrap.CompactJson));
+                        Console.WriteLine(JsonSerializer.Serialize(new { type = "path", path }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
+                    Console.WriteLine(JsonSerializer.Serialize(new
                     {
                         meta.snapshot_id,
                         meta.freshness,
@@ -193,12 +193,12 @@ internal static class ImpactHandler
     private static void WriteSummary(string symbolId, string direction, int total, int offset, int returned, int groupCount,
         IEnumerable<(string Label, int Count)> groupLines, object? truncated)
     {
-        HandlerBootstrap.Out.WriteLine($"impact {direction} of {symbolId}");
-        HandlerBootstrap.Out.WriteLine($"  paths: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s)");
+        Console.WriteLine($"impact {direction} of {symbolId}");
+        Console.WriteLine($"  paths: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s)");
         foreach (var (label, count) in groupLines)
-            HandlerBootstrap.Out.WriteLine($"  {count,5}  {label}");
+            Console.WriteLine($"  {count,5}  {label}");
 
         if (truncated is not null)
-            HandlerBootstrap.Out.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
+            Console.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
     }
 }

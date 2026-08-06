@@ -95,7 +95,7 @@ internal static class GetSymbolHandler
             snapshotId
         }, new JsonSerializerOptions { WriteIndented = true });
 
-        HandlerBootstrap.Out.WriteLine(json);
+        Console.WriteLine(json);
     }
 
     private static void WriteContainingTypeView(IDeclarationStore store, string symbolArg, string snapshotId)
@@ -105,7 +105,7 @@ internal static class GetSymbolHandler
         {
             HandlerBootstrap.Fail($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
         }
-        HandlerBootstrap.Out.Write(source);
+        Console.Write(source);
     }
 
     private static void WriteSurroundingView(IDeclarationStore store, string symbolArg, string snapshotId, int contextLines)
@@ -115,7 +115,7 @@ internal static class GetSymbolHandler
         {
             HandlerBootstrap.Fail($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
         }
-        HandlerBootstrap.Out.Write(source);
+        Console.Write(source);
     }
 
     private static void WriteSourceView(IDeclarationStore store, string symbolArg, string snapshotId, ViewKind viewKind, string viewArg, bool includeGenerated)
@@ -125,6 +125,6 @@ internal static class GetSymbolHandler
         {
             HandlerBootstrap.Fail($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
         }
-        HandlerBootstrap.Out.Write(source);
+        Console.Write(source);
     }
 }

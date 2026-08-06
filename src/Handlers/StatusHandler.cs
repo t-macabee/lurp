@@ -105,7 +105,7 @@ internal static class StatusHandler
     {
         if (asJson)
         {
-            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
+            Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 database_exists = File.Exists(dbPath),
@@ -116,8 +116,8 @@ internal static class StatusHandler
             return;
         }
 
-        HandlerBootstrap.Out.WriteLine($"Database: {dbPath}");
-        HandlerBootstrap.Out.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
+        Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
     private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeCompleteness)
@@ -129,7 +129,7 @@ internal static class StatusHandler
             try { timings = store.GetTimings(latestSnapshotId); }
             catch { }
 
-            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
+            Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
@@ -144,10 +144,10 @@ internal static class StatusHandler
             return;
         }
 
-        HandlerBootstrap.Out.WriteLine($"Database: {dbPath}");
-        HandlerBootstrap.Out.WriteLine($"Schema version: {schemaVersion}");
-        HandlerBootstrap.Out.WriteLine($"Latest snapshot: {latestSnapshotId}");
-        HandlerBootstrap.Out.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).");
+        Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine($"Schema version: {schemaVersion}");
+        Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
@@ -160,7 +160,7 @@ internal static class StatusHandler
             try { timings = store.GetTimings(latestSnapshotId); }
             catch { }
 
-            HandlerBootstrap.Out.WriteLine(JsonSerializer.Serialize(new
+            Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
@@ -181,14 +181,14 @@ internal static class StatusHandler
             return;
         }
 
-        HandlerBootstrap.Out.WriteLine($"Database: {dbPath}");
-        HandlerBootstrap.Out.WriteLine($"Schema version: {schemaVersion}");
-        HandlerBootstrap.Out.WriteLine($"Latest snapshot: {latestSnapshotId}");
-        HandlerBootstrap.Out.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
+        Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine($"Schema version: {schemaVersion}");
+        Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        Console.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
         foreach (var mismatch in freshness.Mismatches)
         {
-            HandlerBootstrap.Out.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
+            Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
         }
 
         ShowTimingIfAvailable(store, latestSnapshotId);
@@ -203,10 +203,10 @@ internal static class StatusHandler
             if (timings.Count == 0) return;
 
             var totalMs = timings.Sum(t => t.ElapsedMs);
-            HandlerBootstrap.Out.WriteLine($"Timing summary ({totalMs} ms total):");
+            Console.WriteLine($"Timing summary ({totalMs} ms total):");
             foreach (var t in timings)
             {
-                HandlerBootstrap.Out.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
+                Console.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
             }
         }
         catch

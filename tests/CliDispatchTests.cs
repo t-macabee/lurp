@@ -26,14 +26,17 @@ public sealed class CliDispatchTests
             var projectRoot = Path.GetFullPath(Path.Combine(assemblyDir, "..", "..", "..", ".."));
 
             var release = Path.Combine(projectRoot, "src", "bin", "Release", "net10.0", "Lurp.dll");
-            if (File.Exists(release))
-                return release;
-
             var debug = Path.Combine(projectRoot, "src", "bin", "Debug", "net10.0", "Lurp.dll");
-            if (File.Exists(debug))
-                return debug;
 
-            return release;
+            // Newest build wins. Preferring Release unconditionally let a stale Release
+            // build shadow a freshly rebuilt Debug binary, so the tests exercised old
+            // code after a fix (dotnet test rebuilds Debug, not Release).
+            var newest = new[] { release, debug }
+                .Where(File.Exists)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+
+            return newest ?? release;
         }
     }
 
@@ -131,6 +134,70 @@ public sealed class CliDispatchTests
 
         Assert.Equal(1, exitCode);
         Assert.Contains("--output-dir", stdErr);
+    }
+
+    /// <summary>
+    /// Regression for the index-mode strategy refusal: <c>IndexRunner.ResolveStrategy</c>
+    /// used to call <see cref="Environment.Exit(int)"/> from the Workspace layer (and once
+    /// the exit moved to a thrown <see cref="InvalidOperationException"/>, a malformed
+    /// value would crash with a stack trace). The CLI must refuse <c>--strategy=</c>
+    /// through the normal <c>Fail</c> path: clean stderr message, exit 1, no trace.
+    /// </summary>
+    [Fact]
+    public void Index_InvalidStrategy_PrintsCleanError_ExitsOne_NoStackTrace()
+    {
+        var anyExistingFile = typeof(CliDispatchTests).Assembly.Location;
+        var (exitCode, _, stdErr) = Run(
+            "--mode=index",
+            "--strategy=bogus",
+            $"--solution={anyExistingFile}",
+            $"--output-dir={Path.Combine(Path.GetTempPath(), "lurp-strategy-test")}");
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("--strategy must be 'incremental' or 'full'", stdErr);
+        Assert.DoesNotContain("Unhandled exception", stdErr);
+        Assert.DoesNotContain("InvalidOperationException", stdErr);
+    }
+
+    /// <summary>
+    /// Regression for the flag-inventory bug: <c>--quiet</c> is read through
+    /// <see cref="Lurp.Handlers.HandlerBootstrap.PrintFreshnessLine"/> on every freshness
+    /// mode, but the search/find-symbol/impact registry entries did not list it, so the
+    /// validator rejected a flag the handler consumes. Passing validation is proven by
+    /// reaching the handler's own <c>--output-dir</c> refusal instead of the
+    /// <c>unknown flag</c> refusal.
+    /// </summary>
+    [Theory]
+    [InlineData("--mode=search", "--query=x")]
+    [InlineData("--mode=find-symbol", "--fqn=X")]
+    [InlineData("--mode=impact", "--symbol=X")]
+    public void QuietFlag_IsNotRejectedAsUnknown(params string[] baseArgs)
+    {
+        var args = baseArgs.Concat(new[] { "--quiet" }).ToArray();
+        var (exitCode, _, stdErr) = Run(args);
+
+        Assert.Equal(1, exitCode);
+        Assert.DoesNotContain("unknown flag '--quiet'", stdErr);
+        Assert.Contains("--output-dir", stdErr);
+    }
+
+    /// <summary>
+    /// Regression for the flag-inventory bug: <c>--annotation-kind=</c> and <c>--value=</c>
+    /// are written by <c>--mode=annotate</c> only; <c>--mode=get-annotations</c> never reads
+    /// them, but its registry entry still advertised them, so the validator accepted a flag
+    /// the handler silently ignored.
+    /// </summary>
+    [Theory]
+    [InlineData("--annotation-kind=reviewed")]
+    [InlineData("--value=looks good")]
+    public void GetAnnotations_AnnotateOnlyFlag_IsRejectedAsUnknown(string flag)
+    {
+        var (exitCode, _, stdErr) = Run("--mode=get-annotations", flag);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("unknown flag", stdErr);
+        Assert.Contains(flag.Split('=')[0] + "=", stdErr);
+        Assert.DoesNotContain("LURP_OUTPUT_DIR is required", stdErr);
     }
 
     /// <summary>

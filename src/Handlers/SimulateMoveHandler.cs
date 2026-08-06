@@ -34,7 +34,7 @@ internal static class SimulateMoveHandler
             var engine = new SimulationEngine(store, store, snapshotId);
             var report = engine.SimulateMove(symbolArg, newNamespaceArg);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-            HandlerBootstrap.Out.WriteLine(json);
+            Console.WriteLine(json);
         }
         finally
         {

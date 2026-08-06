@@ -23,10 +23,10 @@ public class Program
 
     /// <summary>
     /// Single source of truth for the CLI mode registry : mode name, one-line help
-    /// text, and dispatch handler. <see cref="ModeHandlers"/>, the unknown-mode
-    /// error's mode list, and the <c>--help</c> MODES block are all derived from it,
-    /// so adding a mode is exactly one edit. The order is the presentation order
-    /// used by both <c>--help</c> and the unknown-mode error.
+    /// text, flag inventory, and dispatch handler. The unknown-mode error's mode list
+    /// and the <c>--help</c> MODES block are both derived from it, so adding a mode
+    /// is exactly one edit. The order is the presentation order used by both
+    /// <c>--help</c> and the unknown-mode error.
     /// </summary>
     internal static readonly ModeRegistryEntry[] ModeRegistry =
     [
@@ -41,10 +41,10 @@ public class Program
             Sync(GetSymbolHandler.Run)),
         new("search", "Full-text search over source and symbols.",
             ["--query=", "--type=", "--kind=", "--limit=", "--snippet-tokens=", "--cursor=",
-             "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh"],
+             "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(SearchHandler.Run)),
         new("find-symbol", "Resolve a symbol by FQN.",
-            ["--fqn=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh"],
+            ["--fqn=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(FindSymbolHandler.Run)),
         new("navigate", "Resolve an indexed declaration by file and line.",
             ["--file=", "--line=", "--include-generated", "--snapshot="],
@@ -54,7 +54,7 @@ public class Program
             Sync(DiffHandler.Run)),
         new("impact", "Trace the impact path of a changed symbol.",
             ["--symbol=", "--direction=", "--kinds=", "--max-depth=", "--max-paths=", "--cursor=",
-             "--snapshot=", "--output=", "--freshness=", "--require-fresh"],
+             "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(ImpactHandler.Run)),
         new("context", "Assemble a context capsule for a symbol.",
             ["--symbol=", "--file=", "--line=", "--intent=", "--budget=", "--max-hops=", "--scope=",
@@ -84,12 +84,9 @@ public class Program
             ["--symbol=", "--annotation-kind=", "--value=", "--snapshot="],
             Sync(AnnotationHandler.RunAnnotate)),
         new("get-annotations", "Retrieve annotations for a symbol.",
-            ["--symbol=", "--annotation-kind=", "--value=", "--snapshot="],
+            ["--symbol=", "--snapshot="],
             Sync(AnnotationHandler.RunGetAnnotations)),
     ];
-
-    private static readonly Dictionary<string, Func<string[], Task>> ModeHandlers =
-        ModeRegistry.ToDictionary(entry => entry.Name, entry => entry.Handler, StringComparer.Ordinal);
 
     private static Func<string[], Task> Sync(Action<string[]> handler)
         => args => { handler(args); return Task.CompletedTask; };
@@ -118,14 +115,6 @@ public class Program
             {
                 CliFlagValidation.Validate(entry, args);
                 await entry.Handler(args);
-            }
-            catch (HandlerFailureException ex)
-            {
-                // Restores the behaviour HandlerBootstrap.Fail had when it called
-                // Environment.Exit inline. The throw exists so a host that is not this
-                // CLI can catch the refusal instead of dying with the process.
-                Console.Error.WriteLine(ex.Message);
-                Environment.Exit(ex.ExitCode);
             }
             catch (WorkspaceUnreadableException ex)
             {

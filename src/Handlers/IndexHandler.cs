@@ -35,20 +35,28 @@ internal static class IndexHandler
             foreach (var name in skipAdapters)
             {
                 if (!knownNames.Contains(name))
-                    HandlerBootstrap.Out.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+                    Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
             }
-            HandlerBootstrap.Out.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
+            Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
         }
 
         var strategyArg = HandlerBootstrap.GetArgValue(args, "--strategy=");
+        if (strategyArg != null)
+        {
+            var strategy = strategyArg.ToLowerInvariant();
+            if (strategy is not ("incremental" or "full"))
+            {
+                HandlerBootstrap.Fail("ERROR: --strategy must be 'incremental' or 'full'.");
+            }
+        }
         var verbose = args.Contains("--verbose");
         var skipDiff = args.Contains("--skip-diff");
 
-        HandlerBootstrap.Out.WriteLine($"Solution: {solutionPathArg}");
-        HandlerBootstrap.Out.WriteLine($"Output DB: {dbPath}");
+        Console.WriteLine($"Solution: {solutionPathArg}");
+        Console.WriteLine($"Output DB: {dbPath}");
         if (jsonExportPath != null)
-            HandlerBootstrap.Out.WriteLine($"JSON export: {jsonExportPath}");
-        HandlerBootstrap.Out.WriteLine();
+            Console.WriteLine($"JSON export: {jsonExportPath}");
+        Console.WriteLine();
 
         var store = HandlerBootstrap.OpenStore(dbPath);
         store.RunMigrations();
