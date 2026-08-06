@@ -9,9 +9,21 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     private readonly string _gitRoot = gitRoot;
     private readonly HashSet<string> _skipAdapters = skipAdapters;
 
-    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, CancellationToken cancellationToken)
+    /// <param name="changedPaths">
+    /// Git-root-relative paths of the genuinely-changed documents — the BFS seed.
+    /// Passing a set that already absorbed the closure makes this a no-op, because
+    /// <see cref="FindAffectedDocPaths"/> seeds its visited set with its own input.
+    /// </param>
+    /// <param name="alreadyExtractedPaths">
+    /// Git-root-relative paths the caller has already re-extracted this run.
+    /// Subtracted from the closure so this refresh handles exactly the residue,
+    /// never re-deleting and re-extracting a document twice in one snapshot.
+    /// </param>
+    internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, IReadOnlySet<string>? alreadyExtractedPaths, CancellationToken cancellationToken)
     {
         var affectedPaths = FindAffectedDocPaths(previousSnapshotId, changedPaths);
+        if (alreadyExtractedPaths is { Count: > 0 })
+            affectedPaths.ExceptWith(alreadyExtractedPaths);
         if (affectedPaths.Count == 0)
             return 0;
 
@@ -22,11 +34,33 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
     }
 
+    /// <remarks>
+    /// The BFS follows persisted edges, so it can only reach a dependent that
+    /// already had one. A document whose reference did not bind in the previous
+    /// snapshot produced no edge at all, so an edit that makes it bind leaves the
+    /// BFS with no arc to follow (§1.4 scenario 4, and the same shape as scenarios
+    /// 3 and 6). Those documents are exactly the ones that recorded binding
+    /// incompleteness, which is persisted separately — seeding the frontier with
+    /// them turns an absence the BFS cannot see into one it can.
+    /// </remarks>
     internal HashSet<string> FindAffectedDocPaths(string previousSnapshotId, HashSet<string> changedPaths)
     {
         var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visitedPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var frontier = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var record in _store.GetBindingIncompleteness(previousSnapshotId))
+        {
+            if (record.DocumentPath == null)
+                continue;
+            if (!BindingIncompletenessReason.UnobservableReasons.Contains(record.Reason))
+                continue;
+            if (visitedPaths.Add(record.DocumentPath))
+            {
+                affectedPaths.Add(record.DocumentPath);
+                frontier.Add(record.DocumentPath);
+            }
+        }
         while (frontier.Count > 0)
         {
             var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, frontier);

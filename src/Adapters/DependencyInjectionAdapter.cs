@@ -48,6 +48,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         foreach (var tree in compilation.SyntaxTrees)
         {
+            // Every edge emitted below is anchored to the registration site in this
+            // tree, which is also the path the incremental delete scope uses, so
+            // guarding by tree keeps extraction and deletion on the same set.
+            if (!context.IsInScope(tree))
+                continue;
+
             var semanticModel = context.GetSemanticModel(tree);
 
             foreach (var invocation in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())

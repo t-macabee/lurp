@@ -29,7 +29,7 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
                 if (methodId == null || returnTypeId == null)
                     continue;
 
-                var methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+                var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
                 context.RecordFilteredExternal(method.ReturnType, methodSyntax);
 
                 var key = (methodId, returnTypeId, EdgeKind.Returns.ToString());

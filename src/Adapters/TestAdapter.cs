@@ -62,6 +62,9 @@ public sealed class TestAdapter : IFrameworkAdapter
                     if (syntaxRef.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
                         continue;
 
+                    if (!context.IsInScope(methodSyntax.SyntaxTree))
+                        continue;
+
                     var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
                     if (bodySyntax == null)
                         continue;

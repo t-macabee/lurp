@@ -26,6 +26,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!IsController(type))
                 continue;
 
+            if (!context.IsSymbolInScope(type))
+                continue;
+
             var controllerId = SymbolIdFactory.Make(type, assemblyIdentity);
             if (controllerId == null)
                 continue;

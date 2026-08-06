@@ -12,6 +12,17 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
     public string Name => "EF Core";
     public string Version => "efcore-v1";
 
+    /// <remarks>
+    /// Deliberately ignores <see cref="AdapterExtractionContext.ScopeDocuments"/>, unlike
+    /// the other five adapters. This walk populates <c>_annotations</c> as well as edges,
+    /// and annotations have no path-scoped delete: <c>IIndexStore</c> exposes
+    /// <c>CopyAnnotationsToSnapshot</c> and <c>SaveAnnotations</c> but no
+    /// delete-by-document-path. Scoping the walk would leave annotation rows copied
+    /// forward from the previous snapshot with nothing to retire them, so extraction and
+    /// deletion would no longer narrow in lockstep. EF Core contributed no tree walks on
+    /// the measured fixtures, so leaving it unscoped costs nothing today.
+    /// Scoping it requires an annotation delete path first.
+    /// </remarks>
     public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;

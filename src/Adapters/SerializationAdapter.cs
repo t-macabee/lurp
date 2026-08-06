@@ -23,6 +23,9 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
         foreach (var tree in compilation.SyntaxTrees)
         {
+            if (!context.IsInScope(tree))
+                continue;
+
             var semanticModel = context.GetSemanticModel(tree);
 
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())

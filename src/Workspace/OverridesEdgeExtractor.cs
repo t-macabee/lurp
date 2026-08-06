@@ -28,7 +28,7 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
                     _ => null
                 };
                 if (overridden != null)
-                    context.RecordFilteredExternal(overridden, member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
+                    context.RecordFilteredExternal(overridden, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
 
                 (string? sourceId, string? targetId) = member switch
                 {
@@ -129,7 +129,7 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         if (sourceId == null || targetId == null)
             return;
 
-        context.RecordFilteredExternal(targetSymbol, sourceSymbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
+        context.RecordFilteredExternal(targetSymbol, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol));
 
         var key = (sourceId, targetId, EdgeKind.Hides.ToString());
         if (!seen.Add(key))

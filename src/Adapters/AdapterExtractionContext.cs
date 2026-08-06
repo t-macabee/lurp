@@ -27,7 +27,9 @@ public sealed class AdapterExtractionContext
 
     /// <summary>
     /// Absolute, forward-slash-normalized document paths; null means the whole compilation.
-    /// Plumbed for task B6; no adapter honors it yet.
+    /// Honored by every adapter except <c>EfCoreAdapter</c>, whose walk also produces
+    /// annotations and which therefore stays unscoped — see the note on its
+    /// <c>Extract</c>.
     /// </summary>
     public IReadOnlySet<string>? ScopeDocuments { get; }
 
@@ -51,5 +53,35 @@ public sealed class AdapterExtractionContext
         if (string.IsNullOrEmpty(filePath))
             return true;
         return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
+    }
+
+    /// <summary>
+    /// True when any declaring part of <paramref name="symbol"/> is in scope. Used by
+    /// the symbol-driven adapters, which have no syntax tree at the point they decide
+    /// whether to walk a type.
+    /// </summary>
+    /// <remarks>
+    /// Any-part rather than all-parts matches the type-level granularity of the
+    /// Workspace guards, and costs nothing in practice: the incremental extraction
+    /// scope is already widened to every document declaring a part of a touched type
+    /// (<c>IncrementalIndexer.ExpandToDeclaringTypeParts</c>), so parts are in scope
+    /// together or not at all. An implicitly-declared symbol has no document to scope
+    /// by and stays in scope.
+    /// </remarks>
+    public bool IsSymbolInScope(ISymbol? symbol)
+    {
+        if (ScopeDocuments == null || symbol == null)
+            return true;
+
+        var references = symbol.DeclaringSyntaxReferences;
+        if (references.Length == 0)
+            return true;
+
+        foreach (var reference in references)
+        {
+            if (IsInScope(reference.SyntaxTree))
+                return true;
+        }
+        return false;
     }
 }

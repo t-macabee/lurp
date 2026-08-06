@@ -568,6 +568,76 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 """));
     }
 
+    // Adapter-scoping fixture (task B6). The DI registration lives in
+    // CompositionRoot.cs, which is never edited; the edit replaces the registered
+    // implementation type in Services.cs. Once adapters honor ScopeDocuments, the
+    // registration site is re-walked only if the closure reaches it — which it does
+    // here through the previous snapshot's DI edge, whose source_document_path is
+    // CompositionRoot.cs. This is the case that distinguishes a correctly scoped
+    // adapter from one that silently drops the edge; the sibling
+    // AfterDependencyInjectionRegistrationEdit fixture puts the registration and the
+    // edit in the same file, so it cannot.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterRegisteredTypeEditedInOtherDocument()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "registered type edited in another document",
+            () => CreateSingleProjectSolution(("CompositionRoot.cs", """
+                namespace Microsoft.Extensions.DependencyInjection
+                {
+                    public interface IServiceCollection { }
+
+                    public static class ServiceCollectionServiceExtensions
+                    {
+                        public static IServiceCollection AddScoped<TService, TImplementation>(
+                            this IServiceCollection services)
+                            where TImplementation : TService => services;
+                    }
+                }
+
+                namespace TestProject
+                {
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    public class CompositionRoot
+                    {
+                        public void Configure(IServiceCollection services)
+                        {
+                            services.AddScoped<IService, Service>();
+                        }
+                    }
+                }
+                """), ("Services.cs", """
+                namespace TestProject;
+
+                public interface IService { }
+
+                public class Service : IService
+                {
+                    public int Value => 1;
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Services.cs"),
+                """
+                namespace TestProject;
+
+                public interface IService
+                {
+                    int Value { get; }
+                }
+
+                public class Service : IService
+                {
+                    public int Value => 2;
+                    public string Extra => "added";
+                }
+                """));
+    }
+
     private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true, string? dbPath = null)
     {
         Console.WriteLine($"--- {label} ---");
@@ -1211,7 +1281,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
 
             var processed = await refresher.RefreshAsync(
                 solution, workspaceInfo, refreshSnapshotId, previousSnapshotId,
-                changedPaths, CancellationToken.None);
+                changedPaths, alreadyExtractedPaths: null, CancellationToken.None);
 
             Assert.True(processed > 0,
                 "The refresh must re-extract the App document that references the changed Library symbol.");

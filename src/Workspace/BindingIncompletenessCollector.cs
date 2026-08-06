@@ -78,6 +78,26 @@ internal sealed class BindingIncompletenessCollector(string projectName, string 
 
     internal void RecordExtractorFailure() => Record(BindingIncompletenessReason.ExtractorFailure, null);
 
+    /// <summary>
+    /// Declaring syntax for <paramref name="symbol"/>, falling back to its containing
+    /// type when the symbol is implicitly declared (default constructor, record
+    /// synthesized member, auto-property accessor) and so has no syntax of its own.
+    /// </summary>
+    /// <remarks>
+    /// Without the fallback these records land in a document-less bucket that is a
+    /// whole-compilation aggregate: no document-scoped delete can retire it and no
+    /// document-scoped re-extraction can reproduce it, so a scoped incremental pass
+    /// could not converge on the clean-rebuild value. Same resolution B4 applies to
+    /// null-path edges in <see cref="CrossDocumentEdgeRefresher"/>.
+    /// </remarks>
+    internal static SyntaxNode? DeclaringSyntaxOrContainingType(ISymbol? symbol)
+    {
+        if (symbol == null)
+            return null;
+        return symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()
+            ?? symbol.ContainingType?.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+    }
+
     internal IReadOnlyList<BindingIncompletenessRecord> ToRecords()
         => _counts
             .OrderBy(static pair => pair.Key.documentPath, StringComparer.Ordinal)

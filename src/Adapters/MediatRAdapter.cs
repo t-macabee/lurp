@@ -28,7 +28,14 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var handlerTypes = CollectHandlerTypes(allTypes);
 
         foreach (var (handlerType, requestType) in handlerTypes)
+        {
+            // The Handles edge is anchored to the handler declaration, so the handler
+            // is what the delete scope will have removed.
+            if (!context.IsSymbolInScope(handlerType))
+                continue;
+
             EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+        }
 
         return edges;
     }

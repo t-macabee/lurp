@@ -59,7 +59,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         if (ifaceMemberId == null)
             return;
 
-        context.RecordFilteredExternal(member, type.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax());
+        context.RecordFilteredExternal(member, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(type));
 
         var implMember = type.FindImplementationForInterfaceMember(member);
         if (implMember == null)

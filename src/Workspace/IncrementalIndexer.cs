@@ -17,7 +17,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         IReadOnlySet<string> ChangedPaths,
         IReadOnlySet<string> PreviousChangedSymbolIds,
         IReadOnlySet<string> DiffAndSearchSymbolIds,
-        IReadOnlySet<string> AffectedProjects);
+        IReadOnlySet<string> AffectedProjects,
+        IReadOnlySet<string> CrossDocumentSeedPaths,
+        IReadOnlySet<string> ExtractedPaths);
 
     private sealed record SnapshotFinalizationContext(
         Solution Solution,
@@ -121,14 +123,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // half out of scope while whole-symbol properties such as is_partial stay
         // computed across all parts.
         //
-        // Until extraction is actually scoped, this stays unioned with the wide
-        // project-level set so extraction and deletion still match. Partial parts
-        // cannot cross an assembly boundary, so the type-part expansion is already a
-        // subset of that widening and this union is behaviorally inert today.
+        // Every project owning a scope document is in affectedProjects:
+        // IdentifyAffectedProjects maps invalidationPaths (⊇ changed ∪ closure) to
+        // their owning projects, and partial parts cannot cross an assembly
+        // boundary. So step 6 loads a compilation for every document it must
+        // re-extract.
         var extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         extractionScopeSeed.UnionWith(closurePaths);
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
-        extractionScopePaths.UnionWith(invalidationPaths);
+
+        // Extraction guards compare against SyntaxTree.FilePath, which is absolute
+        // and forward-slash normalized. Passing the git-root-relative form matches
+        // no tree and silently extracts almost nothing, so convert here — the same
+        // conversion CrossDocumentEdgeRefresher.ProcessCompilationsAsync performs
+        // for its own scope set.
+        var extractionScopeAbsolutePaths = ToAbsoluteNormalizedPaths(extractionScopePaths);
         _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
@@ -170,7 +179,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             cancellationToken.ThrowIfCancellationRequested();
             var sw6 = System.Diagnostics.Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
-                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations);
+                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths);
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -195,7 +204,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 ChangedPaths: invalidationPaths,
                 PreviousChangedSymbolIds: previousChangedSymbolIds,
                 DiffAndSearchSymbolIds: diffAndSearchSymbolIds,
-                AffectedProjects: new HashSet<string>(affectedProjects));
+                AffectedProjects: new HashSet<string>(affectedProjects),
+                CrossDocumentSeedPaths: changedPaths,
+                ExtractedPaths: extractionScopePaths);
 
             var finalizationContext = new SnapshotFinalizationContext(
                 Solution: solution,
@@ -304,7 +315,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
-        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations)
+        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations,
+        IReadOnlySet<string> extractionScopeAbsolutePaths)
     {
         _output.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
@@ -312,7 +324,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         foreach (var (projectName, compilation) in affectedCompilations)
         {
             _output.Write($"  [{projectName}] ");
-            var options = CompilationFactExtractor.CreateOptions(_skipAdapters);
+            var options = CompilationFactExtractor.CreateOptions(_skipAdapters, extractionScopeAbsolutePaths);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
 
@@ -429,10 +441,19 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var sw = System.Diagnostics.Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
+        // Seed from the genuinely-changed documents, not from the wide
+        // invalidation set: that set already absorbed the reverse-edge closure at
+        // step 2, and FindAffectedDocPaths seeds its visited set with its own
+        // input, so seeding it with the closure made the BFS return nothing but
+        // still charged for the walk. Documents step 6 already re-extracted are
+        // subtracted inside RefreshAsync, leaving step 7 with exactly the
+        // cross-document residue the narrowed extraction scope did not cover.
         var crossDocEdgesProcessed = await refresher.RefreshAsync(
             context.Solution, context.Workspace,
             context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId,
-            (HashSet<string>)context.Changes.ChangedPaths, cancellationToken);
+            (HashSet<string>)context.Changes.CrossDocumentSeedPaths,
+            context.Changes.ExtractedPaths,
+            cancellationToken);
         _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));
@@ -493,6 +514,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             }
         }
         return paths;
+    }
+
+    /// <summary>
+    /// Converts git-root-relative document paths to the absolute, forward-slash
+    /// form that every extraction scope guard compares against
+    /// (<c>SyntaxTree.FilePath.Replace('\\', '/')</c>).
+    /// </summary>
+    private HashSet<string> ToAbsoluteNormalizedPaths(IReadOnlySet<string> relativePaths)
+    {
+        var absolute = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var rootDir = Path.GetFullPath(_gitRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (var relativePath in relativePaths)
+            absolute.Add(Path.GetFullPath(Path.Combine(rootDir, relativePath)).Replace('\\', '/'));
+        return absolute;
     }
 
     /// <summary>
