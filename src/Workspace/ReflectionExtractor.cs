@@ -43,6 +43,8 @@ public sealed class ReflectionExtractor
                     continue;
             }
 
+            IndexTrace.TreeWalk("Reflection", "", syntaxTree.FilePath);
+
             // Roots stay transient per tree instead of materializing every root
             // and semantic model for the whole compilation before extracting.
             var root = syntaxTree.GetRoot();
@@ -50,6 +52,7 @@ public sealed class ReflectionExtractor
 
             for (int i = 0; i < extractors.Length; i++)
             {
+                IndexTrace.TreeWalk("Reflection", extractors[i].Name, syntaxTree.FilePath);
                 var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 edges.AddRange(extractors[i].Run(root, semanticModel));

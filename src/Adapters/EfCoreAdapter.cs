@@ -1,5 +1,6 @@
 using Lurp.Shared;
-﻿using Microsoft.CodeAnalysis;
+using Lurp.Workspace;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
@@ -13,15 +14,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
     public string Version => "efcore-v1";
 
     /// <remarks>
-    /// Deliberately ignores <see cref="AdapterExtractionContext.ScopeDocuments"/>, unlike
-    /// the other five adapters. This walk populates <c>_annotations</c> as well as edges,
-    /// and annotations have no path-scoped delete: <c>IIndexStore</c> exposes
-    /// <c>CopyAnnotationsToSnapshot</c> and <c>SaveAnnotations</c> but no
-    /// delete-by-document-path. Scoping the walk would leave annotation rows copied
-    /// forward from the previous snapshot with nothing to retire them, so extraction and
-    /// deletion would no longer narrow in lockstep. EF Core contributed no tree walks on
-    /// the measured fixtures, so leaving it unscoped costs nothing today.
-    /// Scoping it requires an annotation delete path first.
+    /// Honors <see cref="AdapterExtractionContext.ScopeDocuments"/> like the other
+    /// five adapters: each walk is guarded by the declaring scope of the type it is
+    /// anchored to (the <c>DbContext</c> or <c>IEntityTypeConfiguration&lt;T&gt;</c>
+    /// class). Annotations carry the evidence document of the walk that produced
+    /// them, and <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> retires
+    /// copied-forward rows over exactly the extraction scope, so extraction and
+    /// deletion narrow in lockstep.
     /// </remarks>
     public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
@@ -36,7 +35,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver, annotations);
 
         ExtractDbContextMappings(context, allTypes, ctx);
-        ExtractEntityTypeConfigurations(allTypes, ctx);
+        ExtractEntityTypeConfigurations(allTypes, ctx, context);
 
         _annotations = annotations;
         return edges;
@@ -52,6 +51,12 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         foreach (var type in allTypes)
         {
             if (!IsDbContext(type))
+                continue;
+
+            // The walk is anchored to the DbContext type: the emitted edges and
+            // annotations all carry evidence in its declaring document, which is
+            // what the delete scope will have removed.
+            if (!context.IsSymbolInScope(type))
                 continue;
 
             var dbContextId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
@@ -94,20 +99,27 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         {
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
+                IndexTrace.TreeWalk("Adapter", "EF Core", methodSyntax.SyntaxTree.FilePath);
                 var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                 ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, ctx);
-                ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, ctx);
+                var (evidencePath, _, _, _, _) = context.LocationResolver.Resolve(type);
+                ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, evidencePath, ctx);
             }
         }
     }
 
-    private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
+    private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, ExtractionContext ctx, AdapterExtractionContext context)
     {
         foreach (var type in allTypes)
         {
             foreach (var iface in type.AllInterfaces)
             {
                 if (iface.OriginalDefinition?.Name != "IEntityTypeConfiguration")
+                    continue;
+
+                // Same anchoring as the DbContext walk: the configuration
+                // class's declaring document is the evidence document.
+                if (!context.IsSymbolInScope(type))
                     continue;
 
                 var configId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
@@ -124,6 +136,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
 
                 AddMapsToEdge(configId, entityTypeId, ctx, type);
 
+                var (evidencePath, _, _, _, _) = ctx.LocationResolver.Resolve(type);
+
                 var configureMethod = type.GetMembers()
                     .OfType<IMethodSymbol>()
                     .FirstOrDefault(m => m.Name == "Configure");
@@ -133,7 +147,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                     {
                         if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
                         {
-                            ExtractEntityTypeConfigConstraints(methodSyntax, entityType, entityTypeId, ctx);
+                            IndexTrace.TreeWalk("Adapter", "EF Core", methodSyntax.SyntaxTree.FilePath);
+                            ExtractEntityTypeConfigConstraints(methodSyntax, entityType, entityTypeId, evidencePath, ctx);
                         }
                     }
                 }
@@ -301,7 +316,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         }
     }
 
-    private static void ExtractMethodConstraints(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
+    private static void ExtractMethodConstraints(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, string? evidencePath, ExtractionContext ctx)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -336,6 +351,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                     entityTypeId ?? dbContextId,
                     "ef_query_filter_constraint",
                     $"{entityName}: HasQueryFilter: {lambdaText}",
+                    evidencePath,
                     ctx);
             }
 
@@ -347,12 +363,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                     dbContextId,
                     "ef_unique_index_constraint",
                     nameArg.Trim('"'),
+                    evidencePath,
                     ctx);
             }
         }
     }
 
-    private static void ExtractEntityTypeConfigConstraints(MethodDeclarationSyntax methodSyntax, INamedTypeSymbol entityType, string entityTypeId, ExtractionContext ctx)
+    private static void ExtractEntityTypeConfigConstraints(MethodDeclarationSyntax methodSyntax, INamedTypeSymbol entityType, string entityTypeId, string? evidencePath, ExtractionContext ctx)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -367,6 +384,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                     entityTypeId,
                     "ef_query_filter_constraint",
                     $"{entityType.Name}: HasQueryFilter: {lambdaText}",
+                    evidencePath,
                     ctx);
             }
 
@@ -378,14 +396,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                     entityTypeId,
                     "ef_unique_index_constraint",
                     nameArg.Trim('"'),
+                    evidencePath,
                     ctx);
             }
         }
     }
 
-    private static void AddConstraintAnnotation(string symbolId, string kind, string value, ExtractionContext ctx)
+    private static void AddConstraintAnnotation(string symbolId, string kind, string value, string? documentPath, ExtractionContext ctx)
     {
-        ctx.Annotations?.Add(new AnnotationRecord(symbolId, kind, value));
+        ctx.Annotations?.Add(new AnnotationRecord(symbolId, kind, value, documentPath));
     }
 
 }

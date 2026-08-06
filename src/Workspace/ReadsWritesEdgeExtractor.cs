@@ -20,6 +20,8 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
             if (bodySyntax == null)
                 continue;
 
+            IndexTrace.TreeWalk("MemberEdge", "ReadsWritesEdgeExtractor", methodSyntax.SyntaxTree.FilePath);
+
             var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree);
             var callerId = context.MakeSymbolId(methodSymbol);
             if (callerId == null)

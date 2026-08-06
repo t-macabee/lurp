@@ -106,6 +106,7 @@ namespace Lurp.Storage
                 new Migration_023_FailedSnapshotState(),
                 new Migration_024_FailedSnapshotTombstone(),
                 new Migration_025_CallReceiverConstraints(),
+                new Migration_026_AnnotationDocumentPath(),
             ];
     }
 }

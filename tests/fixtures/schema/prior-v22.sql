@@ -37,3 +37,11 @@ CREATE TABLE edges (
     is_cross_generated INTEGER NOT NULL DEFAULT 0,
     type_arguments_json TEXT
 );
+
+CREATE TABLE annotations (
+    annotation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id TEXT NOT NULL,
+    symbol_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    value TEXT NOT NULL
+);

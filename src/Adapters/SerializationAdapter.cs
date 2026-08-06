@@ -1,5 +1,6 @@
 using Lurp.Shared;
-﻿using Microsoft.CodeAnalysis;
+using Lurp.Workspace;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -25,6 +26,8 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         {
             if (!context.IsInScope(tree))
                 continue;
+
+            IndexTrace.TreeWalk("Adapter", Name, tree.FilePath);
 
             var semanticModel = context.GetSemanticModel(tree);
 

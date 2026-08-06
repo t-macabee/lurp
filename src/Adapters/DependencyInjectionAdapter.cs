@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
 using Lurp.Shared;
+using Lurp.Workspace;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -18,7 +19,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         string ExtractorVersion,
         List<EdgeRecord> Edges,
         HashSet<(string source, string target, string kind)> Seen,
-        EdgeLocationResolver LocationResolver
+        EdgeLocationResolver LocationResolver,
+        BindingIncompletenessCollector? Incompleteness
     );
 
     private static readonly HashSet<string> _conventionMethodNames =
@@ -41,7 +43,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             ExtractorVersion: Version,
             Edges: edges,
             Seen: seen,
-            LocationResolver: locationResolver
+            LocationResolver: locationResolver,
+            Incompleteness: context.Incompleteness
         );
 
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
@@ -53,6 +56,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             // guarding by tree keeps extraction and deletion on the same set.
             if (!context.IsInScope(tree))
                 continue;
+
+            IndexTrace.TreeWalk("Adapter", Name, tree.FilePath);
 
             var semanticModel = context.GetSemanticModel(tree);
 

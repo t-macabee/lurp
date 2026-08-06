@@ -84,11 +84,19 @@ namespace Lurp.Storage
         public string Kind { get; }
         public string Value { get; }
 
-        public AnnotationRecord(string symbolId, string kind, string value)
+        /// <summary>
+        /// Git-root-relative path of the document whose walk produced the
+        /// annotation, or null for user-authored annotations (which are never
+        /// retired by the incremental path-scoped delete).
+        /// </summary>
+        public string? DocumentPath { get; }
+
+        public AnnotationRecord(string symbolId, string kind, string value, string? documentPath = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));
             Value = value ?? throw new ArgumentNullException(nameof(value));
+            DocumentPath = documentPath;
         }
     }
 

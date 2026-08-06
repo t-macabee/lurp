@@ -284,6 +284,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         {
             _store.DeleteEdgesByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
             _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
+            _store.DeleteAnnotationsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
         }
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
@@ -324,6 +325,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         foreach (var (projectName, compilation) in affectedCompilations)
         {
             _output.Write($"  [{projectName}] ");
+            IndexTrace.BeginPass("step6_reextraction");
             var options = CompilationFactExtractor.CreateOptions(_skipAdapters, extractionScopeAbsolutePaths);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
@@ -440,6 +442,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
+        IndexTrace.BeginPass("step7_crossdoc_refresh");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         // Seed from the genuinely-changed documents, not from the wide
         // invalidation set: that set already absorbed the reverse-edge closure at

@@ -449,3 +449,6 @@ capsule-*.json
 INCREMENTAL_REMEDIATION_PLAN.md
 INCREMENTAL_TRACE_FINDINGS.md
 SYNTAX_USAGE_MAP.md
+
+# Local perf-trace scratch fixtures
+.trace-tmp/

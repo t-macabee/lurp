@@ -26,6 +26,7 @@
         void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames);
 
         void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
+        void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
 
         void DeleteOrphanEdges(string snapshotId);
 

@@ -46,6 +46,8 @@ public sealed class SchemaStabilityTests : IDisposable
         Assert.Equal(2L, (long)columns.ExecuteScalar()!);
         columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('edges') WHERE name = 'receiver_type_constraints_json';";
         Assert.Equal(1L, (long)columns.ExecuteScalar()!);
+        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('annotations') WHERE name = 'document_path';";
+        Assert.Equal(1L, (long)columns.ExecuteScalar()!);
     }
 
     [Fact]

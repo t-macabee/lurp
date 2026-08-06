@@ -18,6 +18,8 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
             if (bodySyntax == null)
                 continue;
 
+            IndexTrace.TreeWalk("MemberEdge", "ConstructsEdgeExtractor", methodSyntax.SyntaxTree.FilePath);
+
             var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree);
             var callerId = context.MakeSymbolId(methodSymbol);
             if (callerId == null)

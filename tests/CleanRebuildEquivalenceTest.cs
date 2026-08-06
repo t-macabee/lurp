@@ -638,6 +638,163 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 """));
     }
 
+    // Convention-scan closure fixture (task B6). The Scan site lives in
+    // CompositionRoot.cs, which is never edited; the edit adds a new class in
+    // Services.cs that the convention now matches. The previous snapshot holds no
+    // registration edge targeting the new type (it did not exist), and no symbol
+    // in the edited document is the target of any previous edge, so the
+    // reverse-edge BFS has no arc from Services.cs to the Scan site and the
+    // registration document is never pulled into the extraction scope. Explicit
+    // generic registrations do not share this shape: their previous edge's
+    // source_document_path is the registration document, so the closure reaches
+    // it (the sibling AfterRegisteredTypeEditedInOtherDocument fixture).
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterConventionMatchedTypeAddedInOtherDocument()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "convention-matched type added in another document",
+            () => CreateSingleProjectSolution(("CompositionRoot.cs", """
+                namespace Microsoft.Extensions.DependencyInjection
+                {
+                    public interface IServiceCollection { }
+                }
+
+                namespace Scrutor
+                {
+                    public interface ITypeSourceSelector { }
+                    public interface IImplementationTypeSelector { }
+                    public interface IServiceTypeSelector { }
+                    public interface IImplementationTypeFilter
+                    {
+                        IImplementationTypeFilter AssignableTo<T>();
+                    }
+
+                    public static class ServiceCollectionExtensions
+                    {
+                        public static Microsoft.Extensions.DependencyInjection.IServiceCollection Scan(
+                            this Microsoft.Extensions.DependencyInjection.IServiceCollection services,
+                            System.Action<ITypeSourceSelector> action) => services;
+                    }
+
+                    public static class TypeSourceSelectorExtensions
+                    {
+                        public static IImplementationTypeSelector FromAssembliesOf<T>(this ITypeSourceSelector source) => null!;
+                        public static IImplementationTypeSelector AddClasses(this IImplementationTypeSelector source) => null!;
+                        public static IImplementationTypeSelector AddClasses(this IImplementationTypeSelector source, System.Action<IImplementationTypeFilter> filter) => null!;
+                        public static IServiceTypeSelector AsImplementedInterfaces(this IImplementationTypeSelector source) => null!;
+                    }
+
+                    public static class ServiceTypeSelectorExtensions
+                    {
+                        public static Microsoft.Extensions.DependencyInjection.IServiceCollection WithScopedLifetime(this IServiceTypeSelector source) => null!;
+                    }
+                }
+
+                namespace TestProject
+                {
+                    using Microsoft.Extensions.DependencyInjection;
+                    using Scrutor;
+
+                    public class CompositionRoot
+                    {
+                        public void Configure(IServiceCollection services)
+                        {
+                            services.Scan(scan => scan
+                                .FromAssembliesOf<IService>()
+                                .AddClasses()
+                                .AsImplementedInterfaces()
+                                .WithScopedLifetime());
+                        }
+                    }
+                }
+                """), ("Services.cs", """
+                namespace TestProject;
+
+                public interface IService { }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Services.cs"),
+                """
+                namespace TestProject;
+
+                public interface IService { }
+
+                public class Service : IService { }
+                """));
+    }
+
+    // Adapter-scoping fixture (prompt 2, EF Core). The DbContext and its
+    // OnModelCreating walk live in AppDbContext.cs, the edited entity type in
+    // Widget.cs. The reverse-edge closure pulls AppDbContext.cs into the
+    // extraction scope through the previous snapshot's MapsTo edge (its
+    // source_document_path is AppDbContext.cs), so the scoped EF Core walk
+    // re-emits the annotation and the path-scoped annotation delete must
+    // retire the copied-forward row first. Before the delete path existed the
+    // unscoped walk duplicated every copied-forward annotation in the
+    // incremental snapshot, so this fixture fails on the old behavior and
+    // passes once extraction and deletion narrow in lockstep.
+    [SkippableFact]
+    public async Task IncrementalIndex_Matches_FullRebuild_AfterEntityTypeEditedInOtherDocument()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered,
+            "MSBuild is not available on this system. Cannot run integration test.");
+
+        await AssertIncrementalMatchesFullRebuildAsync(
+            "EF entity type edited in another document",
+            () => CreateSingleProjectSolution(("AppDbContext.cs", """
+                namespace Microsoft.EntityFrameworkCore
+                {
+                    public class DbContext
+                    {
+                        protected virtual void OnModelCreating(ModelBuilder modelBuilder) { }
+                    }
+                    public class DbSet<TEntity> where TEntity : class { }
+                    public class ModelBuilder
+                    {
+                        public EntityTypeBuilder<TEntity> Entity<TEntity>() where TEntity : class => null!;
+                    }
+                    public class EntityTypeBuilder<TEntity> where TEntity : class
+                    {
+                        public EntityTypeBuilder<TEntity> HasDatabaseName(string name) => this;
+                    }
+                }
+
+                namespace TestProject
+                {
+                    public class AppDbContext : Microsoft.EntityFrameworkCore.DbContext
+                    {
+                        public Microsoft.EntityFrameworkCore.DbSet<Widget> Widgets { get; set; } = null!;
+
+                        protected override void OnModelCreating(Microsoft.EntityFrameworkCore.ModelBuilder modelBuilder)
+                        {
+                            modelBuilder.Entity<Widget>().HasDatabaseName("widgets");
+                        }
+                    }
+                }
+                """), ("Widget.cs", """
+                namespace TestProject;
+
+                public class Widget
+                {
+                    public string Name { get; set; } = "";
+                }
+                """)),
+            () => File.WriteAllText(
+                Path.Combine(_testDir, "src", "TestProject", "Widget.cs"),
+                """
+                namespace TestProject;
+
+                public class Widget
+                {
+                    public string Name { get; set; } = "";
+                    public int Count { get; set; }
+                }
+                """));
+    }
+
     private async Task<string> RunFullIndexAsync(string label, bool deleteFirst = true, string? dbPath = null)
     {
         Console.WriteLine($"--- {label} ---");
@@ -692,6 +849,8 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
                 store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
                 totalDiagnostics += result.Diagnostics.Count;
                 store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+                if (result.Annotations.Count > 0)
+                    store.SaveAnnotations(snapshotIdStr, result.Annotations);
 
                 Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
             }

@@ -60,6 +60,8 @@ internal sealed class SymbolDeclarationExtractor(SymbolExtractionContext context
             if (!context.IsInScope(syntaxTree))
                 continue;
 
+            IndexTrace.TreeWalk("SymbolDeclaration", "", syntaxTree.FilePath);
+
             var documentId = context.ResolveDocumentId(syntaxTree);
             if (documentId == null)
                 continue;

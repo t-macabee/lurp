@@ -48,7 +48,7 @@ internal static class DependencyInjectionConventionMatcher
 
         if (methodSymbol.Name == "Scan")
         {
-            EmitScanConventionRegistrationEdges(invocation, semanticModel, ctx);
+            EmitScanConventionRegistrationEdges(invocation, semanticModel, compilation, ctx);
         }
     }
 
@@ -60,7 +60,7 @@ internal static class DependencyInjectionConventionMatcher
     /// the convention placeholder edge from <see cref="ProcessConventionCandidate"/>
     /// is preserved in all cases.
     /// </summary>
-    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, DependencyInjectionAdapter.DiExtractionContext ctx)
+    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiExtractionContext ctx)
     {
         var assemblyType = ResolveScannedAssemblyType(scanInvocation, semanticModel);
         if (assemblyType?.ContainingAssembly == null)
@@ -68,6 +68,16 @@ internal static class DependencyInjectionConventionMatcher
 
         if (!HasRecognizedConventionChain(scanInvocation))
             return;
+
+        // The match set is open: any type added to the scanned assembly may newly
+        // match this convention, and no persisted edge witnesses the new match, so
+        // the reverse-edge closure cannot see it. Record an unobservable-completeness
+        // row so FindAffectedDocPaths seeds this registration document on any change.
+        // Only when the scanned assembly is the current compilation's assembly: an
+        // external scanned assembly yields no in-snapshot type edges at all, so its
+        // relation set is provably closed.
+        if (SymbolEqualityComparer.Default.Equals(assemblyType.ContainingAssembly, compilation.Assembly))
+            ctx.Incompleteness?.RecordConventionScan(scanInvocation);
 
         var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(scanInvocation.GetLocation());
         var isCrossGenerated = ctx.LocationResolver.IsGenerated(path);

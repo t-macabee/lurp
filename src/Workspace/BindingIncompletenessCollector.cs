@@ -12,6 +12,13 @@ internal static class BindingIncompletenessReason
     internal const string FilteredExternal = "filtered_external";
     internal const string ExtractorFailure = "extractor_failure";
 
+    /// <summary>
+    /// A DI convention scan site whose match set is open: any type added to the
+    /// scanned assembly may newly match, and no persisted edge witnesses the new
+    /// match, so the relation set for the site is never provably complete.
+    /// </summary>
+    internal const string ConventionScan = "convention_scan";
+
     /// <summary>The whole project failed to load or extract; no binding over it was observable.</summary>
     internal const string ProjectUnreadable = "project_unreadable";
 
@@ -30,6 +37,7 @@ internal static class BindingIncompletenessReason
             UnsupportedSyntax,
             ExtractorFailure,
             ProjectUnreadable,
+            ConventionScan,
         };
 }
 
@@ -77,6 +85,15 @@ internal sealed class BindingIncompletenessCollector(string projectName, string 
     }
 
     internal void RecordExtractorFailure() => Record(BindingIncompletenessReason.ExtractorFailure, null);
+
+    /// <summary>
+    /// Records that a DI convention scan site has an open match set. The row seeds
+    /// the cross-document refresh frontier (<see cref="BindingIncompletenessReason.UnobservableReasons"/>),
+    /// so the registration document is re-examined on any change even though no
+    /// previous edge points at a type the convention could newly match.
+    /// </summary>
+    internal void RecordConventionScan(SyntaxNode node)
+        => Record(BindingIncompletenessReason.ConventionScan, node.SyntaxTree.FilePath);
 
     /// <summary>
     /// Declaring syntax for <paramref name="symbol"/>, falling back to its containing

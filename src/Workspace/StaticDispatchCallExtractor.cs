@@ -32,6 +32,8 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
             if (bodySyntax == null)
                 continue;
 
+            IndexTrace.TreeWalk("Polymorphism", "StaticDispatchCallExtractor", methodSyntax.SyntaxTree.FilePath);
+
             var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree);
             var callerId = context.MakeSymbolId(methodSymbol);
             if (callerId == null)

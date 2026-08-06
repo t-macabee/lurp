@@ -1,5 +1,6 @@
 using Lurp.Shared;
-﻿using Microsoft.CodeAnalysis;
+using Lurp.Workspace;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Storage;
@@ -68,6 +69,8 @@ public sealed class TestAdapter : IFrameworkAdapter
                     var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
                     if (bodySyntax == null)
                         continue;
+
+                    IndexTrace.TreeWalk("Adapter", Name, methodSyntax.SyntaxTree.FilePath);
 
                     var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                     var referencedSymbols = new HashSet<string>();

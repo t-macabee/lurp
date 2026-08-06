@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Lurp.Shared;
+using Lurp.Workspace;
 
 namespace Lurp.Adapters;
 
@@ -12,13 +13,15 @@ public sealed class AdapterExtractionContext
         string snapshotId,
         EdgeLocationResolver locationResolver,
         IReadOnlySet<string>? scopeDocuments,
-        Dictionary<SyntaxTree, SemanticModel> semanticModelCache)
+        Dictionary<SyntaxTree, SemanticModel> semanticModelCache,
+        BindingIncompletenessCollector? incompleteness = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
         LocationResolver = locationResolver;
         ScopeDocuments = scopeDocuments;
         _semanticModelCache = semanticModelCache;
+        Incompleteness = incompleteness;
     }
 
     public Compilation Compilation { get; }
@@ -26,10 +29,18 @@ public sealed class AdapterExtractionContext
     public EdgeLocationResolver LocationResolver { get; }
 
     /// <summary>
+    /// Collector for unobservable-binding records, shared with the workspace
+    /// extractors so adapter-detected incompleteness lands in the same persisted
+    /// vocabulary. Null in unit-test contexts that bypass
+    /// <see cref="Lurp.Workspace.CompilationFactExtractor.ExtractAll"/>.
+    /// </summary>
+    internal BindingIncompletenessCollector? Incompleteness { get; }
+
+    /// <summary>
     /// Absolute, forward-slash-normalized document paths; null means the whole compilation.
-    /// Honored by every adapter except <c>EfCoreAdapter</c>, whose walk also produces
-    /// annotations and which therefore stays unscoped — see the note on its
-    /// <c>Extract</c>.
+    /// Honored by every adapter, including <c>EfCoreAdapter</c>, whose annotations carry
+    /// the evidence document and are retired by
+    /// <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> over the same scope.
     /// </summary>
     public IReadOnlySet<string>? ScopeDocuments { get; }
 

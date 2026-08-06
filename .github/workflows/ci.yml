@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+# One run per ref. Superseded runs are cancelled deliberately instead of being
+# starved of runners by their successors and cancelled at an arbitrary point.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4

@@ -122,6 +122,7 @@ public static class CompilationFactExtractor
 
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
+        IndexTrace.SetProject(projectName);
         var skipAdapters = options?.SkipAdapters;
         var logWarning = options?.LogWarning;
         var logError = options?.LogError;
@@ -191,7 +192,8 @@ public static class CompilationFactExtractor
             gitRoot);
 
         var adapterContext = new AdapterExtractionContext(
-            compilation, snapshotId, locationResolver, scopeDocuments, sharedModelCache);
+            compilation, snapshotId, locationResolver, scopeDocuments, sharedModelCache,
+            incompleteness);
 
         foreach (var adapter in adapters)
         {
