@@ -6,7 +6,7 @@ internal static class GetSourceHandler
 {
     public static void Run(string[] args)
     {
-        var documentArg = HandlerBootstrap.GetArgValue(args, "--document=");
+        var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         if (string.IsNullOrEmpty(documentArg))
         {
             HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=get-source.");

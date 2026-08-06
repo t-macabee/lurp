@@ -440,4 +440,14 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 - **The closure sees absences, not just edges.** `FindAffectedDocPaths` seeds its frontier from the previous snapshot's `binding_incompleteness` rows whose reason is in `UnobservableReasons`. A document whose reference did not bind produced no edge, so a pure edge BFS had no arc to follow when an edit made it bind.
 - **Adapters honor the extraction scope.** All six now skip out-of-scope work: `DependencyInjectionAdapter` and `SerializationAdapter` guard their `compilation.SyntaxTrees` loop with `IsInScope`, `TestAdapter` guards each declaring syntax reference, and `AspNetCoreAdapter`, `MediatRAdapter`, and `EfCoreAdapter` guard by declaring type via `AdapterExtractionContext.IsSymbolInScope`. In every case the guarded unit is the one the emitted edge (or annotation) is anchored to, so extraction and deletion stay on the same set. `EfCoreAdapter` annotations carry the evidence document of the walk that produced them (migration 26, `annotations.document_path`), and `IIndexStore.DeleteAnnotationsByDocumentPaths` retires copied-forward rows over exactly the extraction scope in `IncrementalIndexer.PrepareSnapshotData` and in the cross-document refresh — the lockstep invariant holds for annotations too.
 - **Binding incompleteness is attributable to a document.** Implicitly-declared symbols (default constructor, record synthesized member, auto-property accessor) have no syntax of their own, and previously landed in a document-less bucket that was a whole-compilation aggregate: no document-scoped delete could retire it and no document-scoped re-extraction could reproduce it. `BindingIncompletenessCollector.DeclaringSyntaxOrContainingType` falls back to the containing type's declaring syntax, the same resolution used for null-path edges in `CrossDocumentEdgeRefresher`.
+- **CLI document-path arguments accept the host separator.** Document paths are
+  persisted forward-slashed (`Identity`, `src/Workspace/Identity.cs:181,197`), but
+  the read handlers passed `--document=` / `--file=` through verbatim, so a Windows
+  caller pasting a native path missed every stored document: `get-source` reported
+  "not found in snapshot" and `navigate` reported "no indexed declaration contains"
+  — both indistinguishable from a genuine absence. `HandlerBootstrap.NormalizeDocumentPath`
+  converts the CLI form to the stored form at all three argument sites
+  (`GetSourceHandler`, `NavigateHandler`, `ContextHandler`'s file+line anchor).
+  Covered by `tests/HandlerDocumentPathNormalizationTests.cs`; found by driving
+  the CLI against an out-of-repo solution (eNoteV2, 7 projects, 3,656 declarations).
 

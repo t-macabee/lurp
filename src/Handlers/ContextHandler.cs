@@ -33,7 +33,7 @@ internal static class ContextHandler
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        var fileArg = HandlerBootstrap.GetArgValue(args, "--file=");
+        var fileArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
         var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
         var intentArg = HandlerBootstrap.GetArgValue(args, "--intent=") ?? "inspect";
         var budgetArg = HandlerBootstrap.GetArgValue(args, "--budget=");

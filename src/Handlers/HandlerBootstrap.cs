@@ -44,6 +44,14 @@ internal static class HandlerBootstrap
         return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
     }
 
+    /// <summary>
+    /// Document paths are persisted with forward slashes (see <c>Identity</c>), so a
+    /// caller on Windows who pastes a native path from the shell would otherwise miss
+    /// every stored document. Normalize the CLI form to the stored form.
+    /// </summary>
+    public static string? NormalizeDocumentPath(string? path)
+        => path?.Replace('\\', '/');
+
     public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
     public static readonly System.Text.Json.JsonSerializerOptions CompactJson = new() { WriteIndented = false };
 

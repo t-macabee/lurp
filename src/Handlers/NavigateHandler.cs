@@ -9,7 +9,7 @@ internal static class NavigateHandler
 {
     public static void Run(string[] args)
     {
-        var file = HandlerBootstrap.GetArgValue(args, "--file=");
+        var file = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
         var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
         var line = 0;
         var outputDir = HandlerBootstrap.ResolveOutputDir(args);
