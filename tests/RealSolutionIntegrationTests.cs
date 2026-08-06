@@ -4,9 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Lurp;
 using Lurp.Storage;
 using Lurp.Queries;
 using Lurp.Workspace;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
@@ -633,6 +637,57 @@ public sealed class RealSolutionIntegrationTests : IDisposable
             var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
             Assert.True(count > 0, "Expected the Declares edge sourced from the injected file to be flagged cross-generated.");
         }
+    }
+
+    // ── Test: Edge orphan cleanup invariant ────────────────────────────────
+    // Pins the relationship: after_dedup − DeleteOrphanEdges() == CountEdges(snapshot)
+    // so that a future change to orphan cleanup that starts deleting in-scope
+    // edges fails a test rather than a field report.
+
+    [SkippableFact]
+    public async Task EdgeOrphanCleanup_Invariant_DedupMinusDeletedEqualsInSnapshot()
+    {
+        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(),
+            "MSBuild is not available on this system. Cannot run integration test.");
+        var (dbPath, solutionPath, outputDir) = SetupFixture();
+
+        using var store = new SqliteIndexStore(dbPath);
+        store.Open();
+        store.RunMigrations();
+
+        using var workspace = MSBuildWorkspace.Create();
+        var solution = await workspace.OpenSolutionAsync(solutionPath);
+        var workspaceInfo = new WorkspaceInfo(solution, outputDir);
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, new HashSet<string>());
+        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
+        var snapshotIdStr = snapshotId.ToString();
+        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
+
+        var allEdges = new List<EdgeRecord>();
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync();
+            if (compilation is null) continue;
+            var result = CompilationFactExtractor.ExtractAll(
+                compilation, workspaceInfo, snapshotIdStr, project.Name,
+                new CompilationFactExtractor.ExtractionOptions(new HashSet<string>()));
+
+            store.SaveDeclarations(snapshotIdStr, result.Declarations);
+            allEdges.AddRange(result.Edges);
+            store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
+            store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
+            if (result.Annotations.Count > 0)
+                store.SaveAnnotations(snapshotIdStr, result.Annotations);
+        }
+
+        var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
+        store.SaveEdges(snapshotIdStr, dedupedEdges);
+        var dedupedCount = dedupedEdges.Count;
+
+        var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
+        var edgesInSnapshot = store.CountEdges(snapshotIdStr);
+
+        Assert.Equal(dedupedCount - orphanEdgesDropped, edgesInSnapshot);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────

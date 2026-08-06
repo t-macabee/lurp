@@ -304,7 +304,7 @@ internal sealed class EdgeOperationsStore
         memberCmd.ExecuteNonQuery();
     }
 
-    public void DeleteOrphanEdges(string snapshotId)
+    public int DeleteOrphanEdges(string snapshotId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = @"
@@ -321,7 +321,7 @@ internal sealed class EdgeOperationsStore
               );
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery();
     }
 
     private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)

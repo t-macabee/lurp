@@ -61,7 +61,8 @@ public static class IndexRunner
                     sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
                     sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
                     sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
-                    sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edge_relations_in_snapshot: {store.CountEdges(result.NewSnapshotId)}");
+                    sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edges_dropped_outside_snapshot_scope: {result.OrphanEdgesDropped}");
+                    sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {store.CountEdges(result.NewSnapshotId)}");
                     sink.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
                     sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
                     sink.Write("Pruning old snapshots... ");
@@ -268,7 +269,7 @@ public static class IndexRunner
 
             // Step: Remove edges targeting symbols not declared in this snapshot
             cancellationToken.ThrowIfCancellationRequested();
-            store.DeleteOrphanEdges(snapshotIdStr);
+            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
 
             var totalProjects = extractedProjects + blindProjects.Count;
             var declarationsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);
@@ -279,7 +280,8 @@ public static class IndexRunner
             sink.WriteLine($"Index complete for snapshot {snapshotIdStr}");
             sink.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
             sink.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
-            sink.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edge_relations_in_snapshot: {edgesInSnapshot}");
+            sink.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped}");
+            sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {edgesInSnapshot}");
             sink.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
             sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
 
