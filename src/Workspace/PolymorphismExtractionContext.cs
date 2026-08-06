@@ -7,8 +7,8 @@ namespace Lurp.Workspace;
 
 internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 {
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
-        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache)
     {
     }
 

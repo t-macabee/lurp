@@ -6,8 +6,8 @@ namespace Lurp.Workspace;
 
 internal sealed class ReflectionExtractionContext : ExtractionContextBase
 {
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
-        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness)
+    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache)
     {
         KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         KnownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

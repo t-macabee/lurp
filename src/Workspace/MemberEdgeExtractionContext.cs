@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 
-internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
+internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
 {
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
     private readonly EdgeLocationResolver _locationResolver = new(
@@ -14,6 +14,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         generatedDocuments.Select(static id => id.ToString()),
         gitRoot);
     private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
+    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = semanticModelCache ?? [];
 
     internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
     internal EdgeLocationResolver LocationResolver => _locationResolver;
@@ -173,6 +174,16 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         => _locationResolver.Resolve(location);
 
 
+
+    internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
+    {
+        if (!_semanticModelCache.TryGetValue(syntaxTree, out var model))
+        {
+            model = Compilation.GetSemanticModel(syntaxTree);
+            _semanticModelCache[syntaxTree] = model;
+        }
+        return model;
+    }
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree, Dictionary<SyntaxTree, SemanticModel> cache)
     {

@@ -149,7 +149,9 @@ public static class CompilationFactExtractor
 
         var gitRoot = workspaceInfo.Id.GitRoot;
 
-        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness);
+        var sharedModelCache = new Dictionary<SyntaxTree, SemanticModel>();
+
+        var memberEdgeExtractor = new MemberEdgeExtractor(compilation, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache);
 
         RunStage(
             ctx, "MemberEdge", null, logError,
@@ -160,7 +162,7 @@ public static class CompilationFactExtractor
                 measurements.AddRange(memberEdgeExtractor.Measurements);
             });
 
-        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
+        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache);
 
         // Polymorphism was previously unguarded: a thrown exception here
         // escaped ExtractAll entirely. It now degrades like every other
@@ -176,7 +178,7 @@ public static class CompilationFactExtractor
             msg => $"Reflection extraction failed: {msg}",
             () =>
             {
-                var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
+                var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache);
                 edges.AddRange(reflectionExtractor.Extract());
                 measurements.AddRange(reflectionExtractor.Measurements);
             });

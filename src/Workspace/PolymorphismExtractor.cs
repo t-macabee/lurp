@@ -33,16 +33,16 @@ public sealed class PolymorphismExtractor
 {
     private readonly PolymorphismExtractionContext _context;
 
-    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
-        : this(compilation, snapshotId, gitRoot, scopeDocuments, null)
+    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+        : this(compilation, snapshotId, gitRoot, scopeDocuments, null, semanticModelCache)
     {
     }
 
-    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness)
+    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
+        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache);
     }
 
     public List<EdgeRecord> ExtractAll()

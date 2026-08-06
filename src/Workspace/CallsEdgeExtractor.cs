@@ -13,7 +13,6 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var callEdges = new Dictionary<(string source, string target, string kind), EdgeRecord>();
-        var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
         foreach (var (methodSymbol, methodSyntax) in context.EnumerateMethodDeclarations())
         {
@@ -22,7 +21,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             if (bodySyntax == null)
                 continue;
 
-            var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache);
+            var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree);
             var callerId = context.MakeSymbolId(methodSymbol);
 
             if (callerId == null)

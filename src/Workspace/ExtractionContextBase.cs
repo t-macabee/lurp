@@ -5,10 +5,10 @@ namespace Lurp.Workspace;
 
 internal abstract class ExtractionContextBase
 {
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = [];
+    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache;
     protected readonly string _gitRoot;
 
-    protected ExtractionContextBase(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null)
+    protected ExtractionContextBase(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
@@ -16,6 +16,7 @@ internal abstract class ExtractionContextBase
         AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         ScopeDocuments = scopeDocuments;
         Incompleteness = incompleteness;
+        _semanticModelCache = semanticModelCache ?? [];
     }
 
     internal Compilation Compilation { get; }

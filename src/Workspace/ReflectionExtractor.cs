@@ -8,16 +8,16 @@ public sealed class ReflectionExtractor
     private readonly ReflectionExtractionContext _context;
     public List<CompilationFactExtractor.ExtractionMeasurement> Measurements { get; } = [];
 
-    public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null)
-        : this(compilation, snapshotId, gitRoot, scopeDocuments, null)
+    public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+        : this(compilation, snapshotId, gitRoot, scopeDocuments, null, semanticModelCache)
     {
     }
 
-    internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness)
+    internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness);
+        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache);
     }
 
     public List<EdgeRecord> Extract()
