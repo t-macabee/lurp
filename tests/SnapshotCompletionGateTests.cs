@@ -396,7 +396,7 @@ public sealed class SnapshotCompletionGateTests : IDisposable
         public string Name => "ThrowingAdapter";
         public string Version => "1.0.0";
 
-        public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+        public List<EdgeRecord> Extract(AdapterExtractionContext context)
         {
             throw new InvalidOperationException("Adapter intentionally failed for testing.");
         }

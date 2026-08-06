@@ -190,12 +190,15 @@ public static class CompilationFactExtractor
             workspaceInfo.GeneratedDocuments.Select(static id => id.ToString()),
             gitRoot);
 
+        var adapterContext = new AdapterExtractionContext(
+            compilation, snapshotId, locationResolver, scopeDocuments, sharedModelCache);
+
         foreach (var adapter in adapters)
         {
             RunStage(
                 ctx, "Adapter", adapter.Name, logError,
                 msg => $"Adapter '{adapter.Name}' failed: {msg}",
-                () => edges.AddRange(adapter.Extract(compilation, snapshotId, locationResolver)));
+                () => edges.AddRange(adapter.Extract(adapterContext)));
         }
 
         var annotations = new List<AnnotationRecord>();
@@ -206,7 +209,7 @@ public static class CompilationFactExtractor
                 RunStage(
                     ctx, "AdapterAnnotations", adapter.Name, logError,
                     msg => $"Adapter annotations '{adapter.Name}' failed: {msg}",
-                    () => annotations.AddRange(annAdapter.ExtractAnnotations(compilation, snapshotId, locationResolver)));
+                    () => annotations.AddRange(annAdapter.ExtractAnnotations(adapterContext)));
             }
         }
 

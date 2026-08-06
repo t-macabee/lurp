@@ -10,8 +10,11 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
     public string Name => "ASP.NET Core";
     public string Version => "aspnetcore-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+    public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
+        var compilation = context.Compilation;
+        var snapshotId = context.SnapshotId;
+        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();

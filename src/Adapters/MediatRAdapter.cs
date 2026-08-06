@@ -10,8 +10,11 @@ public sealed class MediatRAdapter : IFrameworkAdapter
     public string Name => "MediatR";
     public string Version => "mediatr-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+    public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
+        var compilation = context.Compilation;
+        var snapshotId = context.SnapshotId;
+        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();

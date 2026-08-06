@@ -12,8 +12,11 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
     public string Name => "EF Core";
     public string Version => "efcore-v1";
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+    public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
+        var compilation = context.Compilation;
+        var snapshotId = context.SnapshotId;
+        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
@@ -21,7 +24,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         var annotations = new List<AnnotationRecord>();
         var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver, annotations);
 
-        ExtractDbContextMappings(compilation, allTypes, ctx);
+        ExtractDbContextMappings(context, allTypes, ctx);
         ExtractEntityTypeConfigurations(allTypes, ctx);
 
         _annotations = annotations;
@@ -30,10 +33,10 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
 
     private List<AnnotationRecord>? _annotations;
 
-    List<AnnotationRecord> IAnnotationExtractingAdapter.ExtractAnnotations(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+    List<AnnotationRecord> IAnnotationExtractingAdapter.ExtractAnnotations(AdapterExtractionContext context)
         => _annotations ?? [];
 
-    private static void ExtractDbContextMappings(Compilation compilation, List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
+    private static void ExtractDbContextMappings(AdapterExtractionContext context, List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
     {
         foreach (var type in allTypes)
         {
@@ -45,7 +48,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
                 continue;
 
             ExtractDbSetProperties(type, dbContextId, ctx);
-            ExtractOnModelCreatingCalls(compilation, type, dbContextId, ctx);
+            ExtractOnModelCreatingCalls(context, type, dbContextId, ctx);
         }
     }
 
@@ -67,7 +70,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         }
     }
 
-    private static void ExtractOnModelCreatingCalls(Compilation compilation, INamedTypeSymbol type, string dbContextId, ExtractionContext ctx)
+    private static void ExtractOnModelCreatingCalls(AdapterExtractionContext context, INamedTypeSymbol type, string dbContextId, ExtractionContext ctx)
     {
         var onModelCreating = type.GetMembers()
             .OfType<IMethodSymbol>()
@@ -80,7 +83,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         {
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
-                var semanticModel = compilation.GetSemanticModel(methodSyntax.SyntaxTree);
+                var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                 ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, ctx);
                 ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, ctx);
             }

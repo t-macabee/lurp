@@ -26,8 +26,11 @@ public sealed class TestAdapter : IFrameworkAdapter
         int? TestEndColumn,
         bool TestIsCrossGenerated);
 
-    public List<EdgeRecord> Extract(Compilation compilation, string snapshotId, EdgeLocationResolver locationResolver)
+    public List<EdgeRecord> Extract(AdapterExtractionContext context)
     {
+        var compilation = context.Compilation;
+        var snapshotId = context.SnapshotId;
+        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
@@ -35,8 +38,6 @@ public sealed class TestAdapter : IFrameworkAdapter
         bool isTestProject = IsTestProject(compilation);
         if (!isTestProject)
             return edges;
-
-        var semanticModelCache = new Dictionary<SyntaxTree, SemanticModel>();
 
         foreach (var type in AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
         {
@@ -65,12 +66,12 @@ public sealed class TestAdapter : IFrameworkAdapter
                     if (bodySyntax == null)
                         continue;
 
-                    var semanticModel = GetOrCreateSemanticModel(methodSyntax.SyntaxTree, semanticModelCache, compilation);
+                    var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                     var referencedSymbols = new HashSet<string>();
-                    var context = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
+                    var testCtx = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
                         path, sl, sc, el, ec, isGenerated);
 
-                    CollectTestReferences(bodySyntax, semanticModel, context);
+                    CollectTestReferences(bodySyntax, semanticModel, testCtx);
                 }
             }
         }
@@ -166,16 +167,6 @@ public sealed class TestAdapter : IFrameworkAdapter
                 IsCrossGenerated = context.TestIsCrossGenerated,
             });
         }
-    }
-
-    private static SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree,Dictionary<SyntaxTree, SemanticModel> cache,Compilation compilation)
-    {
-        if (!cache.TryGetValue(syntaxTree, out var model))
-        {
-            model = compilation.GetSemanticModel(syntaxTree);
-            cache[syntaxTree] = model;
-        }
-        return model;
     }
 
     private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, ExtractionContext context)
