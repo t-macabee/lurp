@@ -15,6 +15,9 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         {
             foreach (var member in typeSymbol.GetMembers())
             {
+                if (member.IsImplicitlyDeclared)
+                    continue;
+
                 if (!context.IsMemberInScope(member))
                     continue;
 

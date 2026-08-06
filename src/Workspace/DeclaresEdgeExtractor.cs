@@ -23,6 +23,9 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (member is INamedTypeSymbol)
                     continue;
 
+                if (member.IsImplicitlyDeclared)
+                    continue;
+
                 if (!context.IsMemberInScope(member))
                     continue;
 

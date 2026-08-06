@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-06T19:04:45.6257914Z",
+  "generatedAtUtc": "2026-08-06T23:08:34.2548989Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,12 +26,12 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 10049,
+        "estimatedTokens": 4689,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
             "RelationshipKind": "binding_incompleteness",
-            "Description": "144 binding(s) in Application, Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "Description": "97 binding(s) in Application, Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
             "SymbolIds": [
               "T:Outcome.Validation.OrderValidator|Validation, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
             ]
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "121313955cb0fcf2cc1b651abb3db357",
-        "fullSnapshot": "121313955cb0fcf2cc1b651abb3db357",
+        "incrementalSnapshot": "f180e24ed8bfd998459e2831cccb3628",
+        "fullSnapshot": "f180e24ed8bfd998459e2831cccb3628",
         "equivalent": true,
         "error": null
       },
@@ -160,12 +160,12 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 1779,
-        "truncated": true,
+        "estimatedTokens": 10050,
+        "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
             "RelationshipKind": "binding_incompleteness",
-            "Description": "144 binding(s) in Application, Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "Description": "97 binding(s) in Application, Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
             "SymbolIds": [
               "T:Outcome.Application.OrderHandler|Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
             ]
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "2714d8288811ea332e42e18a319b0d81",
-        "fullSnapshot": "2714d8288811ea332e42e18a319b0d81",
+        "incrementalSnapshot": "1090fac7a0b173e2f126873f6f2853f4",
+        "fullSnapshot": "1090fac7a0b173e2f126873f6f2853f4",
         "equivalent": true,
         "error": null
       },
@@ -314,7 +314,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 5139,
+        "estimatedTokens": 5138,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -367,7 +367,7 @@
           },
           {
             "RelationshipKind": "binding_incompleteness",
-            "Description": "132 binding(s) in Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
+            "Description": "85 binding(s) in Composition, Contracts, Outcome.Tests, Validation resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
             "SymbolIds": [
               "M:Outcome.Composition.ServiceRegistration.Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
             ]
@@ -452,8 +452,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "6c83f03cba0766c996208495b094e8a4",
-        "fullSnapshot": "6c83f03cba0766c996208495b094e8a4",
+        "incrementalSnapshot": "eca207428ea8fc678692bfb797a298b2",
+        "fullSnapshot": "eca207428ea8fc678692bfb797a298b2",
         "equivalent": true,
         "error": null
       },

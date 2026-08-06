@@ -18,6 +18,9 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                 if (member is not IMethodSymbol method)
                     continue;
 
+                if (member.IsImplicitlyDeclared)
+                    continue;
+
                 if (!context.IsMemberInScope(method))
                     continue;
 

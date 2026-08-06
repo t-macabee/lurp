@@ -21,6 +21,9 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
         {
             foreach (var member in type.GetMembers())
             {
+                if (member.IsImplicitlyDeclared)
+                    continue;
+
                 switch (member)
                 {
                     case IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null:
