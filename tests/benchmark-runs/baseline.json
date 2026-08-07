@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-06T23:08:34.2548989Z",
+  "generatedAtUtc": "2026-08-07T11:12:00.84662Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -26,7 +26,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 4689,
+        "estimatedTokens": 5761,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "f180e24ed8bfd998459e2831cccb3628",
-        "fullSnapshot": "f180e24ed8bfd998459e2831cccb3628",
+        "incrementalSnapshot": "15eb96e2b328c1680e96759a7e7d7024",
+        "fullSnapshot": "15eb96e2b328c1680e96759a7e7d7024",
         "equivalent": true,
         "error": null
       },
@@ -160,7 +160,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 10050,
+        "estimatedTokens": 12268,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "1090fac7a0b173e2f126873f6f2853f4",
-        "fullSnapshot": "1090fac7a0b173e2f126873f6f2853f4",
+        "incrementalSnapshot": "af8534dc8feff2dafd936268f11ae5e0",
+        "fullSnapshot": "af8534dc8feff2dafd936268f11ae5e0",
         "equivalent": true,
         "error": null
       },
@@ -314,8 +314,8 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 5138,
-        "truncated": false,
+        "estimatedTokens": 3691,
+        "truncated": true,
         "unknownRuntimeVectorsDeclared": [
           {
             "RelationshipKind": "Registers",
@@ -382,6 +382,22 @@
         ],
         "content": [
           {
+            "Tier": "directCallees",
+            "Fqn": "global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped\u003CTService, TImplementation\u003E",
+            "SymbolId": "M:Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped\u0060\u00602(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Calls",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
+            "Tier": "directCallees",
+            "Fqn": "global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddHostedService\u003CTImplementation\u003E",
+            "SymbolId": "M:Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddHostedService\u0060\u00601(Microsoft.Extensions.DependencyInjection.IServiceCollection)|Composition, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "EdgeKind": "Calls",
+            "Provenance": "compiler_proved",
+            "Relevance": "unclassified"
+          },
+          {
             "Tier": "directCallers",
             "Fqn": "global::Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices",
             "SymbolId": "M:Outcome.Tests.CompositionTests.Configure_RegistersApplicationServices|Outcome.Tests, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -424,7 +440,7 @@
         ],
         "relevantCount": 1,
         "irrelevantCount": 0,
-        "unclassifiedCount": 4
+        "unclassifiedCount": 6
       },
       "contracts": {
         "expected": [],
@@ -452,8 +468,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "eca207428ea8fc678692bfb797a298b2",
-        "fullSnapshot": "eca207428ea8fc678692bfb797a298b2",
+        "incrementalSnapshot": "c29d9a602d189e864b1b76a7cddffb0a",
+        "fullSnapshot": "c29d9a602d189e864b1b76a7cddffb0a",
         "equivalent": true,
         "error": null
       },

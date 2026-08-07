@@ -40,16 +40,22 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
                 {
                     context.RecordFilteredExternal(ctor, creation);
 
-                    var ctorId = context.MakeSymbolId(ctor);
-                    if (ctorId == null)
+                    // Implicit default constructors are never emitted as declarations (the
+                    // declaration extractor skips IsImplicitlyDeclared members), so an edge to
+                    // the phantom .#ctor would orphan on cleanup and the construction fact
+                    // would be lost. Anchor it to the containing type instead, which IS
+                    // declared. Explicit constructors keep pointing at the constructor.
+                    var target = ctor.IsImplicitlyDeclared ? (ISymbol)ctor.ContainingType : ctor;
+                    var targetId = context.MakeSymbolId(target);
+                    if (targetId == null)
                         continue;
 
-                    var key = (callerId, ctorId, EdgeKind.Constructs.ToString());
+                    var key = (callerId, targetId, EdgeKind.Constructs.ToString());
                     if (!seen.Add(key))
                         continue;
 
                     var loc = context.GetLocationInfo(creation.GetLocation());
-                    edges.Add(context.MakeEdge(callerId, ctorId, EdgeKind.Constructs.ToString(),
+                    edges.Add(context.MakeEdge(callerId, targetId, EdgeKind.Constructs.ToString(),
                         ExtractorConstants.ConstructsExtractor, loc));
                 }
             }
