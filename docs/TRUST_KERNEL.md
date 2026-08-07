@@ -197,8 +197,13 @@ Orphan drops are classified into three buckets (returned as
 - **Other**: everything else — a real in-scope declaration that vanished. Only
   this bucket is actionable; a nonzero `other` count prints a warning.
 
-The eNoteV2 case (2026-08-07) produced 2 residual `other` drops on a
-7-project solution after the `OriginalDefinition` normalization fix below.
+The eNoteV2 case (2026-08-07, extractor 1.6.0): a clean full rebuild of the
+7-project solution (402 documents, 3,656 declarations) produced 0 residual
+`other` orphan drops after the `OriginalDefinition` normalization fix. 8,608
+edges were dropped as out-of-scope (8,428 external, 180 compiler-synthesized).
+10,544 edges retained in-snapshot across 23 edge kinds (90.2% compiler_proved,
+8.9% framework_derived). Binding incompleteness: 26,727 records, of which
+26,640 are `filtered_external` and 87 `unsupported_syntax`.
 
 2026-08-07 (extractor 1.5.0): `SymbolIdFactory.Make` now normalizes symbols to
 `OriginalDefinition` (and un-reduces extension methods via `ReducedFrom`) before
@@ -418,7 +423,24 @@ surfaced by the existing header-based detection.
    implemented and tested: `CapsuleProvenanceCompositionTests`; see change
    log, "Capsule dispatch-provenance fix".)
 8. **MusicLibrary dispatch reproduction is permanently deferred.** Externally
-   blocked (no MusicLibrary checkout); recorded as deferred, not open work.
+    blocked (no MusicLibrary checkout); recorded as deferred, not open work.
+9. **`simulate-rename` excludes `Registers` edges.** (Resolved 2026-08-07.)
+    `SimulationEngine.SimulateRename` (`src/Workspace/SimulationEngine.cs:76`)
+    filtered incoming edges to `"Calls"`, `"References"`, `"Overrides"`,
+    `"Implements"` only, silently dropping DI registration references that
+    need updating on a rename (`Registers` edges are type-level references to
+    the named symbol). `SimulateRemove` handled `Registers` separately (line
+    142); `SimulateRename` now matches with a one-term addition to the `is`
+    pattern. Test: `C16SimulationTests` (6/6 pass).
+10. **`impact` default `--max-depth=10` causes unbounded BFS on dense graphs.**
+    (Resolved 2026-08-07.) `ImpactHandler.Run`
+    (`src/Handlers/ImpactHandler.cs:34`) defaulted to depth 10 with no
+    timeout or progress signal. On a graph with 10K+ edges, the BFS
+    enumerates millions of paths before the pagination step. Observed hang
+    (5+ min) against eNoteV2 at default depth; depth 2 returned 82 paths
+    instantly. The `groups` aggregation was already designed to answer
+    fan-out structure from first hops, making deep exhaustions unnecessary
+    for the primary use case. Default lowered to 3.
 
 ## Explicitly postponed
 
@@ -460,6 +482,17 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 - **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests`.
 - **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeOperationsStore`, `DiagnosticStore`, `AnnotationStore`, `ExtractorRegistryStore`, `SearchSourceStore`, `SearchSymbolStore`, `SearchIndexMaintenance`, `SemanticDiffStore`, `BindingIncompletenessStore`. The former `EdgeStore`/`SearchStore` middle facades were removed on 2026-08-05; `SqliteIndexStore` now forwards to the leaf stores directly.
 
+## Reclassified as done (2026-08-07)
+
+- **`--solution=` accepted on every mode.** `CliFlagValidation.GlobalFlags`
+  gained `"--solution="` (all modes accept it). `HandlerBootstrap.ResolveOutputDir`
+  falls back to the solution's directory when no `--output-dir=`,
+  `LURP_OUTPUT_DIR`, or `INDEXER_OUTPUT_DIR` is set — a user who only knows
+  `--solution=` from `index` now gets a working DB path instead of a rejection.
+  Also accepted via env vars `LURP_SOLUTION_PATH` and `INDEXER_SOLUTION_PATH`.
+- **`simulate-rename` now includes `Registers` edges.** (See finding 9.)
+- **`impact` default `--max-depth` lowered from 10 to 3.** (See finding 10.)
+
 ## Reclassified as done (2026-08-06)
 
 - **Incremental re-extraction is document-scoped.** `IncrementalIndexer` no longer re-extracts every document of every affected project. `ExtractReplacementFacts` receives the extraction scope (changed documents ∪ reverse-edge closure ∪ every document declaring a part of a touched type), converted to the absolute forward-slash form the extraction guards compare against, and `PrepareSnapshotData` deletes over exactly the same set — extraction and deletion narrow in lockstep, so no fact is deleted for a document that is not re-extracted. All six adapters honor `AdapterExtractionContext.ScopeDocuments`; their re-emitted edges are absorbed by the `INSERT OR IGNORE` on `ux_edges_relation`, and re-emitted annotations are deduplicated by retiring the copied-forward rows first (`DeleteAnnotationsByDocumentPaths`).
@@ -477,4 +510,27 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
   (`GetSourceHandler`, `NavigateHandler`, `ContextHandler`'s file+line anchor).
   Covered by `tests/HandlerDocumentPathNormalizationTests.cs`; found by driving
   the CLI against an out-of-repo solution (eNoteV2, 7 projects, 3,656 declarations).
+
+## Verified against eNoteV2 (2026-08-07, extractor 1.6.0)
+
+A clean full rebuild followed by targeted handler runs against the 7-project
+eNoteV2 solution confirmed the following capabilities end-to-end:
+
+| Mode | Result |
+|---|---|
+| `index --strategy=full` | 3,656 declarations, 10,544 edges, 128 diagnostics, 22.3s |
+| `index` (incremental, no-change) | 2.6s — hash freshness short-circuit works |
+| `status --output=json` | Fresh, schema v26, all 6 adapters active, completeness declared |
+| `search --query=Order` | Symbol + source results with snapshot-bound scoping |
+| `context --symbol=... --output=summary` | Token-budgeted capsule (5189/8000 content tokens), tiers omit honestly |
+| `impact --symbol=... --output=summary` | 4 paths, 3 distinct first hops, `MayDispatchTo` edges with provenance |
+| `simulate-rename --symbol=... --new-name=...` | 4 affected symbols (1 caller + 3 overrides) with exact documents/lines |
+| `audit` | Dead-symbol, untested-surface, unregistered-impl, high-fan-out checks all emit |
+| `timings` | Per-step breakdown (extraction_loop 87.9% of total) |
+
+Edge-kind coverage observed: 23 kinds in-snapshot, including `MayDispatchTo`,
+`StaticallyCalls`, `RoutesTo`, `Registers`, `MapsTo`, `Overrides`,
+`ExtensionReceiver`, `ReflectionTypeRef`, `ReflectionMemberRef`,
+`ReflectionNameCandidate`, `ReflectionTargetUnknown` — confirming the
+polymorphism, framework-adapter, and reflection evidence ladders are live.
 

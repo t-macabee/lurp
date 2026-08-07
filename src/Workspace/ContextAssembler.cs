@@ -282,24 +282,37 @@ namespace Lurp.Workspace
 
         private List<IContextTierBuilder> GetTierBuilders(ContextTierContext context)
         {
-            return Intent switch
+            var tiers = Intent switch
             {
-                ContextIntent.Inspect => ResolveInOrder(context,
+                ContextIntent.Inspect => new[] {
                     "contracts", "directCallees", "directCallers", "registeredImplementations",
-                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+                    "relevantTests", "secondDegreeContext", "surroundingSource" },
 
-                ContextIntent.Modify => ResolveInOrder(context,
+                ContextIntent.Modify => new[] {
                     "contracts", "directCallers", "registeredImplementations", "relevantTests",
-                    "directCallees", "secondDegreeContext", "surroundingSource"),
+                    "directCallees", "secondDegreeContext", "surroundingSource" },
 
-                ContextIntent.Diagnose => ResolveInOrder(context,
+                ContextIntent.Diagnose => new[] {
                     "directCallers", "registeredImplementations", "contracts", "directCallees",
-                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+                    "relevantTests", "secondDegreeContext", "surroundingSource" },
 
-                _ => ResolveInOrder(context,
+                _ => new[] {
                     "contracts", "directCallees", "directCallers", "registeredImplementations",
-                    "relevantTests", "secondDegreeContext", "surroundingSource"),
+                    "relevantTests", "secondDegreeContext", "surroundingSource" },
             };
+
+            if (SymbolId.IsType)
+            {
+                var rt = Array.IndexOf(tiers, "relevantTests");
+                var ss = Array.IndexOf(tiers, "surroundingSource");
+                if (rt >= 0 && ss >= 0)
+                {
+                    tiers[rt] = "surroundingSource";
+                    tiers[ss] = "relevantTests";
+                }
+            }
+
+            return ResolveInOrder(context, tiers);
         }
 
         private static List<IContextTierBuilder> ResolveInOrder(ContextTierContext context, params string[] tierNames)

@@ -121,12 +121,12 @@ Also accepts the shared [read-command options](#read-command-options).
 Resolve a symbol by fully qualified name.
 
 ```
---mode=find-symbol --fqn=<name> --output-dir=<path> [options]
+--mode=find-symbol --symbol=<name> --output-dir=<path> [options]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
-| `--fqn=<name>` | Yes | Fully qualified name to resolve. |
+| `--symbol=<name>` | Yes | Fully qualified name to resolve. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |

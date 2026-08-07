@@ -276,6 +276,8 @@ namespace Lurp.Storage
             { EnsureOpen(); return _searchSymbols!.SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor); }
         public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
             { EnsureOpen(); return _searchSymbols!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated); }
+        public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
+            { EnsureOpen(); return _searchSymbols!.ResolveSymbolByDocCommentId(docCommentId, snapshotId, includeGenerated); }
 
         // ── ISemanticDiffReadStore ─────────────────────────────────────────
 

@@ -34,7 +34,7 @@ internal static class HelpText
         Console.WriteLine("                         identifier tokens first; when no token matches,");
         Console.WriteLine("                         any substring of a symbol's fully qualified name");
         Console.WriteLine("                         matches (so \"Service\" finds \"CourseService\").");
-        Console.WriteLine("    --output-dir=<path>  Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>  Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --type=<all|source|symbol>");
         Console.WriteLine("                         Search scope (default: all).");
@@ -50,11 +50,11 @@ internal static class HelpText
         Console.WriteLine("IMPACT (--mode=impact)");
         Console.WriteLine("  Required:");
         Console.WriteLine("    --symbol=<id>         The symbol ID to trace from.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --direction=<downstream|upstream>");
         Console.WriteLine("                          Traversal direction (default: downstream).");
-        Console.WriteLine("    --max-depth=<n>       Maximum hops per path (default: 10).");
+        Console.WriteLine("    --max-depth=<n>       Maximum hops per path (default: 3).");
         Console.WriteLine("    --kinds=<list>        Comma-separated edge kinds to follow.");
         Console.WriteLine("    --max-paths=<n>       Paths per page (default: 50). When more exist, the");
         Console.WriteLine("                          response carries truncated.{reason,total,remaining,cursor}.");
@@ -67,7 +67,7 @@ internal static class HelpText
         Console.WriteLine("INDEXING (--mode=index)");
         Console.WriteLine("  Required:");
         Console.WriteLine("    --solution=<path>     Path to the .sln or .slnx file.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine();
         Console.WriteLine("  Optional:");
         Console.WriteLine("    --strategy=<full|incremental>");
@@ -96,7 +96,7 @@ internal static class HelpText
         Console.WriteLine("  Required (one of):");
         Console.WriteLine("    --symbol=<id>         The symbol ID to anchor on.");
         Console.WriteLine("    --file=<path> --line=<n>  Anchor by source location.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --intent=<inspect|modify|diagnose>");
         Console.WriteLine("                         Intent hint for assembly priority (default: inspect).");
@@ -134,7 +134,7 @@ internal static class HelpText
         Console.WriteLine("SIMULATION (--mode=simulate-*)");
         Console.WriteLine("  Required:");
         Console.WriteLine("    --symbol=<id>         The symbol ID to simulate.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --new-name=<name>     New simple name (simulate-rename only).");
         Console.WriteLine("    --new-namespace=<ns>  Target namespace (simulate-move only).");
@@ -142,7 +142,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("AUDIT (--mode=audit)");
         Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --checks=<list>       Comma-separated checks: dead-symbol, untested-surface,");
         Console.WriteLine("                          unregistered-impl, high-fan-out (default: all).");
@@ -151,7 +151,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("ANNOTATIONS (--mode=annotate / --mode=get-annotations)");
         Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --symbol=<id>         The symbol ID to annotate or query.");
         Console.WriteLine("    --annotation-kind=<kind>  Annotation kind (annotate only, required).");
@@ -160,7 +160,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("STATUS (--mode=status)");
         Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --solution=<path>     If provided, compares the current workspace against");
         Console.WriteLine("                          the latest snapshot and reports freshness mismatches.");
@@ -175,7 +175,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("TIMINGS (--mode=timings)");
         Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored.");
+        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
         Console.WriteLine("    --snapshot=<id>       Show timings for a specific snapshot (default: latest).");
         Console.WriteLine("    --json                Emit structured JSON instead of plain text.");

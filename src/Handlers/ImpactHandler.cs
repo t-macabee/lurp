@@ -28,7 +28,7 @@ internal static class ImpactHandler
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
-        int maxDepth = 10;
+        int maxDepth = 3;
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
         {
             HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
@@ -51,8 +51,10 @@ internal static class ImpactHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
+            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+
             var fingerprint = SequenceCursor.ComputeFingerprint(
-                symbolArg,
+                resolvedSymbolId,
                 direction.ToString(),
                 maxDepth.ToString(CultureInfo.InvariantCulture),
                 kindsArg);
@@ -60,7 +62,7 @@ internal static class ImpactHandler
             var offset = cursor?.Offset ?? 0;
 
             var traverser = new ImpactTraverser(store, snapshotId, store);
-            var traced = traverser.TraceImpact(symbolId: symbolArg, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
+            var traced = traverser.TraceImpact(symbolId: resolvedSymbolId, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
 
             // A cursor addresses an offset, so the sequence must have one deterministic
             // total order. The traversal order is already deterministic, but it is not
@@ -114,7 +116,7 @@ internal static class ImpactHandler
             {
                 snapshot_id = snapshotId,
                 freshness = HandlerBootstrap.FreshnessJson(freshness),
-                symbol_id = symbolArg,
+                symbol_id = resolvedSymbolId,
                 direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",
                 max_depth = maxDepth,
                 path_count_total = paths.Count,

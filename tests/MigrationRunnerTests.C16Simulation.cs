@@ -84,6 +84,27 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void SimulateRename_RegistersEdge_ReportsRegistrationSource()
+        {
+            const string snapId = "snap-c16-sim-007";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Startup|asm",
+                    TargetSymbolId = "T:InstrumentTypeService|asm",
+                    Kind = "Registers",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateRename("T:InstrumentTypeService|asm", "RenamedService");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "T:Startup|asm" && i.EdgeKind == "Registers");
+            store.Close();
+        }
+
+        [Fact]
         public void SimulateRename_NoCallers_ReturnsEmptyItems()
         {
             const string snapId = "snap-c16-sim-003";

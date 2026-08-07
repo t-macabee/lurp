@@ -7,10 +7,10 @@ internal static class FindSymbolHandler
 {
     public static void Run(string[] args)
     {
-        var fqnArg = HandlerBootstrap.GetArgValue(args, "--fqn=");
-        if (string.IsNullOrEmpty(fqnArg))
+        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
+        if (string.IsNullOrEmpty(symbolArg))
         {
-            HandlerBootstrap.Fail("ERROR: --fqn=<name> is required for --mode=find-symbol.");
+            HandlerBootstrap.Fail("ERROR: --symbol=<name> is required for --mode=find-symbol.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
@@ -26,10 +26,13 @@ internal static class FindSymbolHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
-            var info = store.ResolveSymbolByFqn(fqnArg, snapshotId, includeGenerated);
+            var info = HandlerBootstrap.ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
             if (info == null)
             {
-                HandlerBootstrap.Fail($"ERROR: Symbol with FQN '{fqnArg}' not found in snapshot '{snapshotId}'.");
+                HandlerBootstrap.Fail(
+                    $"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'. " +
+                    "Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), " +
+                    "or a fully-qualified name (e.g. Some.Namespace.Type).");
             }
 
             var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);

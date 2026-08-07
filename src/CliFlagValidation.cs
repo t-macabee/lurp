@@ -17,14 +17,16 @@ namespace Lurp;
 internal static class CliFlagValidation
 {
     /// <summary>
-    /// Accepted by every mode. <c>--mode=</c> selects the mode, <c>--output-dir=</c> is read
-    /// by every handler through <see cref="HandlerBootstrap.ResolveOutputDir"/>, and the help
-    /// flags are handled before dispatch but may still appear in the argument list.
+    /// Accepted by every mode. <c>--mode=</c> selects the mode, <c>--output-dir=</c> and
+    /// <c>--solution=</c> are read by every handler through
+    /// <see cref="HandlerBootstrap.ResolveOutputDir"/>, and the help flags are handled
+    /// before dispatch but may still appear in the argument list.
     /// </summary>
     internal static readonly string[] GlobalFlags =
     [
         "--mode=",
         "--output-dir=",
+        "--solution=",
         "--help",
         "-h",
     ];

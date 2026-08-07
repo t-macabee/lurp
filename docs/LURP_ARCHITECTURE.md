@@ -1,37 +1,40 @@
-# Lurp Architecture and Creation Roadmap
+# Lurp Architecture
 
-**Status:** Conceptual design guide. All §23 phases are implemented — see
-`TRUST_KERNEL.md` for per-phase verification and current deviations.
-**Starting point:** Lurp v1.1.0, schema v2
-**Target:** A persistent semantic workspace mirror for agent-assisted .NET development
+**Status:** Design reference. All architecture phases are implemented — see
+`TRUST_KERNEL.md` for per-phase verification, evidence, and current deviations.
+**Current:** schema v26, extractor 1.6.0, tool 1.4.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
 
 ## 1. Purpose of This Document
 
-The existing indexer already covers the first stage: it loads a .NET solution
-through Roslyn, discovers types and dependencies, tracks stale semantic data,
-performs structural audits, and simulates several refactorings without
-modifying source. Two developments complete the original idea:
+This document describes Lurp's **design**: the product model, the data model,
+the non-negotiable rules, and the two development tracks that were merged into
+one system. It is a *what-and-why* reference, not a build roadmap.
 
-1. **Deepen the semantic map:** represent code relationships at the precision
-   an agent needs for change reasoning.
-2. **Map → Map with fast travel:** make every indexed location lead immediately
-   to the actual source, without reparse/reopen per question.
+For implementation status, verification evidence, gap audits, and recorded
+deviations, see `TRUST_KERNEL.md`.
 
-These are separate capabilities but not separate products; they must share one
-document identity, one symbol identity, one workspace snapshot, one freshness
-model, one persistent database, and one query interface. The final system:
+### 1.1 Current state
+
+Lurp today:
 
 > **A persistent, incremental semantic workspace mirror that combines
 > compiler-derived relationships with immediate, snapshot-consistent source
 > retrieval for software agents.**
 
+It loads a .NET solution through Roslyn, discovers types and dependencies,
+tracks stale semantic data, performs structural audits, simulates refactorings
+without modifying source, and assembles bounded context capsules for agent
+tasks. All capabilities share one document identity, one symbol identity, one
+workspace snapshot, one freshness model, one persistent database, and one query
+interface.
+
 It remains an indexer and context provider. It does not become an agent,
 editor, dashboard, or autonomous refactoring system.
 
-## 2. The Correct Product Model
+## 2. The Product Model
 
 Four responsibilities:
 
@@ -42,15 +45,7 @@ Four responsibilities:
 | **Fast travel** | What source belongs to this entity, right now? |
 | **Context assembly** | What is the smallest sufficient neighborhood for this task? |
 
-The current indexer substantially implements the catalog and an early
-type-level map. Tokensave accidentally supplied fast travel during testing.
-The definitive indexer incorporates that capability natively and then uses
-both halves to assemble task context.
-
 ### 2.1 The central data model
-
-Current abstraction: `Type → classification + incoming types + outgoing types`.
-Target abstraction:
 
 ```text
 Snapshot
@@ -76,8 +71,8 @@ Extractor: invocation-v3
 ```
 
 Source retrieval uses the same identity: `symbol ID → document version →
-exact source span`. There is no permanent translation layer between a
-Tokensave chunk ID and an indexer symbol ID.
+exact source span`. There is no translation layer between a symbol ID and its
+source.
 
 ## 3. One Database Instead of Numerous JSON Files
 
@@ -164,23 +159,18 @@ semantic edges, polymorphic dispatch candidates, structured semantic changes,
 generated-code awareness, framework-mediated relationships, bounded impact
 paths, task-specific context capsules.
 
-### 4.1 Which gets implemented first?
+Both tracks are implemented. Track A's storage foundation came first; then the
+tracks interleaved. For the phase-by-phase build order and its completion
+evidence, see `TRUST_KERNEL.md` §"Architecture Phase completion status".
 
-**Track A's storage foundation comes first; then the tracks interleave.**
-Do not fully complete the old type-level indexer in JSON and migrate later; do
-not build the entire source cache before member identities either. Order:
+---
 
-1. establish schema and snapshot contracts;
-2. introduce SQLite and store document contents;
-3. introduce stable type/member identities and source spans;
-4. deliver fast retrieval;
-5. migrate existing indexer facts and workflows into the database;
-6. deepen the graph stage by stage;
-7. build context assembly on top of both.
+# Design Reference
 
-This avoids two expensive mistakes: enriching a JSON representation that will
-immediately be replaced, and creating a source cache whose chunk identities do
-not match Roslyn symbols.
+The following sections are the active design contract. For the build sequence
+and its completion evidence, see `TRUST_KERNEL.md`.
+
+---
 
 ## 5. Non-Negotiable Design Rules
 
@@ -228,419 +218,23 @@ Every field is a contract with future consumers:
 - Test migrations from real prior database fixtures.
 - Treat unknown enum values as survivable input.
 
----
-
-# Part I: Build the Missing Fast-Travel Half
-
-Each stage: **Objective** — what it proves; **Key decisions** — what to build;
-**Done when** — the acceptance condition.
-
-## 6. Stage A0: Define Identity and Version Contracts
-
-**Objective:** every persisted item describes exactly one version of one
-workspace under one compilation configuration.
-
-**Key decisions:** four distinct identities:
-
-| Identity | Purpose |
-|---|---|
-| `workspace_id` | Repository + solution identity |
-| `snapshot_id` | One indexed state of that workspace |
-| `document_id` | Stable logical file identity |
-| `document_version_id` | Immutable content version identified by hash |
-
-`document_id` is path-scoped and constant across snapshots; it is **not**
-snapshot-scoped. A snapshot binds a document to a specific
-`document_version_id` (via `snapshot_documents`), giving each snapshot an
-isolated, immutable view of content. See `TRUST_KERNEL.md` for the
-schema-level confirmation of this reading.
-
-A snapshot must record: git root and solution identity; source document
-hashes; SDK and compiler version; target framework and relevant MSBuild
-properties; project-reference graph; indexer and extractor versions.
-
-Freshness is content- and configuration-based, never time-based — no age rule
-such as "baseline newer than 24 hours."
-
-**Done when:** the tool can state whether the database represents the current
-workspace and explain every mismatch.
-
-## 7. Stage A1: Introduce SQLite Without Removing Existing Behavior
-
-**Objective:** durable storage while keeping current commands functional.
-
-**Key decisions:** a small storage boundary inside the indexer, not arbitrary
-SQL from mode handlers:
-
-```text
-Extraction and analysis → Index store interface → SQLite implementation
-```
-
-The store owns: transactions; migrations; insert/update/delete operations;
-indexed queries; snapshot activation; consistency checks. Existing JSON may be
-written as compatibility output during migration, but must not remain a
-parallel authority.
-
-**Done when:** a database can be created, migrated, opened, validated, and
-rebuilt without changing the current analytical results.
-
-## 8. Stage A2: Store Immutable Documents
-
-**Objective:** current source content available immediately without Roslyn
-startup.
-
-**Key decisions:** for every indexed document: (1) normalize path identity
-without rewriting source text; (2) calculate a content hash; (3) store the
-complete source once for that hash; (4) associate it with the active snapshot;
-(5) retain encoding and line-start information. Line-start offsets must be
-stored or cheaply derivable to translate between Roslyn spans and
-line/column. Generated documents are representable but marked separately from
-user-authored documents.
-
-**Done when:** given a file identity and current snapshot, the CLI returns
-exact source without loading the solution.
-
-## 9. Stage A3: Link Symbols to Exact Source Spans
-
-**Objective:** source caching becomes semantic fast travel, not a second
-text-chunk system.
-
-**Key decisions:** persist Roslyn-derived type and member identities with
-declaration spans: full declaration span; signature span where practical;
-body span where one exists; identifier span; declaring document version;
-partial-declaration relationships. Stable identity is based on Roslyn semantic
-identity and project/assembly context, not only an FQN — FQNs remain useful
-lookup aliases but are not sufficient durable IDs across moves, overloads, and
-project collisions.
-
-**Done when:** given a symbol, the system returns metadata only, signature,
-body, full declaration, containing type, or surrounding lines — all views from
-the same document version used to extract the symbol.
-
-## 10. Stage A4: Add Dual Retrieval
-
-**Objective:** fast travel both when the agent knows the destination and when
-it only knows a word or concept.
-
-**Key decisions:**
-
-- **Symbol retrieval:** indexed symbol identities and aliases for exact
-  queries: `get symbol → retrieve stored span`.
-- **Lexical retrieval:** SQLite FTS5 over identifier fragments (any
-  case-insensitive substring of a symbol's FQN: whole tokens, camel-case
-  segments, prefixes all qualify — a query of `Service` matches
-  `CourseService`; implemented as whole-token FTS5 matching with a substring
-  fallback when no whole token matches), source literals, route strings,
-  attributes, comments when explicitly requested, filenames and paths.
-
-Lexical search finds candidate locations; semantic traversal (built later)
-explains their neighborhood.
-
-**Done when:** "where is this and what does it contain?" no longer requires
-filesystem search or Roslyn solution loading.
-
-## 11. Stage A5: Replace JSON Coordination with Database State
-
-**Objective:** SQLite is the only operational state store.
-
-**Key decisions:**
-
-| Existing artifact | Database replacement |
-|---|---|
-| `dirty-files.json` | changed-document/snapshot staging records |
-| `file-index.json` | indexed document-to-symbol relationships |
-| `semantic/*.semantic.json` | reproducible facts plus separate annotations |
-| cached roots JSON | indexed semantic edges and materialized queries |
-| diagnostic baseline | snapshot-bound diagnostic records |
-| audit scaffolds | optional exported reports, not core state |
-
-Keep a temporary import path for existing `.codeaudit` data only if it
-contains irreplaceable annotations; reproducible compiler facts should be
-rebuilt, not migrated indefinitely.
-
-**Done when:** deleting operational JSON files removes no capability; JSON is
-generated only as requested output or export.
-
----
-
-# Part II: Deepening the Semantic Graph
-
-## 12. Stage B0: Establish the Semantic Fact Model
-
-**Objective:** replace coarse type dependency lists with a durable graph-shaped
-fact model.
-
-**Key decisions:** first-class nodes for projects, documents, namespaces,
-types, members, parameters where needed, framework entry points, registrations,
-tests. Explicit edges such as `declares`, `contains`, `inherits`, `implements`,
-`overrides`, `calls`, `constructs`, `reads`, `writes`, `returns`, `throws`,
-`references`, `tested_by`. Every edge records: source and target identity;
-source location; provenance; extractor and version; snapshot membership.
-Existing `discover`, `structure`, and `who-references` output become
-projections of this fact model.
-
-**Done when:** no core analysis needs `OutgoingTypeNames` as its primary
-relationship representation.
-
-## 13. Stage B1: Add Member-Level Compiler Relationships
-
-**Objective:** the resolution required for targeted changes.
-
-**Key decisions:** implement in this order: (1) inheritance, interface
-implementation, overrides; (2) member calls; (3) object construction;
-(4) field/property reads and writes; (5) parameter and return-type
-dependencies; (6) attributes; (7) thrown exception and result relationships
-where statically available; (8) production-to-test references. Do not attempt
-exhaustive formal data-flow analysis — the purpose is reliable navigation and
-bounded impact, not proof of every runtime value.
-
-**Done when:** for a changed method, the indexer identifies the compiler-visible
-callers, contracts, implementations, consumed members, modified state, and
-relevant tests without inflating everything to the containing type.
-
-## 14. Stage B2: Model Polymorphism Honestly
-
-**Objective:** represent interface and virtual dispatch without claiming
-runtime certainty that does not exist.
-
-**Key decisions:** keep separate facts:
-
-```text
-Handler.Handle
-  statically_calls
-IRepository.SaveAsync
-
-IRepository.SaveAsync
-  may_dispatch_to
-Repository.SaveAsync
-```
-
-Framework registration evidence may narrow candidates but remains a separate
-edge; consumers can derive likely paths while retaining the derivation.
-
-**Done when:** interface-mediated impact paths are visible, and every concrete
-target states whether it is proven, framework-derived, or merely possible.
-
-## 15. Stage B3: Implement Structured Semantic Diffing
-
-**Objective:** replace "something changed" with "this semantic fact changed."
-
-**Key decisions:** keep hashes as cheap change detectors, but compare stored
-canonical facts to explain the difference. Record changes such as: type/member
-added or removed; symbol renamed or moved; accessibility changed; signature or
-nullability changed; base type/interface changed; attribute changed;
-dependency edge added or removed; call/read/write edge changed; DI
-registration or route changed; implementation-only body change. Never derive a
-semantic diff from hashes alone — retain the previous canonical fact set or
-snapshot.
-
-**Done when:** `sweep` and `impact` explain the semantic cause of
-invalidation, not only report fingerprint mismatch.
-
-## 16. Stage B4: Index Generated Semantics
-
-**Objective:** stop treating generated code as nonexistent while avoiding
-source-context pollution.
-
-**Current limitation:** `MSBuildWorkspace.OpenSolutionAsync` does not provide
-source-generator output; generator-produced documents are absent from the
-compilations exposed to the indexer. The snapshot manifest records this via
-`generated_trees_included: false`. A future generator-driver stage closes the
-gap.
-
-**Key decisions:** index generated symbols/relationships when Roslyn exposes
-them; mark generated document status, generator identity when available,
-whether a declaration is user-authored or generated, and references crossing
-the authored/generated boundary. Exclude generated source bodies from normal
-agent context unless directly relevant or explicitly requested.
-
-**Done when:** generated symbols participate in dependency and impact queries
-without automatically consuming agent tokens.
-
-## 17. Stage B5: Add Framework Adapters
-
-**Objective:** turn important framework-mediated blind spots into
-evidence-graded relationships.
-
-**Key decisions:** add adapters in the order most relevant to eNoteV2 and
-similar .NET applications: (1) ASP.NET Core routes/controllers/actions/endpoint
-metadata; (2) built-in DI service-to-implementation registration and lifetime;
-(3) MediatR request/notification-to-handler; (4) EF Core entities,
-configurations, `DbSet` exposure, migrations where relevant; (5) serialization
-DTO/property contract participation; (6) test frameworks (test-to-production
-relationships and discovery metadata). Adapters emit ordinary typed facts into
-the shared model — no parallel cache. For DI, distinguish: explicit recognized
-registration; registration derived by following local helper methods;
-convention-based candidate set; external/runtime registration unknown.
-
-**Done when:** the indexer describes the common application path
-
-```text
-HTTP route → action → request/handler → interface call
-→ registered implementation → persistence operation → relevant tests
-```
-
-while preserving the evidence level of each step.
-
-## 18. Stage B6: Add a Reflection Evidence Ladder
-
-**Objective:** capture statically visible reflection without pretending
-arbitrary runtime reflection is solved.
-
-**Key decisions:** separate relationships: `reflection_type_reference` for
-`typeof(T)`; `reflection_member_reference` for semantically resolvable
-`nameof` patterns; `reflection_name_candidate` for string literals;
-`reflection_target_unknown` for runtime-computed names or external discovery.
-
-**Done when:** reflection blind spots are narrower and more explicit, not
-falsely eliminated.
-
-## 19. Stage B7: Build Impact Paths
-
-**Objective:** convert isolated facts into explainable routes through the
-codebase.
-
-**Key decisions:** impact returns paths, not an undifferentiated set of
-"related" symbols:
-
-```text
-CustomerDto.Email changed
-  ← consumed by UpdateCustomerCommand
-  ← handled by UpdateCustomerHandler
-  ← invoked by CustomerController.Update
-  ← exposed by PUT /customers/{id}
-```
-
-Each hop retains its evidence. Traversal has: direction; allowed edge types;
-depth limit; project boundary control; source inclusion control; cycle
-detection; explanation for truncation. Avoid universal numeric "impact
-scores" — explicit paths and tiers are more inspectable.
-
-**Done when:** an agent can see why a code location is considered affected and
-inspect the exact source at every hop.
-
----
-
-# Part III: Unite Both Halves
-
-## 20. Stage C0: Context Capsules
-
-**Objective:** the original product: immediate, bounded, evidence-backed
-codebase context for an agent task.
-
-**Key decisions:** the first version accepts concrete anchors, not
-natural-language task understanding inside the indexer:
-
-```text
-context --symbol X --intent inspect
-context --symbol X --intent modify
-context --file F --line N --intent diagnose
-```
-
-The middle-layer agent translates a vague human task into anchor candidates;
-the indexer deterministically expands and retrieves context from those
-anchors. A capsule contains: anchor symbols; likely change sites; exact source
-spans; relevant contracts; incoming and outgoing paths; registered or possible
-runtime targets; affected public surfaces; relevant tests; uncertainties and
-unchecked vectors; suggested verification commands; the reason every item was
-included.
-
-### 20.1 Token budgeting
-
-Context generation accepts an explicit budget and degrades predictably.
-Priority: (1) anchor declaration/body; (2) directly constraining contracts;
-(3) directly invoked members; (4) direct callers and entry points;
-(5) registered implementations; (6) relevant tests; (7) second-degree context;
-(8) optional surrounding source. When information is omitted, the capsule says
-what category was truncated and why.
-
-**Done when:** the agent receives enough code and semantic context to begin
-the task without repository-wide exploration, within a predictable token
-budget.
-
-## 21. Stage C1: Convert Existing Features into Consumers
-
-**Objective:** one core, not several implementations sharing a CLI.
-
-**Key decisions:**
-
-| Existing mode | Final role |
-|---|---|
-| `discover` | Symbol catalog projection |
-| `structure` | Local semantic-neighborhood projection |
-| `who-references` | Reference-edge query with source sites |
-| `fingerprint` | Snapshot/change optimization and compatibility query |
-| `sweep` | Incremental snapshot update and invalidation |
-| `impact` | Evidence-backed path query |
-| `simulate-*` | In-memory change preflight consuming stored context |
-| `audit` | Optional heuristic consumer |
-
-Simulations may load Roslyn (they create hypothetical compilations); ordinary
-lookup and context retrieval should not.
-
-**Done when:** one fact store, one freshness model, one identity system behind
-all modes.
-
-## 22. Stage C2: Incremental Operation
-
-**Objective:** the persistent mirror stays current cheaply during real
-development.
-
-**Key decisions:** when nothing changed, serve all read queries from SQLite.
-When files change: (1) hash candidate documents; (2) create new immutable
-document versions; (3) identify affected projects; (4) update the required
-Roslyn compilation; (5) delete facts produced from invalid
-declarations/documents; (6) extract replacement facts; (7) update reverse
-edges and full-text search; (8) compute semantic changes; (9) commit the new
-snapshot atomically. A clean rebuild remains the recovery and verification
-mechanism; development tests compare incremental output with clean rebuild
-output.
-
-**Done when:** repeated reads are database-fast, ordinary edits cause bounded
-updates, and a clean rebuild produces the same canonical current facts.
-
-## 23. Unified Creation Order
-
-The actual implementation roadmap, combining both tracks in dependency order.
-(All phases complete — see `TRUST_KERNEL.md`.)
-
-| Phase | Build | Why now |
-|---:|---|---|
-| 1 | Product constitution and schema/version rules | Prevents output drift before new persistence exists |
-| 2 | Workspace, snapshot, document, and configuration identities | Everything else depends on freshness and identity |
-| 3 | SQLite storage boundary and migrations | Establishes the final persistence foundation |
-| 4 | Immutable document versions and source storage | Supplies the missing persistent memory |
-| 5 | Stable type/member identities and declaration spans | Joins semantic map to actual code |
-| 6 | Fast `get` and lexical `search` queries | Delivers the first usable fast-travel result |
-| 7 | Migrate dirty state, fingerprints, diagnostics, and existing facts | Removes dual JSON/SQLite authority |
-| 8 | Typed member-level semantic edges | Begins the deep semantic-graph work |
-| 9 | Polymorphism and dispatch candidates | Closes the largest compiler-visible graph gap |
-| 10 | Structured semantic snapshot diffs | Gives temporal precision and better invalidation |
-| 11 | Generated-code provenance | Restores semantic facts currently hidden by exclusions |
-| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | Adds framework-visible application paths |
-| 13 | Reflection evidence ladder | Narrows the remaining important dynamic blind spot |
-| 14 | Evidence-backed impact paths | Turns facts into navigable consequence routes |
-| 15 | Context capsules with source and token budgets | Completes the original map-plus-fast-travel vision |
-| 16 | Rebase simulations and audits on the shared store | Consolidates the product without changing its core identity |
-| 17 | Optimize incremental updates from measurements | Avoids premature complexity while achieving daily-use speed |
-
-### 23.1 First meaningful milestone (after Phase 6)
-
-One database; snapshot-bound source content; type/member lookup; immediate
-signature/body/declaration retrieval; lexical search without reparsing. At
-this point the system can begin replacing Tokensave operationally.
-
-### 23.2 Second meaningful milestone (after Phase 10)
-
-Persistent fast travel; member-level semantic relationships; polymorphic
-paths; explainable changes between snapshots. The first proper
-deep-semantic core.
-
-### 23.3 Completion milestone (after Phase 15)
-
-The system takes an anchor and produces a bounded package containing both the
-relevant semantic neighborhood and the actual code required to work there.
-This completes the original concept.
+## 23. Phases (reference)
+
+The 17-phase build order that combined both tracks is defined in
+`TRUST_KERNEL.md` §"Architecture Phase completion status". All phases are
+complete. The phase table there records each phase's description, status, and
+evidence.
+
+### 23.1 Historical milestones
+
+- **After Phase 6:** one database; snapshot-bound source content; type/member
+  lookup; immediate signature/body/declaration retrieval; lexical search
+  without reparsing.
+- **After Phase 10:** persistent fast travel; member-level semantic
+  relationships; polymorphic paths; explainable changes between snapshots.
+- **After Phase 15:** the system takes an anchor and produces a bounded package
+  containing both the relevant semantic neighborhood and the actual code
+  required to work there.
 
 ## 24. What Not to Build
 

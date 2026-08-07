@@ -31,8 +31,10 @@ internal static class SimulateMoveHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
+            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateMove(symbolArg, newNamespaceArg);
+            var report = engine.SimulateMove(resolvedSymbolId, newNamespaceArg);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }

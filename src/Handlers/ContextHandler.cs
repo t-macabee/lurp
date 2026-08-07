@@ -62,7 +62,7 @@ internal static class ContextHandler
 
         if (hasSymbol)
         {
-            ValidateSymbolIdFormat(symbolArg!);
+            // Resolution deferred until after the store and snapshotId are available.
         }
 
         var intent = ParseIntent(intentArg);
@@ -79,6 +79,11 @@ internal static class ContextHandler
         try
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
+
+            if (hasSymbol)
+            {
+                symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
+            }
 
             if (!string.IsNullOrEmpty(tierArg))
             {
@@ -239,7 +244,7 @@ internal static class ContextHandler
             HandlerBootstrap.Fail(
                 $"ERROR: --symbol value '{symbolArg}' is not a resolvable symbolId " +
                 "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
-                "--fqn=<name> first and pass its exact symbolId, not a bare FQN or search result.");
+                "--symbol=<name> first and pass its exact symbolId, not a bare FQN or search result.");
         }
     }
 

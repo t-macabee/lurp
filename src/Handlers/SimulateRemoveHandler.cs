@@ -25,8 +25,10 @@ internal static class SimulateRemoveHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
+            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateRemove(symbolArg);
+            var report = engine.SimulateRemove(resolvedSymbolId);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }

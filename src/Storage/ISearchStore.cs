@@ -38,5 +38,6 @@ namespace Lurp.Storage
         SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor);
 
         IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
+        IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false);
     }
 }

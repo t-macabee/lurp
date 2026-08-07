@@ -72,7 +72,7 @@ public sealed class SimulationEngine
     public SimulationReport SimulateRename(string symbolId, string newSimpleName)
     {
         var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
-        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Overrides" or "Implements");
+        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Overrides" or "Implements" or "Registers");
 
         var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
         var overrideOutgoing = outgoing.Where(e => e.Kind == "Overrides");

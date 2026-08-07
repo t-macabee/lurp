@@ -109,7 +109,7 @@ public sealed class CliDispatchTests
     /// </summary>
     [Theory]
     [InlineData("--mode=search", "--query=x")]
-    [InlineData("--mode=find-symbol", "--fqn=X")]
+    [InlineData("--mode=find-symbol", "--symbol=X")]
     [InlineData("--mode=impact", "--symbol=X")]
     public void QuietFlag_IsNotRejectedAsUnknown(params string[] baseArgs)
     {
@@ -143,33 +143,33 @@ public sealed class CliDispatchTests
     /// <summary>
     /// Regression for a real crash hit while testing against an external solution:
     /// <c>SymbolId.Parse</c> throws an unhandled <see cref="FormatException"/> (raw
-    /// stack trace on stdout, no exit-code discipline) when <c>--symbol</c> is a bare
-    /// FQN/doc-comment ID instead of the 'docCommentId|assemblyIdentity' value
-    /// <c>--mode=find-symbol</c> returns. <c>--mode=get-source</c> needs no live
-    /// solution/database, so this doesn't need an indexed fixture to reach the check.
+    /// stack trace on stdout, no exit-code discipline) when <c>--symbol</c> is an
+    /// unresolvable identifier. Now that bare FQNs and doc-comment IDs are accepted
+    /// and resolved through the store, unresolvable input surfaces a clean error
+    /// from <c>ResolveSymbolArg</c> instead of the old format guard.
     /// </summary>
     [Fact]
     public void Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace()
     {
+        var outputDir = CreateMinimalIndexDb();
+
         var (exitCode, _, stdErr) = LurpProcessHarness.Run(
             "--mode=context",
             "--symbol=T:eNote.Application.Features.Rentals.InstrumentRentals.Services.RentalCommandService",
-            "--output-dir=.");
+            $"--output-dir={outputDir}");
 
         Assert.Equal(1, exitCode);
         Assert.Contains("ERROR:", stdErr);
-        Assert.Contains("not a resolvable symbolId", stdErr);
+        Assert.Contains("Could not resolve", stdErr);
         Assert.DoesNotContain("Unhandled exception", stdErr);
         Assert.DoesNotContain("FormatException", stdErr);
     }
 
     /// <summary>
     /// Regression for the same defect as <see cref="Context_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace"/>,
-    /// but through the <c>--tier=</c> continuation path: <c>ContextHandler.RunTierContinuation</c>
-    /// calls <c>SymbolId.Parse</c> directly on a user-supplied <c>--symbol</c> without going
-    /// through <c>ContextAssembler.ResolveAndAssemble</c>'s guarded path, so it did not inherit
-    /// the fix above. Unlike the plain-context case, reaching this call requires an open store
-    /// with a resolvable snapshot, so this needs a real (minimal) indexed fixture.
+    /// but through the <c>--tier=</c> continuation path: an unresolvable <c>--symbol</c>
+    /// now fails in <c>ResolveSymbolArg</c> with a clean error before reaching
+    /// <c>RunTierContinuation</c>.
     /// </summary>
     [Fact]
     public void ContextTierContinuation_MalformedSymbolId_PrintsCleanError_ExitsOne_NoStackTrace()
@@ -184,7 +184,7 @@ public sealed class CliDispatchTests
 
         Assert.Equal(1, exitCode);
         Assert.Contains("ERROR:", stdErr);
-        Assert.Contains("not a resolvable symbolId", stdErr);
+        Assert.Contains("Could not resolve", stdErr);
         Assert.DoesNotContain("Unhandled exception", stdErr);
         Assert.DoesNotContain("FormatException", stdErr);
     }

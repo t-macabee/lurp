@@ -192,12 +192,21 @@ internal static class HandlerBootstrap
         var outputDirArg = GetArgValue(args, "--output-dir=")
             ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR")
             ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
-        if (string.IsNullOrEmpty(outputDirArg))
+        if (!string.IsNullOrEmpty(outputDirArg))
+            return outputDirArg;
+
+        var solutionArg = GetArgValue(args, "--solution=")
+            ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH")
+            ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+        if (!string.IsNullOrEmpty(solutionArg))
         {
-            Fail("ERROR: --output-dir=path or LURP_OUTPUT_DIR is required (INDEXER_OUTPUT_DIR is accepted for back-compat).");
+            var derived = Path.GetDirectoryName(Path.GetFullPath(solutionArg));
+            if (!string.IsNullOrEmpty(derived))
+                return derived;
         }
 
-        return outputDirArg;
+        Fail("ERROR: --output-dir=path, LURP_OUTPUT_DIR, or --solution=path is required (INDEXER_OUTPUT_DIR and INDEXER_SOLUTION_PATH are accepted for back-compat).");
+        return string.Empty;
     }
 
     public static string ResolveDbPath(string outputDir)
@@ -230,5 +239,58 @@ internal static class HandlerBootstrap
         }
 
         return snapshotId;
+    }
+
+    /// <summary>
+    /// Resolves a symbol identifier argument to the canonical <c>docCommentId|assemblyIdentity</c>
+    /// form. Accepts the pipe-separated form directly, a bare doc-comment ID (e.g. T:Some.Type),
+    /// or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate
+    /// <c>find-symbol</c> step that was previously required to obtain the resolvable form.
+    /// </summary>
+    public static string ResolveSymbolArg(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
+    {
+        // The canonical form is trusted as-is; validating it is the caller's choice
+        // (existing behavior for all five call sites).
+        if (symbolArg.Contains('|'))
+            return symbolArg;
+
+        var info = ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
+        if (info != null)
+            return info.SymbolId.Value;
+
+        Fail(
+            $"ERROR: Could not resolve '{symbolArg}' to a known symbol in snapshot '{snapshotId}'. " +
+            "Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), " +
+            "or a fully-qualified name (e.g. Some.Namespace.Type).");
+        return symbolArg; // unreachable
+    }
+
+    /// <summary>
+    /// Resolves any accepted symbol identifier form to its indexed record, or null when no
+    /// symbol matches. Accepts the full <c>docCommentId|assemblyIdentity</c> symbol ID
+    /// (validated via its doc-comment part), a bare doc-comment ID (e.g. <c>T:Some.Type</c>),
+    /// or a fully-qualified name (e.g. <c>Some.Namespace.Type</c>).
+    /// </summary>
+    public static IndexedSymbolInfo? ResolveSymbolInfo(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
+    {
+        var candidate = symbolArg;
+        var pipe = symbolArg.IndexOf('|');
+        if (pipe > 0)
+            candidate = symbolArg[..pipe];
+
+        // Doc-comment ID format: starts with a Roslyn prefix character followed by ':'
+        // (T: for types, M: for methods, P: for properties, E: for events, F: for fields, N: for namespaces)
+        if (candidate.Length >= 2 && candidate[1] == ':' && "TMPEFN".Contains(candidate[0]))
+        {
+            var byId = store.ResolveSymbolByDocCommentId(candidate, snapshotId, includeGenerated);
+            if (byId != null)
+                return byId;
+        }
+
+        // The full ID form carries no FQN to fall back to.
+        if (pipe > 0)
+            return null;
+
+        return store.ResolveSymbolByFqn(symbolArg, snapshotId, includeGenerated);
     }
 }

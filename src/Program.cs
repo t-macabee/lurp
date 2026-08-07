@@ -44,7 +44,7 @@ public class Program
              "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(SearchHandler.Run)),
         new("find-symbol", "Resolve a symbol by FQN.",
-            ["--fqn=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            ["--symbol=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(FindSymbolHandler.Run)),
         new("navigate", "Resolve an indexed declaration by file and line.",
             ["--file=", "--line=", "--include-generated", "--snapshot="],

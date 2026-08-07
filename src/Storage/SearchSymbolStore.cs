@@ -458,4 +458,44 @@ internal sealed class SearchSymbolStore
 
         return null;
     }
+
+    /// <inheritdoc cref="ISearchStore.ResolveSymbolByDocCommentId"/>
+    public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
+    {
+        if (string.IsNullOrWhiteSpace(docCommentId))
+            return null;
+
+        using var command = _connection.CreateCommand();
+
+        command.CommandText = @"
+            SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
+                   (SELECT COUNT(*) FROM declarations d2
+                      JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
+                                                 AND sd2.document_version_id = d2.document_version_id
+                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
+                   (SELECT MAX(d3.is_partial) FROM declarations d3
+                      JOIN snapshot_documents sd3 ON sd3.snapshot_id = @snapshotId
+                                                 AND sd3.document_version_id = d3.document_version_id
+                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+            FROM symbols s
+            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
+            WHERE s.doc_comment_id = @docCommentId AND ss.snapshot_id = @snapshotId
+        ";
+
+        if (!includeGenerated)
+        {
+            command.CommandText += ExcludeGeneratedClause;
+        }
+
+        command.CommandText += FqnOrderLimitClause;
+
+        command.Parameters.AddWithValue("@docCommentId", docCommentId);
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        using var reader = command.ExecuteReader();
+        if (reader.Read())
+            return DeclarationReadStore.ReadSymbolInfo(reader);
+
+        return null;
+    }
 }

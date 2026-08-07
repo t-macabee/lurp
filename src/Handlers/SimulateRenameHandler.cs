@@ -31,8 +31,10 @@ internal static class SimulateRenameHandler
         {
             var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
 
+            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateRename(symbolArg, newNameArg);
+            var report = engine.SimulateRename(resolvedSymbolId, newNameArg);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }
