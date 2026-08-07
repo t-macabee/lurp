@@ -4,7 +4,6 @@ namespace Lurp.Shared;
 
 public sealed class EdgeLocationResolver
 {
-    private readonly IReadOnlyList<string> _documentPaths;
     private readonly Dictionary<string, string> _documentPathLookup;
     private readonly IReadOnlySet<string> _generatedDocumentPaths;
     private readonly string _gitRoot;
@@ -17,10 +16,10 @@ public sealed class EdgeLocationResolver
         ArgumentNullException.ThrowIfNull(documentPaths);
         ArgumentNullException.ThrowIfNull(generatedDocumentPaths);
 
-        _documentPaths = documentPaths
+        var paths = documentPaths
             .Select(static path => path.Replace('\\', '/'))
             .ToArray();
-        _documentPathLookup = _documentPaths.ToDictionary(p => p, p => p, StringComparer.Ordinal);
+        _documentPathLookup = BuildDocumentPathLookup(paths);
         _generatedDocumentPaths = generatedDocumentPaths
             .Select(static path => path.Replace('\\', '/'))
             .ToHashSet(StringComparer.Ordinal);
@@ -69,13 +68,18 @@ public sealed class EdgeLocationResolver
         if (_generatedDocumentPaths.Contains(normalized))
             return true;
 
-        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+        return IsGeneratedFilePath(normalized);
+    }
+
+    public static bool IsGeneratedFilePath(string normalizedPath)
+    {
+        if (normalizedPath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
+        if (normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
@@ -92,20 +96,9 @@ public sealed class EdgeLocationResolver
 
         var normalized = filePath.Replace('\\', '/');
 
-        if (_documentPathLookup.TryGetValue(normalized, out var exactMatch))
-            return exactMatch;
+        if (TryResolveNormalizedPath(normalized, out var match))
+            return match;
 
-        foreach (var docPath in _documentPaths)
-        {
-            if (docPath == normalized || docPath.EndsWith("/" + normalized, StringComparison.Ordinal) ||
-                normalized.EndsWith("/" + docPath, StringComparison.Ordinal))
-            {
-                return docPath;
-            }
-        }
-
-        // For relative paths (e.g. in unit tests with ParseText), return as-is.
-        // Production paths are always absolute (real project file paths).
         if (!Path.IsPathRooted(filePath))
             return normalized;
 
@@ -113,5 +106,67 @@ public sealed class EdgeLocationResolver
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var root = normalizedRoot + Path.DirectorySeparatorChar;
         return Path.GetRelativePath(root, filePath).Replace('\\', '/');
+    }
+
+    private bool TryResolveNormalizedPath(string normalized, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? match)
+    {
+        if (_documentPathLookup.TryGetValue(normalized, out match))
+            return true;
+
+        var span = normalized.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            if (span[i] == '/')
+            {
+                var suffix = span[(i + 1)..].ToString();
+                if (_documentPathLookup.TryGetValue(suffix, out match))
+                    return true;
+            }
+        }
+
+        match = null;
+        return false;
+    }
+
+    private static Dictionary<string, string> BuildDocumentPathLookup(IReadOnlyList<string> documentPaths)
+    {
+        var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
+        var suffixClaims = new Dictionary<string, string>(StringComparer.Ordinal);
+        var ambiguous = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var path in documentPaths)
+        {
+            lookup[path] = path;
+
+            var span = path.AsSpan();
+            for (int i = 0; i < span.Length; i++)
+            {
+                if (span[i] == '/')
+                {
+                    var suffix = span[(i + 1)..].ToString();
+                    if (lookup.ContainsKey(suffix))
+                        continue;
+                    if (ambiguous.Contains(suffix))
+                        continue;
+                    if (suffixClaims.TryGetValue(suffix, out var existing))
+                    {
+                        if (!string.Equals(existing, path, StringComparison.Ordinal))
+                        {
+                            suffixClaims.Remove(suffix);
+                            ambiguous.Add(suffix);
+                        }
+                    }
+                    else
+                    {
+                        suffixClaims[suffix] = path;
+                    }
+                }
+            }
+        }
+
+        foreach (var kv in suffixClaims)
+            lookup[kv.Key] = kv.Value;
+
+        return lookup;
     }
 }

@@ -40,12 +40,7 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
                 {
                     context.RecordFilteredExternal(ctor, creation);
 
-                    // Implicit default constructors are never emitted as declarations (the
-                    // declaration extractor skips IsImplicitlyDeclared members), so an edge to
-                    // the phantom .#ctor would orphan on cleanup and the construction fact
-                    // would be lost. Anchor it to the containing type instead, which IS
-                    // declared. Explicit constructors keep pointing at the constructor.
-                    var target = ctor.IsImplicitlyDeclared ? (ISymbol)ctor.ContainingType : ctor;
+                    var target = (ISymbol)ctor.ContainingType;
                     var targetId = context.MakeSymbolId(target);
                     if (targetId == null)
                         continue;

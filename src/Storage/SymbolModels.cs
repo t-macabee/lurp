@@ -95,6 +95,30 @@ namespace Lurp.Storage
             symbolId = new SymbolId(docCommentId: value[..pipeIndex], assemblyIdentity: value[(pipeIndex + 1)..]);
             return true;
         }
+
+        public static string? DeriveContainingTypeDocCommentId(string docCommentId)
+        {
+            if (string.IsNullOrEmpty(docCommentId))
+                return null;
+
+            if (docCommentId.Length < 3 || docCommentId[1] != ':')
+                return null;
+
+            var kind = docCommentId[0];
+            if (kind == 'T' || kind == 'N')
+                return null;
+
+            var afterPrefix = docCommentId[2..];
+
+            var parenIndex = afterPrefix.IndexOf('(');
+            var methodNamePart = parenIndex >= 0 ? afterPrefix[..parenIndex] : afterPrefix;
+
+            var lastDot = methodNamePart.LastIndexOf('.');
+            if (lastDot < 0)
+                return null;
+
+            return "T:" + methodNamePart[..lastDot];
+        }
     }
 
     public sealed class DeclarationSpan

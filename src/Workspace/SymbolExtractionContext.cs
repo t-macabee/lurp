@@ -21,7 +21,50 @@ internal sealed class SymbolExtractionContext(
     internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
 
     private readonly Dictionary<string, DocumentId> _docIdByPath =
-        documentContents.Keys.ToDictionary(k => k.ToString().Replace('\\', '/'), k => k);
+        BuildDocIdByPath(documentContents.Keys);
+
+    private static Dictionary<string, DocumentId> BuildDocIdByPath(IEnumerable<DocumentId> documentIds)
+    {
+        var lookup = new Dictionary<string, DocumentId>(StringComparer.Ordinal);
+        var suffixClaims = new Dictionary<string, DocumentId>(StringComparer.Ordinal);
+        var ambiguous = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var docId in documentIds)
+        {
+            var path = docId.ToString().Replace('\\', '/');
+            lookup[path] = docId;
+
+            var span = path.AsSpan();
+            for (int i = 0; i < span.Length; i++)
+            {
+                if (span[i] == '/')
+                {
+                    var suffix = span[(i + 1)..].ToString();
+                    if (lookup.ContainsKey(suffix))
+                        continue;
+                    if (ambiguous.Contains(suffix))
+                        continue;
+                    if (suffixClaims.TryGetValue(suffix, out var existing))
+                    {
+                        if (!existing.Equals(docId))
+                        {
+                            suffixClaims.Remove(suffix);
+                            ambiguous.Add(suffix);
+                        }
+                    }
+                    else
+                    {
+                        suffixClaims[suffix] = docId;
+                    }
+                }
+            }
+        }
+
+        foreach (var kv in suffixClaims)
+            lookup[kv.Key] = kv.Value;
+
+        return lookup;
+    }
 
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
         => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
@@ -44,14 +87,18 @@ internal sealed class SymbolExtractionContext(
 
         var normalized = filePath.Replace('\\', '/');
 
-        if (_docIdByPath.TryGetValue(normalized, out var exactMatch))
-            return exactMatch;
+        if (_docIdByPath.TryGetValue(normalized, out var match))
+            return match;
 
-        foreach (var docId in DocumentContents.Keys)
+        var span = normalized.AsSpan();
+        for (int i = 0; i < span.Length; i++)
         {
-            var docPath = docId.ToString().Replace('\\', '/');
-            if (docPath == normalized || docPath.EndsWith("/" + normalized) || normalized.EndsWith("/" + docPath))
-                return docId;
+            if (span[i] == '/')
+            {
+                var suffix = span[(i + 1)..].ToString();
+                if (_docIdByPath.TryGetValue(suffix, out match))
+                    return match;
+            }
         }
 
         return null;

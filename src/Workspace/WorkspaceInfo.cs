@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using Lurp.Shared;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -129,17 +130,7 @@ public sealed class WorkspaceInfo
     private static bool IsGeneratedPath(string relPath)
     {
         var normalized = relPath.Replace('\\', '/');
-
-        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        return EdgeLocationResolver.IsGeneratedFilePath(normalized);
     }
 
     private static bool IsGeneratedHeader(byte[] bytes)

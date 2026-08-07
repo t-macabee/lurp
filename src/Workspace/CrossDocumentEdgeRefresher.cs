@@ -228,23 +228,10 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         var docCommentId = sourceSymbolId[..pipeIndex];
         var assemblyIdentity = sourceSymbolId[(pipeIndex + 1)..];
 
-        if (docCommentId.Length < 3 || docCommentId[1] != ':')
+        var typeDocCommentId = SymbolId.DeriveContainingTypeDocCommentId(docCommentId);
+        if (typeDocCommentId == null)
             return null;
 
-        char prefix = docCommentId[0];
-        if (prefix != 'M' && prefix != 'F' && prefix != 'P' && prefix != 'E')
-            return null;
-
-        var typeAndMember = docCommentId[2..];
-
-        var parenIndex = typeAndMember.IndexOf('(');
-        var searchEnd = parenIndex >= 0 ? parenIndex : typeAndMember.Length;
-
-        var lastDotIndex = typeAndMember.LastIndexOf('.', searchEnd - 1, Math.Min(searchEnd, typeAndMember.Length));
-        if (lastDotIndex < 0)
-            return null;
-
-        var typeDocCommentId = $"T:{typeAndMember[..lastDotIndex]}";
         return $"{typeDocCommentId}|{assemblyIdentity}";
     }
 

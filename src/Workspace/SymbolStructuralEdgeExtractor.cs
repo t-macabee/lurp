@@ -154,7 +154,11 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (syntaxRef == null)
             return false;
         var documentId = context.ResolveDocumentId(syntaxRef.SyntaxTree);
-        return documentId != null && context.GeneratedDocuments.Contains(documentId.Value);
+        if (documentId == null)
+            return false;
+        if (context.GeneratedDocuments.Contains(documentId.Value))
+            return true;
+        return EdgeLocationResolver.IsGeneratedFilePath(documentId.Value.ToString());
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
