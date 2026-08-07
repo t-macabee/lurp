@@ -179,6 +179,80 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void SimulateMove_StaticTypeWithNoDirectEdges_ReportsMemberCallers()
+        {
+            // Regression: a static type is never referenced by a
+            // Calls/References edge on the type node itself; callers target
+            // its static members. SimulateMove previously queried only the
+            // type's incoming edges and missed them.
+            const string snapId = "snap-c16-sim-009";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Runner|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Declares",
+                },
+                new() {
+                    SourceSymbolId = "M:Caller.Invoke|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Calls",
+                },
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateMove("T:Runner|asm", "New.Ns");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "M:Caller.Invoke|asm" && i.EdgeKind == "Calls");
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateMove_OverrideEdge_ReportsOverrideDeclaration()
+        {
+            // Regression: SimulateMove's filter omitted "Overrides".
+            const string snapId = "snap-c16-sim-010";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "M:C|asm",
+                    TargetSymbolId = "M:B|asm",
+                    Kind = "Overrides",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateMove("M:B|asm", "New.Ns");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "M:C|asm" && i.EdgeKind == "Overrides");
+            store.Close();
+        }
+
+        [Fact]
+        public void SimulateMove_RegistersEdge_ReportsRegistrationSource()
+        {
+            // Regression: SimulateMove's filter omitted "Registers".
+            const string snapId = "snap-c16-sim-011";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Startup|asm",
+                    TargetSymbolId = "T:InstrumentTypeService|asm",
+                    Kind = "Registers",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateMove("T:InstrumentTypeService|asm", "New.Ns");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "T:Startup|asm" && i.EdgeKind == "Registers");
+            store.Close();
+        }
+
+        [Fact]
         public void SimulateRemove_DependentWithRegistration_ReportsOrphanedRegistration()
         {
             const string snapId = "snap-c16-sim-005";

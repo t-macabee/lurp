@@ -114,15 +114,25 @@ public sealed class SimulationEngine
 
     public SimulationReport SimulateMove(string symbolId, string newNamespace)
     {
-        var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
-        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Implements");
-
         var items = new List<SimulationItem>();
+        var seen = new HashSet<(string Source, string Kind, string? Document, int? Line)>();
 
-        foreach (var edge in filteredIncoming)
+        // Same type->member expansion as SimulateRename: callers of a static
+        // member (Foo.Bar()) produce edges to the member, not the declaring
+        // type, so moving the type still requires touching those call sites.
+        foreach (var targetSymbolId in WithDeclaredMembers(symbolId))
         {
-            var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
-            items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
+            var incoming = _edgeStore.GetIncomingEdges(_snapshotId, targetSymbolId);
+            var filteredIncoming = incoming.Where(e => e.Kind is "Calls" or "References" or "Overrides" or "Implements" or "Registers");
+
+            foreach (var edge in filteredIncoming)
+            {
+                if (!seen.Add((edge.SourceSymbolId, edge.Kind, edge.SourceDocumentPath, edge.SourceStartLine)))
+                    continue;
+
+                var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
+                items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
+            }
         }
 
         return new SimulationReport("move", symbolId, _snapshotId, items);
@@ -191,5 +201,17 @@ public sealed class SimulationEngine
         }
 
         return new SimulationReport("remove", symbolId, _snapshotId, allItems.Values.ToList());
+    }
+
+    // Returns the type's own ID plus its declared members' IDs, so callers
+    // can query incoming edges for the type and its members in one pass.
+    private IEnumerable<string> WithDeclaredMembers(string symbolId)
+    {
+        yield return symbolId;
+        if (!SymbolId.TryParse(symbolId, out var id) || !id.IsType)
+            yield break;
+        foreach (var e in _edgeStore.GetOutgoingEdges(_snapshotId, symbolId))
+            if (e.Kind == EdgeKind.Declares.ToString())
+                yield return e.TargetSymbolId;
     }
 }

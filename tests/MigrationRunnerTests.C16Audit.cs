@@ -138,6 +138,62 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void DeadSymbol_TypeWithUsedMember_NotFlagged()
+        {
+            // Regression: a type with no direct incoming edges but whose
+            // declared member is called elsewhere is alive. FindDeadSymbols
+            // previously flagged it dead because it never expanded the type
+            // to its members via Declares.
+            const string snapId = "snap-c16-aud-011";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Foo|asm",
+                    TargetSymbolId = "M:Foo.Bar|asm",
+                    Kind = "Declares",
+                },
+                new() {
+                    SourceSymbolId = "M:Caller|asm",
+                    TargetSymbolId = "M:Foo.Bar|asm",
+                    Kind = "Calls",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, ["T:Foo|asm", "M:Foo.Bar|asm", "M:Caller|asm"]);
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["dead-symbol"]));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "dead-symbol" && f.SymbolId == "T:Foo|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void DeadSymbol_OnlyRegistersIncoming_NotFlagged()
+        {
+            // Regression: a DI-registered type is alive even when never
+            // called and implementing no interface; FindDeadSymbols'
+            // filter previously ignored "Registers" edges.
+            const string snapId = "snap-c16-aud-012";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Startup|asm",
+                    TargetSymbolId = "T:Service|asm",
+                    Kind = "Registers",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, ["T:Startup|asm", "T:Service|asm"]);
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["dead-symbol"]));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "dead-symbol" && f.SymbolId == "T:Service|asm");
+            store.Close();
+        }
+
+        [Fact]
         public void UntestedSurface_SymbolWithNoTestedBy_Flagged()
         {
             const string snapId = "snap-c16-aud-004";

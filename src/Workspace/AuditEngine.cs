@@ -97,10 +97,14 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
 
         foreach (var symbolId in allSymbolIds)
         {
-            var incoming = _store.GetIncomingEdges(_snapshotId, symbolId);
-            var relevant = incoming.Where(e => e.Kind is "Calls" or "References" or "Overrides" or "Implements");
+            // A type is still alive when its members are used: callers of a
+            // static member (Foo.Bar()) produce edges to the member, not the
+            // declaring type. Expand via Declares before judging dead.
+            var hasRelevantEdge = WithDeclaredMembers(symbolId).Any(targetId =>
+                _store.GetIncomingEdges(_snapshotId, targetId)
+                    .Any(e => e.Kind is "Calls" or "References" or "Overrides" or "Implements" or "Registers"));
 
-            if (!relevant.Any())
+            if (!hasRelevantEdge)
             {
                 var info = GetInfo(symbolId, cache);
                 findings.Add(new AuditFinding(check: AuditCheckNames.DeadSymbol, symbolId: symbolId, fqn: info?.FullyQualifiedName));
@@ -108,6 +112,18 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
         }
 
         return findings;
+    }
+
+    // Returns the symbol's own ID plus, for types, its declared members' IDs,
+    // so dead-ness can be judged on the union of their incoming edges.
+    private IEnumerable<string> WithDeclaredMembers(string symbolId)
+    {
+        yield return symbolId;
+        if (!SymbolId.TryParse(symbolId, out var id) || !id.IsType)
+            yield break;
+        foreach (var e in _store.GetOutgoingEdges(_snapshotId, symbolId))
+            if (e.Kind == EdgeKind.Declares.ToString())
+                yield return e.TargetSymbolId;
     }
 
     private List<AuditFinding> FindUntestedSurface(List<string> allSymbolIds, Dictionary<string, IndexedSymbolInfo?> cache)

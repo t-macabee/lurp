@@ -41,6 +41,13 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
 
                 var loc = context.GetMemberSourceLocation(member);
 
+                // An edge without a resolvable document path (e.g. a
+                // compiler-synthesized member whose syntax reference has no
+                // path) is useless for incremental scoping and forces the
+                // CrossDocumentEdgeRefresher's expensive fallback.
+                if (loc == null)
+                    continue;
+
                 edges.Add(new EdgeRecord
                 {
                     SourceSymbolId = typeId,
