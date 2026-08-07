@@ -20,6 +20,9 @@ internal sealed class SymbolExtractionContext(
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
     internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
 
+    private readonly Dictionary<string, DocumentId> _docIdByPath =
+        documentContents.Keys.ToDictionary(k => k.ToString().Replace('\\', '/'), k => k);
+
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
         => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
@@ -40,6 +43,9 @@ internal sealed class SymbolExtractionContext(
             return null;
 
         var normalized = filePath.Replace('\\', '/');
+
+        if (_docIdByPath.TryGetValue(normalized, out var exactMatch))
+            return exactMatch;
 
         foreach (var docId in DocumentContents.Keys)
         {

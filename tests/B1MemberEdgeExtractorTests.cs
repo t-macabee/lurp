@@ -73,6 +73,31 @@ class Foo {
         }
 
         [Fact]
+        public void Calls_StaticQualifiedMethod_EmitsReferencesEdgeToContainingType()
+        {
+            var source = @"
+static class Helper {
+    public static void DoWork() { }
+}
+class Caller {
+    void Execute() { Helper.DoWork(); }
+}";
+            var compilation = CreateCompilation(source);
+            var extractor = new MemberEdgeExtractor(compilation, CreateDocVersions("test.cs"), new HashSet<DocumentId>(), "snap-ref-type", "/");
+
+            var edges = extractor.ExtractAll();
+
+            Assert.Contains(edges, e =>
+                e.Kind == "References" &&
+                e.SourceSymbolId.Contains("Execute") &&
+                e.TargetSymbolId.Contains("Helper"));
+            Assert.Contains(edges, e =>
+                e.Kind == "Calls" &&
+                e.SourceSymbolId.Contains("Execute") &&
+                e.TargetSymbolId.Contains("DoWork"));
+        }
+
+        [Fact]
         public void Calls_InterfaceInvocation_PersistsStaticReceiverType()
         {
             var source = @"

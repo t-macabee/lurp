@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Lurp.Storage
 {
     public enum EdgeKind
@@ -82,6 +84,16 @@ namespace Lurp.Storage
             if (pipeIndex < 0)
                 throw new FormatException($"Invalid SymbolId format: '{value}'. Expected 'docCommentId|assemblyIdentity'.");
             return new SymbolId(docCommentId: value[..pipeIndex],assemblyIdentity: value[(pipeIndex + 1)..]);
+        }
+
+        public static bool TryParse(string value, [NotNullWhen(true)] out SymbolId? symbolId)
+        {
+            symbolId = null;
+            var pipeIndex = value.IndexOf('|');
+            if (pipeIndex < 0)
+                return false;
+            symbolId = new SymbolId(docCommentId: value[..pipeIndex], assemblyIdentity: value[(pipeIndex + 1)..]);
+            return true;
         }
     }
 

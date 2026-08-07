@@ -5,6 +5,7 @@ namespace Lurp.Shared;
 public sealed class EdgeLocationResolver
 {
     private readonly IReadOnlyList<string> _documentPaths;
+    private readonly Dictionary<string, string> _documentPathLookup;
     private readonly IReadOnlySet<string> _generatedDocumentPaths;
     private readonly string _gitRoot;
 
@@ -19,6 +20,7 @@ public sealed class EdgeLocationResolver
         _documentPaths = documentPaths
             .Select(static path => path.Replace('\\', '/'))
             .ToArray();
+        _documentPathLookup = _documentPaths.ToDictionary(p => p, p => p, StringComparer.Ordinal);
         _generatedDocumentPaths = generatedDocumentPaths
             .Select(static path => path.Replace('\\', '/'))
             .ToHashSet(StringComparer.Ordinal);
@@ -75,6 +77,9 @@ public sealed class EdgeLocationResolver
             return null;
 
         var normalized = filePath.Replace('\\', '/');
+
+        if (_documentPathLookup.TryGetValue(normalized, out var exactMatch))
+            return exactMatch;
 
         foreach (var docPath in _documentPaths)
         {

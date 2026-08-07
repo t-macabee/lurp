@@ -119,6 +119,38 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void SimulateRename_StaticTypeWithNoDirectEdges_ReportsMemberCallers()
+        {
+            // A static class is never referenced by a Calls/References/etc.
+            // edge on the type node itself: callers target its static
+            // members, not the type. Renaming the type still touches every
+            // one of those qualified call sites (e.g. "Runner.Go()"), so the
+            // simulation must walk the type's Declares edges to find them.
+            const string snapId = "snap-c16-sim-008";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Runner|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Declares",
+                },
+                new() {
+                    SourceSymbolId = "M:Caller.Invoke|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Calls",
+                },
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateRename("T:Runner|asm", "RunnerRenamed");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "M:Caller.Invoke|asm" && i.EdgeKind == "Calls");
+            Assert.Equal(1, report.AffectedCount);
+            store.Close();
+        }
+
+        [Fact]
         public void SimulateMove_CallerWithDocumentPath_ReportsDocumentPath()
         {
             const string snapId = "snap-c16-sim-004";

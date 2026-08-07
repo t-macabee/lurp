@@ -23,7 +23,7 @@ internal static class ContextHandler
     internal const int DefaultTypeAnchorBudget = 16000;
 
     internal static int DefaultBudgetFor(string? symbolArg) =>
-        symbolArg is not null && symbolArg.StartsWith("T:", StringComparison.Ordinal)
+        symbolArg is not null && SymbolId.TryParse(symbolArg, out var id) && id.IsType
             ? DefaultTypeAnchorBudget
             : DefaultBudget;
 

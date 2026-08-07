@@ -71,18 +71,36 @@ public sealed class SimulationEngine
 
     public SimulationReport SimulateRename(string symbolId, string newSimpleName)
     {
-        var incoming = _edgeStore.GetIncomingEdges(_snapshotId, symbolId);
-        var filteredIncoming = incoming.Where(e =>e.Kind is "Calls" or "References" or "Overrides" or "Implements" or "Registers");
-
         var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
         var overrideOutgoing = outgoing.Where(e => e.Kind == "Overrides");
 
         var items = new List<SimulationItem>();
+        var seen = new HashSet<(string Source, string Kind, string? Document, int? Line)>();
 
-        foreach (var edge in filteredIncoming)
+        // A type name is rarely referenced as a direct edge target on the type
+        // symbol itself: callers of a static member (Foo.Bar()) or a
+        // constructed instance produce edges to the member/constructor, not
+        // to the declaring type. Renaming the type still requires touching
+        // every one of those qualified call sites, so their incoming edges
+        // are pulled in alongside the type's own.
+        var declaredMembers = outgoing
+            .Where(e => e.Kind == EdgeKind.Declares.ToString())
+            .Select(e => e.TargetSymbolId);
+        var targetSymbolIds = new[] { symbolId }.Concat(declaredMembers);
+
+        foreach (var targetSymbolId in targetSymbolIds)
         {
-            var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
-            items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
+            var incoming = _edgeStore.GetIncomingEdges(_snapshotId, targetSymbolId);
+            var filteredIncoming = incoming.Where(e => e.Kind is "Calls" or "References" or "Overrides" or "Implements" or "Registers");
+
+            foreach (var edge in filteredIncoming)
+            {
+                if (!seen.Add((edge.SourceSymbolId, edge.Kind, edge.SourceDocumentPath, edge.SourceStartLine)))
+                    continue;
+
+                var info = _declarationStore.GetSymbolInfo(edge.SourceSymbolId, _snapshotId);
+                items.Add(new SimulationItem(symbolId: edge.SourceSymbolId,fqn: info?.FullyQualifiedName,edgeKind: edge.Kind,documentPath: edge.SourceDocumentPath,line: edge.SourceStartLine));
+            }
         }
 
         foreach (var edge in overrideOutgoing)

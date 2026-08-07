@@ -583,7 +583,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         {
             // Type symbol ids are prefixed "T:"; members cannot add parts their
             // containing type does not already declare in the same document.
-            if (!symbolId.StartsWith("T:", StringComparison.Ordinal))
+            if (!SymbolId.TryParse(symbolId, out var sid) || !sid.IsType)
                 continue;
 
             foreach (var location in _store.GetDeclarationLocations(symbolId, previousSnapshotId, includeGenerated: true))

@@ -110,12 +110,28 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
 
         context.RecordFilteredExternal(callee, syntax);
 
+        var location = context.GetLocationInfo(syntax.GetLocation());
+
+        if (syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess } &&
+            semanticModel.GetSymbolInfo(memberAccess.Expression).Symbol is INamedTypeSymbol containingType)
+        {
+            var containingTypeId = context.MakeSymbolId(containingType);
+            if (containingTypeId != null)
+            {
+                var refKind = EdgeKind.References.ToString();
+                if (seen.Add((callerId, containingTypeId, refKind)))
+                {
+                    edges.Add(context.MakeEdge(callerId, containingTypeId, refKind,
+                        ExtractorConstants.CallsExtractor, location));
+                }
+            }
+        }
+
         var calleeId = context.MakeSymbolId(callee);
         if (calleeId == null || calleeId == callerId)
             return;
 
         var kind = EdgeKind.Calls.ToString();
-        var location = context.GetLocationInfo(syntax.GetLocation());
         var receiverConstraints = GetReceiverTypeConstraints(syntax, callee, caller, semanticModel);
         var key = (callerId, calleeId, kind);
         if (callEdges.TryGetValue(key, out var existingCall))

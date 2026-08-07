@@ -5,7 +5,7 @@ internal static class ExtractorConstants
     internal const string Version = "member-edges-v1";
 
     internal const string DeclaresExtractor = "declares-v1";
-    internal const string CallsExtractor = "calls-v1";
+    internal const string CallsExtractor = "calls-v2";
     internal const string ConstructsExtractor = "constructs-v1";
     internal const string OverridesExtractor = "overrides-v1";
     internal const string HidesExtractor = "hides-v1";
