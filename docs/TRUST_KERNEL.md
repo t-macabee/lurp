@@ -186,6 +186,20 @@ earlier-deleted rows intact in the regression test. Storage suite: 139/139.
 from the snapshot's `snapshot_symbols`. `FullIndex_Has_No_Orphan_Edge_Targets`
 passes; the deletion path runs in every full-index pipeline invocation.
 
+Orphan drops are classified into three buckets (returned as
+`OrphanEdgeDropSummary`):
+
+- **Compiler-synthesized**: the missing endpoint id contains `<` (closures,
+  iterator state machines, backing fields — `<>c__DisplayClass...`,
+  `<Foo>b__0`, `<Foo>d__3`, `k__BackingField`).
+- **External**: the missing endpoint's assembly-identity suffix is not among
+  the in-scope assemblies for this snapshot.
+- **Other**: everything else — a real in-scope declaration that vanished. Only
+  this bucket is actionable; a nonzero `other` count prints a warning.
+
+The eNoteV2 case (2026-08-07) produced 2 residual `other` drops on a
+7-project solution after the `OriginalDefinition` normalization fix below.
+
 2026-08-07 (extractor 1.5.0): `SymbolIdFactory.Make` now normalizes symbols to
 `OriginalDefinition` (and un-reduces extension methods via `ReducedFrom`) before
 building the ID. Previously, edge endpoints carrying constructed-generic IDs

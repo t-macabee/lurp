@@ -304,7 +304,7 @@ internal sealed class EdgeOperationsStore
         memberCmd.ExecuteNonQuery();
     }
 
-    public int DeleteOrphanEdges(string snapshotId)
+    public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = @"
@@ -312,16 +312,44 @@ internal sealed class EdgeOperationsStore
                 SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
                 UNION
                 SELECT node_id FROM snapshot_graph_nodes WHERE snapshot_id = @snapshotId
+            ),
+            in_scope_assemblies(identity) AS (
+                SELECT DISTINCT substr(id, instr(id,'|')+1) FROM valid_ids WHERE instr(id,'|') > 0
             )
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND (
                   source_symbol_id NOT IN (SELECT id FROM valid_ids)
                   OR target_symbol_id NOT IN (SELECT id FROM valid_ids)
-              );
+              )
+            RETURNING
+                CASE
+                    WHEN (source_symbol_id NOT IN (SELECT id FROM valid_ids) AND source_symbol_id LIKE '%<%')
+                      OR (target_symbol_id NOT IN (SELECT id FROM valid_ids) AND target_symbol_id LIKE '%<%')
+                    THEN 'compiler_synthesized'
+                    WHEN (source_symbol_id NOT IN (SELECT id FROM valid_ids)
+                          AND substr(source_symbol_id, instr(source_symbol_id,'|')+1) NOT IN (SELECT identity FROM in_scope_assemblies))
+                      OR (target_symbol_id NOT IN (SELECT id FROM valid_ids)
+                          AND substr(target_symbol_id, instr(target_symbol_id,'|')+1) NOT IN (SELECT identity FROM in_scope_assemblies))
+                    THEN 'external'
+                    ELSE 'other'
+                END;
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        return command.ExecuteNonQuery();
+
+        int external = 0, compilerSynthesized = 0, other = 0;
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            switch (reader.GetString(0))
+            {
+                case "compiler_synthesized": compilerSynthesized++; break;
+                case "external": external++; break;
+                case "other": other++; break;
+            }
+        }
+        var total = external + compilerSynthesized + other;
+        return new OrphanEdgeDropSummary(total, external, compilerSynthesized, other);
     }
 
     private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)

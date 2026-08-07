@@ -34,6 +34,18 @@ namespace Lurp.Storage
         ExternalType,
     }
 
+    public sealed record OrphanEdgeDropSummary(int Total, int External, int CompilerSynthesized, int Other)
+    {
+        public static readonly OrphanEdgeDropSummary Empty = new(0, 0, 0, 0);
+
+        public string FormatDropSummary() =>
+            $"{Total} (external={External}, compiler_synthesized={CompilerSynthesized}, other={Other})";
+
+        public string? FormatWarning() => Other > 0
+            ? $"  ⚠ edges_dropped_reason_other: {Other} — investigate (endpoints outside declared scope for no known reason)"
+            : null;
+    }
+
     public sealed class EdgeRecord
     {
         public string SourceSymbolId { get; init; } = string.Empty;

@@ -250,7 +250,7 @@ namespace Lurp.Storage
             { EnsureOpen(); _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId); }
         public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
             { EnsureOpen(); _annotations!.DeleteAnnotationsByDocumentPaths(snapshotId, documentPaths); }
-        public int DeleteOrphanEdges(string snapshotId)
+        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
             { EnsureOpen(); return _edgeOps!.DeleteOrphanEdges(snapshotId); }
         public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
             { EnsureOpen(); _extractors!.UpsertExtractors(extractors); }

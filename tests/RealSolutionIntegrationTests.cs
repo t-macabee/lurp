@@ -687,7 +687,7 @@ public sealed class RealSolutionIntegrationTests : IDisposable
         var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
         var edgesInSnapshot = store.CountEdges(snapshotIdStr);
 
-        Assert.Equal(dedupedCount - orphanEdgesDropped, edgesInSnapshot);
+        Assert.Equal(dedupedCount - orphanEdgesDropped.Total, edgesInSnapshot);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────

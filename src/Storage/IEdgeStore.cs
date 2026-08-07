@@ -28,7 +28,7 @@
         void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
         void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
 
-        int DeleteOrphanEdges(string snapshotId);
+        OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId);
 
         void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors);
         bool HasStaleExtractorVersions(string snapshotId);

@@ -435,4 +435,105 @@ class C2 : IEnumerable<string>
         Assert.NotNull(enumerableId);
         Assert.Contains("`1", enumerableId);
     }
+
+    [Fact]
+    public void DeleteOrphanEdges_CompilerSynthesized_ClassifiedCorrectly()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-cs";
+        SaveSnapshotWithSymbols(store, snapshotId, "T:Ns.Foo|asm1");
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Foo|asm1",
+                TargetSymbolId = "T:Ns.<>c__DisplayClass0_0|asm1",
+                Kind = "Calls",
+                Provenance = "roslyn",
+            },
+        ]);
+
+        var summary = store.DeleteOrphanEdges(snapshotId);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(0, summary.External);
+        Assert.Equal(1, summary.CompilerSynthesized);
+        Assert.Equal(0, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_ExternalAssemblyEndpoint_ClassifiedExternal()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-ext";
+        SaveSnapshotWithSymbols(store, snapshotId, "T:Ns.Foo|asm1");
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Foo|asm1",
+                TargetSymbolId = "T:System.Console|System.Console",
+                Kind = "Calls",
+                Provenance = "roslyn",
+            },
+        ]);
+
+        var summary = store.DeleteOrphanEdges(snapshotId);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(1, summary.External);
+        Assert.Equal(0, summary.CompilerSynthesized);
+        Assert.Equal(0, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_InScopeEndpointMissing_ClassifiedOther()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-other";
+        SaveSnapshotWithSymbols(store, snapshotId, "T:Ns.Foo|asm1");
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "T:Ns.Foo|asm1",
+                TargetSymbolId = "T:Ns.Vanished|asm1",
+                Kind = "Calls",
+                Provenance = "roslyn",
+            },
+        ]);
+
+        var summary = store.DeleteOrphanEdges(snapshotId);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(0, summary.External);
+        Assert.Equal(0, summary.CompilerSynthesized);
+        Assert.Equal(1, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_TotalEqualsSumOfBuckets()
+    {
+        var store = CreateStore();
+        var snapshotId = "snap-gnm-total";
+        SaveSnapshotWithSymbols(store, snapshotId, "T:Ns.Foo|asm1");
+
+        store.SaveEdges(snapshotId,
+        [
+            new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.<>c__DisplayClass0_0|asm1", Kind = "Calls", Provenance = "roslyn" },
+            new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:System.Console|System.Console", Kind = "Calls", Provenance = "roslyn" },
+            new EdgeRecord { SourceSymbolId = "T:Ns.Foo|asm1", TargetSymbolId = "T:Ns.Vanished|asm1", Kind = "Calls", Provenance = "roslyn" },
+        ]);
+
+        var summary = store.DeleteOrphanEdges(snapshotId);
+
+        Assert.Equal(3, summary.Total);
+        Assert.Equal(1, summary.External);
+        Assert.Equal(1, summary.CompilerSynthesized);
+        Assert.Equal(1, summary.Other);
+        Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.Other);
+    }
 }

@@ -28,7 +28,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         SnapshotPair Snapshots,
         IncrementalChangeScope Changes);
 
-    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted, int OrphanEdgesDropped)
+    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted, OrphanEdgeDropSummary OrphanEdgesDropped)
     {
         public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
     }
@@ -76,7 +76,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds, DateTime.UtcNow));
 
         if (changedDocs.Count == 0)
-            return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: 0);
+            return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
 
         // Deterministic identity: identical indexed state must produce the
         // identical snapshot id, so a complete snapshot with this id must be
@@ -88,7 +88,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         if (existingStatus == SnapshotStatusValues.Complete)
         {
             _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-            return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: 0);
+            return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
         }
         if (existingStatus != null)
         {
@@ -176,7 +176,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         int totalDeclarations = 0;
         int totalEdges = 0;
         int totalDiagnostics = 0;
-        int orphanEdgesDropped = 0;
+        OrphanEdgeDropSummary orphanEdgesDropped = OrphanEdgeDropSummary.Empty;
 
         try
         {
@@ -256,8 +256,11 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _output.WriteLine($"  documents_changed_this_run:          {changedDocs.Count}      documents_in_snapshot: {workspaceInfo.Documents.Count}");
         _output.WriteLine($"  projects_reextracted_this_run:       {affectedProjects.Count}/{projectsInSnapshot}");
         _output.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
-        _output.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped}");
+        _output.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped.FormatDropSummary()}");
         _output.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {edgesInSnapshot}");
+        var warning = orphanEdgesDropped.FormatWarning();
+        if (warning != null)
+            _output.WriteErrorLine(warning);
         _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
         return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics, OrphanEdgesDropped: orphanEdgesDropped);
@@ -429,7 +432,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return [];
     }
 
-    private async Task<(int crossDocEdgesProcessed, int orphanEdgesDropped)> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
+    private async Task<(int crossDocEdgesProcessed, OrphanEdgeDropSummary orphanEdgesDropped)> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
         // Phase order is load-bearing: reverse refresh → orphan cleanup → FTS → semantic diff → complete.
         cancellationToken.ThrowIfCancellationRequested();
