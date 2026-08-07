@@ -1,4 +1,7 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Data.Sqlite;
+using Lurp.Workspace;
 
 namespace Lurp.Storage.Tests;
 
@@ -345,5 +348,91 @@ public sealed class GraphNodeMembershipTests : IDisposable
             $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = '{snapshotId}';"));
         Assert.Equal(0, Scalar<long>(
             $"SELECT COUNT(*) FROM edges WHERE snapshot_id = '{snapshotId}';"));
+    }
+
+    [Fact]
+    public void ExternalInterfaceImplementsEdgeSurvives()
+    {
+        var source = @"
+using System;
+class Foo : IDisposable
+{
+    public void Dispose() {}
+}
+";
+        var compilation = CSharpCompilation.Create(
+            "TestCompilation",
+            [CSharpSyntaxTree.ParseText(source)],
+            references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+
+        var context = new SymbolExtractionContext(
+            compilation,
+            new Dictionary<Lurp.Workspace.DocumentId, (byte[] Content, string Encoding, string LineStarts)>(),
+            new Dictionary<Lurp.Workspace.DocumentId, DocumentVersionId>(),
+            new HashSet<Lurp.Workspace.DocumentId>(),
+            "snap-ext-survive");
+
+        var extractor = new SymbolStructuralEdgeExtractor(context);
+        var edges = extractor.ExtractEdges();
+
+        var implementsEdge = edges.FirstOrDefault(e => e.Kind == EdgeKind.Implements.ToString());
+        Assert.NotNull(implementsEdge);
+        Assert.Equal(GraphNodeKind.ExternalType, implementsEdge.TargetNodeKind);
+        Assert.Contains("IDisposable", implementsEdge.TargetSymbolId, StringComparison.Ordinal);
+
+        var store = CreateStore();
+        SaveSnapshotWithSymbols(store, "snap-ext-survive", implementsEdge.SourceSymbolId);
+
+        store.SaveEdges("snap-ext-survive", edges);
+        store.DeleteOrphanEdges("snap-ext-survive");
+
+        var surviving = store.GetEdges("snap-ext-survive");
+        Assert.Contains(surviving, e => e.Kind == EdgeKind.Implements.ToString());
+        Assert.Equal(1, Scalar<long>(
+            $"SELECT COUNT(*) FROM graph_nodes WHERE node_kind = '{GraphNodeKind.ExternalType}'"));
+        Assert.Equal(1, Scalar<long>(
+            $"SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = 'snap-ext-survive' AND node_id = '{implementsEdge.TargetSymbolId}'"));
+    }
+
+    [Fact]
+    public void ExternalTypeNode_DedupByOriginalDefinition()
+    {
+        var source = @"
+using System;
+using System.Collections.Generic;
+class C1 : IEnumerable<int>
+{
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    public IEnumerator<int> GetEnumerator() => null;
+}
+class C2 : IEnumerable<string>
+{
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => null;
+    public IEnumerator<string> GetEnumerator() => null;
+}
+";
+        var compilation = CSharpCompilation.Create(
+            "TestCompilation",
+            [CSharpSyntaxTree.ParseText(source)],
+            references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+
+        var context = new SymbolExtractionContext(
+            compilation,
+            new Dictionary<Lurp.Workspace.DocumentId, (byte[] Content, string Encoding, string LineStarts)>(),
+            new Dictionary<Lurp.Workspace.DocumentId, DocumentVersionId>(),
+            new HashSet<Lurp.Workspace.DocumentId>(),
+            "snap-ext-dedup");
+
+        var extractor = new SymbolStructuralEdgeExtractor(context);
+        var edges = extractor.ExtractEdges();
+
+        var implementsEdges = edges.Where(e => e.Kind == EdgeKind.Implements.ToString()
+                                              && e.TargetNodeKind == GraphNodeKind.ExternalType).ToList();
+        Assert.NotEmpty(implementsEdges);
+
+        var externalIds = implementsEdges.Select(e => e.TargetSymbolId).Distinct().ToList();
+        var enumerableId = externalIds.FirstOrDefault(id => id.Contains("IEnumerable", StringComparison.Ordinal));
+        Assert.NotNull(enumerableId);
+        Assert.Contains("`1", enumerableId);
     }
 }

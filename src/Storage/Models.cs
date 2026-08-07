@@ -31,6 +31,7 @@ namespace Lurp.Storage
         Route,
         Convention,
         RuntimePlaceholder,
+        ExternalType,
     }
 
     public sealed class EdgeRecord

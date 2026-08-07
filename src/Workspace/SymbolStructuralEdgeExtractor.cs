@@ -54,7 +54,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
             {
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString(), typeSymbol));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString(), typeSymbol,
+                    targetNodeKind: IsExternalTarget(typeSymbol.BaseType) ? GraphNodeKind.ExternalType : null));
             }
         }
 
@@ -64,7 +65,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
             {
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString(), typeSymbol));
+                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString(), typeSymbol,
+                    targetNodeKind: IsExternalTarget(iface) ? GraphNodeKind.ExternalType : null));
             }
         }
 
@@ -121,7 +123,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         return SymbolIdFactory.Make(typeSymbol, context.AssemblyIdentity);
     }
 
-    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol)
+    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol, GraphNodeKind? targetNodeKind = null)
     {
         var loc = GetSymbolSourceLocation(sourceSymbol);
         return new EdgeRecord
@@ -138,8 +140,13 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             SourceEndLine = loc?.endLine,
             SourceEndColumn = loc?.endColumn,
             IsCrossGenerated = IsGeneratedSymbol(sourceSymbol),
+            TargetNodeKind = targetNodeKind,
         };
     }
+
+    private bool IsExternalTarget(ISymbol target)
+        => target.ContainingAssembly != null
+           && !SymbolEqualityComparer.Default.Equals(target.ContainingAssembly, context.Compilation.Assembly);
 
     private bool IsGeneratedSymbol(ISymbol symbol)
     {
