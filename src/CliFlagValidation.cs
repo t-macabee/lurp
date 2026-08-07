@@ -21,7 +21,7 @@ internal static class CliFlagValidation
     /// by every handler through <see cref="HandlerBootstrap.ResolveOutputDir"/>, and the help
     /// flags are handled before dispatch but may still appear in the argument list.
     /// </summary>
-    private static readonly string[] GlobalFlags =
+    internal static readonly string[] GlobalFlags =
     [
         "--mode=",
         "--output-dir=",

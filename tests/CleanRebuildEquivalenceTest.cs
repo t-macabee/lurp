@@ -1882,4 +1882,106 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
         Assert.Single(result);
         Assert.Equal("compiler_proved", result[0].Provenance);
     }
+
+    // T6 regression: when two edges with the same (source, target, kind) key
+    // and equal provenance collide, the losing edge's TypeArgumentsJson must
+    // be merged into the winner so no instantiation evidence is discarded.
+    [Fact]
+    public void EdgeDedup_EqualProvenance_MergesTypeArgumentsJson()
+    {
+        var edgeA = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "compiler_proved", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"Customer\"]",
+        };
+        var edgeB = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "compiler_proved", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"Order\"]",
+        };
+
+        var result = EdgeDedup.Deduplicate(new[] { edgeA, edgeB });
+
+        Assert.Single(result);
+        Assert.Contains("Customer", result[0].TypeArgumentsJson);
+        Assert.Contains("Order", result[0].TypeArgumentsJson);
+    }
+
+    [Fact]
+    public void EdgeDedup_LowerProvenanceLosesButTypeArgumentsJsonSurvives()
+    {
+        var high = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "compiler_proved", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"VariantA\"]",
+        };
+        var low = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "runtime_unknown", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"VariantB\"]",
+        };
+
+        var result = EdgeDedup.Deduplicate(new[] { low, high });
+
+        Assert.Single(result);
+        Assert.Equal("compiler_proved", result[0].Provenance);
+        Assert.Contains("VariantA", result[0].TypeArgumentsJson);
+        Assert.Contains("VariantB", result[0].TypeArgumentsJson);
+    }
+
+    [Fact]
+    public void EdgeDedup_MergeTypeArguments_DetectsSingleVariantFormat()
+    {
+        var result = EdgeDedup.MergeTypeArguments("[\"A\",\"B\"]", "[\"A\",\"C\"]");
+
+        Assert.NotNull(result);
+        Assert.Contains("[\"A\",\"B\"]", result);
+        Assert.Contains("[\"A\",\"C\"]", result);
+    }
+
+    [Fact]
+    public void EdgeDedup_MergeTypeArguments_MergesMultiVariantFormats()
+    {
+        var result = EdgeDedup.MergeTypeArguments("[[\"A\"],[\"B\"]]", "[[\"B\"],[\"C\"]]");
+
+        Assert.NotNull(result);
+        Assert.Contains("[\"A\"]", result);
+        Assert.Contains("[\"B\"]", result);
+        Assert.Contains("[\"C\"]", result);
+    }
+
+    [Fact]
+    public void EdgeDedup_MergeTypeArguments_NullInputsHandled()
+    {
+        var result = EdgeDedup.MergeTypeArguments(null, "[\"A\"]");
+
+        Assert.NotNull(result);
+        Assert.Contains("[\"A\"]", result);
+    }
+
+    [Fact]
+    public void EdgeDedup_Deduplicate_SameTypeArgumentsJson_StillCanonicalizesFormat()
+    {
+        var edgeA = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "possible", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"Same\"]",
+        };
+        var edgeB = new EdgeRecord
+        {
+            SourceSymbolId = "S", TargetSymbolId = "T", Kind = "MayDispatchTo",
+            Provenance = "possible", ExtractorVersion = "v1",
+            TypeArgumentsJson = "[\"Same\"]",
+        };
+
+        var result = EdgeDedup.Deduplicate(new[] { edgeA, edgeB });
+
+        Assert.Single(result);
+        Assert.Contains("Same", result[0].TypeArgumentsJson);
+    }
 }
