@@ -39,12 +39,26 @@ public sealed class EdgeLocationResolver
 
     public (string? path, int? sl, int? sc, int? el, int? ec) Resolve(ISymbol symbol)
     {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = PrimaryDeclaration(symbol);
         if (syntaxRef == null)
             return (null, null, null, null, null);
 
         return Resolve(syntaxRef.GetSyntax().GetLocation());
     }
+
+    /// <summary>
+    /// Deterministically select the declaring syntax reference used as a symbol's
+    /// single source location. Roslyn does not guarantee a stable order for
+    /// <see cref="ISymbol.DeclaringSyntaxReferences"/> across compilations, so a
+    /// bare <c>FirstOrDefault()</c> can pick a different partial declaration on a
+    /// full vs. incremental rebuild. Ordering by (file path, span start) makes the
+    /// choice reproducible, which the full==incremental parity reference requires.
+    /// </summary>
+    public static SyntaxReference? PrimaryDeclaration(ISymbol symbol)
+        => symbol.DeclaringSyntaxReferences
+            .OrderBy(static r => r.SyntaxTree.FilePath, StringComparer.Ordinal)
+            .ThenBy(static r => r.Span.Start)
+            .FirstOrDefault();
 
     public bool IsGenerated(string? path)
     {

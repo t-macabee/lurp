@@ -163,7 +163,13 @@ public static class CompilationFactExtractor
                 measurements.AddRange(memberEdgeExtractor.Measurements);
             });
 
-        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache);
+        // Same document-id string projection the adapter EdgeLocationResolver
+        // (below) uses; shared so poly/reflection edges carry the identical
+        // generated-source signal as the member-edge and adapter lineages.
+        var documentIdStrings = workspaceInfo.Documents.Keys.Select(static id => id.ToString()).ToArray();
+        var generatedIdStrings = workspaceInfo.GeneratedDocuments.Select(static id => id.ToString()).ToArray();
+
+        var polyExtractor = new PolymorphismExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache, documentIdStrings, generatedIdStrings);
 
         // Polymorphism was previously unguarded: a thrown exception here
         // escaped ExtractAll entirely. It now degrades like every other
@@ -179,17 +185,14 @@ public static class CompilationFactExtractor
             msg => $"Reflection extraction failed: {msg}",
             () =>
             {
-                var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache);
+                var reflectionExtractor = new ReflectionExtractor(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, sharedModelCache, documentIdStrings, generatedIdStrings);
                 edges.AddRange(reflectionExtractor.Extract());
                 measurements.AddRange(reflectionExtractor.Measurements);
             });
 
         var adapters = adapterProvider(skipAdapters);
 
-        var locationResolver = new EdgeLocationResolver(
-            workspaceInfo.Documents.Keys.Select(static id => id.ToString()),
-            workspaceInfo.GeneratedDocuments.Select(static id => id.ToString()),
-            gitRoot);
+        var locationResolver = new EdgeLocationResolver(documentIdStrings, generatedIdStrings, gitRoot);
 
         var adapterContext = new AdapterExtractionContext(
             compilation, snapshotId, locationResolver, scopeDocuments, sharedModelCache,

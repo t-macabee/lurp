@@ -7,8 +7,8 @@ namespace Lurp.Workspace;
 
 internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 {
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
-        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths)
     {
     }
 
@@ -19,7 +19,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
         int? endLine = null;
         int? endColumn = null;
 
-        var syntaxRef = targetSymbol.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(targetSymbol);
         if (syntaxRef != null)
         {
             var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
@@ -29,6 +29,8 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             endColumn = span.EndLinePosition.Character;
         }
 
+        var sourceDocumentPath = GetDocumentPath(targetSymbol);
+
         return new EdgeRecord
         {
             SourceSymbolId = sourceId,
@@ -37,18 +39,19 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             Provenance = provenance,
             SnapshotId = SnapshotId,
             ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
-            SourceDocumentPath = GetDocumentPath(targetSymbol),
+            SourceDocumentPath = sourceDocumentPath,
             SourceStartLine = startLine,
             SourceStartColumn = startColumn,
             SourceEndLine = endLine,
             SourceEndColumn = endColumn,
             TypeArgumentsJson = typeArgumentsJson,
+            IsCrossGenerated = IsGenerated(sourceDocumentPath),
         };
     }
 
     internal string? GetDocumentPath(ISymbol symbol)
     {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(symbol);
         if (syntaxRef == null)
             return null;
         var path = syntaxRef.SyntaxTree?.FilePath;

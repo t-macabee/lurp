@@ -7,8 +7,9 @@ internal abstract class ExtractionContextBase
 {
     private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache;
     protected readonly string _gitRoot;
+    private readonly EdgeLocationResolver _locationResolver;
 
-    protected ExtractionContextBase(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+    protected ExtractionContextBase(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {
         Compilation = compilation;
         SnapshotId = snapshotId;
@@ -17,7 +18,17 @@ internal abstract class ExtractionContextBase
         ScopeDocuments = scopeDocuments;
         Incompleteness = incompleteness;
         _semanticModelCache = semanticModelCache ?? [];
+        _locationResolver = new EdgeLocationResolver(documentPaths ?? [], generatedDocumentPaths ?? [], _gitRoot);
     }
+
+    /// <summary>
+    /// True when <paramref name="documentPath"/> is a generated document, per the
+    /// shared <see cref="EdgeLocationResolver"/> detection (pre-computed generated
+    /// set + conventional-name heuristics). Emitters set an edge's
+    /// <c>IsCrossGenerated</c> from this so polymorphism/reflection edges carry the
+    /// same generated-source signal the member-edge lineage already records.
+    /// </summary>
+    internal bool IsGenerated(string? documentPath) => _locationResolver.IsGenerated(documentPath);
 
     internal Compilation Compilation { get; }
     internal string SnapshotId { get; }

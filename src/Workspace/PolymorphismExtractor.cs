@@ -38,11 +38,11 @@ public sealed class PolymorphismExtractor
     {
     }
 
-    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
-        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache);
+        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths);
     }
 
     public List<EdgeRecord> ExtractAll()
