@@ -490,11 +490,15 @@ class Bar {
 
             var edges = extractor.ExtractAll();
 
+            // Gap #3 (59c98c3): Constructs targets the *containing type*, not the
+            // constructor member, so implicit ctors can't produce ghost member ids.
+            // The `T:` prefix is the contract; asserting "#ctor" here is what made
+            // this test stale.
             Assert.Contains(edges, e =>
                 e.Kind == "Constructs" &&
                 e.SourceSymbolId.Contains('M') &&
-                e.TargetSymbolId.Contains("Foo") &&
-                e.TargetSymbolId.Contains("#ctor"));
+                e.TargetSymbolId.StartsWith("T:") &&
+                e.TargetSymbolId.Contains("Foo"));
         }
 
         [Fact]
