@@ -267,7 +267,7 @@ public static class IndexRunner
                 sink.WriteLine();
                 SemanticDiffStep.ComputeAndPersist(
                     store, sink, previousManifest.SnapshotId, snapshotIdStr,
-                    changedPaths: null, changedSymbolIds: null, timings);
+                    changedSymbolIds: null, timings);
             }
 
             // Step: Remove edges targeting symbols not declared in this snapshot

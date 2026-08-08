@@ -53,7 +53,7 @@ namespace Lurp.Workspace
             return ComputeDiffInternal(fromSnapshotId, toSnapshotId, changedSymbolIds: null);
         }
 
-        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedPaths, HashSet<string> changedSymbolIds)
+        public (List<SemanticChange> Changes, int SkippedComparisons) ComputeDiff(string fromSnapshotId, string toSnapshotId, HashSet<string> changedSymbolIds)
         {
             if (changedSymbolIds.Count == 0)
                 return ([], 0);

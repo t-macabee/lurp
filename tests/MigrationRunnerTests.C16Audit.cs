@@ -281,6 +281,90 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void UntestedSurface_MemberOfTestedType_NotFlagged()
+        {
+            // Regression: TestedBy edges exist only at type granularity, so a
+            // member can never be covered directly. A public/internal member of
+            // a tested type is covered surface; FindUntestedSurface previously
+            // flagged every such member.
+            const string snapId = "snap-c16-aud-013";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Foo|asm",
+                    TargetSymbolId = "M:Foo.Bar|asm",
+                    Kind = "Declares",
+                },
+                new() {
+                    SourceSymbolId = "T:Foo|asm",
+                    TargetSymbolId = "M:Test|asm",
+                    Kind = "TestedBy",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, ["T:Foo|asm", "M:Foo.Bar|asm", "M:Test|asm"],
+                metadataJson: "{\"accessibility\":\"Public\"}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["untested-surface"]));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "untested-surface" && f.SymbolId == "T:Foo|asm");
+            Assert.DoesNotContain(report.Findings, f => f.Check == "untested-surface" && f.SymbolId == "M:Foo.Bar|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UnregisteredImpl_InterfaceExtendsInterface_NotFlagged()
+        {
+            // Regression: IChild : IParent yields Implements: IChild -> IParent.
+            // An interface is a contract, not a DI implementation; the check
+            // previously flagged every interface that extends another.
+            const string snapId = "snap-c16-aud-014";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:IChild|asm",
+                    TargetSymbolId = "T:IParent|asm",
+                    Kind = "Implements",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, ["T:IChild|asm", "T:IParent|asm"],
+                metadataJson: "{\"typeKind\":\"Interface\",\"accessibility\":\"Public\"}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["unregistered-impl"]));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "unregistered-impl" && f.SymbolId == "T:IChild|asm");
+            store.Close();
+        }
+
+        [Fact]
+        public void UnregisteredImpl_AbstractClassImplements_NotFlagged()
+        {
+            // Abstract-only types cannot be registered as concrete
+            // implementations, so they are excluded from the finding set.
+            const string snapId = "snap-c16-aud-015";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Base|asm",
+                    TargetSymbolId = "T:IFoo|asm",
+                    Kind = "Implements",
+                }
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            CreateStoreWithSymbols(store, snapId, ["T:Base|asm", "T:IFoo|asm"],
+                metadataJson: "{\"typeKind\":\"Class\",\"isAbstract\":true,\"accessibility\":\"Public\"}");
+            var engine = new AuditEngine(store, snapId);
+
+            var report = engine.RunAudit(new AuditOptions(["unregistered-impl"]));
+
+            Assert.DoesNotContain(report.Findings, f => f.Check == "unregistered-impl" && f.SymbolId == "T:Base|asm");
+            store.Close();
+        }
+
+        [Fact]
         public void HighFanOut_ExceedsThreshold_Flagged()
         {
             const string snapId = "snap-c16-aud-008";

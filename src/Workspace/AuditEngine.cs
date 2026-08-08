@@ -131,9 +131,22 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
         var findings = new List<AuditFinding>();
         // TestedBy direction is production -> test, so the covered set is built from
         // SourceSymbolId (the production symbol that has at least one test).
+        // TestedBy edges exist only at type granularity (TestAdapter contract), so a
+        // member can never be covered directly. Expand each covered type to its
+        // declared members, mirroring WithDeclaredMembers, so a public/internal
+        // member of a tested type is not flagged as untested surface.
         var covered = _store.GetEdgesByKind(_snapshotId, EdgeKind.TestedBy.ToString())
             .Select(e => e.SourceSymbolId)
             .ToHashSet();
+
+        foreach (var typeId in covered.ToList())
+        {
+            if (!SymbolId.TryParse(typeId, out var sid) || !sid.IsType)
+                continue;
+            foreach (var e in _store.GetOutgoingEdges(_snapshotId, typeId))
+                if (e.Kind == EdgeKind.Declares.ToString())
+                    covered.Add(e.TargetSymbolId);
+        }
 
         foreach (var symbolId in allSymbolIds)
         {
@@ -179,14 +192,50 @@ public sealed class AuditEngine(IIndexStore store, string snapshotId)
 
         foreach (var edge in implementsEdges)
         {
-            if (!registered.Contains(edge.SourceSymbolId))
-            {
-                var info = GetInfo(edge.SourceSymbolId, cache);
-                findings.Add(new AuditFinding(check: AuditCheckNames.UnregisteredImplementation, symbolId: edge.SourceSymbolId, fqn: info?.FullyQualifiedName, detail: $"implements {edge.TargetSymbolId}"));
-            }
+            if (registered.Contains(edge.SourceSymbolId))
+                continue;
+
+            var info = GetInfo(edge.SourceSymbolId, cache);
+
+            // An interface extending another interface is a contract, not a DI
+            // implementation; an abstract-only type cannot be registered as a
+            // concrete implementation. Skip both so the check only flags
+            // concrete (class/struct) implementors.
+            if (IsContractOrAbstract(info))
+                continue;
+
+            findings.Add(new AuditFinding(check: AuditCheckNames.UnregisteredImplementation, symbolId: edge.SourceSymbolId, fqn: info?.FullyQualifiedName, detail: $"implements {edge.TargetSymbolId}"));
         }
 
         return findings;
+    }
+
+    // Positive identification only: when the metadata does not state the
+    // source is an interface or abstract, keep the finding.
+    private static bool IsContractOrAbstract(IndexedSymbolInfo? info)
+    {
+        if (info?.MetadataJson == null)
+            return false;
+
+        try
+        {
+            var metadata = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(info.MetadataJson);
+            if (metadata == null)
+                return false;
+
+            if (metadata.TryGetValue(SymbolMetadataKeys.TypeKind, out var typeKindEl) &&
+                typeKindEl.GetString() == "Interface")
+                return true;
+
+            if (metadata.TryGetValue(SymbolMetadataKeys.IsAbstract, out var isAbstractEl) &&
+                isAbstractEl.ValueKind == JsonValueKind.True)
+                return true;
+        }
+        catch (JsonException)
+        {
+        }
+
+        return false;
     }
 
     private List<AuditFinding> FindHighFanOut(List<string> allSymbolIds, int fanOutThreshold, Dictionary<string, IndexedSymbolInfo?> cache)

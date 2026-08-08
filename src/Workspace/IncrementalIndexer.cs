@@ -504,7 +504,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         SemanticDiffStep.ComputeAndPersist(
             _store, _output, context.Snapshots.FromSnapshotId, context.Snapshots.ToSnapshotId,
-            (HashSet<string>)context.Changes.ChangedPaths,
             (HashSet<string>)context.Changes.DiffAndSearchSymbolIds,
             timings);
     }

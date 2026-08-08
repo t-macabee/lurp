@@ -16,7 +16,6 @@ internal static class SemanticDiffStep
         IOutputSink output,
         string fromSnapshotId,
         string toSnapshotId,
-        HashSet<string>? changedPaths,
         HashSet<string>? changedSymbolIds,
         List<SnapshotTimingRow> timings)
     {
@@ -25,7 +24,7 @@ internal static class SemanticDiffStep
 
         var differ = new SemanticDiffer(store, store, store);
         var (diffChanges, skippedComparisons) = changedSymbolIds != null
-            ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedPaths!, changedSymbolIds)
+            ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedSymbolIds)
             : differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, diffChanges);
