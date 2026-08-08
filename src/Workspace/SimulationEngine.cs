@@ -142,19 +142,27 @@ public sealed class SimulationEngine
     {
         var allItems = new Dictionary<string, SimulationItem>();
 
-        // 1. Upstream impact paths via ImpactTraverser
+        // 1. Upstream impact paths via ImpactTraverser — expand to declared
+        // members so member-level callers (obj.Method() -> Calls ->
+        // M:Type.Method) aren't missed. Removing the type removes the member
+        // too, so those callers are genuine upstream impacts. SimulateRename
+        // and SimulateMove already expand this way; sections 2-4 below stay
+        // type-level per the documented simulation contract.
         var traverser = new ImpactTraverser(_edgeStore, _snapshotId);
-        var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream);
-
-        foreach (var path in paths)
+        foreach (var seed in WithDeclaredMembers(symbolId))
         {
-            foreach (var hop in path.Hops)
+            var paths = traverser.TraceImpact(seed, ImpactDirection.Upstream);
+
+            foreach (var path in paths)
             {
-                var key = hop.SourceSymbolId;
-                if (!allItems.ContainsKey(key))
+                foreach (var hop in path.Hops)
                 {
-                    var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
-                    allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: hop.EdgeKind,documentPath: hop.SourceDocument,line: hop.SourceLine);
+                    var key = hop.SourceSymbolId;
+                    if (!allItems.ContainsKey(key))
+                    {
+                        var info = _declarationStore.GetSymbolInfo(key, _snapshotId);
+                        allItems[key] = new SimulationItem(symbolId: key,fqn: info?.FullyQualifiedName,edgeKind: hop.EdgeKind,documentPath: hop.SourceDocument,line: hop.SourceLine);
+                    }
                 }
             }
         }

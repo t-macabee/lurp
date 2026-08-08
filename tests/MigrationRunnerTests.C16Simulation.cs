@@ -279,6 +279,37 @@ public partial class MigrationRunnerTests
         }
 
         [Fact]
+        public void SimulateRemove_StaticTypeWithNoDirectEdges_ReportsMemberCallers()
+        {
+            // Regression: when the only incoming edge is a Calls on a declared
+            // member (no direct edge to the type), SimulateRemove must expand
+            // via Declares so the member callers surface as upstream impacts.
+            // Previously section 1 seeded only the bare type symbol, so the
+            // caller was missed entirely.
+            const string snapId = "snap-c16-sim-012";
+            var edges = new List<EdgeRecord>
+            {
+                new() {
+                    SourceSymbolId = "T:Runner|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Declares",
+                },
+                new() {
+                    SourceSymbolId = "M:Caller.Invoke|asm",
+                    TargetSymbolId = "M:Runner.Go|asm",
+                    Kind = "Calls",
+                },
+            };
+            var store = CreateStoreWithEdges(snapId, edges);
+            var engine = new SimulationEngine(store, store, snapId);
+
+            var report = engine.SimulateRemove("T:Runner|asm");
+
+            Assert.Contains(report.Items, i => i.SymbolId == "M:Caller.Invoke|asm" && i.EdgeKind == "Calls");
+            store.Close();
+        }
+
+        [Fact]
         public void SimulateRemove_SymbolWithTest_ReportsOrphanedTest()
         {
             const string snapId = "snap-c16-sim-006";
