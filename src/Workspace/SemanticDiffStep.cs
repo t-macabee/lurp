@@ -22,7 +22,7 @@ internal static class SemanticDiffStep
         var sw = Stopwatch.StartNew();
         output.Write("Computing semantic diff from previous snapshot... ");
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (diffChanges, skippedComparisons) = changedSymbolIds != null
             ? differ.ComputeDiff(fromSnapshotId, toSnapshotId, changedSymbolIds)
             : differ.ComputeDiff(fromSnapshotId, toSnapshotId);

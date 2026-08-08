@@ -62,7 +62,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapId, [fromDecl]);
             store.SaveDeclarations(toSnapId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapId, toSnapId);
             return changes;
         }

@@ -110,7 +110,7 @@ public class SemanticRenameIntegrationTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var rename = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
@@ -156,7 +156,7 @@ public class SemanticRenameIntegrationTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var move = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolMoved);
@@ -200,7 +200,7 @@ public class SemanticRenameIntegrationTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRenamed);
@@ -252,7 +252,7 @@ public class SemanticRenameIntegrationTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl1, fromDecl2]);
         store.SaveDeclarations(toSnapshotId, [toDecl1, toDecl2]);
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRenamed);
@@ -296,7 +296,7 @@ public class SemanticRenameIntegrationTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store);
+        var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         store.SaveSemanticChanges(fromSnapshotId, toSnapshotId, changes);

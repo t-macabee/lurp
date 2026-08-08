@@ -572,7 +572,7 @@ public class NewType
                 if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
                 {
                     var swDiff = System.Diagnostics.Stopwatch.StartNew();
-                    var differ = new SemanticDiffer(store, store, store);
+                    var differ = new SemanticDiffer(store, store, store, store);
                     var (diffChanges, _) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                     store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
                     swDiff.Stop();

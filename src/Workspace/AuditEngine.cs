@@ -31,10 +31,10 @@ public sealed class AuditFinding(string check, string symbolId, string? fqn = nu
     [JsonPropertyName("check")]
     public string Check { get; } = check ?? throw new ArgumentNullException(nameof(check));
 
-    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
+    [JsonPropertyName("symbol_id")]
     public string SymbolId { get; } = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
 
-    [JsonPropertyName(QueryJsonFieldNames.FullyQualifiedName)]
+    [JsonPropertyName("fqn")]
     public string? Fqn { get; } = fqn;
 
     [JsonPropertyName("detail")]
@@ -43,7 +43,7 @@ public sealed class AuditFinding(string check, string symbolId, string? fqn = nu
 
 public sealed class AuditReport(string snapshotId, List<string> checksRun, List<AuditFinding> findings)
 {
-    [JsonPropertyName(QueryJsonFieldNames.SnapshotId)]
+    [JsonPropertyName("snapshot_id")]
     public string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
 
     [JsonPropertyName("checks_run")]

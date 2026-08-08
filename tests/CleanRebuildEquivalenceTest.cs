@@ -862,7 +862,7 @@ public sealed class PipelineEquivalenceTest : IAsyncLifetime, IDisposable
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
             if (previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
-                var differ = new Workspace.SemanticDiffer(store, store, store);
+                var differ = new Workspace.SemanticDiffer(store, store, store, store);
                 var (diffChanges, _) = differ.ComputeDiff(previousManifest.SnapshotId, snapshotIdStr);
                 store.SaveSemanticChanges(previousManifest.SnapshotId, snapshotIdStr, diffChanges);
             }

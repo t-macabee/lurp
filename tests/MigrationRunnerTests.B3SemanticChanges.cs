@@ -214,7 +214,7 @@ public partial class MigrationRunnerTests
                 store.SaveDeclarations(toSnapshotId, [decl]);
             }
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolAdded);
@@ -258,7 +258,7 @@ public partial class MigrationRunnerTests
             store.SaveEdges(fromSnapshotId, fromEdges);
             store.SaveEdges(toSnapshotId, toEdges);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
@@ -323,7 +323,7 @@ public partial class MigrationRunnerTests
             store.SaveEdges(fromSnapshotId, [fromEdge]);
             store.SaveEdges(toSnapshotId, [toEdge]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var change = Assert.Single(changes, c => c.ChangeType == expectedChangeType);
@@ -374,7 +374,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -423,7 +423,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var baseTypeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.BaseTypeChanged);
@@ -473,7 +473,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var symbolRenamed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRenamed);
@@ -522,7 +522,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             Assert.Empty(changes);
@@ -571,7 +571,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -624,7 +624,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -677,7 +677,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -730,7 +730,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -783,7 +783,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -836,7 +836,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -889,7 +889,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var attributeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.AttributeChanged);
@@ -940,7 +940,7 @@ public partial class MigrationRunnerTests
             store.SaveDeclarations(fromSnapshotId, [fromDecl]);
             store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
             var attributeChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.AttributeChanged);

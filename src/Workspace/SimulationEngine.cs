@@ -4,10 +4,10 @@ namespace Lurp.Workspace;
 
 public sealed class SimulationItem
 {
-    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
+    [JsonPropertyName("symbol_id")]
     public string SymbolId { get; }
 
-    [JsonPropertyName(QueryJsonFieldNames.FullyQualifiedName)]
+    [JsonPropertyName("fqn")]
     public string? Fqn { get; }
 
     [JsonPropertyName("edge_kind")]
@@ -34,10 +34,10 @@ public sealed class SimulationReport
     [JsonPropertyName("simulation_type")]
     public string SimulationType { get; }
 
-    [JsonPropertyName(QueryJsonFieldNames.SymbolId)]
+    [JsonPropertyName("symbol_id")]
     public string SymbolId { get; }
 
-    [JsonPropertyName(QueryJsonFieldNames.SnapshotId)]
+    [JsonPropertyName("snapshot_id")]
     public string SnapshotId { get; }
 
     [JsonPropertyName("affected_count")]

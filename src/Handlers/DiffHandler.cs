@@ -23,7 +23,7 @@ internal static class DiffHandler
 
         try
         {
-            var differ = new SemanticDiffer(store, store, store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, skippedComparisons) = differ.ComputeDiff(fromSnapshot, toSnapshot);
 
             var json = JsonSerializer.Serialize(new

@@ -1,6 +1,6 @@
 namespace Lurp.Storage;
 
-public interface ISemanticDiffReadStore : IDeclarationStore
+public interface ISemanticDiffReadStore
 {
     IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(
         string snapshotId,

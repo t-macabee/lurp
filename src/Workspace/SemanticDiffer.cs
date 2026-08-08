@@ -39,12 +39,14 @@ namespace Lurp.Workspace
         // - arity: generic type parameter count included in signature
         private readonly ISnapshotSymbolStore _snapshotStore;
         private readonly ISemanticDiffReadStore _readStore;
+        private readonly IDeclarationStore _declarationStore;
         private readonly IEdgeStore _edgeStore;
 
-        public SemanticDiffer(ISnapshotSymbolStore snapshotStore, ISemanticDiffReadStore readStore, IEdgeStore edgeStore)
+        public SemanticDiffer(ISnapshotSymbolStore snapshotStore, ISemanticDiffReadStore readStore, IDeclarationStore declarationStore, IEdgeStore edgeStore)
         {
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
             _readStore = readStore ?? throw new ArgumentNullException(nameof(readStore));
+            _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
             _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
         }
 
@@ -121,8 +123,8 @@ namespace Lurp.Workspace
             var changes = new List<SemanticChange>();
             int skippedComparisons = 0;
 
-            var fromInfo = _readStore.GetSymbolInfo(symbolId, fromSnapshotId);
-            var toInfo = _readStore.GetSymbolInfo(symbolId, toSnapshotId);
+            var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
+            var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
 
             if (fromInfo == null || toInfo == null)
             {
@@ -364,8 +366,8 @@ namespace Lurp.Workspace
         {
             var changes = new List<SemanticChange>();
 
-            var fromSig = _readStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
-            var toSig = _readStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
+            var fromSig = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Signature);
+            var toSig = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Signature);
 
             if (fromSig == null || toSig == null)
             {
@@ -377,8 +379,8 @@ namespace Lurp.Workspace
                 return (changes, 1);
             }
 
-            var fromBody = _readStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
-            var toBody = _readStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
+            var fromBody = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
+            var toBody = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
 
             if (fromSig == toSig)
             {
