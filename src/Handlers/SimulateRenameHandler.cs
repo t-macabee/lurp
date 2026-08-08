@@ -14,12 +14,6 @@ internal static class SimulateRenameHandler
             HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-rename.");
         }
 
-        var newNameArg = HandlerBootstrap.GetArgValue(args, "--new-name=");
-        if (string.IsNullOrEmpty(newNameArg))
-        {
-            HandlerBootstrap.Fail("ERROR: --new-name=<name> is required for --mode=simulate-rename.");
-        }
-
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
@@ -34,7 +28,7 @@ internal static class SimulateRenameHandler
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateRename(resolvedSymbolId, newNameArg);
+            var report = engine.SimulateRename(resolvedSymbolId);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }

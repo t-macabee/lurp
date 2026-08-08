@@ -302,8 +302,10 @@ Simulate renaming a symbol and show affected references.
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to simulate. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--new-name=<name>` | No | New simple name for the symbol. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+The report is the set of call sites a rename must touch. That set is derived from
+the graph around the symbol and does not depend on the new name, so none is taken.
 
 ---
 
@@ -319,8 +321,10 @@ Simulate moving a symbol to a new namespace.
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to simulate. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--new-namespace=<ns>` | No | Target namespace. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+As with `simulate-rename`, the affected-reference set is independent of the
+destination namespace, so none is taken.
 
 ---
 

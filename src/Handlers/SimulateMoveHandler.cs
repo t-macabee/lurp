@@ -14,12 +14,6 @@ internal static class SimulateMoveHandler
             HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
         }
 
-        var newNamespaceArg = HandlerBootstrap.GetArgValue(args, "--new-namespace=");
-        if (string.IsNullOrEmpty(newNamespaceArg))
-        {
-            HandlerBootstrap.Fail("ERROR: --new-namespace=<namespace> is required for --mode=simulate-move.");
-        }
-
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
@@ -34,7 +28,7 @@ internal static class SimulateMoveHandler
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateMove(resolvedSymbolId, newNamespaceArg);
+            var report = engine.SimulateMove(resolvedSymbolId);
             var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
         }

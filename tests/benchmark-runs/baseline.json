@@ -1,7 +1,7 @@
 {
   "benchmark": "lurp-outcome-benchmark",
   "version": 1,
-  "generatedAtUtc": "2026-08-07T20:06:31.6534786Z",
+  "generatedAtUtc": "2026-08-08T12:49:24.6411116Z",
   "runner": "tests/OutcomeBenchmarkTests.cs",
   "measures": [
     "correct starting symbol found",
@@ -137,8 +137,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "2cbf703ea153935b7c26c4f39b2c0845",
-        "fullSnapshot": "2cbf703ea153935b7c26c4f39b2c0845",
+        "incrementalSnapshot": "d40f2f0016dd6cf9c09c314346d0910b",
+        "fullSnapshot": "d40f2f0016dd6cf9c09c314346d0910b",
         "equivalent": true,
         "error": null
       },
@@ -160,7 +160,7 @@
         "sourceRetrieved": true
       },
       "capsule": {
-        "estimatedTokens": 12268,
+        "estimatedTokens": 13440,
         "truncated": false,
         "unknownRuntimeVectorsDeclared": [
           {
@@ -197,8 +197,8 @@
           },
           {
             "Tier": "directCallees",
-            "Fqn": "global::Outcome.Contracts.OrderResult.OrderResult",
-            "SymbolId": "M:Outcome.Contracts.OrderResult.#ctor(System.Int32,System.Boolean)|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "Fqn": "global::Outcome.Contracts.OrderResult",
+            "SymbolId": "T:Outcome.Contracts.OrderResult|Contracts, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
             "EdgeKind": "Constructs",
             "Provenance": "compiler_proved",
             "Relevance": "unclassified"
@@ -291,8 +291,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "6eb5805341b1241beda45fc7a5178953",
-        "fullSnapshot": "6eb5805341b1241beda45fc7a5178953",
+        "incrementalSnapshot": "93cb9591a18ab163dbf9e8736a9e87a7",
+        "fullSnapshot": "93cb9591a18ab163dbf9e8736a9e87a7",
         "equivalent": true,
         "error": null
       },
@@ -468,8 +468,8 @@
         "exact": true
       },
       "incrementalFullAgreement": {
-        "incrementalSnapshot": "1e1233d8577e2dbbe5a115ac0e633fdf",
-        "fullSnapshot": "1e1233d8577e2dbbe5a115ac0e633fdf",
+        "incrementalSnapshot": "67324e3161c36e0926acfb5914056812",
+        "fullSnapshot": "67324e3161c36e0926acfb5914056812",
         "equivalent": true,
         "error": null
       },

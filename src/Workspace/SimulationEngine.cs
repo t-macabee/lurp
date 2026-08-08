@@ -69,7 +69,10 @@ public sealed class SimulationEngine
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     }
 
-    public SimulationReport SimulateRename(string symbolId, string newSimpleName)
+    // The impact set is the set of call sites that must be touched, which is
+    // determined entirely by the graph around symbolId. The new name itself
+    // does not change it, so this takes no name argument.
+    public SimulationReport SimulateRename(string symbolId)
     {
         var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
         var overrideOutgoing = outgoing.Where(e => e.Kind == "Overrides");
@@ -112,7 +115,9 @@ public sealed class SimulationEngine
         return new SimulationReport("rename", symbolId, _snapshotId, items);
     }
 
-    public SimulationReport SimulateMove(string symbolId, string newNamespace)
+    // Takes no target namespace for the same reason as SimulateRename: the
+    // affected call sites follow from the graph, not from the destination.
+    public SimulationReport SimulateMove(string symbolId)
     {
         var items = new List<SimulationItem>();
         var seen = new HashSet<(string Source, string Kind, string? Document, int? Line)>();

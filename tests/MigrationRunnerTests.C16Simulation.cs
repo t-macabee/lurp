@@ -55,7 +55,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+            var report = engine.SimulateRename("M:B|asm");
 
             Assert.Equal("rename", report.SimulationType);
             Assert.Contains(report.Items, i => i.SymbolId == "M:A|asm");
@@ -77,7 +77,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+            var report = engine.SimulateRename("M:B|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "M:C|asm" && i.EdgeKind == "Overrides");
             store.Close();
@@ -98,7 +98,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateRename("T:InstrumentTypeService|asm", "RenamedService");
+            var report = engine.SimulateRename("T:InstrumentTypeService|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "T:Startup|asm" && i.EdgeKind == "Registers");
             store.Close();
@@ -111,7 +111,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, []);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateRename("M:B|asm", "BRenamed");
+            var report = engine.SimulateRename("M:B|asm");
 
             Assert.Empty(report.Items);
             Assert.Equal(0, report.AffectedCount);
@@ -143,7 +143,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateRename("T:Runner|asm", "RunnerRenamed");
+            var report = engine.SimulateRename("T:Runner|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "M:Caller.Invoke|asm" && i.EdgeKind == "Calls");
             Assert.Equal(1, report.AffectedCount);
@@ -170,7 +170,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateMove("M:B|asm", "NewNs");
+            var report = engine.SimulateMove("M:B|asm");
 
             var item = Assert.Single(report.Items);
             Assert.Equal("src/A.cs", item.DocumentPath);
@@ -202,7 +202,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateMove("T:Runner|asm", "New.Ns");
+            var report = engine.SimulateMove("T:Runner|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "M:Caller.Invoke|asm" && i.EdgeKind == "Calls");
             store.Close();
@@ -224,7 +224,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateMove("M:B|asm", "New.Ns");
+            var report = engine.SimulateMove("M:B|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "M:C|asm" && i.EdgeKind == "Overrides");
             store.Close();
@@ -246,7 +246,7 @@ public partial class MigrationRunnerTests
             var store = CreateStoreWithEdges(snapId, edges);
             var engine = new SimulationEngine(store, store, snapId);
 
-            var report = engine.SimulateMove("T:InstrumentTypeService|asm", "New.Ns");
+            var report = engine.SimulateMove("T:InstrumentTypeService|asm");
 
             Assert.Contains(report.Items, i => i.SymbolId == "T:Startup|asm" && i.EdgeKind == "Registers");
             store.Close();

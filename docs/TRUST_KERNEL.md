@@ -540,7 +540,7 @@ eNoteV2 solution confirmed the following capabilities end-to-end:
 | `search --query=Order` | Symbol + source results with snapshot-bound scoping |
 | `context --symbol=... --output=summary` | Token-budgeted capsule (5189/8000 content tokens), tiers omit honestly |
 | `impact --symbol=... --output=summary` | 4 paths, 3 distinct first hops, `MayDispatchTo` edges with provenance |
-| `simulate-rename --symbol=... --new-name=...` | 4 affected symbols (1 caller + 3 overrides) with exact documents/lines |
+| `simulate-rename --symbol=...` | 4 affected symbols (1 caller + 3 overrides) with exact documents/lines |
 | `audit` | Dead-symbol, untested-surface, unregistered-impl, high-fan-out checks all emit |
 | `timings` | Per-step breakdown (extraction_loop 87.9% of total) |
 

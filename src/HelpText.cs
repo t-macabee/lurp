@@ -136,9 +136,10 @@ internal static class HelpText
         Console.WriteLine("    --symbol=<id>         The symbol ID to simulate.");
         Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
         Console.WriteLine("  Options:");
-        Console.WriteLine("    --new-name=<name>     New simple name (simulate-rename only).");
-        Console.WriteLine("    --new-namespace=<ns>  Target namespace (simulate-move only).");
         Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
+        Console.WriteLine("  The affected-reference set follows from the graph alone, so no target");
+        Console.WriteLine("  name or namespace is taken: rename and move report the same call sites");
+        Console.WriteLine("  whatever the symbol is renamed or moved to.");
         Console.WriteLine();
         Console.WriteLine("AUDIT (--mode=audit)");
         Console.WriteLine("  Required:");
