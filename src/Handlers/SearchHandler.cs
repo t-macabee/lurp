@@ -15,7 +15,6 @@ internal static class SearchHandler
         }
 
         var typeArg = HandlerBootstrap.GetArgValue(args, "--type=") ?? "all";
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
         var snippetTokensArg = HandlerBootstrap.GetArgValue(args, "--snippet-tokens=");
@@ -40,16 +39,8 @@ internal static class SearchHandler
             HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
         }
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
-
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
-
             SearchCursor? cursor = null;
             if (!string.IsNullOrEmpty(cursorArg))
             {
@@ -61,9 +52,6 @@ internal static class SearchHandler
             }
 
             var results = new List<object>();
-            // Kept alongside the JSON results rather than derived from them: the results
-            // are anonymous types of two different shapes, and reflecting over them to
-            // render a line would be a worse contract than writing it where the shape is known.
             var summaryLines = new List<string>();
             string? nextCursor = null;
             if (typeArg == "source" || typeArg == "all")
@@ -88,7 +76,7 @@ internal static class SearchHandler
                     catch (ArgumentException ex)
                     {
                         HandlerBootstrap.Fail($"ERROR: {ex.Message}");
-                        return;
+                        return null;
                     }
                     foreach (var r in page.Items)
                     {
@@ -108,9 +96,7 @@ internal static class SearchHandler
                 }
             }
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
-            HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(args, freshness);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
             var meta = new { snapshotId, query = queryArg, type = typeArg, resultCount = results.Count, nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) };
 
@@ -134,10 +120,8 @@ internal static class SearchHandler
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        }
-        finally
-        {
-            store.Close();
-        }
+
+            return null;
+        });
     }
 }

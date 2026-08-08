@@ -11,17 +11,8 @@ internal static class AnnotationHandler
         var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
         var valueArg = HandlerBootstrap.RequireArg(args, "--value=", "ERROR: --value=<text> is required for --mode=annotate.");
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
-
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
-
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
             store.SaveAnnotations(snapshotId, new[] { annotation });
 
@@ -32,30 +23,17 @@ internal static class AnnotationHandler
                 symbol_id = symbolArg,
                 kind = kindArg,
                 value = valueArg
-            }, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        finally
-        {
-            store.Close();
-        }
+            }, HandlerBootstrap.IndentedJson));
+            return null;
+        });
     }
 
     public static void RunGetAnnotations(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        // --symbol is optional for get-annotations; when absent, list all annotations
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
-
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
-
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var annotations = store.GetAnnotations(snapshotId, string.IsNullOrEmpty(symbolArg) ? null : symbolArg);
 
             var result = new
@@ -70,11 +48,8 @@ internal static class AnnotationHandler
                 }).ToList()
             };
 
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        finally
-        {
-            store.Close();
-        }
+            Console.WriteLine(JsonSerializer.Serialize(result, HandlerBootstrap.IndentedJson));
+            return null;
+        });
     }
 }

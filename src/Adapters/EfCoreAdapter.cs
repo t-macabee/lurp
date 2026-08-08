@@ -33,7 +33,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
         var annotations = new List<AnnotationRecord>();
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver, annotations);
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, Version, edges, seen, locationResolver, Annotations: annotations);
 
         ExtractDbContextMappings(context, allTypes, ctx);
         ExtractEntityTypeConfigurations(allTypes, ctx, context);

@@ -20,7 +20,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, Version, edges, seen, locationResolver);
 
         foreach (var type in allTypes)
         {

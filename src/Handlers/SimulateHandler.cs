@@ -4,14 +4,14 @@ using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
-internal static class SimulateMoveHandler
+internal static class SimulateHandler
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, string mode, Func<SimulationEngine, string, SimulationReport> simulate)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg))
         {
-            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=simulate-move.");
+            HandlerBootstrap.Fail($"ERROR: --symbol=<symbol-id> is required for --mode={mode}.");
         }
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
@@ -28,8 +28,8 @@ internal static class SimulateMoveHandler
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
             var engine = new SimulationEngine(store, store, snapshotId);
-            var report = engine.SimulateMove(resolvedSymbolId);
-            var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+            var report = simulate(engine, resolvedSymbolId);
+            var json = JsonSerializer.Serialize(report, HandlerBootstrap.IndentedJson);
             Console.WriteLine(json);
         }
         finally

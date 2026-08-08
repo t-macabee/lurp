@@ -12,25 +12,20 @@ internal static class NavigateHandler
         var file = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
         var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
         var line = 0;
-        var outputDir = HandlerBootstrap.ResolveOutputDir(args);
         if (string.IsNullOrEmpty(file) || !int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out line) || line < 1)
         {
             HandlerBootstrap.Fail("ERROR: --file=<relative-path> and positive --line=<number> are required for --mode=navigate.");
         }
 
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDir);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshot) =>
         {
-            var snapshot = HandlerBootstrap.ResolveSnapshotId(store, HandlerBootstrap.GetArgValue(args, "--snapshot="));
-            var target = new FastTravelQueries(store, store).Navigate(file!, line, snapshot!, args.Contains("--include-generated"));
+            var target = new FastTravelQueries(store, store).Navigate(file!, line, snapshot, args.Contains("--include-generated"));
             if (target == null)
             {
                 HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
             }
-            Console.WriteLine(JsonSerializer.Serialize(new { snapshotId = snapshot, target }, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        finally { store.Close(); }
+            Console.WriteLine(JsonSerializer.Serialize(new { snapshotId = snapshot, target }, HandlerBootstrap.IndentedJson));
+            return null;
+        });
     }
 }

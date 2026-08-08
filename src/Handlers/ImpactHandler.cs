@@ -26,7 +26,6 @@ internal static class ImpactHandler
             _ => throw new ArgumentException($"Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.")
         };
 
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
         int maxDepth = 3;
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
@@ -41,16 +40,9 @@ internal static class ImpactHandler
 
         var maxPaths = HandlerBootstrap.ParsePositiveIntArg(args, "--max-paths=", DefaultMaxPaths);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
-
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
             var fingerprint = SequenceCursor.ComputeFingerprint(
@@ -64,17 +56,8 @@ internal static class ImpactHandler
             var traverser = new ImpactTraverser(store, snapshotId, store);
             var traced = traverser.TraceImpact(symbolId: resolvedSymbolId, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
 
-            // A cursor addresses an offset, so the sequence must have one deterministic
-            // total order. The traversal order is already deterministic, but it is not
-            // *stated*; sorting by path key makes the contract explicit and puts the
-            // paths of one group next to each other, which is what a grouped reader wants.
             var paths = traced.OrderBy(PathKey, StringComparer.Ordinal).ToList();
 
-            // Groups are computed over ALL paths, before the page is cut, so the summary
-            // stays complete even when the payload is truncated. This is the reduction the
-            // remediation plan asks for: the observed 54-path run has only 4 distinct
-            // first hops, and a reader that only needs "what does this fan out into"
-            // never has to page through the paths at all.
             var groups = paths
                 .Where(static path => path.Hops.Count > 0)
                 .GroupBy(static path => (path.Hops[0].SourceSymbolId, path.Hops[0].TargetSymbolId, path.Hops[0].EdgeKind))
@@ -93,9 +76,6 @@ internal static class ImpactHandler
 
             var page = paths.Skip(offset).Take(maxPaths).ToList();
             var remaining = Math.Max(0, paths.Count - (offset + page.Count));
-            // The whole sequence is materialized here, so the remaining count is exact.
-            // It is named `remaining`, not `remaining_estimate`, because publishing an
-            // exact number under an "estimate" label would understate what is known.
             object? truncated = remaining > 0
                 ? new
                 {
@@ -107,9 +87,7 @@ internal static class ImpactHandler
                 }
                 : null;
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
-            HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(args, freshness);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
             var pathJson = page.Select(ToPathJson).ToList();
             var meta = new
@@ -155,11 +133,9 @@ internal static class ImpactHandler
                     }, HandlerBootstrap.IndentedJson));
                     break;
             }
-        }
-        finally
-        {
-            store.Close();
-        }
+
+            return null;
+        });
     }
 
     private static object ToPathJson(ImpactPath path) => new

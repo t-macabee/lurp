@@ -12,16 +12,8 @@ internal static class GetSourceHandler
             HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=get-source.");
         }
 
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
-
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var source = store.GetSource(documentArg, snapshotId);
 
             if (source == null)
@@ -30,10 +22,7 @@ internal static class GetSourceHandler
             }
 
             Console.Write(source);
-        }
-        finally
-        {
-            store.Close();
-        }
+            return null;
+        });
     }
 }

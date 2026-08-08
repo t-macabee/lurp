@@ -13,7 +13,7 @@ namespace Lurp.Adapters;
 
 internal static class DependencyInjectionConventionMatcher
 {
-    internal static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiExtractionContext ctx)
+    internal static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
     {
         var sourceId = DependencyInjectionAdapter.ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
         if (sourceId == null)
@@ -60,7 +60,7 @@ internal static class DependencyInjectionConventionMatcher
     /// the convention placeholder edge from <see cref="ProcessConventionCandidate"/>
     /// is preserved in all cases.
     /// </summary>
-    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiExtractionContext ctx)
+    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
     {
         var assemblyType = ResolveScannedAssemblyType(scanInvocation, semanticModel);
         if (assemblyType?.ContainingAssembly == null)

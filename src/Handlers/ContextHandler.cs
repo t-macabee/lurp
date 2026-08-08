@@ -47,8 +47,6 @@ internal static class ContextHandler
         var topologyAnnotations = GetRepeatableArgs(args, "--topology-annotation=");
         var targetTopology = ParseTargetTopology(GetRepeatableArgs(args, "--target-hop="));
         var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
-        // A capsule is one document, not a sequence, so jsonl is rejected rather than
-        // faked. A single-tier continuation *is* a sequence, so it may stream.
         var outputMode = HandlerBootstrap.ParseOutputMode(args, allowJsonl: !string.IsNullOrEmpty(tierArg));
         var quiet = HandlerBootstrap.IsQuiet(args);
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
@@ -60,11 +58,6 @@ internal static class ContextHandler
             HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
         }
 
-        if (hasSymbol)
-        {
-            // Resolution deferred until after the store and snapshotId are available.
-        }
-
         var intent = ParseIntent(intentArg);
         var budget = string.IsNullOrEmpty(budgetArg)
             ? DefaultBudgetFor(symbolArg)
@@ -72,14 +65,8 @@ internal static class ContextHandler
         var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, snapshotArg, (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
-
             if (hasSymbol)
             {
                 symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
@@ -89,16 +76,10 @@ internal static class ContextHandler
             {
                 RunTierContinuation(store, args, snapshotId, tierArg, symbolArg, fileArg, lineNumber,
                     maxHops, includeGenerated, outputMode);
-                return;
+                return null;
             }
 
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
-            // Resolve the git root from the requested snapshot, not from the
-            // latest complete snapshot : the capsule's verification suggestions
-            // (owning test project, solution path) must describe the workspace
-            // the snapshot was taken from. Falling back to LoadLatestSnapshot()
-            // silently attributed the wrong workspace when --snapshot= pointed
-            // at an older snapshot.
             var gitRoot = store.GetSnapshotGitRoot(snapshotId);
             var assemblyOptions = new ContextAssemblyOptions(
                 intent, budget, maxHops, includeGenerated,
@@ -106,16 +87,11 @@ internal static class ContextHandler
                 targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
-            HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(args, freshness);
+            HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
             WriteCapsuleOutput(capsule, outputDirArg, outputMode, quiet);
-        }
-        finally
-        {
-            store.Close();
-        }
+            return null;
+        });
     }
 
     /// <summary>
@@ -162,9 +138,7 @@ internal static class ContextHandler
             store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tierArg,
             maxHops, includeGenerated, offset, limit);
 
-        var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
-        HandlerBootstrap.EnforceRequireFresh(args, freshness);
-        HandlerBootstrap.PrintFreshnessLine(args, freshness);
+        var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
         var nextCursor = page.HasMore
             ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()

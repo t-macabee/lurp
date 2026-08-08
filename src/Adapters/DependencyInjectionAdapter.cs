@@ -14,16 +14,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     public string Version => "di-v1";
     public string Description => "Dependency injection container edges";
 
-    internal sealed record DiExtractionContext(
-        string AssemblyIdentity,
-        string SnapshotId,
-        string ExtractorVersion,
-        List<EdgeRecord> Edges,
-        HashSet<(string source, string target, string kind)> Seen,
-        EdgeLocationResolver LocationResolver,
-        BindingIncompletenessCollector? Incompleteness
-    );
-
     private static readonly HashSet<string> _conventionMethodNames =
     [
         "Scan", "AddClasses", "AsImplementedInterfaces",
@@ -36,16 +26,17 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var snapshotId = context.SnapshotId;
         var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
+        var seen = new HashSet<(string Source, string Target, string Kind)>();
 
-        var ctx = new DiExtractionContext(
+        var ctx = new ExtractionContext(
             AssemblyIdentity: compilation.Assembly.Identity.GetDisplayName(),
             SnapshotId: snapshotId,
             ExtractorVersion: Version,
             Edges: edges,
             Seen: seen,
             LocationResolver: locationResolver,
-            Incompleteness: context.Incompleteness
+            Incompleteness: context.Incompleteness,
+            Annotations: null
         );
 
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
@@ -98,7 +89,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         return edges;
     }
 
-    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, DiExtractionContext ctx)
+    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, ExtractionContext ctx)
     {
         if (!IsDependencyInjectionExtensionMethod(methodSymbol))
             return;
@@ -147,7 +138,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     /// self-registration <c>AddScoped&lt;Service&gt;()</c>) or when the source
     /// and target resolve to the same symbol.
     /// </summary>
-    private static void EmitInterfaceToImplementationEdge(InvocationExpressionSyntax invocation, List<ITypeSymbol> typeArgs, string implTypeId, DiExtractionContext ctx)
+    private static void EmitInterfaceToImplementationEdge(InvocationExpressionSyntax invocation, List<ITypeSymbol> typeArgs, string implTypeId, ExtractionContext ctx)
     {
         if (typeArgs.Count < 2)
             return;
@@ -226,7 +217,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
 
-    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, DiExtractionContext ctx)
+    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, ExtractionContext ctx)
     {
         var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
 

@@ -242,6 +242,40 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
+    /// Opens the store for <paramref name="args"/>, resolves the snapshot id from
+    /// <paramref name="snapshotArg"/> (or the latest snapshot when null), calls
+    /// <paramref name="body"/>, and closes the store in a <c>finally</c>.
+    /// </summary>
+    public static T WithStore<T>(string[] args, string? snapshotArg, Func<SqliteIndexStore, string, T> body)
+    {
+        var outputDir = ResolveOutputDir(args);
+        var dbPath = ResolveDbPath(outputDir);
+        var store = OpenStore(dbPath);
+        try
+        {
+            var snapshotId = ResolveSnapshotId(store, snapshotArg);
+            return body(store, snapshotId);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    /// <summary>
+    /// Computes freshness, enforces <c>--require-fresh</c>, and prints the freshness
+    /// line (unless <c>--quiet</c>). Returns the stamp so callers can embed it in
+    /// the payload.
+    /// </summary>
+    public static FreshnessStamp ResolveFreshness(string[] args, SqliteIndexStore store, string snapshotId)
+    {
+        var stamp = ComputeFreshnessStamp(store, store, snapshotId, args);
+        EnforceRequireFresh(args, stamp);
+        PrintFreshnessLine(args, stamp);
+        return stamp;
+    }
+
+    /// <summary>
     /// Resolves a symbol identifier argument to the canonical <c>docCommentId|assemblyIdentity</c>
     /// form. Accepts the pipe-separated form directly, a bare doc-comment ID (e.g. T:Some.Type),
     /// or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate

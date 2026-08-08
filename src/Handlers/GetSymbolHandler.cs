@@ -14,26 +14,15 @@ internal static class GetSymbolHandler
         var viewArg = HandlerBootstrap.RequireArg(args, "--view=", "ERROR: --view=<view-kind> is required for --mode=get-symbol.",
             "  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
-
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var contextLinesArg = HandlerBootstrap.GetArgValue(args, "--context-lines=");
         var includeGenerated = args.Contains("--include-generated");
 
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
             var view = ResolveViewSelection(viewArg!, contextLinesArg);
             WriteRequestedView(store, view, symbolArg!, snapshotId, viewArg!, includeGenerated);
-        }
-        finally
-        {
-            store.Close();
-        }
+            return null;
+        });
     }
 
     private static ViewSelection ResolveViewSelection(string viewArg, string? contextLinesArg)
@@ -93,7 +82,7 @@ internal static class GetSymbolHandler
             declarationCount = info.DeclarationCount,
             isPartial = info.IsPartial,
             snapshotId
-        }, new JsonSerializerOptions { WriteIndented = true });
+        }, HandlerBootstrap.IndentedJson);
 
         Console.WriteLine(json);
     }

@@ -41,7 +41,7 @@ internal static class BindingIncompletenessReason
         };
 }
 
-internal sealed class BindingIncompletenessCollector(string projectName, string gitRoot)
+public sealed class BindingIncompletenessCollector(string projectName, string gitRoot)
 {
     private static readonly HashSet<string> MissingMetadataDiagnosticIds =
         ["CS0012", "CS0234", "CS0246", "CS1069", "CS1705", "CS7069"];

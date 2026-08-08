@@ -21,7 +21,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, edges, seen, locationResolver);
+        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, Version, edges, seen, locationResolver);
 
         foreach (var tree in compilation.SyntaxTrees)
         {

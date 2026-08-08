@@ -14,7 +14,7 @@ public sealed class TestAdapter : IFrameworkAdapter
     public string Version => "test-v3";
     public string Description => "Production-to-test tested-by edges";
 
-    private sealed record ExtractionContext(
+    private sealed record TestEmitContext(
         string AssemblyIdentity,
         HashSet<(string source, string target, string kind)> Seen,
         List<EdgeRecord> Edges,
@@ -75,7 +75,7 @@ public sealed class TestAdapter : IFrameworkAdapter
 
                     var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                     var referencedSymbols = new HashSet<string>();
-                    var testCtx = new ExtractionContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
+                    var testCtx = new TestEmitContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
                         path, sl, sc, el, ec, isGenerated);
 
                     CollectTestReferences(bodySyntax, semanticModel, testCtx);
@@ -134,7 +134,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void AddProductionRef(ISymbol symbol, ExtractionContext context)
+    private static void AddProductionRef(ISymbol symbol, TestEmitContext context)
     {
 
         var productionSymbol = symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol
@@ -176,7 +176,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         }
     }
 
-    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, ExtractionContext context)
+    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, TestEmitContext context)
     {
         foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {

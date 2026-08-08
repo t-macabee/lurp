@@ -13,19 +13,11 @@ internal static class FindSymbolHandler
             HandlerBootstrap.Fail("ERROR: --symbol=<name> is required for --mode=find-symbol.");
         }
 
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
-
-        var store = HandlerBootstrap.OpenStore(dbPath);
-
-        try
+        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var snapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotArg);
-
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
             if (info == null)
             {
@@ -35,9 +27,7 @@ internal static class FindSymbolHandler
                     "or a fully-qualified name (e.g. Some.Namespace.Type).");
             }
 
-            var freshness = HandlerBootstrap.ComputeFreshnessStamp(store, store, snapshotId, args);
-            HandlerBootstrap.EnforceRequireFresh(args, freshness);
-            HandlerBootstrap.PrintFreshnessLine(args, freshness);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
             var payload = new
             {
@@ -62,8 +52,6 @@ internal static class FindSymbolHandler
                     Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
                     break;
 
-                // A single symbol is one record, so jsonl is that record on one line :
-                // the same field contract, just streamable alongside other jsonl output.
                 case OutputMode.Jsonl:
                     Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
                     break;
@@ -72,10 +60,8 @@ internal static class FindSymbolHandler
                     Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
                     break;
             }
-        }
-        finally
-        {
-            store.Close();
-        }
+
+            return null;
+        });
     }
 }
