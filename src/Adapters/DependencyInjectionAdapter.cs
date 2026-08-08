@@ -12,6 +12,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 {
     public string Name => "Dependency Injection";
     public string Version => "di-v1";
+    public string Description => "Dependency injection container edges";
 
     internal sealed record DiExtractionContext(
         string AssemblyIdentity,
@@ -29,7 +30,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes",
     ];
 
-    public List<EdgeRecord> Extract(AdapterExtractionContext context)
+    public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
         var snapshotId = context.SnapshotId;

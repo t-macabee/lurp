@@ -8,10 +8,11 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
 
-public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdapter
+public sealed class EfCoreAdapter : IFrameworkAdapter
 {
     public string Name => "EF Core";
     public string Version => "efcore-v1";
+    public string Description => "Entity Framework Core edges (DbSets, entity mappings)";
 
     /// <remarks>
     /// Honors <see cref="AdapterExtractionContext.ScopeDocuments"/> like the other
@@ -22,7 +23,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
     /// copied-forward rows over exactly the extraction scope, so extraction and
     /// deletion narrow in lockstep.
     /// </remarks>
-    public List<EdgeRecord> Extract(AdapterExtractionContext context)
+    public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
         var snapshotId = context.SnapshotId;
@@ -37,14 +38,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter, IAnnotationExtractingAdap
         ExtractDbContextMappings(context, allTypes, ctx);
         ExtractEntityTypeConfigurations(allTypes, ctx, context);
 
-        _annotations = annotations;
-        return edges;
+        return new AdapterExtractionResult(edges, annotations);
     }
-
-    private List<AnnotationRecord>? _annotations;
-
-    List<AnnotationRecord> IAnnotationExtractingAdapter.ExtractAnnotations(AdapterExtractionContext context)
-        => _annotations ?? [];
 
     private static void ExtractDbContextMappings(AdapterExtractionContext context, List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
     {

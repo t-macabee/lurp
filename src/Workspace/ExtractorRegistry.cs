@@ -1,3 +1,5 @@
+using Lurp.Adapters;
+
 namespace Lurp.Workspace;
 
 /// <summary>
@@ -9,15 +11,13 @@ namespace Lurp.Workspace;
 /// </summary>
 internal static class ExtractorRegistry
 {
-    /// <summary>(Name, Version, Description) for every known extractor.</summary>
-    /// <remarks>
-    /// <c>Version</c> is the exact string written into
-    /// <c>edges.extractor_version</c>.  <c>Name</c> is a short human-readable
-    /// identifier for the extractor.
-    /// </remarks>
-    internal static IReadOnlyList<(string Name, string Version, string Description)> All { get; } =
-        new (string Name, string Version, string Description)[]
-        {
+    /// <summary>
+    /// Workspace extractors, whose versions live in <see cref="ExtractorConstants"/>
+    /// / <see cref="VersionConstants"/>. Framework adapters are not listed here —
+    /// see <see cref="All"/>.
+    /// </summary>
+    private static readonly (string Name, string Version, string Description)[] WorkspaceExtractors =
+        [
             // -- Member-edge extractors (ExtractorConstants) --
             ("Declares",              ExtractorConstants.DeclaresExtractor,              "Type-declares-member containment edges"),
             ("Calls",                 ExtractorConstants.CallsExtractor,                 "Direct method/function call edges"),
@@ -41,15 +41,20 @@ internal static class ExtractorRegistry
 
             // -- Structural type-relationship extractor (uses VersionConstants.ExtractorVersion) --
             ("Structural",            VersionConstants.ExtractorVersion,                 "Structural type edges (inherits, implements, contains, references)"),
+        ];
 
-            // -- Framework adapters --
-            ("AspNetCore",            "aspnetcore-v1",     "ASP.NET Core framework edges (controller actions, middleware)"),
-            ("MediatR",               "mediatr-v1",        "MediatR framework edges (request/handler)"),
-            ("EfCore",                "efcore-v1",         "Entity Framework Core edges (DbSets, entity mappings)"),
-            ("Serialization",         "serialization-v1",  "Serialization framework edges (JSON/XML contracts)"),
-            ("DependencyInjection",   ExtractorConstants.DependencyInjectionExtractor, "Dependency injection container edges"),
-
-            // -- Test adapter (hard-coded in TestAdapter.cs) --
-            ("Test",                  "test-v3",           "Production-to-test tested-by edges"),
-        };
+    /// <summary>(Name, Version, Description) for every known extractor.</summary>
+    /// <remarks>
+    /// <c>Version</c> is the exact string written into
+    /// <c>edges.extractor_version</c>.  <c>Name</c> is a short human-readable
+    /// identifier for the extractor. Adapter rows are projected from the adapter
+    /// instances themselves (<see cref="AdapterRegistry.GetAdapters"/>), so the
+    /// version an adapter stamps onto its edges and the version registered in the
+    /// <c>extractors</c> table are the same symbol and cannot drift.
+    /// </remarks>
+    internal static IReadOnlyList<(string Name, string Version, string Description)> All { get; } =
+        [
+            .. WorkspaceExtractors,
+            .. AdapterRegistry.GetAdapters().Select(a => (a.Name, a.Version, a.Description)),
+        ];
 }

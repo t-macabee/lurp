@@ -71,7 +71,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         return false;
     }
 
-    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes() => GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
+    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes() => ExtractionUtils.GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
     {
@@ -193,22 +193,6 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             cache[syntaxTree] = model;
         }
         return model;
-    }
-
-    private static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
-    {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            yield return type;
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            foreach (var type in GetNamespaceTypeMembers(childNs))
-            {
-                yield return type;
-            }
-        }
     }
 }
 

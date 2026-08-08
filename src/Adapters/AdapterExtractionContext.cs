@@ -55,16 +55,7 @@ public sealed class AdapterExtractionContext
     }
 
     public bool IsInScope(SyntaxTree? syntaxTree)
-    {
-        // Byte-identical semantics to SymbolExtractionContext.IsInScope:26-34 —
-        // absolute path compare, path-less trees always in scope.
-        if (ScopeDocuments == null || syntaxTree == null)
-            return true;
-        var filePath = syntaxTree.FilePath;
-        if (string.IsNullOrEmpty(filePath))
-            return true;
-        return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
-    }
+        => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
 
     /// <summary>
     /// True when any declaring part of <paramref name="symbol"/> is in scope. Used by

@@ -11,8 +11,9 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 {
     public string Name => "Serialization";
     public string Version => "serialization-v1";
+    public string Description => "Serialization framework edges (JSON/XML contracts)";
 
-    public List<EdgeRecord> Extract(AdapterExtractionContext context)
+    public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
         var snapshotId = context.SnapshotId;

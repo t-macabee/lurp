@@ -198,24 +198,19 @@ public static class CompilationFactExtractor
             compilation, snapshotId, locationResolver, scopeDocuments, sharedModelCache,
             incompleteness);
 
+        var annotations = new List<AnnotationRecord>();
+
         foreach (var adapter in adapters)
         {
             RunStage(
                 ctx, "Adapter", adapter.Name, logError,
                 msg => $"Adapter '{adapter.Name}' failed: {msg}",
-                () => edges.AddRange(adapter.Extract(adapterContext)));
-        }
-
-        var annotations = new List<AnnotationRecord>();
-        foreach (var adapter in adapters)
-        {
-            if (adapter is IAnnotationExtractingAdapter annAdapter)
-            {
-                RunStage(
-                    ctx, "AdapterAnnotations", adapter.Name, logError,
-                    msg => $"Adapter annotations '{adapter.Name}' failed: {msg}",
-                    () => annotations.AddRange(annAdapter.ExtractAnnotations(adapterContext)));
-            }
+                () =>
+                {
+                    var result = adapter.Extract(adapterContext);
+                    edges.AddRange(result.Edges);
+                    annotations.AddRange(result.Annotations);
+                });
         }
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);

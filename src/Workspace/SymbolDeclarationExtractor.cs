@@ -17,7 +17,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         var results = new List<SymbolDeclaration>();
 
-        foreach (var typeSymbol in ExtractionContextBase.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
             ExtractTypeDeclarations(typeSymbol, results);
         }

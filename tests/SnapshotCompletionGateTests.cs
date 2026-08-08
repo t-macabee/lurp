@@ -395,8 +395,9 @@ public sealed class SnapshotCompletionGateTests : IDisposable
     {
         public string Name => "ThrowingAdapter";
         public string Version => "1.0.0";
+        public string Description => "Adapter that always throws, for failure-path tests";
 
-        public List<EdgeRecord> Extract(AdapterExtractionContext context)
+        public AdapterExtractionResult Extract(AdapterExtractionContext context)
         {
             throw new InvalidOperationException("Adapter intentionally failed for testing.");
         }

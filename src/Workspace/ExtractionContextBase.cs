@@ -69,20 +69,4 @@ internal abstract class ExtractionContextBase
                 lineSpan.EndLinePosition.Line,
                 lineSpan.EndLinePosition.Character);
     }
-
-    internal static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
-    {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            yield return type;
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            foreach (var type in GetNamespaceTypeMembers(childNs))
-            {
-                yield return type;
-            }
-        }
-    }
 }

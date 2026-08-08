@@ -70,14 +70,7 @@ internal sealed class SymbolExtractionContext(
         => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
 
     internal bool IsInScope(SyntaxTree? syntaxTree)
-    {
-        if (ScopeDocuments == null || syntaxTree == null)
-            return true;
-        var filePath = syntaxTree.FilePath;
-        if (string.IsNullOrEmpty(filePath))
-            return true;
-        return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
-    }
+        => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
 
     internal DocumentId? ResolveDocumentId(SyntaxTree syntaxTree)
     {

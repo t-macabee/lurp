@@ -9,8 +9,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 {
     public string Name => "ASP.NET Core";
     public string Version => "aspnetcore-v1";
+    public string Description => "ASP.NET Core framework edges (controller actions, middleware)";
 
-    public List<EdgeRecord> Extract(AdapterExtractionContext context)
+    public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
         var snapshotId = context.SnapshotId;

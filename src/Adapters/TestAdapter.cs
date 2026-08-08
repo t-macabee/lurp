@@ -12,6 +12,7 @@ public sealed class TestAdapter : IFrameworkAdapter
 {
     public string Name => "Test";
     public string Version => "test-v3";
+    public string Description => "Production-to-test tested-by edges";
 
     private sealed record ExtractionContext(
         string AssemblyIdentity,
@@ -27,7 +28,7 @@ public sealed class TestAdapter : IFrameworkAdapter
         int? TestEndColumn,
         bool TestIsCrossGenerated);
 
-    public List<EdgeRecord> Extract(AdapterExtractionContext context)
+    public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
         var snapshotId = context.SnapshotId;

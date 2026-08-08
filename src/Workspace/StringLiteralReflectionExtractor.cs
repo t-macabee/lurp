@@ -92,7 +92,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
 
     private string? ResolveSymbolIdByName(string name, bool isType)
     {
-        foreach (var typeSymbol in ExtractionContextBase.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
             if (isType)
             {

@@ -11,7 +11,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     {
         var edges = new List<EdgeRecord>();
 
-        foreach (var typeSymbol in ExtractionContextBase.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
         {
             CollectTypeEdges(typeSymbol, edges);
         }
