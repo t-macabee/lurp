@@ -160,52 +160,16 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         store.Open();
         store.RunMigrations();
 
-        using var workspace = MSBuildWorkspace.Create();
-        var solution = await workspace.OpenSolutionAsync(_solutionPath);
-        var gitRoot = _testDir;
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        await IndexRunner.RunAsync(
+            store, _solutionPath, _testDir,
+            skipAdapters: [], jsonExportPath: null, strategyArg: "full",
+            cancellationToken: default, verbose: false, output: null, skipDiff: false);
 
-        var snapshotId = SnapshotIdentity.Create(workspaceInfo, new HashSet<string>());
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
-        var snapshotIdStr = snapshotId.ToString();
+        var snapshot = store.LoadLatestSnapshot()
+            ?? throw new InvalidOperationException($"No snapshot found in {_dbPath} after full index.");
 
-        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
-
-        var allEdges = new List<EdgeRecord>();
-
-        foreach (var project in solution.Projects)
-        {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null)
-                continue;
-
-            var projectName = project.Name;
-            Console.WriteLine($"    [{projectName}]");
-
-            var result = CompilationFactExtractor.ExtractAll(
-                compilation, workspaceInfo, snapshotIdStr, projectName,
-                new CompilationFactExtractor.ExtractionOptions(new HashSet<string>()));
-
-            store.SaveDeclarations(snapshotIdStr, result.Declarations);
-            store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
-            store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
-            if (result.Annotations.Count > 0)
-                store.SaveAnnotations(snapshotIdStr, result.Annotations);
-
-            allEdges.AddRange(result.Edges);
-
-            Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges");
-        }
-
-        var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
-        store.SaveEdges(snapshotIdStr, dedupedEdges);
-
-        store.DeleteOrphanEdges(snapshotIdStr);
-        store.BuildSearchIndex(snapshotIdStr);
-        store.MarkSnapshotComplete(snapshotIdStr);
-
-        Console.WriteLine($"    Snapshot: {snapshotIdStr}");
-        return snapshotIdStr;
+        Console.WriteLine($"    Snapshot: {snapshot.SnapshotId}");
+        return snapshot.SnapshotId;
     }
 
     private async Task<string> RunIndependentFullIndexAsync(string label)
@@ -219,52 +183,16 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         store.Open();
         store.RunMigrations();
 
-        using var workspace = MSBuildWorkspace.Create();
-        var solution = await workspace.OpenSolutionAsync(_solutionPath);
-        var gitRoot = _testDir;
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        await IndexRunner.RunAsync(
+            store, _solutionPath, _testDir,
+            skipAdapters: [], jsonExportPath: null, strategyArg: "full",
+            cancellationToken: default, verbose: false, output: null, skipDiff: false);
 
-        var snapshotId = SnapshotIdentity.Create(workspaceInfo, new HashSet<string>());
-        var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId);
-        var snapshotIdStr = snapshotId.ToString();
+        var snapshot = store.LoadLatestSnapshot()
+            ?? throw new InvalidOperationException($"No snapshot found in {_cleanRebuildDbPath} after full index.");
 
-        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath: null);
-
-        var allEdges = new List<EdgeRecord>();
-
-        foreach (var project in solution.Projects)
-        {
-            var compilation = await project.GetCompilationAsync();
-            if (compilation == null)
-                continue;
-
-            var projectName = project.Name;
-            Console.WriteLine($"    [{projectName}]");
-
-            var result = CompilationFactExtractor.ExtractAll(
-                compilation, workspaceInfo, snapshotIdStr, projectName,
-                new CompilationFactExtractor.ExtractionOptions(new HashSet<string>()));
-
-            store.SaveDeclarations(snapshotIdStr, result.Declarations);
-            store.SaveDiagnostics(snapshotIdStr, result.Diagnostics);
-            store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
-            if (result.Annotations.Count > 0)
-                store.SaveAnnotations(snapshotIdStr, result.Annotations);
-
-            allEdges.AddRange(result.Edges);
-
-            Console.WriteLine($"      {result.Declarations.Count} symbols, {result.Edges.Count} edges");
-        }
-
-        var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
-        store.SaveEdges(snapshotIdStr, dedupedEdges);
-
-        store.DeleteOrphanEdges(snapshotIdStr);
-        store.BuildSearchIndex(snapshotIdStr);
-        store.MarkSnapshotComplete(snapshotIdStr);
-
-        Console.WriteLine($"    Snapshot: {snapshotIdStr}");
-        return snapshotIdStr;
+        Console.WriteLine($"    Snapshot: {snapshot.SnapshotId}");
+        return snapshot.SnapshotId;
     }
 
     private async Task<string> RunIncrementalIndexAsync(string label)
