@@ -12,7 +12,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
     private readonly bool _skipDiff = skipDiff;
 
-    private readonly DocumentChangeDetector _changeDetector = new(gitRoot);
+    private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
 
     private sealed record IncrementalChangeScope(
         IReadOnlySet<string> ChangedPaths,

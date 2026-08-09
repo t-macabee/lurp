@@ -26,17 +26,17 @@ internal enum OutputMode
 internal static class HandlerBootstrap
 {
     /// <summary>
-    /// The single error+exit idiom for handlers: writes <paramref name="message"/> to stderr
-    /// and terminates with <paramref name="code"/>. Marked <c>[DoesNotReturn]</c> so callers
+    /// The single error+exit idiom for handlers: throws
+    /// <see cref="CliExitException"/> carrying <paramref name="message"/> and
+    /// <paramref name="code"/>; <c>Program.Main</c> writes the message to stderr
+    /// and terminates with the code. Marked <c>[DoesNotReturn]</c> so callers
     /// keep the definite-assignment and nullability behaviour they had when calling
     /// <see cref="Environment.Exit(int)"/> inline.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     public static void Fail(string message, int code = 1)
     {
-        Console.Error.WriteLine(message);
-        Environment.Exit(code);
-        throw new InvalidOperationException("unreachable: Environment.Exit does not return");
+        throw new CliExitException(message, code);
     }
 
     public static string? GetArgValue(string[] args, string prefix)

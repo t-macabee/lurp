@@ -3,9 +3,10 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-public sealed class DocumentChangeDetector(string gitRoot)
+public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
 {
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
+    private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
 
     public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
 
@@ -20,20 +21,20 @@ public sealed class DocumentChangeDetector(string gitRoot)
     public (List<DocumentChangeInfo> ChangedDocs, HashSet<string> ChangedPaths) DetectAndLogChanges(
         WorkspaceInfo workspaceInfo, SnapshotManifest previousRichManifest)
     {
-        Console.Write("Hashing documents and detecting changes... ");
+        _output.Write("Hashing documents and detecting changes... ");
         var docChanges = DetectChanges(workspaceInfo, previousRichManifest);
         var changedDocs = docChanges.Where(c => c.ChangeKind != DocumentChangeKind.Unchanged).ToList();
         var changedPaths = changedDocs.Select(c => c.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Console.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
+        _output.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
 
         if (changedDocs.Count == 0)
         {
-            Console.WriteLine("No changes detected. Skipping incremental index.");
+            _output.WriteLine("No changes detected. Skipping incremental index.");
         }
         else
         {
             foreach (var change in changedDocs)
-                Console.WriteLine($"  {change.ChangeKind}: {change.RelativePath}");
+                _output.WriteLine($"  {change.ChangeKind}: {change.RelativePath}");
         }
 
         return (changedDocs, changedPaths);

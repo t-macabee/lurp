@@ -104,6 +104,14 @@ public class Program
                 CliFlagValidation.Validate(entry, args);
                 await entry.Handler(args);
             }
+            catch (CliExitException ex)
+            {
+                // A diagnosed CLI failure (e.g. bad flags, missing database).
+                // HandlerBootstrap.Fail throws this instead of exiting, so every
+                // failure path is testable and process control lives here.
+                Console.Error.WriteLine(ex.Message);
+                Environment.Exit(ex.ExitCode);
+            }
             catch (WorkspaceUnreadableException ex)
             {
                 // A diagnosed refusal, not a crash. The operator needs the remediation
