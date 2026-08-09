@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  build:
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -31,27 +31,6 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run unit tests
-        run: >
-          dotnet test tests/Lurp.Tests.csproj
-          --no-build --configuration Release --verbosity normal
-
-      - name: Flake guard (storage suite × 20)
-        # Runs the storage suite 20 times and fails the build on ANY single failure.
-        # Catches teardown/lifecycle races that appear intermittently (~1 in 15–30 runs).
-        shell: pwsh
-        run: |
-          for ($i = 1; $i -le 20; $i++) {
-            dotnet test tests/Lurp.Tests.csproj --no-build --configuration Release --nologo
-            if ($LASTEXITCODE -ne 0) { Write-Error "Flake detected on run $i"; exit 1 }
-          }
-
-      - name: Run clean-rebuild equivalence test
-        # This test loads MSBuildWorkspace and exercises the real incremental/full
-        # indexing paths end-to-end. A failure here blocks the merge.
-        run: >
-          dotnet test tests/Lurp.Tests.csproj
-          --no-build
-          --configuration Release
-          --filter "FullyQualifiedName=Lurp.Storage.Tests.PipelineEquivalenceTest.IncrementalIndex_Matches_FullRebuild_AfterSingleFileChange"
-          --verbosity normal
+      # The unit-test, flake-guard, and clean-rebuild-equivalence steps were
+      # removed with the suite: commit f1254fc deleted tests/Lurp.Tests.csproj.
+      # Restore them when the test project is rebuilt.

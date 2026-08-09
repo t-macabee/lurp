@@ -107,8 +107,33 @@ internal sealed class GitIgnoreMatcher
 
         if (isDirectoryPattern)
         {
-            return path.StartsWith(pattern, StringComparison.OrdinalIgnoreCase) ||
-                   path.Contains("/" + pattern, StringComparison.OrdinalIgnoreCase);
+            var anchored = pattern.StartsWith('/');
+            if (anchored)
+                pattern = pattern[1..];
+
+            var patternSegments = pattern.Split('/');
+            var pathSegments = path.Split('/');
+
+            if (patternSegments.Length == 1)
+            {
+                if (anchored)
+                    return pathSegments.Length > 0 &&
+                           string.Equals(pathSegments[0], patternSegments[0], StringComparison.OrdinalIgnoreCase);
+
+                return pathSegments.Any(seg =>
+                    string.Equals(seg, patternSegments[0], StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (pathSegments.Length < patternSegments.Length)
+                return false;
+
+            for (int i = 0; i < patternSegments.Length; i++)
+            {
+                if (!string.Equals(pathSegments[i], patternSegments[i], StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            return true;
         }
 
         return string.Equals(path, pattern, StringComparison.OrdinalIgnoreCase) ||

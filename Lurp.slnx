@@ -5,7 +5,4 @@
   <Folder Name="/src/Storage/">
     <Project Path="src/Storage/Lurp.Storage.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Lurp.Tests.csproj" />
-  </Folder>
 </Solution>

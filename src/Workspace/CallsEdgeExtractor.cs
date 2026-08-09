@@ -108,6 +108,13 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         if (callee.MethodKind == MethodKind.AnonymousFunction)
             return;
 
+        // Local functions cannot be invoked outside their lexical method, so a
+        // Calls edge to one carries no inter-symbol graph information. They are
+        // also never declared (SymbolDeclarationExtractor walks GetMembers only),
+        // so the edge would orphan out and be deleted by DeleteOrphanEdges.
+        if (callee.MethodKind == MethodKind.LocalFunction)
+            return;
+
         context.RecordFilteredExternal(callee, syntax);
 
         var location = context.GetLocationInfo(syntax.GetLocation());

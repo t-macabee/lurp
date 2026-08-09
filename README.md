@@ -50,14 +50,11 @@ names are accepted for backwards compatibility.
 
 ## A real example journey
 
-Start with the partial `Widget` type in the committed sample fixture. Its
-declarations live in both `Widget.cs` and `Widget.Extra.cs`. A context request
-can resolve the source location, return the exact declaration and member spans,
-and include the relevant `Declares` and `Reads` relationships. The included
-graph is generated from that fixture and keeps unresolved external bindings as
-explicit uncertainty instead of presenting them as missing relationships.
-
-![Fixture-derived context graph for the partial Widget type, its declarations and member reads](Screenshot%202026-08-06%20193025.png)
+The sample fixture (`tests/fixtures/Sample/`, partial `Widget` type) and the
+fixture-derived graph that previously illustrated this section were removed
+with the test suite in the Aug 2026 cleanup (commit `f1254fc`). No sample
+fixture or screenshot is currently committed; this section will be restored
+with a rebuilt sample fixture and its `context` output.
 
 This is the useful path: start at a location, retrieve the source that belongs
 to it, then follow only the relationships needed for the task.

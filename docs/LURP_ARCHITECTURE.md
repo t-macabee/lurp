@@ -269,9 +269,12 @@ benchmark set — drawn from real eNoteV2 tasks and previous agent failures —
 covers eight scenarios: vague cleanup request; local validation change;
 handler/DTO modification; cross-project interface change; apparently unused
 type deletion; entity change affecting EF or serialization; DI implementation
-replacement; route contract change. Three are implemented today
-(`tests/OutcomeBenchmarkTests.cs`): `local-validation-change`,
-`handler-dto-modification`, `di-implementation-replacement`.
+replacement; route contract change. Three were implemented in
+`tests/OutcomeBenchmarkTests.cs` (`local-validation-change`,
+`handler-dto-modification`, `di-implementation-replacement`), but that test
+file was deleted with the rest of the suite in the Aug 2026 cleanup (commit
+`f1254fc`); those scenarios and their verification are not currently
+reproducible pending a rebuilt suite.
 
 Measure: correct starting symbol found? actual source retrieved without
 project exploration? all constraining contracts included? affected callers and
