@@ -49,8 +49,6 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             if (!context.IsInScope(tree))
                 continue;
 
-            IndexTrace.TreeWalk("Adapter", Name, tree.FilePath);
-
             var semanticModel = context.GetSemanticModel(tree);
 
             foreach (var invocation in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())

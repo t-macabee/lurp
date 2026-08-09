@@ -122,7 +122,6 @@ public static class CompilationFactExtractor
 
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
-        IndexTrace.SetProject(projectName);
         var skipAdapters = options?.SkipAdapters;
         var logWarning = options?.LogWarning;
         var logError = options?.LogError;

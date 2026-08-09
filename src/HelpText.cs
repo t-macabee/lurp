@@ -15,9 +15,6 @@ internal static class HelpText
         Console.Error.WriteLine($"ERROR: Unknown mode. Use {modeList}.");
         Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
-        Console.Error.WriteLine("  Note: 'structure' is served by --mode=context --intent=inspect.");
-        Console.Error.WriteLine("  Note: 'who-references' is served by --mode=impact --direction=upstream.");
-        Console.Error.WriteLine("  Note: 'discover' is served by --mode=search --type=symbol --kind=<SymbolKind>.");
     }
 
     internal static void PrintHelp()

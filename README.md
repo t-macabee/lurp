@@ -56,9 +56,6 @@ with the test suite in the Aug 2026 cleanup (commit `f1254fc`). No sample
 fixture or screenshot is currently committed; this section will be restored
 with a rebuilt sample fixture and its `context` output.
 
-This is the useful path: start at a location, retrieve the source that belongs
-to it, then follow only the relationships needed for the task.
-
 ## Quick start
 
 Index a solution:

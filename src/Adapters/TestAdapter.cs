@@ -71,8 +71,6 @@ public sealed class TestAdapter : IFrameworkAdapter
                     if (bodySyntax == null)
                         continue;
 
-                    IndexTrace.TreeWalk("Adapter", Name, methodSyntax.SyntaxTree.FilePath);
-
                     var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                     var referencedSymbols = new HashSet<string>();
                     var testCtx = new TestEmitContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,

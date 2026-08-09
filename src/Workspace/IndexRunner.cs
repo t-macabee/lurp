@@ -204,7 +204,6 @@ public static class IndexRunner
 
                 try
                 {
-                    IndexTrace.BeginPass("full_index");
                     var options = CompilationFactExtractor.CreateOptions(skipAdapters);
                     var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
                     result.EnsureRequiredSuccess();

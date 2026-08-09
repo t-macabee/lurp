@@ -38,10 +38,6 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (!IsTypeInScope(typeSymbol))
             return;
 
-        var firstRef = typeSymbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (firstRef != null)
-            IndexTrace.TreeWalk("StructuralEdge", "", firstRef.SyntaxTree.FilePath);
-
         var sourceId = MakeSymbolId(typeSymbol);
         if (sourceId == null)
             return;

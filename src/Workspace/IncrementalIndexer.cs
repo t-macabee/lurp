@@ -373,7 +373,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 continue;
             }
 
-            IndexTrace.BeginPass("step6_reextraction");
             var options = CompilationFactExtractor.CreateOptions(_skipAdapters, extractionScopeAbsolutePaths);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
@@ -494,7 +493,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
-        IndexTrace.BeginPass("step7_crossdoc_refresh");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         // The reverse-edge closure was already computed in step 2 via
         // FindAffectedDocPaths on the genuinely-changed documents plus

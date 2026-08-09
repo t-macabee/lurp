@@ -94,7 +94,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         {
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
-                IndexTrace.TreeWalk("Adapter", "EF Core", methodSyntax.SyntaxTree.FilePath);
                 var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
                 ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, ctx);
                 var (evidencePath, _, _, _, _) = context.LocationResolver.Resolve(type);
@@ -142,7 +141,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     {
                         if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
                         {
-                            IndexTrace.TreeWalk("Adapter", "EF Core", methodSyntax.SyntaxTree.FilePath);
                             ExtractEntityTypeConfigConstraints(methodSyntax, entityType, entityTypeId, evidencePath, ctx);
                         }
                     }

@@ -21,8 +21,6 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             if (bodySyntax == null)
                 continue;
 
-            IndexTrace.TreeWalk("MemberEdge", "CallsEdgeExtractor", methodSyntax.SyntaxTree.FilePath);
-
             var semanticModel = context.GetOrCreateSemanticModel(methodSyntax.SyntaxTree);
             var callerId = context.MakeSymbolId(methodSymbol);
 

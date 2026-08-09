@@ -28,8 +28,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             if (!context.IsInScope(tree))
                 continue;
 
-            IndexTrace.TreeWalk("Adapter", Name, tree.FilePath);
-
             var semanticModel = context.GetSemanticModel(tree);
 
             foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
