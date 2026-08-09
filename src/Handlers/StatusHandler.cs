@@ -112,7 +112,7 @@ internal static class StatusHandler
                 schema_version = schemaVersion,
                 indexed = false,
                 latest_failure = latestFailure,
-            }, new JsonSerializerOptions { WriteIndented = true }));
+            }, HandlerBootstrap.IndentedJson));
             return;
         }
 

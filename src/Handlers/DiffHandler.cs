@@ -40,7 +40,7 @@ internal static class DiffHandler
                     detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null,
                     created_at_utc = c.CreatedAtUtc
                 })
-            }, new JsonSerializerOptions { WriteIndented = true });
+            }, HandlerBootstrap.IndentedJson);
             Console.WriteLine(json);
         }
         finally

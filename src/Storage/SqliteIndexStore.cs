@@ -150,6 +150,19 @@ namespace Lurp.Storage
             { EnsureOpen(); return _lifecycle!.GetSnapshotStatus(snapshotId, workspaceId); }
         public List<string> GetSnapshotIds(string workspaceId)
             { EnsureOpen(); return _lifecycle!.GetSnapshotIds(workspaceId); }
+        public ExistingSnapshotResolution ResolveExistingSnapshot(string snapshotId, string workspaceId)
+        {
+            EnsureOpen();
+            var existingStatus = _lifecycle!.GetSnapshotStatus(snapshotId, workspaceId);
+            if (existingStatus == SnapshotStatusValues.Complete)
+                return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Reuse, existingStatus);
+            if (existingStatus != null)
+            {
+                _pruner!.DeleteSnapshotData(snapshotId);
+                return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Retry, existingStatus);
+            }
+            return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Fresh, null);
+        }
         public string? GetSource(string relativePath, string snapshotId)
             { EnsureOpen(); return _documents!.GetSource(relativePath, snapshotId); }
         public void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)

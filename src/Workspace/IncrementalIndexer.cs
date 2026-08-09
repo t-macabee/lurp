@@ -84,16 +84,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // the same id must not block a retry.
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, _skipAdapters);
         var newSnapshotIdStr = snapshotId.ToString();
-        var existingStatus = _store.GetSnapshotStatus(newSnapshotIdStr, workspaceInfo.Id.Value);
-        if (existingStatus == SnapshotStatusValues.Complete)
+        var existing = _store.ResolveExistingSnapshot(newSnapshotIdStr, workspaceInfo.Id.Value);
+        if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
         {
             _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
             return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
         }
-        if (existingStatus != null)
+        if (existing.Disposition == ExistingSnapshotDisposition.Retry)
         {
-            _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existingStatus}'; removing it and retrying incremental index.");
-            _store.DeleteSnapshotData(newSnapshotIdStr);
+            _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
         }
 
         // Step 2: Affected Project Resolution

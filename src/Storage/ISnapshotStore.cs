@@ -11,6 +11,26 @@ namespace Lurp.Storage
         void ValidateSchema(int expectedVersion);
     }
 
+    /// <summary>
+    /// Outcome of <see cref="ISnapshotStore.ResolveExistingSnapshot"/>: whether an
+    /// existing row with the same deterministic identity blocks, permits, or
+    /// precedes the current write attempt.
+    /// </summary>
+    public enum ExistingSnapshotDisposition
+    {
+        /// <summary>No row exists with this identity; proceed to write.</summary>
+        Fresh,
+
+        /// <summary>A complete snapshot with this identity already exists; reuse it, do not write again.</summary>
+        Reuse,
+
+        /// <summary>A non-complete row with this identity existed and has been deleted; proceed to write.</summary>
+        Retry,
+    }
+
+    /// <summary>Resolution of the deterministic-identity reuse/retry decision.</summary>
+    public sealed record ExistingSnapshotResolution(ExistingSnapshotDisposition Disposition, string? ExistingStatus);
+
     /// <summary>Workspace/snapshot manifest rows and their lifecycle status.</summary>
     public interface ISnapshotManifestStore
     {
@@ -75,5 +95,16 @@ namespace Lurp.Storage
           ISnapshotPruner,
           ISnapshotTimingStore
     {
+        /// <summary>
+        /// Deterministic-identity guard shared by the full and incremental indexing
+        /// pipelines: a complete snapshot with this identity must be reused rather
+        /// than duplicated, and a non-complete row (a crashed or failed attempt)
+        /// must not block a retry. Returns <see cref="ExistingSnapshotDisposition.Reuse"/>
+        /// when a complete row exists, <see cref="ExistingSnapshotDisposition.Retry"/>
+        /// after deleting a non-complete row, and <see cref="ExistingSnapshotDisposition.Fresh"/>
+        /// when no row exists. <see cref="ExistingSnapshotResolution.ExistingStatus"/> is
+        /// the status of the row that existed (null when <see cref="ExistingSnapshotDisposition.Fresh"/>).
+        /// </summary>
+        ExistingSnapshotResolution ResolveExistingSnapshot(string snapshotId, string workspaceId);
     }
 }

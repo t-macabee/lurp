@@ -129,16 +129,15 @@ public static class IndexRunner
         // Deterministic identity: an identical complete snapshot for this
         // workspace must not be duplicated. A non-complete row with the same
         // identity (a crashed or failed attempt) must not block a retry.
-        var existingStatus = store.GetSnapshotStatus(snapshotIdStr, workspaceInfo.Id.Value);
-        if (existingStatus == SnapshotStatusValues.Complete)
+        var existing = store.ResolveExistingSnapshot(snapshotIdStr, workspaceInfo.Id.Value);
+        if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
         {
             sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
             return;
         }
-        if (existingStatus != null)
+        if (existing.Disposition == ExistingSnapshotDisposition.Retry)
         {
-            sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existingStatus}'; removing it and retrying full index.");
-            store.DeleteSnapshotData(snapshotIdStr);
+            sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
         }
 
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
