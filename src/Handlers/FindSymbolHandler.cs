@@ -31,24 +31,24 @@ internal static class FindSymbolHandler
 
             var payload = new
             {
-                symbolId = info.SymbolId.Value,
-                docCommentId = info.SymbolId.DocCommentId,
-                assemblyIdentity = info.SymbolId.AssemblyIdentity,
+                symbol_id = info.SymbolId.Value,
+                doc_comment_id = info.SymbolId.DocCommentId,
+                assembly_identity = info.SymbolId.AssemblyIdentity,
                 kind = info.Kind.ToString(),
-                fullyQualifiedName = info.FullyQualifiedName,
-                metadataJson = info.MetadataJson,
-                declarationCount = info.DeclarationCount,
-                isPartial = info.IsPartial,
-                snapshotId,
+                fully_qualified_name = info.FullyQualifiedName,
+                metadata_json = info.MetadataJson,
+                declaration_count = info.DeclarationCount,
+                is_partial = info.IsPartial,
+                snapshot_id = snapshotId,
                 freshness = HandlerBootstrap.FreshnessJson(freshness)
             };
 
             switch (outputMode)
             {
                 case OutputMode.Summary:
-                    Console.WriteLine($"{payload.fullyQualifiedName} ({payload.kind})");
-                    Console.WriteLine($"  symbolId: {payload.symbolId}");
-                    Console.WriteLine($"  declarations: {payload.declarationCount}  partial: {payload.isPartial}");
+                    Console.WriteLine($"{payload.fully_qualified_name} ({payload.kind})");
+                    Console.WriteLine($"  symbol_id: {payload.symbol_id}");
+                    Console.WriteLine($"  declarations: {payload.declaration_count}  partial: {payload.is_partial}");
                     Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
                     break;
 

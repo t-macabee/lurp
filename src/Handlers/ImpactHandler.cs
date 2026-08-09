@@ -106,8 +106,12 @@ internal static class ImpactHandler
             switch (outputMode)
             {
                 case OutputMode.Summary:
-                    WriteSummary(meta.symbol_id!, meta.direction, paths.Count, offset, page.Count, groups.Count,
-                        groups.Select(group => ($"{group.first_hop_source_symbol_id} → {group.first_hop_target_symbol_id} [{group.edge_kind}]", group.path_count)),
+                    // Summary rows are read by humans, so they lead with names; the full
+                    // docCommentId|assemblyIdentity strings stay in --output=json, which is
+                    // what a consumer feeds back into --symbol=.
+                    var displayName = MakeNameResolver(store, snapshotId);
+                    WriteSummary(displayName(meta.symbol_id!), meta.symbol_id!, meta.direction, paths.Count, offset, page.Count, groups.Count,
+                        groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.path_count)),
                         truncated);
                     break;
 
@@ -168,10 +172,42 @@ internal static class ImpactHandler
         return $"{first.SourceSymbolId}\u0001{first.TargetSymbolId}\u0001{first.EdgeKind}\u0001{path.TotalSteps:D4}\u0001{chain}";
     }
 
-    private static void WriteSummary(string symbolId, string direction, int total, int offset, int returned, int groupCount,
+    /// <summary>
+    /// Maps a symbol ID to a display name, memoized because a page of paths repeats the
+    /// same first-hop endpoints many times over. Falls back to the doc-comment part of the
+    /// ID when a symbol is not in the snapshot (external targets carry no indexed record),
+    /// so a row never degrades to blank.
+    /// </summary>
+    private static Func<string, string> MakeNameResolver(SqliteIndexStore store, string snapshotId)
+    {
+        var cache = new Dictionary<string, string>(StringComparer.Ordinal);
+        return symbolId =>
+        {
+            if (cache.TryGetValue(symbolId, out var cached))
+                return cached;
+
+            var fqn = store.GetSymbolInfo(symbolId, snapshotId)?.FullyQualifiedName;
+            var name = string.IsNullOrEmpty(fqn)
+                ? DocCommentPart(symbolId)
+                : fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn["global::".Length..] : fqn;
+
+            cache[symbolId] = name;
+            return name;
+        };
+    }
+
+    /// <summary>The <c>docCommentId</c> half of a symbol ID, without the assembly identity.</summary>
+    private static string DocCommentPart(string symbolId)
+    {
+        var pipe = symbolId.IndexOf('|');
+        return pipe > 0 ? symbolId[..pipe] : symbolId;
+    }
+
+    private static void WriteSummary(string symbolName, string symbolId, string direction, int total, int offset, int returned, int groupCount,
         IEnumerable<(string Label, int Count)> groupLines, object? truncated)
     {
-        Console.WriteLine($"impact {direction} of {symbolId}");
+        Console.WriteLine($"impact {direction} of {symbolName}");
+        Console.WriteLine($"  symbol: {symbolId}");
         Console.WriteLine($"  paths: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s)");
         foreach (var (label, count) in groupLines)
             Console.WriteLine($"  {count,5}  {label}");

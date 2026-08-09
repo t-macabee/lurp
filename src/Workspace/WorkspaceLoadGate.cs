@@ -82,6 +82,34 @@ internal static class WorkspaceLoadGate
     }
 
     /// <summary>
+    /// Returns project names whose <c>obj/project.assets.json</c> is missing.
+    /// Without this file MSBuildWorkspace cannot resolve project-to-project or
+    /// package references, producing phantom diagnostics and silently dropping
+    /// edges — even when <see cref="Classify"/> would not flag the project as
+    /// blind because the SDK/resolved corlib is present.
+    /// </summary>
+    internal static List<string> GetUnrestoredProjectNames(Solution solution)
+    {
+        var unrestored = new List<string>();
+
+        foreach (var project in solution.Projects)
+        {
+            if (project.FilePath == null)
+                continue;
+
+            var projectDir = Path.GetDirectoryName(project.FilePath);
+            if (projectDir == null)
+                continue;
+
+            var assetsPath = Path.Combine(projectDir, "obj", "project.assets.json");
+            if (!File.Exists(assetsPath))
+                unrestored.Add(project.Name);
+        }
+
+        return unrestored;
+    }
+
+    /// <summary>
     /// Operator-facing remediation for a blind project. The failure is in the build
     /// environment, so the message names what to run rather than what went wrong.
     /// </summary>
@@ -92,5 +120,17 @@ internal static class WorkspaceLoadGate
              + "The compilation had no corlib, so no call graph can be derived from it. "
              + "This is a build-environment fault, not a source defect : run 'dotnet restore' on the "
              + "solution and confirm the required SDK and target frameworks are installed, then re-index.";
+    }
+
+    /// <summary>
+    /// Operator-facing warning for projects whose restore assets are missing.
+    /// </summary>
+    internal static string DescribeUnrestored(IReadOnlyCollection<string> unrestoredProjects)
+    {
+        var names = string.Join(", ", unrestoredProjects.OrderBy(static name => name, StringComparer.Ordinal));
+        return $"obj/project.assets.json missing for: {names}. "
+             + "Run 'dotnet restore' on the solution before indexing — "
+             + "without it MSBuildWorkspace cannot resolve project-to-project references, "
+             + "which produces phantom diagnostics and silently drops edges.";
     }
 }

@@ -19,7 +19,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         IReadOnlySet<string> PreviousChangedSymbolIds,
         IReadOnlySet<string> DiffAndSearchSymbolIds,
         IReadOnlySet<string> AffectedProjects,
-        IReadOnlySet<string> CrossDocumentSeedPaths,
+        IReadOnlySet<string> CrossDocumentClosurePaths,
         IReadOnlySet<string> ExtractedPaths);
 
     private sealed record SnapshotFinalizationContext(
@@ -114,13 +114,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
         // Extraction scope: the set of documents that will be re-extracted, and
         // whose copied-forward facts must therefore be deleted before re-extraction.
-        // Kept distinct from invalidationPaths — the wide set driving FTS refresh,
-        // the semantic diff, and the step-7 cross-document refresh seed — because
-        // extraction and deletion must narrow in lockstep while those consumers stay
-        // project-wide.
+        // Kept distinct from invalidationPaths — the wide set driving FTS refresh
+        // and the semantic diff — because extraction and deletion must narrow in
+        // lockstep while those consumers stay project-wide.  Step 7 receives the
+        // pre-computed reverse-edge closure (closurePaths) directly, not a seed.
         //
-        // Contents: changed documents, plus the reverse-edge closure, plus every
-        // document declaring any part of a type touched by that seed. The type-part
+        // Contents: changed documents plus every document declaring any part of a
+        // type whose declaring syntax appears in a changed document. The type-part
         // expansion is required because two extraction guards are type-level
         // (SymbolStructuralEdgeExtractor.IsTypeInScope, PolymorphismExtractionContext
         // .IsTypeInScope) and StaticDispatchCallExtractor has no per-tree guard at
@@ -128,20 +128,20 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // half out of scope while whole-symbol properties such as is_partial stay
         // computed across all parts.
         //
-        // Every project owning a scope document is in affectedProjects:
-        // IdentifyAffectedProjects maps invalidationPaths (⊇ changed ∪ closure) to
-        // their owning projects, and partial parts cannot cross an assembly
-        // boundary. So step 6 loads a compilation for every document it must
-        // re-extract.
+        // The reverse-edge closure (closurePaths) is intentionally excluded from the
+        // extraction-scope seed: documents reached only through the closure did not
+        // change — they only reference changed symbols.  Their own declarations are
+        // untouched and their cross-document edges are handled by the step-7
+        // cross-document edge refresh, not by re-extraction.  Expanding type parts
+        // from the full closure seed was measured to pull 41 % of the tree into
+        // re-extraction for a single-document change because every partial type
+        // transitively touched through the call graph adds all of its partial parts.
+        //
         // On the project-scope fallback, closurePaths already IS every document
         // in every touched project (CrossDocumentEdgeRefresher widened it before
-        // returning), so unioning it here widens extraction to match invalidation
-        // exactly — the same lockstep the narrowed path keeps between deletion and
-        // re-extraction, just at the coarser granularity project scope used before
-        // the reverse-edge closure existed.
-        var extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
-        extractionScopeSeed.UnionWith(closurePaths);
-        var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
+        // returning), so this seed stays at changed-only and extraction stays
+        // correspondingly narrow even though invalidationPaths is project-wide.
+        var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, changedPaths);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
         // and forward-slash normalized. Passing the git-root-relative form matches
@@ -183,6 +183,25 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             // Step 5: Stale-Data Removal
             cancellationToken.ThrowIfCancellationRequested();
             var sw5 = System.Diagnostics.Stopwatch.StartNew();
+
+            var unrestoredProjects = WorkspaceLoadGate.GetUnrestoredProjectNames(solution);
+            if (unrestoredProjects.Count > 0)
+            {
+                var affectedUnrestored = unrestoredProjects
+                    .Where(n => affectedProjects.Contains(n))
+                    .OrderBy(static n => n, StringComparer.Ordinal)
+                    .ToList();
+                if (affectedUnrestored.Count > 0)
+                {
+                    _output.WriteErrorLine();
+                    _output.WriteErrorLine($"WARNING: {affectedUnrestored.Count} affected project(s) have not been restored:");
+                    foreach (var name in affectedUnrestored)
+                        _output.WriteErrorLine($"  - {name}");
+                    _output.WriteErrorLine(WorkspaceLoadGate.DescribeUnrestored(affectedUnrestored));
+                    _output.WriteErrorLine();
+                }
+            }
+
             PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, extractionScopePaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
@@ -217,7 +236,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 PreviousChangedSymbolIds: previousChangedSymbolIds,
                 DiffAndSearchSymbolIds: diffAndSearchSymbolIds,
                 AffectedProjects: new HashSet<string>(affectedProjects),
-                CrossDocumentSeedPaths: changedPaths,
+                CrossDocumentClosurePaths: closurePaths,
                 ExtractedPaths: extractionScopePaths);
 
             var finalizationContext = new SnapshotFinalizationContext(
@@ -344,6 +363,16 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         foreach (var (projectName, compilation) in affectedCompilations)
         {
             _output.Write($"  [{projectName}] ");
+
+            if (WorkspaceLoadGate.Classify(compilation) == CompilationReadability.Blind)
+            {
+                _store.SaveBindingIncompleteness(
+                    newSnapshotIdStr,
+                    WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
+                _output.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
+                continue;
+            }
+
             IndexTrace.BeginPass("step6_reextraction");
             var options = CompilationFactExtractor.CreateOptions(_skipAdapters, extractionScopeAbsolutePaths);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
@@ -467,18 +496,20 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _output.Write("Updating cross-document edges... ");
         IndexTrace.BeginPass("step7_crossdoc_refresh");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        // Seed from the genuinely-changed documents, not from the wide
-        // invalidation set: that set already absorbed the reverse-edge closure at
-        // step 2, and FindAffectedDocPaths seeds its visited set with its own
-        // input, so seeding it with the closure made the BFS return nothing but
-        // still charged for the walk. Documents step 6 already re-extracted are
-        // subtracted inside RefreshAsync, leaving step 7 with exactly the
-        // cross-document residue the narrowed extraction scope did not cover.
-        var crossDocEdgesProcessed = await refresher.RefreshAsync(
+        // The reverse-edge closure was already computed in step 2 via
+        // FindAffectedDocPaths on the genuinely-changed documents plus
+        // binding-incompleteness seeding.  Subtract the documents step 6
+        // already re-extracted (changed documents + type-part expansion) so
+        // step 7 handles exactly the residue — documents that reference
+        // changed symbols but whose own declarations did not change.
+        var residuePaths = new HashSet<string>(
+            (HashSet<string>)context.Changes.CrossDocumentClosurePaths,
+            StringComparer.OrdinalIgnoreCase);
+        residuePaths.ExceptWith(context.Changes.ExtractedPaths);
+        var crossDocEdgesProcessed = await refresher.RefreshWithAffectedPathsAsync(
             context.Solution, context.Workspace,
-            context.Snapshots.ToSnapshotId, context.Snapshots.FromSnapshotId,
-            (HashSet<string>)context.Changes.CrossDocumentSeedPaths,
-            context.Changes.ExtractedPaths,
+            context.Snapshots.ToSnapshotId,
+            residuePaths,
             cancellationToken);
         _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();

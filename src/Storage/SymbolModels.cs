@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 
 namespace Lurp.Storage
 {
@@ -181,20 +182,20 @@ namespace Lurp.Storage
     }
 
     public sealed record NavigationTarget(
-        string SymbolId,
-        string DocumentPath,
-        string DocumentVersionId,
-        int FullStart,
-        int FullEnd,
-        int NameStart,
-        int NameEnd);
+        [property: JsonPropertyName("symbol_id")] string SymbolId,
+        [property: JsonPropertyName("document_path")] string DocumentPath,
+        [property: JsonPropertyName("document_version_id")] string DocumentVersionId,
+        [property: JsonPropertyName("full_start")] int FullStart,
+        [property: JsonPropertyName("full_end")] int FullEnd,
+        [property: JsonPropertyName("name_start")] int NameStart,
+        [property: JsonPropertyName("name_end")] int NameEnd);
 
     public sealed record DeclarationLocation(
-        string DocumentPath,
-        int StartLine,
-        int StartColumn,
-        int EndLine,
-        int EndColumn,
-        bool IsGenerated);
+        [property: JsonPropertyName("document_path")] string DocumentPath,
+        [property: JsonPropertyName("start_line")] int StartLine,
+        [property: JsonPropertyName("start_column")] int StartColumn,
+        [property: JsonPropertyName("end_line")] int EndLine,
+        [property: JsonPropertyName("end_column")] int EndColumn,
+        [property: JsonPropertyName("is_generated")] bool IsGenerated);
 }
 

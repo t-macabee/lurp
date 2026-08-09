@@ -73,15 +73,15 @@ internal static class GetSymbolHandler
 
         var json = JsonSerializer.Serialize(new
         {
-            symbolId = info!.SymbolId.Value,
-            docCommentId = info.SymbolId.DocCommentId,
-            assemblyIdentity = info.SymbolId.AssemblyIdentity,
+            symbol_id = info!.SymbolId.Value,
+            doc_comment_id = info.SymbolId.DocCommentId,
+            assembly_identity = info.SymbolId.AssemblyIdentity,
             kind = info.Kind.ToString(),
-            fullyQualifiedName = info.FullyQualifiedName,
-            metadataJson = info.MetadataJson,
-            declarationCount = info.DeclarationCount,
-            isPartial = info.IsPartial,
-            snapshotId
+            fully_qualified_name = info.FullyQualifiedName,
+            metadata_json = info.MetadataJson,
+            declaration_count = info.DeclarationCount,
+            is_partial = info.IsPartial,
+            snapshot_id = snapshotId
         }, HandlerBootstrap.IndentedJson);
 
         Console.WriteLine(json);

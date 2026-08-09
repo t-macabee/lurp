@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Lurp.Storage
 {
     public class SnapshotRow
@@ -82,16 +84,16 @@ namespace Lurp.Storage
     }
 
     public sealed record BindingIncompletenessRecord(
-        string ProjectName,
-        string? DocumentPath,
-        string Reason,
-        int Count,
-        string ExtractorVersion);
+        [property: JsonPropertyName("project_name")] string ProjectName,
+        [property: JsonPropertyName("document_path")] string? DocumentPath,
+        [property: JsonPropertyName("reason")] string Reason,
+        [property: JsonPropertyName("count")] int Count,
+        [property: JsonPropertyName("extractor_version")] string ExtractorVersion);
 
     public sealed record BindingIncompletenessSummary(
-        string ProjectName,
-        string Reason,
-        int Count);
+        [property: JsonPropertyName("project_name")] string ProjectName,
+        [property: JsonPropertyName("reason")] string Reason,
+        [property: JsonPropertyName("count")] int Count);
 
     public sealed class AnnotationRecord
     {
@@ -138,12 +140,19 @@ namespace Lurp.Storage
 
     public sealed class SemanticChange
     {
+        [JsonPropertyName("change_id")]
         public string ChangeId { get; init; } = string.Empty;
+        [JsonPropertyName("from_snapshot_id")]
         public string FromSnapshotId { get; init; } = string.Empty;
+        [JsonPropertyName("to_snapshot_id")]
         public string ToSnapshotId { get; init; } = string.Empty;
+        [JsonPropertyName("change_type")]
         public string ChangeType { get; init; } = string.Empty;
+        [JsonPropertyName("symbol_id")]
         public string SymbolId { get; init; } = string.Empty;
+        [JsonPropertyName("detail_json")]
         public string? DetailJson { get; init; }
+        [JsonPropertyName("created_at_utc")]
         public DateTime CreatedAtUtc { get; init; }
     }
 

@@ -8,7 +8,7 @@ namespace Lurp;
 /// Before this existed, an unrecognised flag was silently dropped: <c>--max-hop=1</c>
 /// (singular) left <c>maxHops</c> at its default of 3 and the capsule then reported
 /// <c>maxHops: 3</c> as though that had been asked for, and <c>--solution=</c> on
-/// <c>--mode=simulate-rename</c> was accepted although that mode never reads it. Both
+/// <c>--mode=impact</c> was accepted although that mode never reads it. Both
 /// produced a confident answer to a different question than the one posed, which is the
 /// costly failure for a tool whose value is that its facts can be trusted. Unknown
 /// <em>modes</em> already hard-failed; unknown flags were simply the half nobody wrote.
@@ -49,8 +49,8 @@ internal static class CliFlagValidation
                 continue;
 
             // A valued flag is matched including its '=', so the shape is checked too:
-            // "--quiet=5" does not match the bare "--quiet", and a bare "--budget" does
-            // not match "--budget=". Either mistake silently produced a default before.
+            // "--quiet=5" does not match the bare "--quiet", and a bare "--content-budget" does
+            // not match "--content-budget=". Either mistake silently produced a default before.
             var separator = arg.IndexOf('=');
             var token = separator >= 0 ? arg[..(separator + 1)] : arg;
 

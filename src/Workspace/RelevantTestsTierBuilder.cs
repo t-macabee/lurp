@@ -4,7 +4,7 @@ namespace Lurp.Workspace;
 
 internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : IContextTierBuilder
 {
-    string IContextTierBuilder.Name => "relevantTests";
+    string IContextTierBuilder.Name => "relevant_tests";
 
     List<CapsuleItem> IContextTierBuilder.Build()
     {

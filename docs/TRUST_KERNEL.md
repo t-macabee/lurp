@@ -3,7 +3,7 @@
 **Status:** implementation-status reference. Compare with `CLAUDE.md` for
 architecture, then inspect the relevant live code and tests. There is no live
 task queue in this repository.
-**Architecture:** `CLAUDE.md` (design rules, boundaries, layout).
+**Architecture:** `docs/LURP_ARCHITECTURE.md` (design rules, boundaries, layout).
 **Historical records:** superseded by the "Change log" table below; each row
 states the resulting current state.
 
@@ -56,7 +56,7 @@ way: evidence here cites git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `MigrationRunner` |
 | 2 | Workspace, snapshot, document, and configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 24 migrations; `SchemaStabilityTests` binds the migration list to `VersionConstants`, upgrades the checked-in v22 fixture, proves unknown persisted symbol kinds survive as `Unknown` |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 26 migrations; `SchemaStabilityTests` binds the migration list to `VersionConstants`, upgrades the checked-in v22 fixture, proves unknown persisted symbol kinds survive as `Unknown` |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6 |
@@ -69,7 +69,7 @@ way: evidence here cites git commits and named tests directly.
 | 13 | Reflection evidence ladder | ✅ Done | See "Phase 13 verification" below |
 | 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
 | 15 | Context capsules with source and token budgets | ✅ Done | See "Phase 15 verification" below |
-| 16 | Rebase simulations and audits on the shared store | ✅ Done | All read/simulate/audit handlers run through the shared `HandlerBootstrap` (`src/Handlers/HandlerBootstrap.cs`): `GetArgValue`, `RequireArg`, `ResolveOutputDir`, `ResolveDbPath`, `OpenStore`, `ResolveSnapshotId`. Per-handler copies deleted as each converted: simulate family (`SimulateRenameHandler`/`SimulateMoveHandler`/`SimulateRemoveHandler`), `AuditHandler`, `ImpactHandler`, `DiffHandler`, `GetSymbolHandler`, `GetSourceHandler`, `SearchHandler`, `FindSymbolHandler`, `NavigateHandler`, `ContextHandler`, `AnnotationHandler`, `TimingsHandler`. `StatusHandler`/`IndexHandler` keep only their diverging control flow and share just `GetArgValue`/output-dir resolution. |
+| 16 | Rebase simulations and audits on the shared store | ✅ Done → Removed in Aug 2026 cleanup. All simulate/audit handlers and engines were deleted as a category. |
 | 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as dominant; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` 2051→1944 ms (Lurp), 217→182 ms (Storage), 427→418 ms (tests). A broader node-cache candidate was measured and rejected. `B1MemberEdgeExtractorTests` 22/22 pass. |
 
 ### Phase 13 verification: Reflection Evidence Ladder
@@ -151,7 +151,7 @@ uniqueness constraint, both in commit `f550fee`.
 
 | Criterion | Evidence | Status |
 |---|---|---|
-| One SQLite database holds indexed workspace state | `SqliteIndexStore` and migrations 1–24 | ✅ |
+| One SQLite database holds indexed workspace state | `SqliteIndexStore` and migrations 1–26 | ✅ |
 | Source and facts share snapshot identity | `snapshot_documents`, `snapshot_symbols`, snapshot-scoped edges/diagnostics/completeness | ✅ |
 | Symbols link to exact retrievable spans | `DeclarationReadStore.GetDeclarationLocations` and all-declaration source reads | ✅ |
 | Ordinary reads avoid Roslyn reload | Storage-backed handlers and context tiers | ✅ |
@@ -163,7 +163,7 @@ uniqueness constraint, both in commit `f550fee`.
 | Impact results are paths with reasons | `ImpactPath`, exact hop spans, semantic causes | ✅ |
 | Capsules return bounded relevant code and surroundings | Eleven-item Phase 15 contract and reason-coded truncation | ✅ |
 | Every fact states provenance and extractor version | Edge/declaration anchor contracts and binding-completeness scope | ✅ |
-| Simulations/audits consume the common model | Phase 16 handlers | ✅ |
+| N/A (removed) | Removed: simulation/audit modes deleted Aug 2026 | — |
 | Indexer never modifies source | Index and handler pipelines are read-only with respect to repository source | ✅ |
 
 ## T1–T12: closed, implemented, and validated
@@ -392,8 +392,8 @@ fallback on top of that set, not the only signal.
 
 ## Open findings for follow-up
 
-1. **`search` output cannot round-trip directly into `context`/`impact`/
-   `simulate-*`.** `search` prints a fully-qualified name; those commands need
+1. **`search` output cannot round-trip directly into `context`/
+   `impact`.** `search` prints a fully-qualified name; those commands need
    the `docCommentId|assemblyIdentity` form only `find-symbol` returns. Every
    driving-session query needed a `search` → `find-symbol` → `context`
    round-trip; this mismatch was the structural cause of the `--mode=context`
@@ -401,7 +401,7 @@ fallback on top of that set, not the only signal.
    (change log, 2026-08-04). Two shapes considered, neither implemented:
    `search` emitting the resolvable form directly, or a `search --resolve`
    variant that does the round trip server-side. Decide whether
-   `context`/`impact`/`simulate-*` should accept a bare FQN or file+line and
+   `context`/`impact` should accept a bare FQN or file+line and
    resolve the symbol ID internally.
 2. **`--mode=impact --output=summary`'s per-group lines name caller/callee
     symbol IDs but not human-readable names.** Each row shows
@@ -417,7 +417,7 @@ fallback on top of that set, not the only signal.
    greedy-prefix decisions are made on an incomplete measure, so tier
    *selection* can be skewed. Low severity.
 4. **Capsule budget defaults exhaust quickly on type-level anchors.** A
-   mid-sized service type (12 methods) at `--budget=4000` zeroes out
+   mid-sized service type (12 methods) at `--content-budget=4000` zeroes out
    `directCallers`, `relevantTests`, and every path/topology section. Not
    incorrect (`budget_exhausted` is honestly reported), but `--tier=`
    follow-ups are the norm above method granularity. Decide whether the
@@ -440,15 +440,7 @@ fallback on top of that set, not the only signal.
    log, "Capsule dispatch-provenance fix".)
 8. **MusicLibrary dispatch reproduction is permanently deferred.** Externally
     blocked (no MusicLibrary checkout); recorded as deferred, not open work.
-9. **`simulate-rename` excludes `Registers` edges.** (Resolved 2026-08-07.)
-    `SimulationEngine.SimulateRename` (`src/Workspace/SimulationEngine.cs:76`)
-    filtered incoming edges to `"Calls"`, `"References"`, `"Overrides"`,
-    `"Implements"` only, silently dropping DI registration references that
-    need updating on a rename (`Registers` edges are type-level references to
-    the named symbol). `SimulateRemove` handled `Registers` separately (line
-    142); `SimulateRename` now matches with a one-term addition to the `is`
-    pattern. Test: `C16SimulationTests` (6/6 pass).
-10. **`impact` default `--max-depth=10` causes unbounded BFS on dense graphs.**
+9. **`impact` default `--max-depth=10` causes unbounded BFS on dense graphs.**
     (Resolved 2026-08-07.) `ImpactHandler.Run`
     (`src/Handlers/ImpactHandler.cs:34`) defaulted to depth 10 with no
     timeout or progress signal. On a graph with 10K+ edges, the BFS
@@ -493,11 +485,6 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 - **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests`.
 - **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeOperationsStore`, `DiagnosticStore`, `AnnotationStore`, `ExtractorRegistryStore`, `SearchSourceStore`, `SearchSymbolStore`, `SearchIndexMaintenance`, `SemanticDiffStore`, `BindingIncompletenessStore`. The former `EdgeStore`/`SearchStore` middle facades were removed on 2026-08-05; `SqliteIndexStore` now forwards to the leaf stores directly.
 
-## Reclassified as done (2026-08-05)
-
-- **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests`.
-- **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeOperationsStore`, `DiagnosticStore`, `AnnotationStore`, `ExtractorRegistryStore`, `SearchSourceStore`, `SearchSymbolStore`, `SearchIndexMaintenance`, `SemanticDiffStore`, `BindingIncompletenessStore`. The former `EdgeStore`/`SearchStore` middle facades were removed on 2026-08-05; `SqliteIndexStore` now forwards to the leaf stores directly.
-
 ## Reclassified as done (2026-08-07)
 
 - **`--solution=` accepted on every mode.** `CliFlagValidation.GlobalFlags`
@@ -505,9 +492,8 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
   falls back to the solution's directory when no `--output-dir=`,
   `LURP_OUTPUT_DIR`, or `INDEXER_OUTPUT_DIR` is set — a user who only knows
   `--solution=` from `index` now gets a working DB path instead of a rejection.
-  Also accepted via env vars `LURP_SOLUTION_PATH` and `INDEXER_SOLUTION_PATH`.
-- **`simulate-rename` now includes `Registers` edges.** (See finding 9.)
-- **`impact` default `--max-depth` lowered from 10 to 3.** (See finding 10.)
+   Also accepted via env vars `LURP_SOLUTION_PATH` and `INDEXER_SOLUTION_PATH`.
+- **`impact` default `--max-depth` lowered from 10 to 3.** (See finding 9.)
 
 ## Reclassified as done (2026-08-06)
 
@@ -540,8 +526,6 @@ eNoteV2 solution confirmed the following capabilities end-to-end:
 | `search --query=Order` | Symbol + source results with snapshot-bound scoping |
 | `context --symbol=... --output=summary` | Token-budgeted capsule (5189/8000 content tokens), tiers omit honestly |
 | `impact --symbol=... --output=summary` | 4 paths, 3 distinct first hops, `MayDispatchTo` edges with provenance |
-| `simulate-rename --symbol=...` | 4 affected symbols (1 caller + 3 overrides) with exact documents/lines |
-| `audit` | Dead-symbol, untested-surface, unregistered-impl, high-fan-out checks all emit |
 | `timings` | Per-step breakdown (extraction_loop 87.9% of total) |
 
 Edge-kind coverage observed: 23 kinds in-snapshot, including `MayDispatchTo`,

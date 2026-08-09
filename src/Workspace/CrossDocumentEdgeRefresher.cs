@@ -57,6 +57,24 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
     }
 
+    /// <param name="affectedPaths">
+    /// Pre-computed document closure (e.g. from a prior BFS pass), already
+    /// scoped to the documents that need cross-document edge re-extraction.
+    /// The caller is responsible for subtracting any paths that were already
+    /// re-extracted this snapshot.
+    /// </param>
+    internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken)
+    {
+        if (affectedPaths.Count == 0)
+            return 0;
+
+        var affectedProjectNames = ResolveProjectNames(solution, affectedPaths);
+        if (affectedProjectNames.Count == 0)
+            return 0;
+
+        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
+    }
+
     /// <remarks>
     /// The BFS follows persisted edges, so it can only reach a dependent that
     /// already had one. A document whose reference did not bind in the previous

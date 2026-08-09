@@ -12,10 +12,10 @@ namespace Lurp.Workspace
 
     internal sealed class CapsuleAnchor
     {
-        [JsonPropertyName("symbolId")]
+        [JsonPropertyName("symbol_id")]
         public string SymbolId { get; init; }
 
-        [JsonPropertyName("fullyQualifiedName")]
+        [JsonPropertyName("fully_qualified_name")]
         public string FullyQualifiedName { get; init; }
 
         [JsonPropertyName("kind")]
@@ -32,22 +32,22 @@ namespace Lurp.Workspace
         [JsonPropertyName("intent")]
         public string Intent { get; init; } = "inspect";
 
-        [JsonPropertyName("maxHops")]
+        [JsonPropertyName("max_hops")]
         public int MaxHops { get; init; }
 
-        [JsonPropertyName("snapshotId")]
+        [JsonPropertyName("snapshot_id")]
         public string SnapshotId { get; init; } = "";
 
-        [JsonPropertyName("affectedProjects")]
+        [JsonPropertyName("affected_projects")]
         public List<string> AffectedProjects { get; init; } = [];
 
-        [JsonPropertyName("changeObjective")]
+        [JsonPropertyName("change_objective")]
         public string? ChangeObjective { get; init; }
 
         [JsonPropertyName("provenance")]
         public string Provenance { get; init; } = "compiler_proved";
 
-        [JsonPropertyName("extractorIdentity")]
+        [JsonPropertyName("extractor_identity")]
         public string ExtractorIdentity { get; init; } = "";
 
         [JsonPropertyName("locations")]
@@ -91,40 +91,40 @@ namespace Lurp.Workspace
 
     internal sealed class CapsuleItem
     {
-        [JsonPropertyName("symbolId")]
+        [JsonPropertyName("symbol_id")]
         public string SymbolId { get; init; }
 
         [JsonPropertyName("kind")]
         public string Kind { get; init; }
 
-        [JsonPropertyName("fullyQualifiedName")]
+        [JsonPropertyName("fully_qualified_name")]
         public string FullyQualifiedName { get; init; }
 
         [JsonPropertyName("provenance")]
         public string Provenance { get; init; }
 
-        [JsonPropertyName("edgeKind")]
+        [JsonPropertyName("edge_kind")]
         public string EdgeKind { get; init; }
 
         [JsonPropertyName("source")]
         public string? Source { get; init; }
 
-        [JsonPropertyName("documentPath")]
+        [JsonPropertyName("document_path")]
         public string? DocumentPath { get; init; }
 
-        [JsonPropertyName("startLine")]
+        [JsonPropertyName("start_line")]
         public int? StartLine { get; init; }
 
-        [JsonPropertyName("startColumn")]
+        [JsonPropertyName("start_column")]
         public int? StartColumn { get; init; }
 
-        [JsonPropertyName("endLine")]
+        [JsonPropertyName("end_line")]
         public int? EndLine { get; init; }
 
-        [JsonPropertyName("endColumn")]
+        [JsonPropertyName("end_column")]
         public int? EndColumn { get; init; }
 
-        [JsonPropertyName("inclusionReason")]
+        [JsonPropertyName("inclusion_reason")]
         public string? InclusionReason { get; init; }
 
         /// <summary>
@@ -181,14 +181,14 @@ namespace Lurp.Workspace
     internal sealed record CapsuleConstraint(
         [property: JsonPropertyName("value")] string Value,
         [property: JsonPropertyName("origin")] string Origin,
-        [property: JsonPropertyName("annotationKind")] string? AnnotationKind = null,
-        [property: JsonPropertyName("symbolId")] string? SymbolId = null);
+        [property: JsonPropertyName("annotation_kind")] string? AnnotationKind = null,
+        [property: JsonPropertyName("symbol_id")] string? SymbolId = null);
 
     internal sealed record LikelyChangeSite(
         [property: JsonPropertyName("path")] string Path,
         [property: JsonPropertyName("rank")] int Rank,
         [property: JsonPropertyName("role")] string Role,
-        [property: JsonPropertyName("symbolId")] string SymbolId);
+        [property: JsonPropertyName("symbol_id")] string SymbolId);
 
     internal sealed record CapsuleTopology(
         [property: JsonPropertyName("current")] CapsuleTopologyReference Current,
@@ -200,21 +200,21 @@ namespace Lurp.Workspace
     // sections; this reference summary preserves the topology meaning without
     // duplicating the path data.
     internal sealed record CapsuleTopologyReference(
-        [property: JsonPropertyName("incomingReference")] string IncomingReference,
-        [property: JsonPropertyName("outgoingReference")] string OutgoingReference,
-        [property: JsonPropertyName("incomingPathCount")] int IncomingPathCount,
-        [property: JsonPropertyName("outgoingPathCount")] int OutgoingPathCount,
-        [property: JsonPropertyName("totalHopCount")] int TotalHopCount)
+        [property: JsonPropertyName("incoming_reference")] string IncomingReference,
+        [property: JsonPropertyName("outgoing_reference")] string OutgoingReference,
+        [property: JsonPropertyName("incoming_path_count")] int IncomingPathCount,
+        [property: JsonPropertyName("outgoing_path_count")] int OutgoingPathCount,
+        [property: JsonPropertyName("total_hop_count")] int TotalHopCount)
     {
         public static CapsuleTopologyReference Empty { get; } = new("", "", 0, 0, 0);
     }
 
     internal sealed class UncertaintyEntry
     {
-        [JsonPropertyName("symbolIds")]
+        [JsonPropertyName("symbol_ids")]
         public List<string> SymbolIds { get; init; }
 
-        [JsonPropertyName("relationshipKind")]
+        [JsonPropertyName("relationship_kind")]
         public string RelationshipKind { get; init; }
 
         [JsonPropertyName("description")]
@@ -230,10 +230,10 @@ namespace Lurp.Workspace
 
     internal sealed class VerificationSuggestion
     {
-        [JsonPropertyName("testId")]
+        [JsonPropertyName("test_id")]
         public string TestId { get; init; }
 
-        [JsonPropertyName("testName")]
+        [JsonPropertyName("test_name")]
         public string TestName { get; init; }
 
         [JsonPropertyName("description")]
@@ -276,7 +276,7 @@ namespace Lurp.Workspace
 
     /// <summary>
     /// Advisory restatement of the capsule's two token figures under role-named
-    /// fields. <c>budgetBasis</c> is what <c>--budget</c> bounded (the content
+    /// fields. <c>budgetBasis</c> is what <c>--content-budget</c> bounded (the content
     /// measure; per-item identity/provenance framing is excluded navigation
     /// metadata). <c>delivery</c> is the whole emitted file the consumer must
     /// reserve a context window for. The two are not interchangeable and
@@ -284,13 +284,13 @@ namespace Lurp.Workspace
     /// one to size from.
     /// </summary>
     internal sealed record TokenEstimateAdvisory(
-        [property: JsonPropertyName("budgetBasis")] int BudgetBasis,
+        [property: JsonPropertyName("budget_basis")] int BudgetBasis,
         [property: JsonPropertyName("delivery")] int Delivery)
     {
         [JsonPropertyName("basis")]
         public string Basis => "content; per-item identity/provenance framing excluded";
 
-        [JsonPropertyName("windowSizingField")]
+        [JsonPropertyName("window_sizing_field")]
         public string WindowSizingField => "delivery";
     }
 
@@ -302,40 +302,40 @@ namespace Lurp.Workspace
         [JsonPropertyName("contracts")]
         public List<CapsuleItem> Contracts { get; init; } = [];
 
-        [JsonPropertyName("directCallees")]
+        [JsonPropertyName("direct_callees")]
         public List<CapsuleItem> DirectCallees { get; init; } = [];
 
-        [JsonPropertyName("directCallers")]
+        [JsonPropertyName("direct_callers")]
         public List<CapsuleItem> DirectCallers { get; init; } = [];
 
-        [JsonPropertyName("registeredImplementations")]
+        [JsonPropertyName("registered_implementations")]
         public List<CapsuleItem> RegisteredImplementations { get; init; } = [];
 
-        [JsonPropertyName("relevantTests")]
+        [JsonPropertyName("relevant_tests")]
         public List<CapsuleItem> RelevantTests { get; init; } = [];
 
-        [JsonPropertyName("secondDegreeContext")]
+        [JsonPropertyName("second_degree_context")]
         public List<CapsuleItem> SecondDegreeContext { get; init; } = [];
 
-        [JsonPropertyName("surroundingSource")]
+        [JsonPropertyName("surrounding_source")]
         public List<CapsuleItem> SurroundingSource { get; init; } = [];
 
-        [JsonPropertyName("incomingPaths")]
+        [JsonPropertyName("incoming_paths")]
         public List<ImpactPath> IncomingPaths { get; init; } = [];
 
-        [JsonPropertyName("outgoingPaths")]
+        [JsonPropertyName("outgoing_paths")]
         public List<ImpactPath> OutgoingPaths { get; init; } = [];
 
         [JsonPropertyName("constraints")]
         public List<CapsuleConstraint> Constraints { get; init; } = [];
 
-        [JsonPropertyName("inclusionReasons")]
+        [JsonPropertyName("inclusion_reasons")]
         public Dictionary<string, string> InclusionReasons { get; init; } = [];
 
-        [JsonPropertyName("likelyChangeSites")]
+        [JsonPropertyName("likely_change_sites")]
         public List<LikelyChangeSite> LikelyChangeSites { get; init; } = [];
 
-        [JsonPropertyName("affectedPublicSurfaces")]
+        [JsonPropertyName("affected_public_surfaces")]
         public List<CapsuleItem> AffectedPublicSurfaces { get; init; } = [];
 
         // Null once the budget enforcer drops it: zeroed counts would read as a
@@ -357,7 +357,7 @@ namespace Lurp.Workspace
         /// file is larger than this number. To size a context window, use
         /// <see cref="EstimatedArtifactTokens"/>.
         /// </summary>
-        [JsonPropertyName("estimatedTokens")]
+        [JsonPropertyName("estimated_tokens")]
         public int EstimatedTokens { get; set; }
 
         /// <summary>
@@ -365,7 +365,7 @@ namespace Lurp.Workspace
         /// including the identity/provenance framing <see cref="EstimatedTokens"/>
         /// excludes. Reported, never budgeted against.
         /// </summary>
-        [JsonPropertyName("estimatedArtifactTokens")]
+        [JsonPropertyName("estimated_artifact_tokens")]
         public int EstimatedArtifactTokens { get; set; }
 
         /// <summary>
@@ -378,23 +378,23 @@ namespace Lurp.Workspace
         /// artifact-estimate fixed point converges on the full serialization
         /// including this block.
         /// </summary>
-        [JsonPropertyName("tokenEstimate")]
+        [JsonPropertyName("token_estimate")]
         public TokenEstimateAdvisory TokenEstimate
             => new(EstimatedTokens, EstimatedArtifactTokens);
 
         [JsonPropertyName("truncated")]
         public bool Truncated { get; set; }
 
-        [JsonPropertyName("truncatedCategories")]
+        [JsonPropertyName("truncated_categories")]
         public List<string> TruncatedCategories { get; set; } = [];
 
-        [JsonPropertyName("omittedTiers")]
+        [JsonPropertyName("omitted_tiers")]
         public List<TruncationEntry> OmittedTiers { get; set; } = [];
 
         [JsonPropertyName("uncertainties")]
         public List<UncertaintyEntry> Uncertainties { get; init; } = [];
 
-        [JsonPropertyName("suggestedVerification")]
+        [JsonPropertyName("suggested_verification")]
         public List<VerificationSuggestion> SuggestedVerification { get; init; } = [];
 
         public ContextCapsule(CapsuleAnchor anchor)

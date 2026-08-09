@@ -4,7 +4,7 @@ namespace Lurp.Workspace;
 
 internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context) : IContextTierBuilder
 {
-    string IContextTierBuilder.Name => "secondDegreeContext";
+    string IContextTierBuilder.Name => "second_degree_context";
 
     List<CapsuleItem> IContextTierBuilder.Build()
     {

@@ -111,12 +111,12 @@ namespace Lurp.Workspace
         private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete)
         {
             capsule.InclusionReasons["contracts"] = "Compiler-resolved contracts implemented or overridden by the anchor.";
-            capsule.InclusionReasons["directCallees"] = "Direct compiler-resolved calls or constructions made by the anchor.";
-            capsule.InclusionReasons["directCallers"] = "Direct callers and framework entry points that can reach the anchor.";
-            capsule.InclusionReasons["registeredImplementations"] = "Persisted dispatch, registration, or handler targets relevant at runtime.";
-            capsule.InclusionReasons["relevantTests"] = "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
-            capsule.InclusionReasons["secondDegreeContext"] = "Bounded upstream paths within the requested hop limit.";
-            capsule.InclusionReasons["surroundingSource"] = "Sibling declarations sharing the anchor's containing declaration.";
+            capsule.InclusionReasons["direct_callees"] = "Direct compiler-resolved calls or constructions made by the anchor.";
+            capsule.InclusionReasons["direct_callers"] = "Direct callers and framework entry points that can reach the anchor.";
+            capsule.InclusionReasons["registered_implementations"] = "Persisted dispatch, registration, or handler targets relevant at runtime.";
+            capsule.InclusionReasons["relevant_tests"] = "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
+            capsule.InclusionReasons["second_degree_context"] = "Bounded upstream paths within the requested hop limit.";
+            capsule.InclusionReasons["surrounding_source"] = "Sibling declarations sharing the anchor's containing declaration.";
 
             // A budget_exhausted omission is only honest if it is also actionable, so the
             // capsule states the continuation in-band: a consumer holding just this capsule
@@ -129,7 +129,7 @@ namespace Lurp.Workspace
             // --tier=<category> only for the tier-builder tiers the CLI can serve; sections
             // that are budget-governed but not fetchable (likelyChangeSites,
             // affectedPublicSurfaces) are named with the only honest recovery: re-running
-            // with a larger --budget.
+            // with a larger --content-budget.
 
             if (anchorBindingIsIncomplete)
             {
@@ -164,8 +164,8 @@ namespace Lurp.Workspace
                 + capsule.OutgoingPaths.Sum(path => path.Hops.Count);
             capsule.Topology = new CapsuleTopology(
                 new CapsuleTopologyReference(
-                    "see incomingPaths",
-                    "see outgoingPaths",
+                    "see incoming_paths",
+                    "see outgoing_paths",
                     capsule.IncomingPaths.Count,
                     capsule.OutgoingPaths.Count,
                     totalHops),
@@ -262,12 +262,12 @@ namespace Lurp.Workspace
         private static readonly (string Name, Func<ContextTierContext, IContextTierBuilder> Factory, Func<ContextCapsule, List<CapsuleItem>> Collection)[] TierBuilders =
         [
             ("contracts", static context => new ContractsTierBuilder(context), static capsule => capsule.Contracts),
-            ("directCallees", static context => new DirectCalleesTierBuilder(context), static capsule => capsule.DirectCallees),
-            ("directCallers", static context => new DirectCallersTierBuilder(context), static capsule => capsule.DirectCallers),
-            ("registeredImplementations", static context => new RegisteredImplementationsTierBuilder(context), static capsule => capsule.RegisteredImplementations),
-            ("relevantTests", static context => new RelevantTestsTierBuilder(context), static capsule => capsule.RelevantTests),
-            ("secondDegreeContext", static context => new SecondDegreeContextTierBuilder(context), static capsule => capsule.SecondDegreeContext),
-            ("surroundingSource", static context => new SurroundingSiblingsTierBuilder(context), static capsule => capsule.SurroundingSource),
+            ("direct_callees", static context => new DirectCalleesTierBuilder(context), static capsule => capsule.DirectCallees),
+            ("direct_callers", static context => new DirectCallersTierBuilder(context), static capsule => capsule.DirectCallers),
+            ("registered_implementations", static context => new RegisteredImplementationsTierBuilder(context), static capsule => capsule.RegisteredImplementations),
+            ("relevant_tests", static context => new RelevantTestsTierBuilder(context), static capsule => capsule.RelevantTests),
+            ("second_degree_context", static context => new SecondDegreeContextTierBuilder(context), static capsule => capsule.SecondDegreeContext),
+            ("surrounding_source", static context => new SurroundingSiblingsTierBuilder(context), static capsule => capsule.SurroundingSource),
         ];
 
         private static readonly Dictionary<string, (Func<ContextTierContext, IContextTierBuilder> Factory, Func<ContextCapsule, List<CapsuleItem>> Collection)> TierBuilderLookup =
@@ -285,30 +285,30 @@ namespace Lurp.Workspace
             var tiers = Intent switch
             {
                 ContextIntent.Inspect => new[] {
-                    "contracts", "directCallees", "directCallers", "registeredImplementations",
-                    "relevantTests", "secondDegreeContext", "surroundingSource" },
+                    "contracts", "direct_callees", "direct_callers", "registered_implementations",
+                    "relevant_tests", "second_degree_context", "surrounding_source" },
 
                 ContextIntent.Modify => new[] {
-                    "contracts", "directCallers", "registeredImplementations", "relevantTests",
-                    "directCallees", "secondDegreeContext", "surroundingSource" },
+                    "contracts", "direct_callers", "registered_implementations", "relevant_tests",
+                    "direct_callees", "second_degree_context", "surrounding_source" },
 
                 ContextIntent.Diagnose => new[] {
-                    "directCallers", "registeredImplementations", "contracts", "directCallees",
-                    "relevantTests", "secondDegreeContext", "surroundingSource" },
+                    "direct_callers", "registered_implementations", "contracts", "direct_callees",
+                    "relevant_tests", "second_degree_context", "surrounding_source" },
 
                 _ => new[] {
-                    "contracts", "directCallees", "directCallers", "registeredImplementations",
-                    "relevantTests", "secondDegreeContext", "surroundingSource" },
+                    "contracts", "direct_callees", "direct_callers", "registered_implementations",
+                    "relevant_tests", "second_degree_context", "surrounding_source" },
             };
 
             if (SymbolId.IsType)
             {
-                var rt = Array.IndexOf(tiers, "relevantTests");
-                var ss = Array.IndexOf(tiers, "surroundingSource");
+                var rt = Array.IndexOf(tiers, "relevant_tests");
+                var ss = Array.IndexOf(tiers, "surrounding_source");
                 if (rt >= 0 && ss >= 0)
                 {
-                    tiers[rt] = "surroundingSource";
-                    tiers[ss] = "relevantTests";
+                    tiers[rt] = "surrounding_source";
+                    tiers[ss] = "relevant_tests";
                 }
             }
 

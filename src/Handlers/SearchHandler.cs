@@ -59,7 +59,7 @@ internal static class SearchHandler
                 var sourceResults = store.SearchSource(queryArg, snapshotId, limit, includeGenerated, snippetTokens);
                 foreach (var r in sourceResults)
                 {
-                    results.Add(new { type = "source", documentPath = r.DocumentPath, snippet = r.Snippet });
+                    results.Add(new { type = "source", document_path = r.DocumentPath, snippet = r.Snippet });
                     summaryLines.Add($"source  {r.DocumentPath}");
                 }
             }
@@ -80,7 +80,7 @@ internal static class SearchHandler
                     }
                     foreach (var r in page.Items)
                     {
-                        results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
+                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
                         summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
                     }
                     nextCursor = page.NextCursor;
@@ -90,7 +90,7 @@ internal static class SearchHandler
                     var symbolResults = store.SearchSymbols(queryArg, snapshotId, limit, includeGenerated, kindArg);
                     foreach (var r in symbolResults)
                     {
-                        results.Add(new { type = "symbol", symbolId = r.SymbolId, fullyQualifiedName = r.FullyQualifiedName, kind = r.Kind, docCommentId = r.DocCommentId });
+                        results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
                         summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
                     }
                 }
@@ -98,7 +98,7 @@ internal static class SearchHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
-            var meta = new { snapshotId, query = queryArg, type = typeArg, resultCount = results.Count, nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) };
+            var meta = new { snapshot_id = snapshotId, query = queryArg, type = typeArg, result_count = results.Count, next_cursor = nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) };
 
             switch (outputMode)
             {
@@ -116,7 +116,7 @@ internal static class SearchHandler
 
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshotId, query = queryArg, type = typeArg, results, nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

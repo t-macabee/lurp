@@ -49,8 +49,8 @@ public sealed partial class SnapshotManifest
                 reader.Read();
                 switch (prop)
                 {
-                    case "gitRoot": gitRoot = reader.GetString(); break;
-                    case "solutionPath": solutionPath = reader.GetString(); break;
+                    case "git_root" or "gitRoot": gitRoot = reader.GetString(); break;
+                    case "solution_path" or "solutionPath": solutionPath = reader.GetString(); break;
                     case "value": value = reader.GetString(); break;
                     default: reader.Skip(); break;
                 }
@@ -68,8 +68,8 @@ public sealed partial class SnapshotManifest
         public override void Write(Utf8JsonWriter writer, WorkspaceId value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            writer.WriteString("gitRoot", value.GitRoot);
-            writer.WriteString("solutionPath", value.SolutionPath);
+            writer.WriteString("git_root", value.GitRoot);
+            writer.WriteString("solution_path", value.SolutionPath);
             writer.WriteString("value", value.Value);
             writer.WriteEndObject();
         }

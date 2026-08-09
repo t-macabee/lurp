@@ -40,6 +40,17 @@ public static class IndexRunner
         sink.WriteLine("done.");
         swWorkspaceInfo.Stop();
 
+        var unrestoredProjects = WorkspaceLoadGate.GetUnrestoredProjectNames(solution);
+        if (unrestoredProjects.Count > 0)
+        {
+            sink.WriteErrorLine();
+            sink.WriteErrorLine($"WARNING: {unrestoredProjects.Count} of {solution.Projects.Count()} project(s) have not been restored:");
+            foreach (var name in unrestoredProjects.OrderBy(static n => n, StringComparer.Ordinal))
+                sink.WriteErrorLine($"  - {name}");
+            sink.WriteErrorLine(WorkspaceLoadGate.DescribeUnrestored(unrestoredProjects));
+            sink.WriteErrorLine();
+        }
+
         if (strategy == IncrementalStrategy)
         {
             var previousStorageManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
@@ -159,6 +170,17 @@ public static class IndexRunner
             var allEdges = new List<EdgeRecord>();
             var blindProjects = new List<string>();
             var extractedProjects = 0;
+
+            var unrestoredProjects = WorkspaceLoadGate.GetUnrestoredProjectNames(solution);
+            if (unrestoredProjects.Count > 0)
+            {
+                sink.WriteErrorLine();
+                sink.WriteErrorLine($"WARNING: {unrestoredProjects.Count} of {solution.Projects.Count()} project(s) have not been restored:");
+                foreach (var name in unrestoredProjects.OrderBy(static n => n, StringComparer.Ordinal))
+                    sink.WriteErrorLine($"  - {name}");
+                sink.WriteErrorLine(WorkspaceLoadGate.DescribeUnrestored(unrestoredProjects));
+                sink.WriteErrorLine();
+            }
 
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution, cancellationToken))
             {

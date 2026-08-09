@@ -22,7 +22,7 @@ namespace Lurp.Workspace
     // is cleared before high-signal small sections such as inclusionReasons and
     // affectedPublicSurfaces. The anchor is never dropped; as a last resort its
     // source is bounded to fit the remaining budget (a "summarized" entry), so
-    // --budget always bounds the content basis it is documented to bound. Only
+    // --content-budget always bounds the content basis it is documented to bound. Only
     // when the residual non-anchor content alone still exceeds the budget is the
     // overflow declared with budget_exhausted. estimatedTokens is set to the
     // settled CONTENT measure of the capsule : the serialized artifact is
@@ -87,7 +87,7 @@ namespace Lurp.Workspace
                 // estimate. Budget-governed sections outside the tier list
                 // (likelyChangeSites, affectedPublicSurfaces, paths, topology, ...)
                 // are dropped for budget, not fetchable: the instruction names them
-                // and states the only honest recovery, a larger --budget.
+                // and states the only honest recovery, a larger --content-budget.
                 ComposeRecoveryInstruction(capsule, tierPriority);
 
                 var estimate = Measure(capsule);
@@ -101,7 +101,7 @@ namespace Lurp.Workspace
                     // Every trimmable section has been cleared and the capsule is
                     // still over budget. The anchor is priority 1 and is never
                     // dropped; bound its source to fit the remaining budget so
-                    // the delivered estimate honors the basis --budget is
+                    // the delivered estimate honors the basis --content-budget is
                     // documented to bound. Only when the residual non-anchor
                     // content alone still exceeds the budget (a pathologically
                     // small budget) is the overflow declared, honestly, with
@@ -147,7 +147,7 @@ namespace Lurp.Workspace
             {
                 parts.Add("Sections not served by --tier ("
                     + string.Join(", ", nonFetchableOmitted)
-                    + ") were dropped to fit the budget; re-run with a larger --budget to retain them.");
+                    + ") were dropped to fit the budget; re-run with a larger --content-budget to retain them.");
             }
 
             capsule.InclusionReasons["omittedTiers.budget_exhausted"] = string.Join(" ", parts);
@@ -427,7 +427,7 @@ namespace Lurp.Workspace
                 // position in the tier priority. Source bounding is unaffected:
                 // BoundTierSources looks sections up by name.
                 var surrounding = sections.FirstOrDefault(
-                    static section => section.Name == "surroundingSource");
+                    static section => section.Name == "surrounding_source");
                 if (surrounding != null)
                 {
                     sections.Remove(surrounding);
@@ -490,12 +490,12 @@ namespace Lurp.Workspace
                 => name switch
                 {
                     "contracts" => capsule.Contracts,
-                    "directCallees" => capsule.DirectCallees,
-                    "directCallers" => capsule.DirectCallers,
-                    "registeredImplementations" => capsule.RegisteredImplementations,
-                    "relevantTests" => capsule.RelevantTests,
-                    "secondDegreeContext" => capsule.SecondDegreeContext,
-                    "surroundingSource" => capsule.SurroundingSource,
+                    "direct_callees" => capsule.DirectCallees,
+                    "direct_callers" => capsule.DirectCallers,
+                    "registered_implementations" => capsule.RegisteredImplementations,
+                    "relevant_tests" => capsule.RelevantTests,
+                    "second_degree_context" => capsule.SecondDegreeContext,
+                    "surrounding_source" => capsule.SurroundingSource,
                     _ => null,
                 };
         }

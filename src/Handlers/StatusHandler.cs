@@ -261,10 +261,10 @@ internal static class StatusHandler
         if (includeDocuments || node is not JsonObject obj)
             return node;
 
-        var documentCount = (obj["documentVersions"] as JsonObject)?.Count ?? 0;
-        obj.Remove("documentVersions");
-        obj["documentCount"] = documentCount;
-        obj["documentsNote"] = "Per-document versions omitted; pass --detail=documents to include them.";
+        var documentCount = (obj["document_versions"] as JsonObject)?.Count ?? 0;
+        obj.Remove("document_versions");
+        obj["document_count"] = documentCount;
+        obj["documents_note"] = "Per-document versions omitted; pass --detail=documents to include them.";
         return obj;
     }
 }

@@ -6,8 +6,8 @@ status and design context, see the [docs](../docs/).
 
 Lurp loads .NET solutions through Roslyn, stores snapshot-bound symbols,
 relationships, and source spans in SQLite (`index.db`), and exposes commands
-for retrieval, semantic diffing, impact analysis, simulation, context capsules,
-and audits.
+for retrieval, semantic diffing, impact analysis, context capsules,
+and annotations.
 
 ## Quick Start
 
@@ -52,6 +52,8 @@ Index a solution and store facts in the database.
 | `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON. |
 | `--skip-adapter=<name>` | No | Skip a named framework adapter. Valid: `ASP.NET Core`, `Dependency Injection`, `MediatR`, `EF Core`, `Serialization`, `Test`. |
+| `--verbose` | No | Emit per-extractor timing lines to stderr. |
+| `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. |
 
 `--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
 
@@ -137,6 +139,26 @@ Also accepts the shared [read-command options](#read-command-options).
 
 ---
 
+### `--mode=navigate`
+
+Resolve an indexed declaration by file and line.
+
+```
+--mode=navigate --file=<path> --line=<n> --output-dir=<path> [options]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--file=<path>` | Yes | Source file path relative to the solution root. |
+| `--line=<n>` | Yes | 1-based line number in the source file. |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--include-generated` | No | Include source-generated declarations. |
+
+Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location.
+
+---
+
 ### `--mode=diff`
 
 Show semantic changes between two snapshots.
@@ -168,7 +190,7 @@ Trace the impact path of a changed symbol.
 | `--symbol=<id>` | Yes | The symbol ID to trace from. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
-| `--max-depth=<n>` | No | Maximum traversal depth (default: 10). |
+| `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
 | `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
@@ -195,7 +217,7 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached — typically `relevantTests` and `secondDegreeContext`. That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached — typically `relevantTests` and `secondDegreeContext`. That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
@@ -216,7 +238,7 @@ A capsule reports two different numbers, and they are not interchangeable:
 
 | Field | What it measures | Use it for |
 |---|---|---|
-| `estimatedTokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--budget` bounded. This is the budget basis. |
+| `estimatedTokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
 | `estimatedArtifactTokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
 
 `estimatedArtifactTokens` is always the larger of the two, typically by a wide
@@ -290,77 +312,6 @@ Show step-by-step timing data for a snapshot.
 
 ---
 
-### `--mode=simulate-rename`
-
-Simulate renaming a symbol and show affected references.
-
-```
---mode=simulate-rename --symbol=<id> --output-dir=<path> [options]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to simulate. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
-
-The report is the set of call sites a rename must touch. That set is derived from
-the graph around the symbol and does not depend on the new name, so none is taken.
-
----
-
-### `--mode=simulate-move`
-
-Simulate moving a symbol to a new namespace.
-
-```
---mode=simulate-move --symbol=<id> --output-dir=<path> [options]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to simulate. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
-
-As with `simulate-rename`, the affected-reference set is independent of the
-destination namespace, so none is taken.
-
----
-
-### `--mode=simulate-remove`
-
-Simulate removing a symbol and show cascading impact.
-
-```
---mode=simulate-remove --symbol=<id> --output-dir=<path> [options]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to simulate. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
-
----
-
-### `--mode=audit`
-
-Run static analysis checks on the index.
-
-```
---mode=audit --output-dir=<path> [options]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
-| `--checks=<list>` | No | Comma-separated checks: `dead-symbol`, `untested-surface`, `unregistered-impl`, `high-fan-out` (default: all). |
-| `--fan-out-threshold=<n>` | No | Call-count threshold for `high-fan-out` (default: 20). |
-| `--snapshot=<id>` | No | Snapshot to audit (default: latest). |
-
----
-
 ### `--mode=annotate`
 
 Attach a user-authored annotation to a symbol.
@@ -389,7 +340,7 @@ Retrieve annotations for a symbol.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to query. |
+| `--symbol=<id>` | No | The symbol ID to query. Omit to return all annotations. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
@@ -421,9 +372,7 @@ The following modes from earlier versions have been replaced:
 | `--mode=recompute-all` | Removed. Re-index with `--strategy=full`. |
 | `--mode=mark-dirty` | Removed. Incremental indexing detects changes automatically. |
 | `--mode=sweep` | Removed. No longer needed. |
-| `--mode=lint` | Removed. Use `--mode=audit` for index validation. |
-
-The `.codeaudit/` output directory and `dirty-files.json` manifest are no longer produced. All data is stored in `index.db`.
+| `--mode=lint` | Removed. No direct replacement. |
 
 ## License
 

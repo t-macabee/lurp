@@ -44,8 +44,6 @@ names are accepted for backwards compatibility.
 | `context` | Assemble a bounded capsule of relevant code from a symbol or source location. |
 | `impact` | Follow typed relationships outward and explain each path. |
 | `diff` | Show semantic changes between two snapshots. |
-| `simulate-rename` / `simulate-move` / `simulate-remove` | In-memory change preflight; reports affected symbols without modifying source. |
-| `audit` | Static analysis checks: dead symbols, untested surfaces, unregistered implementations, high fan-out. |
 | `annotate` / `get-annotations` | Attach and retrieve user-authored annotations on symbols. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |
@@ -86,7 +84,7 @@ Hand a capsule over as a digest, and fetch any budget-exhausted tier unbudgeted:
 
 ```bash
 # Summary mode prints the handoff facts instead of the full JSON: anchor,
-# snapshot, the two token estimates (content = what --budget bounded,
+# snapshot, the two token estimates (content = what --content-budget bounded,
 # delivery = the whole emitted file, size the context window from it), and
 # each omitted tier with its fetch command.
 lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --output=summary

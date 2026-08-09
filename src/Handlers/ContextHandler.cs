@@ -18,7 +18,7 @@ internal static class ContextHandler
     internal const int DefaultBudget = 8000;
     // A type anchor's callee/caller tiers scale with member fan-out, so a capsule
     // for a type routinely needs more room than a method anchor's. This default
-    // only applies when the caller omits --budget=; an explicit budget is always
+    // only applies when the caller omits --content-budget=; an explicit budget is always
     // honored as-is.
     internal const int DefaultTypeAnchorBudget = 16000;
 
@@ -36,7 +36,7 @@ internal static class ContextHandler
         var fileArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
         var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
         var intentArg = HandlerBootstrap.GetArgValue(args, "--intent=") ?? "inspect";
-        var budgetArg = HandlerBootstrap.GetArgValue(args, "--budget=");
+        var budgetArg = HandlerBootstrap.GetArgValue(args, "--content-budget=");
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var includeGenerated = args.Contains("--include-generated");
         var includeCompletenessDetail = args.Contains("--completeness-detail");
@@ -61,7 +61,7 @@ internal static class ContextHandler
         var intent = ParseIntent(intentArg);
         var budget = string.IsNullOrEmpty(budgetArg)
             ? DefaultBudgetFor(symbolArg)
-            : HandlerBootstrap.ParsePositiveIntArg(args, "--budget=", DefaultBudget);
+            : HandlerBootstrap.ParsePositiveIntArg(args, "--content-budget=", DefaultBudget);
         var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
@@ -280,7 +280,7 @@ internal static class ContextHandler
         Console.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
         Console.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
         // The two numbers answer different questions and are not interchangeable:
-        // content is what --budget bounded, delivery is what loading the emitted
+        // content is what --content-budget bounded, delivery is what loading the emitted
         // file costs. The delivery number is always the larger; size a context
         // window from it, never from content.
         Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimatedTokens: the budget basis)");
@@ -290,12 +290,12 @@ internal static class ContextHandler
         foreach (var (name, count) in new (string, int)[]
                  {
                      ("contracts", capsule.Contracts.Count),
-                     ("directCallees", capsule.DirectCallees.Count),
-                     ("directCallers", capsule.DirectCallers.Count),
-                     ("registeredImplementations", capsule.RegisteredImplementations.Count),
-                     ("relevantTests", capsule.RelevantTests.Count),
-                     ("secondDegreeContext", capsule.SecondDegreeContext.Count),
-                     ("surroundingSource", capsule.SurroundingSource.Count),
+                     ("direct_callees", capsule.DirectCallees.Count),
+                     ("direct_callers", capsule.DirectCallers.Count),
+                     ("registered_implementations", capsule.RegisteredImplementations.Count),
+                     ("relevant_tests", capsule.RelevantTests.Count),
+                     ("second_degree_context", capsule.SecondDegreeContext.Count),
+                     ("surrounding_source", capsule.SurroundingSource.Count),
                  })
         {
             Console.WriteLine($"  {name,-28} {count}");

@@ -4,7 +4,7 @@ namespace Lurp.Workspace;
 
 internal sealed class DirectCallersTierBuilder(ContextTierContext context) : IContextTierBuilder
 {
-    string IContextTierBuilder.Name => "directCallers";
+    string IContextTierBuilder.Name => "direct_callers";
 
     List<CapsuleItem> IContextTierBuilder.Build()
     {

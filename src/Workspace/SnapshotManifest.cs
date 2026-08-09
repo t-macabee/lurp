@@ -7,49 +7,49 @@ namespace Lurp.Workspace;
 public sealed partial class SnapshotManifest
 {
 
-    [JsonPropertyName("snapshotId")]
+    [JsonPropertyName("snapshot_id")]
     [JsonConverter(typeof(SnapshotIdConverter))]
     public SnapshotId SnapshotId { get; init; }
 
-    [JsonPropertyName("workspaceId")]
+    [JsonPropertyName("workspace_id")]
     [JsonConverter(typeof(WorkspaceIdConverter))]
     public WorkspaceId WorkspaceId { get; init; }
 
-    [JsonPropertyName("builtAtUtc")]
+    [JsonPropertyName("built_at_utc")]
     public DateTime BuiltAtUtc { get; init; }
 
-    [JsonPropertyName("documentVersions")]
+    [JsonPropertyName("document_versions")]
     [JsonConverter(typeof(DocumentVersionMapConverter))]
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
         = [];
 
-    [JsonPropertyName("sdkVersion")]
+    [JsonPropertyName("sdk_version")]
     public string SdkVersion { get; init; } = "";
 
-    [JsonPropertyName("compilerVersion")]
+    [JsonPropertyName("compiler_version")]
     public string CompilerVersion { get; init; } = "";
 
-    [JsonPropertyName("targetFrameworks")]
+    [JsonPropertyName("target_frameworks")]
     public Dictionary<string, string> TargetFrameworks { get; init; }
         = [];
 
-    [JsonPropertyName("projectGraph")]
+    [JsonPropertyName("project_graph")]
     public Dictionary<string, string[]> ProjectGraph { get; init; }
         = [];
 
-    [JsonPropertyName("databaseSchemaVersion")]
+    [JsonPropertyName("database_schema_version")]
     public int DatabaseSchemaVersion { get; init; }
 
-    [JsonPropertyName("outputSchemaVersion")]
+    [JsonPropertyName("output_schema_version")]
     public int OutputSchemaVersion { get; init; }
 
-    [JsonPropertyName("extractorVersion")]
+    [JsonPropertyName("extractor_version")]
     public string ExtractorVersion { get; init; } = "";
 
-    [JsonPropertyName("toolVersion")]
+    [JsonPropertyName("tool_version")]
     public string ToolVersion { get; init; } = "";
 
-    [JsonPropertyName("previousSnapshotId")]
+    [JsonPropertyName("previous_snapshot_id")]
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
     public SnapshotId? PreviousSnapshotId { get; init; }
 
@@ -90,7 +90,7 @@ public sealed partial class SnapshotManifest
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
     public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,

@@ -4,7 +4,7 @@ namespace Lurp.Workspace;
 
 internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext context) : IContextTierBuilder
 {
-    string IContextTierBuilder.Name => "registeredImplementations";
+    string IContextTierBuilder.Name => "registered_implementations";
 
     string? IContextTierBuilder.EmptyReason =>
         context.HasUnmodeledRegistrations() ? "unmodeled_construct" : null;

@@ -13,7 +13,7 @@ public class Program
     /// <para>
     /// <paramref name="Flags"/> is the mode's complete flag inventory excluding the globals
     /// in <see cref="CliFlagValidation"/>. A valued flag is written with its trailing '='
-    /// (<c>"--budget="</c>) and a bare flag without one (<c>"--quiet"</c>); the validator
+    /// (<c>"--content-budget="</c>) and a bare flag without one (<c>"--quiet"</c>); the validator
     /// matches on that shape, so the two forms are not interchangeable. Flags a handler reads
     /// indirectly through a <see cref="Handlers.HandlerBootstrap"/> helper belong here too :
     /// the helper call is invisible to the validator.
@@ -57,7 +57,7 @@ public class Program
              "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(ImpactHandler.Run)),
         new("context", "Assemble a context capsule for a symbol.",
-            ["--symbol=", "--file=", "--line=", "--intent=", "--budget=", "--max-hops=", "--scope=",
+             ["--symbol=", "--file=", "--line=", "--intent=", "--content-budget=", "--max-hops=", "--scope=",
              "--change-objective=", "--affected-project=", "--constraint=", "--topology-annotation=",
              "--target-hop=", "--tier=", "--tier-limit=", "--cursor=", "--completeness-detail",
              "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
@@ -68,18 +68,6 @@ public class Program
         new("timings", "Show step-by-step timing data for a snapshot.",
             ["--snapshot=", "--json"],
             Sync(TimingsHandler.Run)),
-        new("simulate-rename", "Simulate renaming a symbol and show affected references.",
-            ["--symbol=", "--snapshot="],
-            Sync(args => SimulateHandler.Run(args, "simulate-rename", (e, s) => e.SimulateRename(s)))),
-        new("simulate-move", "Simulate moving a symbol to a new namespace.",
-            ["--symbol=", "--snapshot="],
-            Sync(args => SimulateHandler.Run(args, "simulate-move", (e, s) => e.SimulateMove(s)))),
-        new("simulate-remove", "Simulate removing a symbol and show cascading impact.",
-            ["--symbol=", "--snapshot="],
-            Sync(args => SimulateHandler.Run(args, "simulate-remove", (e, s) => e.SimulateRemove(s)))),
-        new("audit", "Run static analysis checks on the index.",
-            ["--checks=", "--fan-out-threshold=", "--snapshot="],
-            Sync(AuditHandler.Run)),
         new("annotate", "Attach a user-authored annotation to a symbol.",
             ["--symbol=", "--annotation-kind=", "--value=", "--snapshot="],
             Sync(AnnotationHandler.RunAnnotate)),

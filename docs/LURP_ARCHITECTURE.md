@@ -25,8 +25,7 @@ Lurp today:
 > retrieval for software agents.**
 
 It loads a .NET solution through Roslyn, discovers types and dependencies,
-tracks stale semantic data, performs structural audits, simulates refactorings
-without modifying source, and assembles bounded context capsules for agent
+tracks stale semantic data, and assembles bounded context capsules for agent
 tasks. All capabilities share one document identity, one symbol identity, one
 workspace snapshot, one freshness model, one persistent database, and one query
 interface.
@@ -78,7 +77,7 @@ source.
 
 ### 3.1 Decision
 
-Yes: one primary SQLite database, `.codeaudit/index.db`, replaces the
+Yes: one primary SQLite database (`index.db` in the output directory) replaces the
 operational JSON files as the indexer's canonical persisted output. JSON
 remains appropriate for CLI response output, portable exports, debugging
 snapshots, test fixtures/golden files, and optional human inspection — it is
@@ -122,7 +121,7 @@ requires it.
 | `symbols` | Types and members with stable semantic identity |
 | `declarations` | Symbol-to-document spans and declaration metadata |
 | `edges` | Typed semantic relationships |
-| `facts` | Attributes and other non-edge semantic facts |
+| `facts` | Attributes and other non-edge semantic facts — **rejected** (stored in `metadata_json` instead; see TRUST_KERNEL.md §Architecture alignment) |
 | `diagnostics` | Snapshot-bound compiler/build diagnostics |
 | `semantic_changes` | Structured differences between snapshots |
 | `annotations` | Explicitly non-compiler-authored knowledge |
@@ -182,10 +181,10 @@ tracing; freshness; verification selection; representation of uncertainty.
 
 ### 5.2 Read-only relationship to source
 
-May: read source; index source; simulate changes in memory; compile
-hypothetical solutions; report consequences. Must not: apply fixes; rewrite
-the working tree; decide architectural intent; call an LLM to make changes;
-become the worker agent.
+May: read source; index source; report consequences. Must not: apply fixes;
+compile hypothetical or in-memory modified solutions; rewrite the working tree;
+decide architectural intent; call an LLM to make changes; become the worker
+agent.
 
 ### 5.3 C#/.NET specialization
 
@@ -221,9 +220,9 @@ Every field is a contract with future consumers:
 ## 23. Phases (reference)
 
 The 17-phase build order that combined both tracks is defined in
-`TRUST_KERNEL.md` §"Architecture Phase completion status". All phases are
-complete. The phase table there records each phase's description, status, and
-evidence.
+`TRUST_KERNEL.md` §"Architecture Phase completion status". All phases are complete except Phase 16, whose deliverables (simulate and
+audit modes) were withdrawn from the product in the Aug 2026 cleanup; see
+`TRUST_KERNEL.md` for the row.
 
 ### 23.1 Historical milestones
 
@@ -251,9 +250,13 @@ Explicitly outside the core even when individually useful:
 - **LLM-authored canonical summaries** — interpretive summaries go stale and
   cannot be reproduced deterministically; if useful, store them as annotations
   with their own provenance and snapshot association, never as compiler facts.
-- **General-purpose architecture scoring** — complexity/redundancy/dead-code
-  checks may remain optional candidate generators, not authoritative judgments
-  or the organizing center.
+- **General-purpose architecture scoring** — complexity, redundancy, and
+  dead-code audits are not part of the product (the audit mode was withdrawn
+  in the Aug 2026 cleanup); the indexer optimizes for correct facts and stable
+  machine-readable retrieval, not authoritative judgments about code quality.
+- **Change simulation / preflight** — the `simulate-rename|move|remove` family
+  of modes was withdrawn in the Aug 2026 cleanup. Pre-computing the consequences
+  of hypothetical source edits is outside core scope.
 - **Premature daemon/server architecture** — begin with a local CLI and
   persistent SQLite store; a long-running service is justified only if measured
   Roslyn startup and incremental-update costs remain unacceptable after
@@ -261,12 +264,14 @@ Explicitly outside the core even when individually useful:
 
 ## 25. Validation Strategy
 
-Judge by agent outcomes, not database size or indexed edge counts. Build a
-benchmark set from real eNoteV2 tasks and previous agent failures: vague
-cleanup request; local validation change; handler/DTO modification;
-cross-project interface change; apparently unused type deletion; entity change
-affecting EF or serialization; DI implementation replacement; route contract
-change.
+Judge by agent outcomes, not database size or indexed edge counts. The intended
+benchmark set — drawn from real eNoteV2 tasks and previous agent failures —
+covers eight scenarios: vague cleanup request; local validation change;
+handler/DTO modification; cross-project interface change; apparently unused
+type deletion; entity change affecting EF or serialization; DI implementation
+replacement; route contract change. Three are implemented today
+(`tests/OutcomeBenchmarkTests.cs`): `local-validation-change`,
+`handler-dto-modification`, `di-implementation-replacement`.
 
 Measure: correct starting symbol found? actual source retrieved without
 project exploration? all constraining contracts included? affected callers and
@@ -294,7 +299,6 @@ The tool has reached its definitive conceptual form when:
 - impact results are paths with reasons, not opaque scores;
 - context capsules return bounded relevant code plus its surroundings;
 - every fact states its provenance and extractor version;
-- simulations and audits consume the common model;
 - the indexer never becomes the actor modifying source.
 
 The final one-line technical description:
