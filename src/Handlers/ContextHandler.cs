@@ -41,11 +41,7 @@ internal static class ContextHandler
         var includeGenerated = args.Contains("--include-generated");
         var includeCompletenessDetail = args.Contains("--completeness-detail");
         var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
-        var changeObjective = HandlerBootstrap.GetArgValue(args, "--change-objective=");
         var affectedProjects = GetRepeatableArgs(args, "--affected-project=");
-        var constraints = GetRepeatableArgs(args, "--constraint=");
-        var topologyAnnotations = GetRepeatableArgs(args, "--topology-annotation=");
-        var targetTopology = ParseTargetTopology(GetRepeatableArgs(args, "--target-hop="));
         var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args, allowJsonl: !string.IsNullOrEmpty(tierArg));
         var quiet = HandlerBootstrap.IsQuiet(args);
@@ -83,8 +79,7 @@ internal static class ContextHandler
             var gitRoot = store.GetSnapshotGitRoot(snapshotId);
             var assemblyOptions = new ContextAssemblyOptions(
                 intent, budget, maxHops, includeGenerated,
-                scopeArg, affectedProjects, changeObjective, constraints,
-                targetTopology, topologyAnnotations, gitRoot, includeCompletenessDetail);
+                scopeArg, affectedProjects, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
 
             HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
@@ -323,20 +318,4 @@ internal static class ContextHandler
             .Select(arg => arg[prefix.Length..])
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .ToList();
-
-    private static List<ImpactPath> ParseTargetTopology(IEnumerable<string> values)
-    {
-        var paths = new List<ImpactPath>();
-        foreach (var value in values)
-        {
-            var fields = value.Split(',', StringSplitOptions.TrimEntries);
-            if (fields.Length is < 3 or > 4)
-                throw new ArgumentException("--target-hop must be sourceSymbolId,targetSymbolId,edgeKind[,provenance].");
-            paths.Add(new ImpactPath(
-            [
-                new ImpactHop(fields[0], fields[1], fields[2], fields.Length == 4 ? fields[3] : "caller_supplied"),
-            ]));
-        }
-        return paths;
-    }
 }

@@ -41,9 +41,6 @@ namespace Lurp.Workspace
         [JsonPropertyName("affected_projects")]
         public List<string> AffectedProjects { get; init; } = [];
 
-        [JsonPropertyName("change_objective")]
-        public string? ChangeObjective { get; init; }
-
         [JsonPropertyName("provenance")]
         public string Provenance { get; init; } = "compiler_proved";
 
@@ -191,9 +188,7 @@ namespace Lurp.Workspace
         [property: JsonPropertyName("symbol_id")] string SymbolId);
 
     internal sealed record CapsuleTopology(
-        [property: JsonPropertyName("current")] CapsuleTopologyReference Current,
-        [property: JsonPropertyName("target")] List<ImpactPath> Target,
-        [property: JsonPropertyName("annotations")] List<CapsuleConstraint> Annotations);
+        [property: JsonPropertyName("current")] CapsuleTopologyReference Current);
 
     // The capsule's current topology is the union of incomingPaths and
     // outgoingPaths. Those collections are serialized once, in their own
@@ -341,7 +336,7 @@ namespace Lurp.Workspace
         // Null once the budget enforcer drops it: zeroed counts would read as a
         // positive "no references" claim. Its absence is declared in omittedTiers.
         [JsonPropertyName("topology")]
-        public CapsuleTopology? Topology { get; set; } = new(CapsuleTopologyReference.Empty, [], []);
+        public CapsuleTopology? Topology { get; set; } = new(CapsuleTopologyReference.Empty);
 
         [JsonPropertyName("completeness")]
         public SnapshotCompleteness? Completeness { get; set; }

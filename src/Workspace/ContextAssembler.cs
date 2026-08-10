@@ -16,10 +16,6 @@ namespace Lurp.Workspace
         bool IncludeGenerated = false,
         string? Scope = null,
         IReadOnlyList<string>? AffectedProjects = null,
-        string? ChangeObjective = null,
-        IReadOnlyList<string>? CallerConstraints = null,
-        IReadOnlyList<ImpactPath>? TargetTopology = null,
-        IReadOnlyList<string>? TopologyAnnotations = null,
         string? GitRoot = null,
         bool IncludeCompletenessDetail = false
     );
@@ -54,10 +50,6 @@ namespace Lurp.Workspace
         public bool IncludeGenerated { get; init; }
         public string? Scope { get; init; }
         public IReadOnlyList<string> AffectedProjects { get; init; } = [];
-        public string? ChangeObjective { get; init; }
-        public IReadOnlyList<string> CallerConstraints { get; init; } = [];
-        public IReadOnlyList<ImpactPath> TargetTopology { get; init; } = [];
-        public IReadOnlyList<string> TopologyAnnotations { get; init; } = [];
         public string? GitRoot { get; init; }
         public bool IncludeCompletenessDetail { get; init; }
 
@@ -153,10 +145,6 @@ namespace Lurp.Workspace
                     capsule.Constraints.Add(new CapsuleConstraint(annotation.Value, "annotation", annotation.Kind, annotation.SymbolId));
                 }
             }
-            capsule.Constraints.AddRange(CallerConstraints.Select(value => new CapsuleConstraint(value, "caller_supplied")));
-            var topologyAnnotations = TopologyAnnotations
-                .Select(value => new CapsuleConstraint(value, "caller_supplied"))
-                .ToList();
 
             // The current topology is the union of incomingPaths and outgoingPaths.
             // Those collections are serialized once above; the reference summary
@@ -170,9 +158,7 @@ namespace Lurp.Workspace
                     "see outgoing_paths",
                     capsule.IncomingPaths.Count,
                     capsule.OutgoingPaths.Count,
-                    totalHops),
-                TargetTopology.ToList(),
-                topologyAnnotations);
+                    totalHops));
 
             AddChangeSites(capsule, [capsule.Anchor.Locations], "anchor", 0, capsule.Anchor.SymbolId);
             AddItemChangeSites(capsule, capsule.DirectCallers, "direct caller", 1);
@@ -394,7 +380,6 @@ namespace Lurp.Workspace
                 MaxHops = MaxHops,
                 SnapshotId = SnapshotId,
                 AffectedProjects = AffectedProjects.Distinct(StringComparer.Ordinal).OrderBy(static value => value, StringComparer.Ordinal).ToList(),
-                ChangeObjective = ChangeObjective,
                 Provenance = Provenance.CompilerProved,
                 ExtractorIdentity = VersionConstants.ExtractorVersion,
                 Locations = DeclarationStore.GetDeclarationLocations(SymbolId.Value, SnapshotId, IncludeGenerated),
@@ -455,10 +440,6 @@ namespace Lurp.Workspace
                     IncludeGenerated = options.IncludeGenerated,
                     Scope = options.Scope,
                     AffectedProjects = options.AffectedProjects ?? [],
-                    ChangeObjective = options.ChangeObjective,
-                    CallerConstraints = options.CallerConstraints ?? [],
-                    TargetTopology = options.TargetTopology ?? [],
-                    TopologyAnnotations = options.TopologyAnnotations ?? [],
                     GitRoot = options.GitRoot,
                     IncludeCompletenessDetail = options.IncludeCompletenessDetail,
                 };
@@ -529,10 +510,6 @@ namespace Lurp.Workspace
                 IncludeGenerated = options.IncludeGenerated,
                 Scope = options.Scope,
                 AffectedProjects = options.AffectedProjects ?? [],
-                ChangeObjective = options.ChangeObjective,
-                CallerConstraints = options.CallerConstraints ?? [],
-                TargetTopology = options.TargetTopology ?? [],
-                TopologyAnnotations = options.TopologyAnnotations ?? [],
                 GitRoot = options.GitRoot,
                 IncludeCompletenessDetail = options.IncludeCompletenessDetail,
             };

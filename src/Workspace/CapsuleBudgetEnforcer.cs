@@ -251,17 +251,6 @@ namespace Lurp.Workspace
                 capsule.OmittedTiers.Add(entry);
         }
 
-        private static Func<ContextCapsule, bool> TopologyDropTargetsStep(ContextCapsule capsule)
-            => _ =>
-            {
-                if (capsule.Topology == null
-                    || (capsule.Topology.Target.Count == 0 && capsule.Topology.Annotations.Count == 0))
-                    return false;
-                capsule.Topology.Target.Clear();
-                capsule.Topology.Annotations.Clear();
-                return true;
-            };
-
         // Dropped, not zeroed. A retained topology whose counts are all zero
         // reads as "no incoming or outgoing references" : a positive claim, and a
         // false one beside a populated directCallers tier. Absence plus the
@@ -403,7 +392,6 @@ namespace Lurp.Workspace
                     TrimmableSection.Clear("incomingPaths", capsule.IncomingPaths),
                     TrimmableSection.Clear("outgoingPaths", capsule.OutgoingPaths),
                     TrimmableSection.WithSteps("topology",
-                        new TrimStep("summarized", TopologyDropTargetsStep(capsule)),
                         new TrimStep("budget_exhausted", TopologyResetStep(capsule))),
                     TrimmableSection.Clear("constraints", capsule.Constraints),
                     TrimmableSection.WithSteps("completeness",

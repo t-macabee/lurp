@@ -76,11 +76,7 @@ internal static class HelpText
         ["--content-budget="] = "Token budget for capsule CONTENT (default: 8000). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
         ["--max-hops="] = "Maximum graph hops to expand (default: 3).",
         ["--scope="] = "Logical scope label recorded on the anchor (default: the symbol ID).",
-        ["--change-objective="] = "Free-text change objective recorded on the capsule anchor.",
         ["--affected-project="] = "Repeatable. A project affected by the change.",
-        ["--constraint="] = "Repeatable. A caller-supplied constraint recorded on the capsule.",
-        ["--topology-annotation="] = "Repeatable. A caller-supplied topology annotation.",
-        ["--target-hop="] = "Repeatable. A target-topology hop specification.",
         ["--tier="] = "Fetch ONE tier on its own instead of a capsule, with no token budget applied. This is how a capsule's omittedTiers 'budget_exhausted' entry is acted on. Valid: "
             + string.Join(", ", Workspace.ContextAssembler.TierNames) + ".",
         ["--tier-limit="] = "Items per tier page (default: 25).",
