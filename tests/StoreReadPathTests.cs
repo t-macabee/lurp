@@ -4,11 +4,11 @@ using Microsoft.Build.Locator;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Phase 4: store read paths must return the persisted facts (declaration
-/// source, incoming/outgoing edges, search) and the "blind project" capsule
-/// contract must record unreadability as incompleteness, never as emptiness.
+/// Store read-path characterization tests: declaration source, incoming/outgoing
+/// edges, search, and the "blind project" read-path contract that records
+/// unreadability as incompleteness, never as emptiness.
 /// </summary>
-public sealed class RetrievalCorrectnessTests : IntegrationTestBase
+public sealed class StoreReadPathTests : IntegrationTestBase
 {
     private const string CalculatorSource = """
         namespace TestProject;
