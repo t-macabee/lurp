@@ -12,6 +12,15 @@ public sealed record FreshnessStamp(
     DateTime CheckedAtUtc,
     string SnapshotId);
 
+/// <summary>
+/// Compares a current workspace against a stored snapshot manifest to detect
+/// staleness. Three entry points share the private Check* comparators:
+/// <list type="bullet">
+/// <item><see cref="CheckFreshnessCheap"/> — Roslyn-free read stamp; stat/hash file I/O.</item>
+/// <item><see cref="CheckFreshness(WorkspaceInfo,SnapshotManifest?)"/> — full read check; includes <c>CheckDocuments</c>.</item>
+/// <item><see cref="GetFullRebuildMismatches"/> — write-side rebuild gate; omits <c>CheckDocuments</c> (incremental index handles per-document changes itself).</item>
+/// </list>
+/// </summary>
 public static class WorkspaceFreshness
 {
 

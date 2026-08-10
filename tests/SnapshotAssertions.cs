@@ -281,7 +281,23 @@ internal static class SnapshotAssertions
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.SourceDocumentPath ?? "", b.SourceDocumentPath ?? "");
             if (cmp != 0) return cmp;
-            return (a.SourceStartLine ?? 0).CompareTo(b.SourceStartLine ?? 0);
+            cmp = (a.SourceStartLine ?? 0).CompareTo(b.SourceStartLine ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.SourceStartColumn ?? 0).CompareTo(b.SourceStartColumn ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.SourceEndLine ?? 0).CompareTo(b.SourceEndLine ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.SourceEndColumn ?? 0).CompareTo(b.SourceEndColumn ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = a.IsCrossGenerated.CompareTo(b.IsCrossGenerated);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.TypeArgumentsJson ?? "", b.TypeArgumentsJson ?? "");
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "", b.ReceiverTypeConstraintsJson ?? "");
+            if (cmp != 0) return cmp;
+            cmp = (a.SourceNodeKind?.ToString() ?? "").CompareTo(b.SourceNodeKind?.ToString() ?? "");
+            if (cmp != 0) return cmp;
+            return (a.TargetNodeKind?.ToString() ?? "").CompareTo(b.TargetNodeKind?.ToString() ?? "");
         });
     }
 
@@ -321,6 +337,10 @@ internal static class SnapshotAssertions
         Assert.Equal(expected.SourceStartColumn, actual.SourceStartColumn);
         Assert.Equal(expected.SourceEndColumn, actual.SourceEndColumn);
         Assert.Equal(expected.ReceiverTypeConstraintsJson, actual.ReceiverTypeConstraintsJson);
+        Assert.Equal(expected.IsCrossGenerated, actual.IsCrossGenerated);
+        Assert.Equal(expected.TypeArgumentsJson, actual.TypeArgumentsJson);
+        Assert.Equal(expected.SourceNodeKind, actual.SourceNodeKind);
+        Assert.Equal(expected.TargetNodeKind, actual.TargetNodeKind);
     }
 
     private static void AssertEqual(DiagnosticRecord expected, DiagnosticRecord actual)

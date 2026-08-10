@@ -117,6 +117,13 @@ namespace Lurp.Storage
         }
     }
 
+    /// <summary>
+    /// Persisted TEXT change-type tokens (Migration_007). These are write-mostly:
+    /// emitted verbatim to JSON output (<c>DiffHandler</c>, <c>ImpactHandler</c>)
+    /// and never parsed back into a typed switch — per §5.6, unknown enum values are
+    /// survivable input. Producers and comparators reference these compiler-checked
+    /// constants, not raw literals.
+    /// </summary>
     public static class ChangeType
     {
         public const string SymbolAdded = "symbol_added";
