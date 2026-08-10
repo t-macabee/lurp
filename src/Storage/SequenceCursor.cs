@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.Json;
-
 namespace Lurp.Storage;
 
 /// <summary>
@@ -31,21 +28,12 @@ public sealed record SequenceCursor(string SnapshotId, string Fingerprint, strin
     public static string ComputeFingerprint(params string?[] parts)
         => string.Join(FingerprintSeparator, parts.Select(static part => part ?? string.Empty));
 
-    public string Encode()
-        => Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(this)));
+    public string Encode() => CursorUtils.EncodeBase64(this);
 
     public static SequenceCursor? TryDecode(string encoded)
     {
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-            var cursor = JsonSerializer.Deserialize<SequenceCursor>(json);
-            return cursor is { Offset: >= 0 } ? cursor : null;
-        }
-        catch (Exception ex) when (ex is FormatException or JsonException or DecoderFallbackException)
-        {
-            return null;
-        }
+        var cursor = CursorUtils.TryDecodeBase64<SequenceCursor>(encoded);
+        return cursor is { Offset: >= 0 } ? cursor : null;
     }
 
     /// <summary>

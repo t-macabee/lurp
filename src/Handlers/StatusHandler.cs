@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Lurp.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -69,8 +70,7 @@ internal static class StatusHandler
             var includeDocuments = WantsDetail(args, "documents");
             var includeCompleteness = WantsDetail(args, "completeness");
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
-                ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH")
-                ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+                ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeCompleteness);
@@ -135,7 +135,7 @@ internal static class StatusHandler
                 schema_version = schemaVersion,
                 latest_snapshot_id = latestSnapshotId,
                 freshness_checked = false,
-                note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).",
+                note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
                 manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
@@ -147,7 +147,7 @@ internal static class StatusHandler
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
-        Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace (INDEXER_SOLUTION_PATH accepted for back-compat).");
+        Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
@@ -215,11 +215,7 @@ internal static class StatusHandler
         }
     }
 
-    private static readonly JsonSerializerOptions JsonOutputOptions = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    private static readonly JsonSerializerOptions JsonOutputOptions = LurpJsonOptions.IndentedIgnoreNull;
 
     private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot, bool includeDetail)
     {

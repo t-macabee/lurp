@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lurp.Shared;
 using Lurp.Storage;
 
 namespace Lurp.Workspace;
@@ -87,11 +88,7 @@ public sealed partial class SnapshotManifest
         };
     }
 
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-    };
+    private static readonly JsonSerializerOptions _jsonOptions = LurpJsonOptions.SnakeCaseIndented;
 
     public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)

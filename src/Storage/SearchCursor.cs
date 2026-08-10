@@ -1,6 +1,3 @@
-using System.Text;
-using System.Text.Json;
-
 namespace Lurp.Storage;
 
 /// <summary>
@@ -15,24 +12,9 @@ public sealed record SearchCursor(string SnapshotId, string Fingerprint, string 
     public static string ComputeFingerprint(string query, string? kind, bool includeGenerated) =>
         $"{query}{kind}{includeGenerated}";
 
-    public string Encode()
-    {
-        var json = JsonSerializer.Serialize(this);
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
-    }
+    public string Encode() => CursorUtils.EncodeBase64(this);
 
-    public static SearchCursor? TryDecode(string encoded)
-    {
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-            return JsonSerializer.Deserialize<SearchCursor>(json);
-        }
-        catch (Exception ex) when (ex is FormatException or JsonException or DecoderFallbackException)
-        {
-            return null;
-        }
-    }
+    public static SearchCursor? TryDecode(string encoded) => CursorUtils.TryDecodeBase64<SearchCursor>(encoded);
 
     /// <summary>
     /// Throws when the cursor does not describe this request. Parity with

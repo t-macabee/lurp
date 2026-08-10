@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 
@@ -52,8 +53,8 @@ internal static class HandlerBootstrap
     public static string? NormalizeDocumentPath(string? path)
         => path is null ? null : PathNormalizer.ToForwardSlash(path);
 
-    public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
-    public static readonly System.Text.Json.JsonSerializerOptions CompactJson = new() { WriteIndented = false };
+    public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = LurpJsonOptions.Indented;
+    public static readonly System.Text.Json.JsonSerializerOptions CompactJson = LurpJsonOptions.Compact;
 
     /// <summary>
     /// Parses <c>--output=summary|json|jsonl</c>. <paramref name="allowJsonl"/> is false for
@@ -190,14 +191,12 @@ internal static class HandlerBootstrap
     public static string ResolveOutputDir(string[] args)
     {
         var outputDirArg = GetArgValue(args, "--output-dir=")
-            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR")
-            ?? Environment.GetEnvironmentVariable("INDEXER_OUTPUT_DIR");
+            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
         if (!string.IsNullOrEmpty(outputDirArg))
             return outputDirArg;
 
         var solutionArg = GetArgValue(args, "--solution=")
-            ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH")
-            ?? Environment.GetEnvironmentVariable("INDEXER_SOLUTION_PATH");
+            ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         if (!string.IsNullOrEmpty(solutionArg))
         {
             var derived = Path.GetDirectoryName(Path.GetFullPath(solutionArg));
@@ -205,7 +204,7 @@ internal static class HandlerBootstrap
                 return derived;
         }
 
-        Fail("ERROR: --output-dir=path, LURP_OUTPUT_DIR, or --solution=path is required (INDEXER_OUTPUT_DIR and INDEXER_SOLUTION_PATH are accepted for back-compat).");
+        Fail("ERROR: --output-dir=path, LURP_OUTPUT_DIR, or --solution=path is required.");
         return string.Empty;
     }
 

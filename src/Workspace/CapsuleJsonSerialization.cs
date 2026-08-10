@@ -3,6 +3,7 @@
 // Must not contain: data model definitions or assembly/budget logic.
 
 using System.Text.Json.Serialization;
+using Lurp.Shared;
 
 namespace Lurp.Workspace
 {
@@ -13,19 +14,11 @@ namespace Lurp.Workspace
     // estimatedArtifactTokens is the estimate of this serialization itself.
     internal static class ContextCapsuleJson
     {
-        internal static readonly System.Text.Json.JsonSerializerOptions Options = new()
-        {
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
+        internal static readonly System.Text.Json.JsonSerializerOptions Options = LurpJsonOptions.IndentedIgnoreNull;
 
         // Same field contract, one line per document : used by --output=jsonl on the
         // single-tier continuation, never for the capsule itself.
-        internal static readonly System.Text.Json.JsonSerializerOptions CompactOptions = new()
-        {
-            WriteIndented = false,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
+        internal static readonly System.Text.Json.JsonSerializerOptions CompactOptions = LurpJsonOptions.CompactIgnoreNull;
 
         internal static string Serialize(ContextCapsule capsule)
             => System.Text.Json.JsonSerializer.Serialize(capsule, Options);

@@ -99,10 +99,10 @@ internal sealed class SearchSymbolStore
 
         // Architecture §10 "identifier fragments" contract: the FTS5 unicode61 index
         // matches whole tokens only (no camel-case split), so a fragment like
-        // "Service" misses "CourseService". When a plain identifier-like term matches
-        // no whole token, fall back to case-insensitive substring matching over fully
-        // qualified names, which subsumes camel-case segments and prefixes.
-        if (results.Count == 0 && IsPlainIdentifierQuery(query))
+        // "Service" misses "CourseService". When FTS5 saturates fewer than the
+        // requested limit, fall back to case-insensitive substring matching over
+        // fully qualified names to fill the gap.
+        if (results.Count < limit && IsPlainIdentifierQuery(query))
         {
             return SearchSymbolsBySubstring(query, snapshotId, limit, includeGenerated, kind);
         }
@@ -124,9 +124,9 @@ internal sealed class SearchSymbolStore
         if (mode == "fts")
         {
             var page = SearchSymbolsFtsPage(query, snapshotId, limit, includeGenerated, kind, cursor);
-            // Only fall back to substring on the *first* page of a plain identifier query,
-            // matching SearchSymbols' existing fallback behaviour.
-            if (page.Items.Count == 0 && cursor == null && IsPlainIdentifierQuery(query))
+            // Only fall back to substring on the *first* page of a plain identifier query.
+            // Trigger when FTS5 saturates fewer than the requested limit.
+            if (page.Items.Count < limit && cursor == null && IsPlainIdentifierQuery(query))
                 return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, null);
             return page;
         }

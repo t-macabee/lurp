@@ -96,14 +96,16 @@ namespace Lurp.Workspace
 
             PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete);
 
-            new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
-                .Detect(capsule);
-
             // The tier budgeter bounds tier item source; this final pass measures the
             // emitted capsule representation itself and trims/summarizes every
             // consumer-visible section (paths, topology, completeness, constraints,
-            // uncertainties, verification, ...) against the same estimator.
+            // verification, ...) against the same estimator. Run enforcement before
+            // uncertainty detection so tier sections get their full budget allocation
+            // before untiered metadata (uncertainties) is appended.
             CapsuleBudgetEnforcer.Enforce(capsule, Budget, tiers.Select(static tier => tier.Name).ToList());
+
+            new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
+                .Detect(capsule);
 
             return capsule;
         }

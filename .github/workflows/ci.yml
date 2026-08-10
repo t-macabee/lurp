@@ -31,6 +31,5 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      # The unit-test, flake-guard, and clean-rebuild-equivalence steps were
-      # removed with the suite: commit f1254fc deleted tests/Lurp.Tests.csproj.
-      # Restore them when the test project is rebuilt.
+      - name: Test
+        run: dotnet test --no-build --configuration Release

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lurp.Shared;
 using Lurp.Storage;
 
 namespace Lurp.Workspace
@@ -40,11 +41,7 @@ namespace Lurp.Workspace
         private const int MaxItemSourceChars = 800;
         private const string SourceTruncationMarker = "\n// … source truncated by token budget …";
 
-        private static readonly JsonSerializerOptions SectionOptions = new()
-        {
-            WriteIndented = false,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        };
+        private static readonly JsonSerializerOptions SectionOptions = LurpJsonOptions.CompactIgnoreNull;
 
         internal static int Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
         {
