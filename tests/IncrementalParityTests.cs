@@ -1,3 +1,7 @@
+using System.Text.Json;
+using Lurp.Shared;
+using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
@@ -386,5 +390,290 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                     }
                     """);
             });
+    }
+
+    [SkippableFact]
+    public async Task Parity_GenericBaseWithMultipleConcreteImplementations_MergesDispatchTypeArguments()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // One generic base class implementing a constructed generic interface,
+        // with three closed implementations in a second project: every
+        // implementation emits a MayDispatchTo edge for the same
+        // (interface member, implementing member, kind) triple carrying its own
+        // concrete interface type arguments. A clean rebuild merges the colliding
+        // triples into one edge whose type_arguments_json is a nested array with
+        // one variant per implementation; the incremental write path must produce
+        // the same merged encoding.
+        var baseReadServiceV1 = """
+            namespace Services;
+
+            public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+            {
+                public virtual TResponse Find(TSearch search) => default!;
+            }
+            """;
+
+        CreateProject("Services",
+            new Dictionary<string, string>
+            {
+                ["IBaseReadService.cs"] = """
+                    namespace Services;
+
+                    public interface IBaseReadService<TResponse, TSearch>
+                    {
+                        TResponse Find(TSearch search);
+                    }
+                    """,
+                ["BaseReadService.cs"] = baseReadServiceV1,
+            });
+
+        CreateProject("Implementations",
+            new Dictionary<string, string>
+            {
+                ["UserService.cs"] = """
+                    using Services;
+
+                    namespace Implementations;
+
+                    public class User { }
+                    public class UserDto { }
+                    public class UserSearch { }
+
+                    public class UserService : BaseReadService<User, UserDto, UserSearch>
+                    {
+                    }
+                    """,
+                ["OrderService.cs"] = """
+                    using Services;
+
+                    namespace Implementations;
+
+                    public class Order { }
+                    public class OrderDto { }
+                    public class OrderSearch { }
+
+                    public class OrderService : BaseReadService<Order, OrderDto, OrderSearch>
+                    {
+                    }
+                    """,
+                ["ProductService.cs"] = """
+                    using Services;
+
+                    namespace Implementations;
+
+                    public class Product { }
+                    public class ProductDto { }
+                    public class ProductSearch { }
+
+                    public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
+                    {
+                    }
+                    """,
+            },
+            projectReferences: ["Services"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Services", "BaseReadService.cs", baseReadServiceV1 + "\n// comment-only edit\n");
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        var incrementalEdge = Assert.Single(GetMayDispatchEdges(DbPath, snapshotB));
+        var rebuildEdge = Assert.Single(GetMayDispatchEdges(_cleanRebuildDbPath, snapshotC));
+
+        Assert.Equal(rebuildEdge.SourceSymbolId, incrementalEdge.SourceSymbolId);
+        Assert.Equal(rebuildEdge.TargetSymbolId, incrementalEdge.TargetSymbolId);
+
+        var rebuildVariants = EdgeDedup.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
+        var rebuildKeys = VariantKeys(rebuildVariants);
+        foreach (var expectedKey in new[]
+        {
+            "Implementations.OrderDto, Implementations.OrderSearch",
+            "Implementations.ProductDto, Implementations.ProductSearch",
+            "Implementations.UserDto, Implementations.UserSearch",
+        })
+        {
+            Assert.True(rebuildKeys.Contains(expectedKey),
+                $"Fixture sanity check failed: clean rebuild is missing dispatch variant [{expectedKey}]. JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
+        }
+        AssertNestedVariantArray(rebuildEdge.TypeArgumentsJson, rebuildVariants.Count);
+
+        var incrementalVariants = EdgeDedup.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
+        Assert.True(incrementalVariants.Count == rebuildVariants.Count,
+            $"Incremental MayDispatchTo edge carries {incrementalVariants.Count} type-argument variant(s) but the clean rebuild carries {rebuildVariants.Count}. " +
+            $"Incremental JSON: {incrementalEdge.TypeArgumentsJson ?? "(null)"}; clean rebuild JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
+        Assert.Equal(VariantKeys(rebuildVariants), VariantKeys(incrementalVariants));
+        AssertNestedVariantArray(incrementalEdge.TypeArgumentsJson, incrementalVariants.Count);
+    }
+
+    [SkippableFact]
+    public async Task Parity_FrameworkDerivedEdge_SurvivesIncrementalWritePath()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // Guards that framework-derived provenance survives the incremental
+        // write path. The explicit DI registration (Registers,
+        // framework_derived) and the string-literal reflection site
+        // (ReflectionNameCandidate, name_candidate) land on the SAME target
+        // type as two separate edges of different kinds — the near-miss the
+        // original provenance-collision spec imagined, made explicit.
+        //
+        // This does NOT reproduce a provenance-loss collision, because none is
+        // constructible at the fixture level: adapter kinds and reflection
+        // kinds never overlap (adapter kinds are {Handles, MapsTo, References,
+        // Registers, RoutesTo, TestedBy}; reflection kinds are {ReflectionTypeRef,
+        // ReflectionMemberRef, ReflectionNameCandidate, ReflectionTargetUnknown}),
+        // so the two edges never share a (source, target, kind) dedup key and
+        // neither can clobber the other. The store-level provenance-rank
+        // guarantee is exercised by
+        // SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank (Phase C),
+        // which seeds two EdgeRecords with the same triple and different
+        // provenance directly — the only construction that actually hits the
+        // dedup collision.
+        CreateProject("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Di.cs"] = """
+                    namespace Microsoft.Extensions.DependencyInjection;
+
+                    public interface IServiceCollection
+                    {
+                    }
+
+                    public static class ServiceCollectionServiceExtensions
+                    {
+                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                            where TService : class
+                            where TImplementation : class, TService
+                            => services;
+                    }
+                    """,
+                ["App.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    namespace TestProject;
+
+                    public interface ISvc
+                    {
+                    }
+
+                    public class Svc : ISvc
+                    {
+                    }
+
+                    public static class Startup
+                    {
+                        public static void Register(IServiceCollection services)
+                        {
+                            services.AddScoped<ISvc, Svc>();
+                            _ = Type.GetType("Svc");
+                        }
+                    }
+                    """,
+            });
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        // Comment-only edit to the stub file: App.cs is unchanged, so its DI
+        // and reflection edges must survive the incremental write path by
+        // copy-forward, not by re-extraction.
+        WriteFile("TestProject", "Di.cs", """
+            namespace Microsoft.Extensions.DependencyInjection;
+
+            public interface IServiceCollection
+            {
+            }
+
+            public static class ServiceCollectionServiceExtensions
+            {
+                public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                    where TService : class
+                    where TImplementation : class, TService
+                    => services;
+            }
+            // comment-only edit
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        var svcId = ResolveSymbolId(snapshotB, "global::TestProject.Svc");
+
+        var registersB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.Registers.ToString(), Provenance.FrameworkDerived);
+        var registersC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.Registers.ToString(), Provenance.FrameworkDerived);
+        Assert.Equal(2, registersB.Count); // registration site -> Svc, and ISvc -> Svc
+        Assert.Equal(registersC.Count, registersB.Count);
+        Assert.All(registersB, edge => Assert.Equal(svcId, edge.TargetSymbolId));
+        Assert.Equal(EdgeFacts(registersC), EdgeFacts(registersB));
+
+        var nameCandidatesB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+        var nameCandidatesC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+        Assert.Single(nameCandidatesB);
+        Assert.Equal(nameCandidatesC.Count, nameCandidatesB.Count);
+        Assert.Equal(svcId, Assert.Single(nameCandidatesB).TargetSymbolId);
+        Assert.Equal(EdgeFacts(nameCandidatesC), EdgeFacts(nameCandidatesB));
+    }
+
+    private List<EdgeRecord> GetEdgesByKindAndProvenance(string dbPath, string snapshotId, string kind, string provenance)
+    {
+        using var store = OpenStore(dbPath);
+        try
+        {
+            return store.GetEdges(snapshotId)
+                .Where(e => e.Kind == kind && e.Provenance == provenance)
+                .ToList();
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    private static List<string> EdgeFacts(List<EdgeRecord> edges) =>
+        edges
+            .Select(e => string.Join("|",
+                e.SourceSymbolId, e.TargetSymbolId, e.Kind, e.Provenance,
+                e.ExtractorVersion, e.SourceDocumentPath ?? "", e.SourceStartLine, e.SourceStartColumn,
+                e.SourceEndLine, e.SourceEndColumn, e.IsCrossGenerated,
+                e.TypeArgumentsJson ?? "", e.ReceiverTypeConstraintsJson ?? "",
+                e.SourceNodeKind?.ToString() ?? "", e.TargetNodeKind?.ToString() ?? ""))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+    private List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
+    {
+        using var store = OpenStore(dbPath);
+        try
+        {
+            return store.GetEdgesByKind(snapshotId, EdgeKind.MayDispatchTo.ToString());
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    private static List<string> VariantKeys(List<List<string>> variants) =>
+        variants
+            .Select(variant => string.Join(", ", variant))
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+
+    private static void AssertNestedVariantArray(string? typeArgumentsJson, int expectedVariantCount)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(typeArgumentsJson),
+            "Expected the nested-array type_arguments_json encoding, but the field is empty.");
+
+        using var doc = JsonDocument.Parse(typeArgumentsJson);
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+        Assert.Equal(expectedVariantCount, doc.RootElement.GetArrayLength());
+        foreach (var element in doc.RootElement.EnumerateArray())
+            Assert.Equal(JsonValueKind.Array, element.ValueKind);
     }
 }

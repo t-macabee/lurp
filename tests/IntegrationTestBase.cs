@@ -160,6 +160,17 @@ public abstract class IntegrationTestBase : IDisposable
         if (File.Exists(dbPath))
             File.Delete(dbPath);
 
+        return await RunFullIndexNoDeleteAsync(dbPath);
+    }
+
+    /// <summary>
+    /// Runs a full index into an existing database without deleting it first,
+    /// so deterministic-identity reuse detection (a second index over an
+    /// identical workspace writing no new snapshot) can be exercised across
+    /// two full runs.
+    /// </summary>
+    public async Task<string> RunFullIndexNoDeleteAsync(string dbPath)
+    {
         using var store = OpenStore(dbPath);
 
         await IndexRunner.RunAsync(
