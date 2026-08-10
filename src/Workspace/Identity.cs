@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Collections.Immutable;
+using System.Globalization;
 
 using System.Security.Cryptography;
 using System.Text;
@@ -80,6 +81,8 @@ public sealed record SnapshotIdentityInput(
     IReadOnlyDictionary<string, string> DocumentHashes,
     IReadOnlyDictionary<string, string> TargetFrameworks,
     IReadOnlyDictionary<string, IReadOnlyCollection<string>> ProjectGraph,
+    IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities,
+    IReadOnlyDictionary<string, string> CompilationOptionsFingerprints,
     string SdkVersion,
     string CompilerVersion,
     string ExtractorVersion,
@@ -97,6 +100,8 @@ public sealed record SnapshotIdentityInput(
                 kvp => kvp.Key,
                 kvp => (IReadOnlyCollection<string>)kvp.Value,
                 StringComparer.Ordinal),
+            new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
+            new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             workspace.SdkVersion,
             workspace.CompilerVersion.ToString(),
             workspace.ExtractorVersion,
@@ -145,6 +150,25 @@ public static class SnapshotIdentity
             writer.Write(kvp.Value.Count);
             foreach (var reference in kvp.Value.OrderBy(r => r, StringComparer.Ordinal))
                 writer.Write(reference);
+        }
+
+        writer.Write("metadataReferences");
+        writer.Write(input.MetadataReferenceIdentities.Count);
+        foreach (var kvp in input.MetadataReferenceIdentities.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "project", kvp.Key);
+            writer.Write("identities");
+            writer.Write(kvp.Value.Length);
+            foreach (var identity in kvp.Value)
+                writer.Write(identity);
+        }
+
+        writer.Write("compilationOptions");
+        writer.Write(input.CompilationOptionsFingerprints.Count);
+        foreach (var kvp in input.CompilationOptionsFingerprints.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "project", kvp.Key);
+            WriteField(writer, "fingerprint", kvp.Value);
         }
 
         writer.Write("documents");

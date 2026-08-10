@@ -88,8 +88,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var projectCommand = _connection.CreateCommand();
         projectCommand.Transaction = transaction;
         projectCommand.CommandText = @"
-            INSERT INTO projects (snapshot_id, name, target_framework)
-            VALUES (@snapshotId, @name, @targetFramework);
+            INSERT INTO projects (snapshot_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint)
+            VALUES (@snapshotId, @name, @targetFramework, @metadataReferenceIdentities, @compilationOptionsFingerprint);
             SELECT last_insert_rowid();
         ";
 
@@ -106,6 +106,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             projectCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
             projectCommand.Parameters.AddWithValue("@name", project.Name);
             projectCommand.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? (object)DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@metadataReferenceIdentities", (object?)project.MetadataReferenceIdentitiesJson ?? (object)DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@compilationOptionsFingerprint", (object?)project.CompilationOptionsFingerprint ?? (object)DBNull.Value);
             var projectId = projectCommand.ExecuteScalar();
 
             if (project.References.Count > 0 && projectId != null)
@@ -434,7 +436,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 
         using var projectCommand = _connection.CreateCommand();
         projectCommand.CommandText = @"
-            SELECT project_id, name, target_framework
+            SELECT project_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint
             FROM projects
             WHERE snapshot_id = @snapshotId;
         ";
@@ -449,6 +451,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                     Name = projectReader.GetString(1),
                     TargetFramework = projectReader.IsDBNull(2) ? "" : projectReader.GetString(2),
                     References = referencesByProjectId.TryGetValue(projectId, out var refs) ? refs : [],
+                    MetadataReferenceIdentitiesJson = projectReader.IsDBNull(3) ? null : projectReader.GetString(3),
+                    CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4),
                 });
             }
         }

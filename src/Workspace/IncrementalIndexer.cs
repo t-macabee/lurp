@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false)
+public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
 {
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
@@ -12,6 +12,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private readonly string? _jsonExportPath = jsonExportPath;
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
     private readonly bool _skipDiff = skipDiff;
+    private readonly bool _force = force;
 
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
 
@@ -88,8 +89,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var existing = _store.ResolveExistingSnapshot(newSnapshotIdStr, workspaceInfo.Id.Value);
         if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
         {
-            _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-            return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
+            if (_force)
+            {
+                _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists; --force given, re-extracting in place.");
+            }
+            else
+            {
+                _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
+                return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
+            }
         }
         if (existing.Disposition == ExistingSnapshotDisposition.Retry)
         {

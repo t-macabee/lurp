@@ -158,6 +158,7 @@ internal static class HandlerBootstrap
         changed_documents_sample = stamp.ChangedDocumentsSample,
         checked_at_utc = stamp.CheckedAtUtc,
         snapshot_id = stamp.SnapshotId,
+        scope = stamp.Scope,
     };
 
     public static void EnforceRequireFresh(string[] args, FreshnessStamp stamp)
@@ -176,7 +177,10 @@ internal static class HandlerBootstrap
         if (IsQuiet(args))
             return;
 
-        Console.Error.WriteLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}");
+        var scope = stamp.Scope == "documents_only"
+            ? " scope=documents_only (not a full compilation check)"
+            : "";
+        Console.Error.WriteLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}{scope}");
     }
 
     public static string RequireArg(string[] args, string prefix, params string[] errorLines)

@@ -31,7 +31,7 @@ public class Program
     internal static readonly ModeRegistryEntry[] ModeRegistry =
     [
         new("index", "Index a solution and store facts in the database.",
-            ["--solution=", "--strategy=", "--output-json=", "--skip-adapter=", "--skip-diff", "--verbose"],
+            ["--solution=", "--strategy=", "--output-json=", "--skip-adapter=", "--skip-diff", "--verbose", "--force"],
             a => IndexHandler.Run(a)),
         new("get-source", "Retrieve source text for a document by relative path (--document=).",
             ["--document=", "--snapshot="],

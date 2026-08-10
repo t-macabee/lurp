@@ -21,6 +21,10 @@ public enum MismatchKind
 
     ProjectReferenceChanged,
 
+    MetadataReferencesChanged,
+
+    CompilationOptionsChanged,
+
     VersionChanged,
 }
 

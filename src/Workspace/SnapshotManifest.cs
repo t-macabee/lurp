@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Collections.Immutable;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lurp.Shared;
 using Lurp.Storage;
@@ -38,6 +39,14 @@ public sealed partial class SnapshotManifest
     public Dictionary<string, string[]> ProjectGraph { get; init; }
         = [];
 
+    [JsonPropertyName("metadata_reference_identities")]
+    public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; init; }
+        = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
+
+    [JsonPropertyName("compilation_options_fingerprints")]
+    public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; init; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
+
     [JsonPropertyName("database_schema_version")]
     public int DatabaseSchemaVersion { get; init; }
 
@@ -71,6 +80,8 @@ public sealed partial class SnapshotManifest
             TargetFrameworks = new Dictionary<string, string>(workspace.TargetFrameworks),
             ProjectGraph = workspace.ProjectGraph.ToDictionary(kvp => kvp.Key,kvp => kvp.Value.OrderBy(x => x).ToArray(),
                 StringComparer.Ordinal),
+            MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
+            CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
             ExtractorVersion = VersionConstants.ExtractorVersion,
@@ -145,6 +156,10 @@ public sealed partial class SnapshotManifest
             References = ProjectGraph.TryGetValue(kvp.Key, out var refs)
                 ? refs.OrderBy(x => x, StringComparer.Ordinal).ToList()
                 : [],
+            MetadataReferenceIdentitiesJson = MetadataReferenceIdentities.TryGetValue(kvp.Key, out var ids)
+                ? JsonSerializer.Serialize(ids) : null,
+            CompilationOptionsFingerprint = CompilationOptionsFingerprints.TryGetValue(kvp.Key, out var fp)
+                ? fp : null,
         }).ToList();
 
         return new Storage.SnapshotRow
@@ -179,10 +194,20 @@ public sealed partial class SnapshotManifest
 
         var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectGraph = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
+        var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var project in storage.Projects)
         {
             targetFrameworks[project.Name] = project.TargetFramework;
             projectGraph[project.Name] = project.References.ToArray();
+            if (project.MetadataReferenceIdentitiesJson != null)
+            {
+                metadataReferenceIdentities[project.Name] = JsonSerializer
+                    .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!
+                    .ToImmutableArray();
+            }
+            if (project.CompilationOptionsFingerprint != null)
+                compilationOptionsFingerprints[project.Name] = project.CompilationOptionsFingerprint;
         }
 
         return new SnapshotManifest
@@ -195,6 +220,8 @@ public sealed partial class SnapshotManifest
             CompilerVersion = storage.CompilerVersion,
             TargetFrameworks = targetFrameworks,
             ProjectGraph = projectGraph,
+            MetadataReferenceIdentities = metadataReferenceIdentities,
+            CompilationOptionsFingerprints = compilationOptionsFingerprints,
             DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
             OutputSchemaVersion = storage.OutputSchemaVersion,
             ExtractorVersion = storage.ExtractorVersion,

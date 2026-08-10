@@ -16,10 +16,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void MigrationList_CountIs26()
+    public void MigrationList_CountIs27()
     {
         var versions = MigrationRunner.MigrationVersions;
-        Assert.Equal(26, versions.Count);
+        Assert.Equal(27, versions.Count);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var current = runner.GetCurrentSchemaVersion();
         Assert.Equal(VersionConstants.DatabaseSchemaVersion, current);
-        Assert.Equal(26, current);
+        Assert.Equal(27, current);
     }
 
     [Fact]
@@ -89,5 +89,20 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('annotations') WHERE name = 'document_path';";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void RoundTrip_ProjectsTable_HasCompilationInputColumns()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name IN ('metadata_reference_identities', 'compilation_options_fingerprint');";
+        Assert.Equal(2L, (long)command.ExecuteScalar()!);
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -31,6 +32,10 @@ public sealed class WorkspaceInfo
 
     public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
 
+    public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; }
+
+    public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; }
+
     public string IndexerVersion { get; }
 
     public string ExtractorVersion { get; }
@@ -54,6 +59,10 @@ public sealed class WorkspaceInfo
         TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot);
 
         ProjectGraph = BuildProjectGraph(solution);
+
+        MetadataReferenceIdentities = BuildMetadataReferenceIdentities(solution);
+
+        CompilationOptionsFingerprints = BuildCompilationOptionsFingerprints(solution);
 
         IndexerVersion = VersionConstants.ToolVersion;
         ExtractorVersion = VersionConstants.ExtractorVersion;
@@ -358,6 +367,108 @@ public sealed class WorkspaceInfo
         }
 
         return graph;
+    }
+
+    /// <summary>
+    /// Per-project identity tokens for metadata references (NuGet packages,
+    /// framework assemblies). For <see cref="PortableExecutableReference"/> the
+    /// token is derived from the assembly metadata itself via
+    /// <see cref="AssemblyName.GetAssemblyName(string)"/> (name + version +
+    /// culture + public key token), so it is machine-independent and stable
+    /// across path moves; when the header cannot be read the token falls back
+    /// to file name + length + last-write time. Duplicates are removed and the
+    /// identities are sorted so the result is canonical per project.
+    /// </summary>
+    private static Dictionary<string, ImmutableArray<string>> BuildMetadataReferenceIdentities(Solution solution)
+    {
+        var map = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
+
+        foreach (var project in solution.Projects)
+        {
+            var identities = new List<string>();
+            foreach (var reference in project.MetadataReferences)
+            {
+                if (reference is PortableExecutableReference pe)
+                    identities.Add(TryGetAssemblyIdentity(pe.FilePath) ?? FallbackReferenceToken(pe.FilePath));
+                else
+                    identities.Add(reference.Display ?? "unknown");
+            }
+
+            map[project.Name] = identities
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToImmutableArray();
+        }
+
+        return map;
+    }
+
+    private static string? TryGetAssemblyIdentity(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return null;
+
+        try
+        {
+            return AssemblyName.GetAssemblyName(filePath).FullName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string FallbackReferenceToken(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return "unknown";
+
+        try
+        {
+            var info = new FileInfo(filePath);
+            return $"{info.Name}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+        }
+        catch
+        {
+            return filePath;
+        }
+    }
+
+    /// <summary>
+    /// Per-project fingerprint of the compilation inputs that shape which code
+    /// is compiled: optimization level, unsafe allowance, nullable context,
+    /// platform, language version, and the sorted preprocessor symbols (which
+    /// drive <c>#if</c>-guarded dead code). Serialized as a deterministic
+    /// string so any change yields a different fingerprint.
+    /// </summary>
+    private static Dictionary<string, string> BuildCompilationOptionsFingerprints(Solution solution)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var project in solution.Projects)
+        {
+            var parts = new List<string>();
+
+            var compilationOptions = project.CompilationOptions as CSharpCompilationOptions;
+            if (compilationOptions != null)
+            {
+                parts.Add($"optimization={compilationOptions.OptimizationLevel}");
+                parts.Add($"allowUnsafe={compilationOptions.AllowUnsafe}");
+                parts.Add($"nullable={compilationOptions.NullableContextOptions}");
+                parts.Add($"platform={compilationOptions.Platform}");
+            }
+
+            var parseOptions = project.ParseOptions as CSharpParseOptions;
+            if (parseOptions != null)
+            {
+                parts.Add($"langVersion={parseOptions.LanguageVersion}");
+                parts.Add($"defines={string.Join(",", parseOptions.PreprocessorSymbolNames.OrderBy(x => x, StringComparer.Ordinal))}");
+            }
+
+            map[project.Name] = string.Join("|", parts);
+        }
+
+        return map;
     }
 }
 

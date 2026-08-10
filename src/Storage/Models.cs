@@ -26,6 +26,8 @@ namespace Lurp.Storage
         public string Name { get; init; } = string.Empty;
         public string TargetFramework { get; init; } = string.Empty;
         public List<string> References { get; init; } = [];
+        public string? MetadataReferenceIdentitiesJson { get; init; }
+        public string? CompilationOptionsFingerprint { get; init; }
     }
 
     public enum GraphNodeKind

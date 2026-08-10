@@ -10,7 +10,8 @@ public sealed record FreshnessStamp(
     int ChangedDocumentCount,
     IReadOnlyList<string> ChangedDocumentsSample,
     DateTime CheckedAtUtc,
-    string SnapshotId);
+    string SnapshotId,
+    string Scope); // "documents_only" (cheap read stamp) or "full" (freshness check against the loaded workspace)
 
 /// <summary>
 /// Compares a current workspace against a stored snapshot manifest to detect
@@ -38,11 +39,11 @@ public static class WorkspaceFreshness
         var checkedAt = DateTime.UtcNow;
 
         if (mode == FreshnessMode.Off)
-            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
 
         var metadata = manifests.LoadSnapshotMetadata(snapshotId);
         if (metadata == null)
-            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
 
         try
         {
@@ -84,11 +85,11 @@ public static class WorkspaceFreshness
 
             var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
             var state = changed.Count == 0 ? "fresh" : "stale";
-            return new FreshnessStamp(state, method, changed.Count, changed.Take(10).ToList(), checkedAt, snapshotId);
+            return new FreshnessStamp(state, method, changed.Count, changed.Take(10).ToList(), checkedAt, snapshotId, "documents_only");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
-            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId);
+            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
         }
     }
 
@@ -126,6 +127,8 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckMetadataReferences(current, stored));
+        mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
 
         return new FreshnessResult(IsFresh: mismatches.Count == 0,Mismatches: mismatches.AsReadOnly(),
@@ -141,6 +144,8 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
+        mismatches.AddRange(CheckMetadataReferences(current, stored));
+        mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
         return mismatches;
     }
@@ -245,6 +250,48 @@ public static class WorkspaceFreshness
                 var currentSorted = currentRefs.OrderBy(x => x, StringComparer.Ordinal);
                 var storedSorted = storedRefs.OrderBy(x => x, StringComparer.Ordinal);
                 yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged,$"Project references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]");
+            }
+        }
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckMetadataReferences(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var currentRefs = current.MetadataReferenceIdentities;
+        var storedRefs = stored.MetadataReferenceIdentities;
+
+        // Only projects present in both sides are compared. A project absent
+        // from the stored map means its value was null (pre-027 snapshot:
+        // unknown, not different) or the project itself is gone — project
+        // removal is reported by CheckTargetFrameworks.
+        foreach (var (projName, currentIds) in currentRefs)
+        {
+            if (!storedRefs.TryGetValue(projName, out var storedIds))
+                continue;
+
+            var sortedCurrent = currentIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            var sortedStored = storedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+            if (!sortedCurrent.SequenceEqual(sortedStored))
+            {
+                yield return new SnapshotMismatch(MismatchKind.MetadataReferencesChanged,$"Metadata references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", sortedStored)}]  current=[{string.Join(", ", sortedCurrent)}]");
+            }
+        }
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckCompilationOptions(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var currentOpts = current.CompilationOptionsFingerprints;
+        var storedOpts = stored.CompilationOptionsFingerprints;
+
+        // Same unknown-not-different semantics as CheckMetadataReferences: a
+        // project absent from the stored map is skipped, not reported.
+        foreach (var (projName, currentFingerprint) in currentOpts)
+        {
+            if (!storedOpts.TryGetValue(projName, out var storedFingerprint))
+                continue;
+
+            if (!string.Equals(currentFingerprint, storedFingerprint, StringComparison.Ordinal))
+            {
+                yield return new SnapshotMismatch(MismatchKind.CompilationOptionsChanged,$"Compilation options changed for project '{projName}'.",Document: null,Detail: $"{storedFingerprint} → {currentFingerprint}");
             }
         }
     }

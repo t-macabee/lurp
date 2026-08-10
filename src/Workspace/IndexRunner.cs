@@ -8,7 +8,7 @@ public static class IndexRunner
 {
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false, IOutputSink? output = null, bool skipDiff = false)
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -64,7 +64,7 @@ public static class IndexRunner
             {
                 try
                 {
-                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink, skipDiff);
+                    var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink, skipDiff, force);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
 
                     sink.WriteLine();
@@ -106,7 +106,7 @@ public static class IndexRunner
                 new SnapshotTimingRow("solution_load", loaded.LoadElapsedMilliseconds, DateTime.UtcNow),
                 new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose, sink, skipDiff);
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose, sink, skipDiff, force);
         }
 
         sink.Write("Pruning old snapshots... ");
@@ -121,7 +121,7 @@ public static class IndexRunner
         sink.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose, IOutputSink sink, bool skipDiff = false)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose, IOutputSink sink, bool skipDiff = false, bool force = false)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
@@ -132,8 +132,16 @@ public static class IndexRunner
         var existing = store.ResolveExistingSnapshot(snapshotIdStr, workspaceInfo.Id.Value);
         if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
         {
-            sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
-            return;
+            if (force)
+            {
+                sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists; --force given, deleting it and re-extracting.");
+                store.DeleteSnapshotData(snapshotIdStr);
+            }
+            else
+            {
+                sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
+                return;
+            }
         }
         if (existing.Disposition == ExistingSnapshotDisposition.Retry)
         {

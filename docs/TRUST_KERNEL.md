@@ -543,6 +543,30 @@ Covered by `tests/HandlerDocumentPathNormalizationTests.cs` (deleted,
 `f1254fc`); found by driving the CLI against an out-of-repo solution (eNoteV2,
 7 projects, 3,656 declarations) — a historical run record.
 
+## Reclassified as done (2026-08-10): snapshot identity covers compilation inputs
+
+- **The deterministic snapshot identity hashes NuGet references and
+  compilation options.** `SnapshotIdentityInput` gained
+  `MetadataReferenceIdentities` (per-project, deduplicated, ordinally sorted
+  `AssemblyName.GetAssemblyName` full names; file-name+length+mtime fallback
+  when the assembly header is unreadable) and `CompilationOptionsFingerprints`
+  (optimization, allow-unsafe, nullable context, platform, language version,
+  sorted preprocessor symbols). A package version bump or a `<DefineConstants>`
+  flip now changes `SnapshotId` and trips the full-rebuild gate
+  (`CheckMetadataReferences`, `CheckCompilationOptions` in
+  `WorkspaceFreshness`) instead of producing an identical id.
+- **Recorded decision — pre-027 null semantics.** `projects.metadata_reference_identities`
+  and `projects.compilation_options_fingerprint` are nullable (migration 27).
+  A null value on a pre-027 snapshot means *unknown*, not *different*: the
+  comparators only compare projects present in both the current workspace map
+  and the stored manifest map, so pre-027 rows are skipped rather than
+  reported as mismatches. Project add/remove is still reported by the TFM and
+  project-graph comparators, so the skip does not mask a structural change.
+- **`--force` re-extracts without bypassing identity.** When the deterministic
+  snapshot id already exists as a complete snapshot, `--force` deletes it and
+  re-extracts (full strategy); the id stays identical because the workspace is
+  genuinely identical. It does NOT bypass identity computation.
+
 ## Verified against eNoteV2 (2026-08-07, extractor 1.6.0)
 
 A clean full rebuild followed by targeted handler runs against the 7-project
