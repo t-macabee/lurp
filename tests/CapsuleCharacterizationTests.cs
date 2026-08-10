@@ -85,7 +85,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             Assert.NotNull(capsule);
             Assert.True(capsule.EstimatedTokens <= 5000,
-                $"EstimatedTokens ({capsule.EstimatedTokens}) exceeded generuous budget (5000).");
+                $"EstimatedTokens ({capsule.EstimatedTokens}) exceeded generous budget (5000).");
             Assert.False(capsule.Truncated,
                 "Capsule should not be truncated at generous budget.");
         }
@@ -359,14 +359,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 e => e.Reason == "budget_exhausted"
                      && ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
 
-            if (omittedEntry == null)
-            {
-                // Budget may not have hit a fetchable tier — skip the fetch assertion
-                // but still verify the template exists
-                Assert.Contains(budgetedCapsule.InclusionReasons,
-                    kv => kv.Key == "omittedTiers.budget_exhausted");
-                return;
-            }
+            Assert.NotNull(omittedEntry);
 
             Assert.Contains(budgetedCapsule.InclusionReasons,
                 kv => kv.Key == "omittedTiers.budget_exhausted");
