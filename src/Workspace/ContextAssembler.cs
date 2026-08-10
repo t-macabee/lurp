@@ -115,7 +115,8 @@ namespace Lurp.Workspace
             // the intent-dependent assembly order.
             var reasonByName = tiers.ToDictionary(static tier => tier.Name, static tier => tier.InclusionReason, StringComparer.Ordinal);
             foreach (var name in TierNames)
-                capsule.InclusionReasons[name] = reasonByName[name];
+                if (reasonByName.TryGetValue(name, out var reason))
+                    capsule.InclusionReasons[name] = reason;
 
             // A budget_exhausted omission is only honest if it is also actionable, so the
             // capsule states the continuation in-band: a consumer holding just this capsule

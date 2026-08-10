@@ -1,4 +1,5 @@
 using Lurp.Storage;
+using Lurp.Shared;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -577,8 +578,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private HashSet<string> ToAbsoluteNormalizedPaths(IReadOnlySet<string> relativePaths)
     {
         var absolute = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var rootDir = Path.GetFullPath(_gitRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var rootDir = PathNormalizer.NormalizeRoot(_gitRoot) + Path.DirectorySeparatorChar;
         foreach (var relativePath in relativePaths)
             absolute.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relativePath))));
         return absolute;

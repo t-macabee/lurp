@@ -22,8 +22,23 @@ public static class PathNormalizer
     /// relative computation, so callers may pass an unnormalized root.
     /// </summary>
     public static string ToGitRelative(string absolutePath, string gitRoot)
+        => ToGitRelativeFromNormalizedRoot(absolutePath, NormalizeRoot(gitRoot));
+
+    /// <summary>
+    /// Resolve and normalise a git-root directory: absolute path, trailing
+    /// separators stripped. Callers that need to normalise the root once and
+    /// reuse it across many documents pass the result to
+    /// <see cref="ToGitRelativeFromNormalizedRoot"/>.
+    /// </summary>
+    public static string NormalizeRoot(string gitRoot)
+        => Path.GetFullPath(gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    /// <summary>
+    /// Convert an absolute path to git-root-relative, forward-slashed form,
+    /// using an already-normalised root from <see cref="NormalizeRoot"/>.
+    /// </summary>
+    public static string ToGitRelativeFromNormalizedRoot(string absolutePath, string normalizedRoot)
     {
-        var normalizedRoot = Path.GetFullPath(gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var root = normalizedRoot + Path.DirectorySeparatorChar;
         return ToForwardSlash(Path.GetRelativePath(root, absolutePath));
     }

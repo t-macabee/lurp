@@ -66,8 +66,7 @@ public sealed class WorkspaceInfo
         var map = new Dictionary<DocumentId, DocumentVersionId>();
         var contentMap = new Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>();
         var generatedDocs = new HashSet<DocumentId>(DocumentIdComparer.Instance);
-        var normalizedRoot = Path.GetFullPath(gitRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
 
         var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
 
@@ -220,10 +219,7 @@ public sealed class WorkspaceInfo
     }
 
     private static string GetRelativePath(string fullPath, string normalizedRoot)
-    {
-        var root = normalizedRoot + Path.DirectorySeparatorChar;
-        return PathNormalizer.ToForwardSlash(Path.GetRelativePath(root, fullPath));
-    }
+        => PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
 
     private sealed class DocumentIdComparer : IEqualityComparer<DocumentId>
     {
@@ -283,7 +279,7 @@ public sealed class WorkspaceInfo
         var dir = Path.GetDirectoryName(projectFilePath);
         if (dir == null) return null;
 
-        var normalizedRoot = Path.GetFullPath(repoRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRoot = PathNormalizer.NormalizeRoot(repoRoot);
 
         while (dir.Length >= normalizedRoot.Length)
         {

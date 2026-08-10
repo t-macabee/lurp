@@ -87,6 +87,10 @@ internal static class HelpText
 
         // status
         ["--detail="] = "Comma-separated JSON sections to expand: 'documents' (per-document version map), 'completeness' (per-document binding rows), or 'all'. Both are summarized by default.",
+
+        // annotate
+        ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
+        ["--value="]           = "Annotation value text (required for --mode=annotate).",
     };
 
     // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag

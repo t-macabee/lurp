@@ -1,4 +1,5 @@
 using Lurp.Storage;
+using Lurp.Shared;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -279,7 +280,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     {
         // Compute per-project affected absolute paths for scoped re-extraction
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var rootDir = Path.GetFullPath(_gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var rootDir = PathNormalizer.NormalizeRoot(_gitRoot) + Path.DirectorySeparatorChar;
         foreach (var relPath in affectedDocPaths)
             affectedAbsPaths.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relPath))));
 
