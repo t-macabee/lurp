@@ -38,7 +38,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
         var filePath = syntaxTree.FilePath;
         if (string.IsNullOrEmpty(filePath))
             return true;
-        return ScopeDocuments.Contains(filePath.Replace('\\', '/'));
+        return ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath));
     }
 
     internal bool IsMemberInScope(ISymbol member)

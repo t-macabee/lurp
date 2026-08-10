@@ -37,7 +37,7 @@ public readonly record struct WorkspaceId
     public override string ToString() => Value;
 
     private static string Normalise(string path)
-        => Path.GetFullPath(path).Replace('\\', '/');
+        => PathNormalizer.ToForwardSlash(Path.GetFullPath(path));
 }
 
 public readonly record struct SnapshotId
@@ -178,7 +178,7 @@ public readonly record struct DocumentId
 
     public DocumentId(string relativePath)
     {
-        RelativePath = (relativePath ?? "").Replace('\\', '/');
+        RelativePath = PathNormalizer.ToForwardSlash(relativePath ?? "");
     }
 
     public override string ToString() => RelativePath;
@@ -194,7 +194,7 @@ public readonly record struct DocumentVersionId
     public DocumentVersionId(string documentPath, string hash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hash);
-        DocumentPath = (documentPath ?? "").Replace('\\', '/');
+        DocumentPath = PathNormalizer.ToForwardSlash(documentPath ?? "");
         Hash = hash;
     }
 

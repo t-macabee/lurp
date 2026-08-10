@@ -67,7 +67,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
         foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
         {
             var filePath = syntaxRef.SyntaxTree?.FilePath;
-            if (filePath != null && ScopeDocuments.Contains(filePath.Replace('\\', '/')))
+            if (filePath != null && ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath)))
                 return true;
         }
         return false;

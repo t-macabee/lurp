@@ -105,7 +105,7 @@ public sealed class WorkspaceInfo
 
     private static bool IsBuildOutputPath(string relPath)
     {
-        var normalized = relPath.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(relPath);
 
         if (normalized.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
             normalized.StartsWith("obj/", StringComparison.OrdinalIgnoreCase) ||
@@ -129,7 +129,7 @@ public sealed class WorkspaceInfo
 
     private static bool IsGeneratedPath(string relPath)
     {
-        var normalized = relPath.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(relPath);
         return EdgeLocationResolver.IsGeneratedFilePath(normalized);
     }
 
@@ -222,7 +222,7 @@ public sealed class WorkspaceInfo
     private static string GetRelativePath(string fullPath, string normalizedRoot)
     {
         var root = normalizedRoot + Path.DirectorySeparatorChar;
-        return Path.GetRelativePath(root, fullPath).Replace('\\', '/');
+        return PathNormalizer.ToForwardSlash(Path.GetRelativePath(root, fullPath));
     }
 
     private sealed class DocumentIdComparer : IEqualityComparer<DocumentId>

@@ -6,6 +6,8 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
 {
     string IContextTierBuilder.Name => "second_degree_context";
 
+    string IContextTierBuilder.InclusionReason => "Bounded upstream paths within the requested hop limit.";
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

@@ -6,6 +6,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 {
     string IContextTierBuilder.Name => "registered_implementations";
 
+    string IContextTierBuilder.InclusionReason => "Persisted dispatch, registration, or handler targets relevant at runtime.";
+
     string? IContextTierBuilder.EmptyReason =>
         context.HasUnmodeledRegistrations() ? "unmodeled_construct" : null;
 

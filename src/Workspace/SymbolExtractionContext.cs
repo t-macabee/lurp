@@ -31,7 +31,7 @@ internal sealed class SymbolExtractionContext(
 
         foreach (var docId in documentIds)
         {
-            var path = docId.ToString().Replace('\\', '/');
+            var path = PathNormalizer.ToForwardSlash(docId.ToString());
             lookup[path] = docId;
 
             var span = path.AsSpan();
@@ -78,7 +78,7 @@ internal sealed class SymbolExtractionContext(
         if (string.IsNullOrEmpty(filePath))
             return null;
 
-        var normalized = filePath.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(filePath);
 
         if (_docIdByPath.TryGetValue(normalized, out var match))
             return match;

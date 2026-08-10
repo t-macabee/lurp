@@ -281,7 +281,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var rootDir = Path.GetFullPath(_gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         foreach (var relPath in affectedDocPaths)
-            affectedAbsPaths.Add(Path.GetFullPath(Path.Combine(rootDir, relPath)).Replace('\\', '/'));
+            affectedAbsPaths.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relPath))));
 
         var perProjectAffectedPaths = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
@@ -292,7 +292,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
-                var normalized = doc.FilePath.Replace('\\', '/');
+                var normalized = PathNormalizer.ToForwardSlash(doc.FilePath);
                 if (affectedAbsPaths.Contains(normalized))
                     projectAffected.Add(normalized);
             }
@@ -376,9 +376,5 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     }
 
     private static string GetRelativePath(string fullPath, string gitRoot)
-    {
-        var normalizedRoot = Path.GetFullPath(gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var root = normalizedRoot + Path.DirectorySeparatorChar;
-        return Path.GetRelativePath(root, fullPath).Replace('\\', '/');
-    }
+        => PathNormalizer.ToGitRelative(fullPath, gitRoot);
 }

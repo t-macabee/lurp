@@ -94,7 +94,7 @@ namespace Lurp.Workspace
                 EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
             capsule.EstimatedTokens = runningTotal;
 
-            PopulateContractSections(capsule, bindingIncompleteness, anchorBindingIsIncomplete);
+            PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete);
 
             new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
                 .Detect(capsule);
@@ -108,15 +108,14 @@ namespace Lurp.Workspace
             return capsule;
         }
 
-        private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete)
+        private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<IContextTierBuilder> tiers, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete)
         {
-            capsule.InclusionReasons["contracts"] = "Compiler-resolved contracts implemented or overridden by the anchor.";
-            capsule.InclusionReasons["direct_callees"] = "Direct compiler-resolved calls or constructions made by the anchor.";
-            capsule.InclusionReasons["direct_callers"] = "Direct callers and framework entry points that can reach the anchor.";
-            capsule.InclusionReasons["registered_implementations"] = "Persisted dispatch, registration, or handler targets relevant at runtime.";
-            capsule.InclusionReasons["relevant_tests"] = "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
-            capsule.InclusionReasons["second_degree_context"] = "Bounded upstream paths within the requested hop limit.";
-            capsule.InclusionReasons["surrounding_source"] = "Sibling declarations sharing the anchor's containing declaration.";
+            // Each tier owns its inclusion-reason text; emit them in the canonical
+            // registry order (TierNames) so the reason set is stable regardless of
+            // the intent-dependent assembly order.
+            var reasonByName = tiers.ToDictionary(static tier => tier.Name, static tier => tier.InclusionReason, StringComparer.Ordinal);
+            foreach (var name in TierNames)
+                capsule.InclusionReasons[name] = reasonByName[name];
 
             // A budget_exhausted omission is only honest if it is also actionable, so the
             // capsule states the continuation in-band: a consumer holding just this capsule
@@ -255,9 +254,12 @@ namespace Lurp.Workspace
         /// <summary>
         /// Single registry of every tier a capsule can carry : the canonical name,
         /// the factory that builds its builder, and the capsule collection the
-        /// builder's items are added to. <c>GetTierBuilders</c>, <c>ResolveTierBuilder</c>,
-        /// <c>TierNames</c>, and <c>AddTierToCapsule</c> are all derived from this
-        /// list, so adding a tier is exactly one edit here.
+        /// builder's items are added to. <c>ResolveTierBuilder</c>, <c>TierNames</c>,
+        /// <c>AddTierToCapsule</c>, and the capsule inclusion-reason set all derive
+        /// from this registry (inclusion-reason text lives on each
+        /// <see cref="IContextTierBuilder"/>). Adding a tier means: append an entry
+        /// here, add its builder (with its <c>InclusionReason</c>), and extend the
+        /// per-intent index orderings in <c>GetTierBuilders</c>.
         /// </summary>
         private static readonly (string Name, Func<ContextTierContext, IContextTierBuilder> Factory, Func<ContextCapsule, List<CapsuleItem>> Collection)[] TierBuilders =
         [
@@ -282,27 +284,27 @@ namespace Lurp.Workspace
 
         private List<IContextTierBuilder> GetTierBuilders(ContextTierContext context)
         {
-            var tiers = Intent switch
+            // Per-intent assembly priority is expressed as an ordering of indices
+            // into TierBuilders, so tier names themselves live in exactly one place
+            // (the TierBuilders registry). The base order (Inspect / default) is the
+            // registry order; other intents only permute those references.
+            // TierBuilders index reference:
+            //   0 contracts            3 registered_implementations   6 surrounding_source
+            //   1 direct_callees       4 relevant_tests
+            //   2 direct_callers       5 second_degree_context
+            var order = Intent switch
             {
-                ContextIntent.Inspect => new[] {
-                    "contracts", "direct_callees", "direct_callers", "registered_implementations",
-                    "relevant_tests", "second_degree_context", "surrounding_source" },
-
-                ContextIntent.Modify => new[] {
-                    "contracts", "direct_callers", "registered_implementations", "relevant_tests",
-                    "direct_callees", "second_degree_context", "surrounding_source" },
-
-                ContextIntent.Diagnose => new[] {
-                    "direct_callers", "registered_implementations", "contracts", "direct_callees",
-                    "relevant_tests", "second_degree_context", "surrounding_source" },
-
-                _ => new[] {
-                    "contracts", "direct_callees", "direct_callers", "registered_implementations",
-                    "relevant_tests", "second_degree_context", "surrounding_source" },
+                ContextIntent.Modify => new[] { 0, 2, 3, 4, 1, 5, 6 },
+                ContextIntent.Diagnose => new[] { 2, 3, 0, 1, 4, 5, 6 },
+                _ => new[] { 0, 1, 2, 3, 4, 5, 6 },
             };
+
+            var tiers = order.Select(index => TierBuilders[index].Name).ToArray();
 
             if (SymbolId.IsType)
             {
+                // Types favour their surrounding declarations over tests: swap the
+                // two tiers' positions wherever the intent placed them.
                 var rt = Array.IndexOf(tiers, "relevant_tests");
                 var ss = Array.IndexOf(tiers, "surrounding_source");
                 if (rt >= 0 && ss >= 0)

@@ -17,6 +17,8 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
 {
     string IContextTierBuilder.Name => "contracts";
 
+    string IContextTierBuilder.InclusionReason => "Compiler-resolved contracts implemented or overridden by the anchor.";
+
     private static readonly HashSet<string> _allowedKinds =
     [
         EdgeKind.Inherits.ToString(),

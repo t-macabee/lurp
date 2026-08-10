@@ -47,6 +47,6 @@ internal static class ExtractionUtils
         var filePath = syntaxTree.FilePath;
         if (string.IsNullOrEmpty(filePath))
             return true;
-        return scopeDocuments.Contains(filePath.Replace('\\', '/'));
+        return scopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath));
     }
 }

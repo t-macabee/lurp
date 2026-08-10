@@ -17,11 +17,11 @@ public sealed class EdgeLocationResolver
         ArgumentNullException.ThrowIfNull(generatedDocumentPaths);
 
         var paths = documentPaths
-            .Select(static path => path.Replace('\\', '/'))
+            .Select(static path => PathNormalizer.ToForwardSlash(path))
             .ToArray();
         _documentPathLookup = BuildDocumentPathLookup(paths);
         _generatedDocumentPaths = generatedDocumentPaths
-            .Select(static path => path.Replace('\\', '/'))
+            .Select(static path => PathNormalizer.ToForwardSlash(path))
             .ToHashSet(StringComparer.Ordinal);
         _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     }
@@ -64,7 +64,7 @@ public sealed class EdgeLocationResolver
         if (string.IsNullOrEmpty(path))
             return false;
 
-        var normalized = path.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(path);
         if (_generatedDocumentPaths.Contains(normalized))
             return true;
 
@@ -94,7 +94,7 @@ public sealed class EdgeLocationResolver
         if (string.IsNullOrEmpty(filePath))
             return null;
 
-        var normalized = filePath.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(filePath);
 
         if (TryResolveNormalizedPath(normalized, out var match))
             return match;
@@ -102,10 +102,7 @@ public sealed class EdgeLocationResolver
         if (!Path.IsPathRooted(filePath))
             return normalized;
 
-        var normalizedRoot = Path.GetFullPath(_gitRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var root = normalizedRoot + Path.DirectorySeparatorChar;
-        return Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        return PathNormalizer.ToGitRelative(filePath, _gitRoot);
     }
 
     private bool TryResolveNormalizedPath(string normalized, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? match)

@@ -6,6 +6,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
 {
     string IContextTierBuilder.Name => "direct_callers";
 
+    string IContextTierBuilder.InclusionReason => "Direct callers and framework entry points that can reach the anchor.";
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

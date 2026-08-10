@@ -396,7 +396,7 @@ namespace Lurp.Workspace
                     .FirstOrDefault();
                 if (project != null)
                 {
-                    result = Path.GetRelativePath(root, project).Replace('\\', '/');
+                    result = PathNormalizer.ToForwardSlash(Path.GetRelativePath(root, project));
                     break;
                 }
                 if (string.Equals(current, root, StringComparison.OrdinalIgnoreCase))
@@ -419,7 +419,7 @@ namespace Lurp.Workspace
             var solution = Directory.EnumerateFiles(_gitRoot, "*.sln*", SearchOption.TopDirectoryOnly)
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
-            _solutionPath = solution == null ? null : Path.GetRelativePath(_gitRoot, solution).Replace('\\', '/');
+            _solutionPath = solution == null ? null : PathNormalizer.ToForwardSlash(Path.GetRelativePath(_gitRoot, solution));
             return _solutionPath;
         }
     }

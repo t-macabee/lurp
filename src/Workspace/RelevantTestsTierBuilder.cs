@@ -6,6 +6,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 {
     string IContextTierBuilder.Name => "relevant_tests";
 
+    string IContextTierBuilder.InclusionReason => "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

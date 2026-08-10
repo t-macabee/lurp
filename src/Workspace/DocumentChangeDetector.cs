@@ -131,11 +131,5 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
     }
 
     public static string GetRelativePath(string fullPath, string gitRoot)
-    {
-        var normalizedRoot = Path.GetFullPath(gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        var root = normalizedRoot + Path.DirectorySeparatorChar;
-
-        return Path.GetRelativePath(root, fullPath).Replace('\\', '/');
-    }
+        => PathNormalizer.ToGitRelative(fullPath, gitRoot);
 }

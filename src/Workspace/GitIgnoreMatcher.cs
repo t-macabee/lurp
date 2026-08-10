@@ -41,7 +41,7 @@ internal sealed class GitIgnoreMatcher
 
     public bool IsIgnored(string relativePath)
     {
-        var normalized = relativePath.Replace('\\', '/');
+        var normalized = PathNormalizer.ToForwardSlash(relativePath);
         bool ignored = false;
 
         foreach (var pattern in _patterns)

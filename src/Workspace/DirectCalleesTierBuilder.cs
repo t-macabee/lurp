@@ -6,6 +6,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 {
     string IContextTierBuilder.Name => "direct_callees";
 
+    string IContextTierBuilder.InclusionReason => "Direct compiler-resolved calls or constructions made by the anchor.";
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

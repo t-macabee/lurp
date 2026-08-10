@@ -17,147 +17,115 @@ internal static class HelpText
         Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
     }
 
+    // Single source of the long-form flag prose. The set of flags each mode
+    // accepts is NOT declared here : it is read from Program.ModeRegistry[].Flags
+    // by PrintHelp, so the help inventory can never drift from the validator.
+    // A flag missing from this map is still listed (name only) by its mode.
+    private static readonly IReadOnlyDictionary<string, string> FlagHelp = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        // Shared across modes
+        ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
+        ["--snapshot="] = "Snapshot to use (default: latest).",
+        ["--include-generated"] = "Include source-generated symbols.",
+        ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
+        ["--json"] = "Emit structured JSON instead of plain text.",
+        ["--file="] = "Source file path (paired with --line=) to anchor by location.",
+        ["--line="] = "1-based line number, paired with --file=.",
+
+        // Read-command output controls (search, find-symbol, impact, context)
+        ["--output="] = "Payload rendering: summary | json | jsonl (default: json). 'jsonl' emits a {\"type\":\"meta\"} envelope then one compact object per result; it is rejected for a whole capsule.",
+        ["--quiet"] = "Emit only the payload: suppress the freshness stderr line, and for --mode=context print just the written capsule path.",
+        ["--freshness="] = "How hard to check the snapshot still matches the working tree: auto (stat only) | hash (re-hash suspect files) | off (default: auto).",
+        ["--require-fresh"] = "Exit 2 when the snapshot is not fresh.",
+
+        // index
+        ["--solution="] = "Path to the .sln/.slnx to index (--mode=index); for --mode=status, the workspace to compare against the latest snapshot for freshness.",
+        ["--strategy="] = "full | incremental. 'full' reindexes every document from scratch and is the DEFINITION OF CORRECTNESS (use it to recover a known-good index); 'incremental' re-indexes only changed documents. Default: 'full' on first run, 'incremental' afterward.",
+        ["--output-json="] = "Also write the snapshot manifest as JSON (a one-way export; never consulted as authority).",
+        ["--skip-adapter="] = "Skip a named framework adapter. Valid: ASP.NET Core, Dependency Injection, MediatR, EF Core, Serialization, Test.",
+        ["--skip-diff"] = "Skip computing and persisting the semantic diff against the previous snapshot (--mode=diff still recomputes live).",
+        ["--verbose"] = "Emit per-extractor [measure] timing lines to stderr.",
+
+        // get-source
+        ["--document="] = "Relative path of the document to retrieve.",
+
+        // get-symbol
+        ["--view="] = "What to return: metadata | signature | body | declaration | containing-type | surrounding.",
+        ["--context-lines="] = "Extra source lines of context around the symbol.",
+
+        // search
+        ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\").",
+        ["--type="] = "Search scope: all | source | symbol (default: all).",
+        ["--kind="] = "Filter symbol results by Roslyn SymbolKind (e.g. Type, Method, Field, Property).",
+        ["--limit="] = "Max results per scope (default: 20).",
+        ["--snippet-tokens="] = "Token window for source snippets (default: 64).",
+
+        // impact
+        ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",
+        ["--kinds="] = "Comma-separated edge kinds to follow.",
+        ["--max-depth="] = "Maximum hops per path (default: 3).",
+        ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
+
+        // diff
+        ["--from-snapshot="] = "Baseline snapshot ID to diff from (required for --mode=diff).",
+        ["--to-snapshot="] = "Target snapshot ID to diff to (required for --mode=diff).",
+
+        // context
+        ["--intent="] = "Assembly-priority hint: inspect | modify | diagnose (default: inspect).",
+        ["--content-budget="] = "Token budget for capsule CONTENT (default: 8000). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
+        ["--max-hops="] = "Maximum graph hops to expand (default: 3).",
+        ["--scope="] = "Logical scope label recorded on the anchor (default: the symbol ID).",
+        ["--change-objective="] = "Free-text change objective recorded on the capsule anchor.",
+        ["--affected-project="] = "Repeatable. A project affected by the change.",
+        ["--constraint="] = "Repeatable. A caller-supplied constraint recorded on the capsule.",
+        ["--topology-annotation="] = "Repeatable. A caller-supplied topology annotation.",
+        ["--target-hop="] = "Repeatable. A target-topology hop specification.",
+        ["--tier="] = "Fetch ONE tier on its own instead of a capsule, with no token budget applied. This is how a capsule's omittedTiers 'budget_exhausted' entry is acted on. Valid: "
+            + string.Join(", ", Workspace.ContextAssembler.TierNames) + ".",
+        ["--tier-limit="] = "Items per tier page (default: 25).",
+        ["--completeness-detail"] = "Emit per-document binding_incompleteness rows (default: a reason/project rollup plus the total).",
+
+        // status
+        ["--detail="] = "Comma-separated JSON sections to expand: 'documents' (per-document version map), 'completeness' (per-document binding rows), or 'all'. Both are summarized by default.",
+    };
+
+    // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag
+    // drift). Keyed by mode name; printed after that mode's flag list.
+    private static readonly IReadOnlyDictionary<string, string> ModeNotes = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["impact"] = "Every response also carries `groups`: the paths grouped by first hop, computed over ALL paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated.",
+        ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace.",
+    };
+
     internal static void PrintHelp()
     {
         Console.WriteLine("lurp : Roslyn-native semantic context engine for C#");
+        Console.WriteLine();
+        Console.WriteLine("USAGE");
+        Console.WriteLine("  lurp --mode=<mode> --output-dir=<path> [options]");
+        Console.WriteLine();
+        Console.WriteLine("  --output-dir=<path>  Directory where index.db is stored. --solution= may");
+        Console.WriteLine("                       stand in for it when it points at a solution directory.");
+        Console.WriteLine("                       (LURP_OUTPUT_DIR / LURP_SOLUTION_PATH set these too.)");
         Console.WriteLine();
         Console.WriteLine("MODES");
         foreach (var entry in Program.ModeRegistry)
             Console.WriteLine($"  --mode={entry.Name.PadRight(20)}{entry.HelpText}");
         Console.WriteLine();
-        Console.WriteLine("SEARCH (--mode=search)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --query=<term>       Search term. Symbol search matches whole");
-        Console.WriteLine("                         identifier tokens first; when no token matches,");
-        Console.WriteLine("                         any substring of a symbol's fully qualified name");
-        Console.WriteLine("                         matches (so \"Service\" finds \"CourseService\").");
-        Console.WriteLine("    --output-dir=<path>  Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --type=<all|source|symbol>");
-        Console.WriteLine("                         Search scope (default: all).");
-        Console.WriteLine("    --kind=<SymbolKind>  Filter symbol results by Roslyn SymbolKind");
-        Console.WriteLine("                         (e.g. \"Type\", \"Method\", \"Field\", \"Property\").");
-        Console.WriteLine("    --limit=<n>          Max results per scope (default: 20).");
-        Console.WriteLine("    --snippet-tokens=<n> Token window for source snippets (default: 64).");
-        Console.WriteLine("    --snapshot=<id>      Snapshot to search (default: latest).");
-        Console.WriteLine("    --include-generated  Include source-generated symbols.");
-        Console.WriteLine("    --cursor=<token>     Continue from a previous page's nextCursor");
-        Console.WriteLine("                         (--type=symbol only).");
-        Console.WriteLine();
-        Console.WriteLine("IMPACT (--mode=impact)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --symbol=<id>         The symbol ID to trace from.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --direction=<downstream|upstream>");
-        Console.WriteLine("                          Traversal direction (default: downstream).");
-        Console.WriteLine("    --max-depth=<n>       Maximum hops per path (default: 3).");
-        Console.WriteLine("    --kinds=<list>        Comma-separated edge kinds to follow.");
-        Console.WriteLine("    --max-paths=<n>       Paths per page (default: 50). When more exist, the");
-        Console.WriteLine("                          response carries truncated.{reason,total,remaining,cursor}.");
-        Console.WriteLine("    --cursor=<token>      Continue from a previous page's truncated.cursor.");
-        Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
-        Console.WriteLine("  Every response also carries `groups`: the paths grouped by first hop,");
-        Console.WriteLine("  computed over ALL paths before the page is cut, so the fan-out summary");
-        Console.WriteLine("  stays complete even when the path list is truncated.");
-        Console.WriteLine();
-        Console.WriteLine("INDEXING (--mode=index)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --solution=<path>     Path to the .sln or .slnx file.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine();
-        Console.WriteLine("  Optional:");
-        Console.WriteLine("    --strategy=<full|incremental>");
-        Console.WriteLine("        full:        Index every document from scratch.");
-        Console.WriteLine("                     This is the DEFINITION OF CORRECTNESS for the index.");
-        Console.WriteLine("                     Use it as the recovery mechanism when something looks");
-        Console.WriteLine("                     wrong: run '--strategy=full' to reset the index to a");
-        Console.WriteLine("                     known-good state.");
-        Console.WriteLine("        incremental: Only re-index changed documents; reuses facts for");
-        Console.WriteLine("                     unchanged documents from the previous snapshot.");
-        Console.WriteLine("                     Default on subsequent runs (after an initial full index).");
-        Console.WriteLine("        Default: 'full' on first run (no snapshot exists),");
-        Console.WriteLine("                 'incremental' on subsequent runs.");
-        Console.WriteLine();
-        Console.WriteLine("    --output-json=<path>  Also write the snapshot manifest as JSON.");
-        Console.WriteLine("    --verbose             Emit per-extractor [measure] timing lines to stderr.");
-        Console.WriteLine("    --skip-adapter=<name> Skip a named framework adapter.");
-        Console.WriteLine("                          Valid: ASP.NET Core, Dependency Injection,");
-        Console.WriteLine("                                 MediatR, EF Core, Serialization, Test.");
-        Console.WriteLine("    --skip-diff           Skip computing and persisting the semantic diff");
-        Console.WriteLine("                          against the previous snapshot. --mode=diff still");
-        Console.WriteLine("                          works (it recomputes live); --mode=impact's");
-        Console.WriteLine("                          semantic-causes annotation is empty for this snapshot.");
-        Console.WriteLine();
-        Console.WriteLine("CONTEXT (--mode=context)");
-        Console.WriteLine("  Required (one of):");
-        Console.WriteLine("    --symbol=<id>         The symbol ID to anchor on.");
-        Console.WriteLine("    --file=<path> --line=<n>  Anchor by source location.");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --intent=<inspect|modify|diagnose>");
-        Console.WriteLine("                         Intent hint for assembly priority (default: inspect).");
-        Console.WriteLine("    --content-budget=<n>          Token budget for capsule CONTENT (default: 8000).");
-        Console.WriteLine("                         Reported as estimatedTokens: item and anchor source plus");
-        Console.WriteLine("                         the serialized weight of the substantive non-source");
-        Console.WriteLine("                         sections (paths, topology, completeness, uncertainties,");
-        Console.WriteLine("                         verification, ...). Per-item identity/provenance framing");
-        Console.WriteLine("                         is uncounted navigation metadata, so the emitted file is");
-        Console.WriteLine("                         larger; size a context window from estimatedArtifactTokens");
-        Console.WriteLine("                         instead. Over-budget capsules bound paths and item source,");
-        Console.WriteLine("                         then drop the lowest-priority sections (surroundingSource");
-        Console.WriteLine("                         first); as a last resort the anchor source itself is");
-        Console.WriteLine("                         bounded, so estimatedTokens never exceeds the budget.");
-        Console.WriteLine("                         Every truncated category gets one terminal record in");
-        Console.WriteLine("                         omittedTiers.");
-        Console.WriteLine("    --max-hops=<n>        Maximum graph hops to expand (default: 3).");
-        Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
-        Console.WriteLine("    --include-generated   Include source-generated symbols.");
-        Console.WriteLine("    --completeness-detail Emit per-document binding_incompleteness rows.");
-        Console.WriteLine("                         Without it, completeness carries a reason/project");
-        Console.WriteLine("                         rollup and the total.");
-        Console.WriteLine("    --tier=<name>         Fetch ONE tier on its own instead of a capsule, with");
-        Console.WriteLine("                          no token budget applied. This is how a capsule's");
-        Console.WriteLine("                          omittedTiers 'budget_exhausted' entry is acted on.");
-        Console.WriteLine("                          Valid: contracts, directCallees, directCallers,");
-        Console.WriteLine("                          registeredImplementations, relevantTests,");
-        Console.WriteLine("                          secondDegreeContext, surroundingSource.");
-        Console.WriteLine("    --tier-limit=<n>      Items per tier page (default: 25).");
-        Console.WriteLine("    --cursor=<token>      Continue a tier from its next_cursor (--tier only).");
-        Console.WriteLine("  The capsule is always written to <output-dir>/capsule-<symbol>.json (long");
-        Console.WriteLine("  symbols are shortened with a stable hash suffix); the");
-        Console.WriteLine("  stdout copy is what --quiet and --output=summary replace.");
-        Console.WriteLine();
-        Console.WriteLine("ANNOTATIONS (--mode=annotate / --mode=get-annotations)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --symbol=<id>         The symbol ID to annotate or query.");
-        Console.WriteLine("    --annotation-kind=<kind>  Annotation kind (annotate only, required).");
-        Console.WriteLine("    --value=<text>        Annotation value (annotate only, required).");
-        Console.WriteLine("    --snapshot=<id>       Snapshot to use (default: latest).");
-        Console.WriteLine();
-        Console.WriteLine("STATUS (--mode=status)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --solution=<path>     If provided, compares the current workspace against");
-        Console.WriteLine("                          the latest snapshot and reports freshness mismatches.");
-        Console.WriteLine("                          Without it, only schema version and latest snapshot");
-        Console.WriteLine("                          ID are reported.");
-        Console.WriteLine("    --json                Emit structured JSON instead of plain text.");
-        Console.WriteLine("    --detail=<list>       Comma-separated sections to expand in --json output.");
-        Console.WriteLine("                          'documents' restores the per-document version map;");
-        Console.WriteLine("                          'completeness' restores per-document binding rows.");
-        Console.WriteLine("                          Both are summarized by default.");
-        Console.WriteLine("                          'all' expands every section.");
-        Console.WriteLine();
-        Console.WriteLine("TIMINGS (--mode=timings)");
-        Console.WriteLine("  Required:");
-        Console.WriteLine("    --output-dir=<path>   Directory where index.db is stored (also --solution=).");
-        Console.WriteLine("  Options:");
-        Console.WriteLine("    --snapshot=<id>       Show timings for a specific snapshot (default: latest).");
-        Console.WriteLine("    --json                Emit structured JSON instead of plain text.");
+        Console.WriteLine("OPTIONS BY MODE");
+        Console.WriteLine("  (flags below are exactly the ones each mode accepts, from the mode registry)");
+        foreach (var entry in Program.ModeRegistry)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  --mode={entry.Name}");
+            if (entry.Flags.Length == 0)
+                Console.WriteLine("      (no flags beyond --output-dir=)");
+            foreach (var flag in entry.Flags)
+                WriteFlag(flag, FlagHelp.GetValueOrDefault(flag));
+            if (ModeNotes.TryGetValue(entry.Name, out var note))
+                foreach (var line in WrapWords(note, 72))
+                    Console.WriteLine($"      {line}");
+        }
         Console.WriteLine();
         Console.WriteLine("SNAPSHOT LIFECYCLE");
         Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot.");
@@ -165,26 +133,45 @@ internal static class HelpText
         Console.WriteLine("  Snapshots are never mutated : incremental creates a new snapshot,");
         Console.WriteLine("  it does NOT modify the previous one.");
         Console.WriteLine();
-        Console.WriteLine("READ-COMMAND OPTIONS (search, find-symbol, impact, context)");
-        Console.WriteLine("  --output=<summary|json|jsonl>");
-        Console.WriteLine("                          Payload rendering (default: json). 'summary' is a");
-        Console.WriteLine("                          digest; 'jsonl' emits a {\"type\":\"meta\"} envelope then");
-        Console.WriteLine("                          one compact object per result, so a consumer can");
-        Console.WriteLine("                          stream and stop early. 'jsonl' is rejected for a");
-        Console.WriteLine("                          whole capsule, whose payload is a single document.");
-        Console.WriteLine("  --quiet                 Emit only the payload: suppresses the freshness");
-        Console.WriteLine("                          stderr line, and for --mode=context prints just the");
-        Console.WriteLine("                          written capsule path instead of the capsule itself.");
-        Console.WriteLine("  --freshness=<auto|hash|off>");
-        Console.WriteLine("                          How hard to check that the snapshot still matches the");
-        Console.WriteLine("                          working tree (default: auto : stat only; 'hash'");
-        Console.WriteLine("                          re-hashes suspect files, 'off' skips the check).");
-        Console.WriteLine("  --require-fresh         Exit 2 when the snapshot is not fresh.");
-        Console.WriteLine();
         Console.WriteLine("ENVIRONMENT VARIABLES");
         Console.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
         Console.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
         Console.WriteLine("  INDEXER_SOLUTION_PATH   Deprecated alias for LURP_SOLUTION_PATH.");
         Console.WriteLine("  INDEXER_OUTPUT_DIR      Deprecated alias for LURP_OUTPUT_DIR.");
+    }
+
+    private const int FlagColumn = 24;
+
+    private static void WriteFlag(string flag, string? description)
+    {
+        if (string.IsNullOrEmpty(description))
+        {
+            Console.WriteLine($"    {flag}");
+            return;
+        }
+
+        var lines = WrapWords(description, 52);
+        Console.WriteLine($"    {flag.PadRight(FlagColumn)}{lines[0]}");
+        var continuationIndent = new string(' ', 4 + FlagColumn);
+        for (var i = 1; i < lines.Count; i++)
+            Console.WriteLine($"{continuationIndent}{lines[i]}");
+    }
+
+    private static List<string> WrapWords(string text, int width)
+    {
+        var lines = new List<string>();
+        var line = "";
+        foreach (var word in text.Split(' '))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > width)
+            {
+                lines.Add(line);
+                line = "";
+            }
+            line = line.Length == 0 ? word : line + " " + word;
+        }
+        if (line.Length > 0)
+            lines.Add(line);
+        return lines;
     }
 }

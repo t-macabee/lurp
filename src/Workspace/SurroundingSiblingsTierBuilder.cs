@@ -10,6 +10,8 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
 
     string IContextTierBuilder.Name => "surrounding_source";
 
+    string IContextTierBuilder.InclusionReason => "Sibling declarations sharing the anchor's containing declaration.";
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();

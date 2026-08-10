@@ -39,7 +39,7 @@ public sealed class ReflectionExtractor
             if (_context.ScopeDocuments != null)
             {
                 var filePath = syntaxTree.FilePath;
-                if (string.IsNullOrEmpty(filePath) || !_context.ScopeDocuments.Contains(filePath.Replace('\\', '/')))
+                if (string.IsNullOrEmpty(filePath) || !_context.ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath)))
                     continue;
             }
 

@@ -50,7 +50,7 @@ internal static class HandlerBootstrap
     /// every stored document. Normalize the CLI form to the stored form.
     /// </summary>
     public static string? NormalizeDocumentPath(string? path)
-        => path?.Replace('\\', '/');
+        => path is null ? null : PathNormalizer.ToForwardSlash(path);
 
     public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
     public static readonly System.Text.Json.JsonSerializerOptions CompactJson = new() { WriteIndented = false };

@@ -580,7 +580,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var rootDir = Path.GetFullPath(_gitRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         foreach (var relativePath in relativePaths)
-            absolute.Add(Path.GetFullPath(Path.Combine(rootDir, relativePath)).Replace('\\', '/'));
+            absolute.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relativePath))));
         return absolute;
     }
 
