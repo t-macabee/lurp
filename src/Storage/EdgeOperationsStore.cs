@@ -13,29 +13,13 @@ internal sealed class EdgeOperationsStore
 
     public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
+        var collapsed = EdgeMerge.CollapseBatch(edges);
+        var bulkEdges = collapsed.Where(e => e.TypeArgumentsJson == null).ToList();
+        var splitEdges = collapsed.Where(e => e.TypeArgumentsJson != null).ToList();
+
         using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = @"
-                INSERT OR IGNORE INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json) VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson);
-            ";
-            var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
-            var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
-            var targetSymbolIdParam = command.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
-            var kindParam = command.Parameters.Add(new SqliteParameter("@kind", null));
-            var provenanceParam = command.Parameters.Add(new SqliteParameter("@provenance", null));
-            var extractorVersionParam = command.Parameters.Add(new SqliteParameter("@extractorVersion", null));
-            var sourceDocumentPathParam = command.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
-            var sourceStartLineParam = command.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
-            var sourceStartColumnParam = command.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
-            var sourceEndLineParam = command.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
-            var sourceEndColumnParam = command.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
-            var isCrossGeneratedParam = command.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
-            var typeArgumentsJsonParam = command.Parameters.Add(new SqliteParameter("@typeArgumentsJson", null));
-            var receiverTypeConstraintsJsonParam = command.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
-
             using var nodeCmd = _connection.CreateCommand();
             nodeCmd.Transaction = transaction;
             nodeCmd.CommandText = @"
@@ -55,25 +39,20 @@ internal sealed class EdgeOperationsStore
             var memberSnapshotParam = memberCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
             var memberNodeParam = memberCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
 
-            foreach (var edge in edges)
+            foreach (var edge in collapsed)
             {
                 RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.SourceSymbolId, edge.SourceNodeKind);
                 RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.TargetSymbolId, edge.TargetNodeKind);
+            }
 
-                sourceSymbolIdParam.Value = edge.SourceSymbolId;
-                targetSymbolIdParam.Value = edge.TargetSymbolId;
-                kindParam.Value = edge.Kind;
-                provenanceParam.Value = (object?)edge.Provenance ?? DBNull.Value;
-                extractorVersionParam.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
-                sourceDocumentPathParam.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
-                sourceStartLineParam.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
-                sourceStartColumnParam.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
-                sourceEndLineParam.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
-                sourceEndColumnParam.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
-                isCrossGeneratedParam.Value = edge.IsCrossGenerated;
-                typeArgumentsJsonParam.Value = (object?)edge.TypeArgumentsJson ?? DBNull.Value;
-                receiverTypeConstraintsJsonParam.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
-                command.ExecuteNonQuery();
+            if (bulkEdges.Count > 0)
+            {
+                WriteBulkEdges(snapshotId, bulkEdges, transaction);
+            }
+
+            if (splitEdges.Count > 0)
+            {
+                WriteSplitEdges(snapshotId, splitEdges, transaction);
             }
 
             transaction.Commit();
@@ -82,6 +61,188 @@ internal sealed class EdgeOperationsStore
         {
             transaction.Rollback();
             throw;
+        }
+    }
+
+    private void WriteBulkEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)
+    {
+        const string persistedRank = "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
+        var winnerWins = $"@incomingRank > {persistedRank}";
+
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $@"
+            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
+            VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson)
+            ON CONFLICT(snapshot_id, source_symbol_id, target_symbol_id, kind) DO UPDATE SET
+                provenance = CASE WHEN {winnerWins} THEN excluded.provenance ELSE edges.provenance END,
+                extractor_version = CASE WHEN {winnerWins} THEN excluded.extractor_version ELSE edges.extractor_version END,
+                source_document_path = CASE WHEN {winnerWins} THEN excluded.source_document_path ELSE edges.source_document_path END,
+                source_start_line = CASE WHEN {winnerWins} THEN excluded.source_start_line ELSE edges.source_start_line END,
+                source_start_column = CASE WHEN {winnerWins} THEN excluded.source_start_column ELSE edges.source_start_column END,
+                source_end_line = CASE WHEN {winnerWins} THEN excluded.source_end_line ELSE edges.source_end_line END,
+                source_end_column = CASE WHEN {winnerWins} THEN excluded.source_end_column ELSE edges.source_end_column END,
+                is_cross_generated = CASE WHEN {winnerWins} THEN excluded.is_cross_generated ELSE edges.is_cross_generated END,
+                receiver_type_constraints_json = CASE WHEN {winnerWins} THEN excluded.receiver_type_constraints_json ELSE edges.receiver_type_constraints_json END;
+        ";
+
+        var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+        var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
+        var targetSymbolIdParam = command.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
+        var kindParam = command.Parameters.Add(new SqliteParameter("@kind", null));
+        var provenanceParam = command.Parameters.Add(new SqliteParameter("@provenance", null));
+        var extractorVersionParam = command.Parameters.Add(new SqliteParameter("@extractorVersion", null));
+        var sourceDocumentPathParam = command.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
+        var sourceStartLineParam = command.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
+        var sourceStartColumnParam = command.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
+        var sourceEndLineParam = command.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
+        var sourceEndColumnParam = command.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
+        var isCrossGeneratedParam = command.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
+        var typeArgumentsJsonParam = command.Parameters.Add(new SqliteParameter("@typeArgumentsJson", null));
+        var receiverTypeConstraintsJsonParam = command.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
+        var incomingRankParam = command.Parameters.Add(new SqliteParameter("@incomingRank", 0));
+
+        foreach (var edge in edges)
+        {
+            sourceSymbolIdParam.Value = edge.SourceSymbolId;
+            targetSymbolIdParam.Value = edge.TargetSymbolId;
+            kindParam.Value = edge.Kind;
+            provenanceParam.Value = (object?)edge.Provenance ?? DBNull.Value;
+            extractorVersionParam.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
+            sourceDocumentPathParam.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
+            sourceStartLineParam.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
+            sourceStartColumnParam.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
+            sourceEndLineParam.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
+            sourceEndColumnParam.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
+            isCrossGeneratedParam.Value = edge.IsCrossGenerated;
+            typeArgumentsJsonParam.Value = DBNull.Value;
+            receiverTypeConstraintsJsonParam.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
+            incomingRankParam.Value = EdgeMerge.ProvenanceRank(edge.Provenance ?? "");
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private void WriteSplitEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)
+    {
+        const string persistedRank = "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
+        var winnerWins = $"@incomingRank > {persistedRank}";
+
+        using var selectCmd = _connection.CreateCommand();
+        selectCmd.Transaction = transaction;
+        selectCmd.CommandText = "SELECT type_arguments_json, provenance FROM edges WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k LIMIT 1;";
+        var selectS = selectCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
+        var selectSrc = selectCmd.Parameters.Add(new SqliteParameter("@src", null));
+        var selectTgt = selectCmd.Parameters.Add(new SqliteParameter("@tgt", null));
+        var selectK = selectCmd.Parameters.Add(new SqliteParameter("@k", null));
+
+        using var splitInsertCmd = _connection.CreateCommand();
+        splitInsertCmd.Transaction = transaction;
+        splitInsertCmd.CommandText = @"
+            INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
+            VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson);
+        ";
+        var splitInsSid = splitInsertCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+        var splitInsSrc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
+        var splitInsTgt = splitInsertCmd.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
+        var splitInsKind = splitInsertCmd.Parameters.Add(new SqliteParameter("@kind", null));
+        var splitInsProv = splitInsertCmd.Parameters.Add(new SqliteParameter("@provenance", null));
+        var splitInsVer = splitInsertCmd.Parameters.Add(new SqliteParameter("@extractorVersion", null));
+        var splitInsDoc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
+        var splitInsSl = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
+        var splitInsSc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
+        var splitInsEl = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
+        var splitInsEc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
+        var splitInsCg = splitInsertCmd.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
+        var splitInsTa = splitInsertCmd.Parameters.Add(new SqliteParameter("@typeArgumentsJson", null));
+        var splitInsRc = splitInsertCmd.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
+
+        using var splitUpdateCmd = _connection.CreateCommand();
+        splitUpdateCmd.Transaction = transaction;
+        splitUpdateCmd.CommandText = $@"
+            UPDATE edges SET
+                type_arguments_json = @mergedTypeArguments,
+                provenance = CASE WHEN {winnerWins} THEN @provenance ELSE edges.provenance END,
+                extractor_version = CASE WHEN {winnerWins} THEN @extractorVersion ELSE edges.extractor_version END,
+                source_document_path = CASE WHEN {winnerWins} THEN @sourceDocumentPath ELSE edges.source_document_path END,
+                source_start_line = CASE WHEN {winnerWins} THEN @sourceStartLine ELSE edges.source_start_line END,
+                source_start_column = CASE WHEN {winnerWins} THEN @sourceStartColumn ELSE edges.source_start_column END,
+                source_end_line = CASE WHEN {winnerWins} THEN @sourceEndLine ELSE edges.source_end_line END,
+                source_end_column = CASE WHEN {winnerWins} THEN @sourceEndColumn ELSE edges.source_end_column END,
+                is_cross_generated = CASE WHEN {winnerWins} THEN @isCrossGenerated ELSE edges.is_cross_generated END,
+                receiver_type_constraints_json = CASE WHEN {winnerWins} THEN @receiverTypeConstraintsJson ELSE edges.receiver_type_constraints_json END
+            WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k;
+        ";
+        var upSid = splitUpdateCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
+        var upSrc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@src", null));
+        var upTgt = splitUpdateCmd.Parameters.Add(new SqliteParameter("@tgt", null));
+        var upKind = splitUpdateCmd.Parameters.Add(new SqliteParameter("@k", null));
+        var upProv = splitUpdateCmd.Parameters.Add(new SqliteParameter("@provenance", null));
+        var upVer = splitUpdateCmd.Parameters.Add(new SqliteParameter("@extractorVersion", null));
+        var upDoc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@sourceDocumentPath", null));
+        var upSl = splitUpdateCmd.Parameters.Add(new SqliteParameter("@sourceStartLine", null));
+        var upSc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@sourceStartColumn", null));
+        var upEl = splitUpdateCmd.Parameters.Add(new SqliteParameter("@sourceEndLine", null));
+        var upEc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@sourceEndColumn", null));
+        var upCg = splitUpdateCmd.Parameters.Add(new SqliteParameter("@isCrossGenerated", null));
+        var upRc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@receiverTypeConstraintsJson", null));
+        var upMerged = splitUpdateCmd.Parameters.Add(new SqliteParameter("@mergedTypeArguments", null));
+        var upRank = splitUpdateCmd.Parameters.Add(new SqliteParameter("@incomingRank", 0));
+
+        foreach (var edge in edges)
+        {
+            selectSrc.Value = edge.SourceSymbolId;
+            selectTgt.Value = edge.TargetSymbolId;
+            selectK.Value = edge.Kind;
+
+            object? existingTypeArgs = null;
+            bool hasRow = false;
+            using (var reader = selectCmd.ExecuteReader())
+            {
+                hasRow = reader.Read();
+                if (hasRow)
+                {
+                    existingTypeArgs = reader.IsDBNull(0) ? null : reader.GetString(0);
+                }
+            }
+
+            if (!hasRow)
+            {
+                splitInsSrc.Value = edge.SourceSymbolId;
+                splitInsTgt.Value = edge.TargetSymbolId;
+                splitInsKind.Value = edge.Kind;
+                splitInsProv.Value = (object?)edge.Provenance ?? DBNull.Value;
+                splitInsVer.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
+                splitInsDoc.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
+                splitInsSl.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
+                splitInsSc.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
+                splitInsEl.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
+                splitInsEc.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
+                splitInsCg.Value = edge.IsCrossGenerated;
+                splitInsTa.Value = (object?)edge.TypeArgumentsJson ?? DBNull.Value;
+                splitInsRc.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
+                splitInsertCmd.ExecuteNonQuery();
+            }
+            else
+            {
+                var merged = EdgeMerge.MergeTypeArguments(existingTypeArgs as string, edge.TypeArgumentsJson);
+                var incomingRank = EdgeMerge.ProvenanceRank(edge.Provenance ?? "");
+
+                upSrc.Value = edge.SourceSymbolId;
+                upTgt.Value = edge.TargetSymbolId;
+                upKind.Value = edge.Kind;
+                upProv.Value = (object?)edge.Provenance ?? DBNull.Value;
+                upVer.Value = (object?)edge.ExtractorVersion ?? DBNull.Value;
+                upDoc.Value = (object?)edge.SourceDocumentPath ?? DBNull.Value;
+                upSl.Value = (object?)edge.SourceStartLine ?? DBNull.Value;
+                upSc.Value = (object?)edge.SourceStartColumn ?? DBNull.Value;
+                upEl.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
+                upEc.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
+                upCg.Value = edge.IsCrossGenerated;
+                upRc.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
+                upMerged.Value = (object?)merged ?? DBNull.Value;
+                upRank.Value = incomingRank;
+                splitUpdateCmd.ExecuteNonQuery();
+            }
         }
     }
 

@@ -238,17 +238,54 @@ non-synthesized orphan drops fell from 1,345 to 2, both legitimately outside
 the declared universe. Instantiation detail, where a consumer needs it, remains
 in `edges.type_arguments_json`.
 
-### T4: Cross-project edge-relation deduplication
+### T4: Cross-project edge-relation deduplication and merge-on-write
 
-`EdgeOperationsStore.SaveEdges` uses `INSERT OR IGNORE INTO edges`; `IndexRunner.RunFullIndexAsync`
-accumulates edges across all projects, runs `EdgeDedup.Deduplicate`
-(provenance priority: `compiler_proved` > `framework_derived` >
-`global_implementation_relation` > `possible` > `convention` > `name_candidate`
-> `runtime_unknown`), then calls `SaveEdges` once. The unique index
-`ux_edges_relation` is unchanged: no relaxation, no migration-side dedup.
-`SaveEdges_DeduplicatesSameTripleAcrossProjects` and
-`EdgeDedup_KeepsHighestProvenance` both passed at time of record (deleted,
-`f1254fc`).
+`EdgeOperationsStore.SaveEdges` performs in-batch pre-merge via
+`EdgeMerge.CollapseBatch` (provenance priority: `compiler_proved` >
+`framework_derived` > `global_implementation_relation` > `possible` >
+`convention` > `name_candidate` > `runtime_unknown`), then splits the batch by
+type-argument presence:
+
+- **Bulk path** (edges with null `type_arguments_json`, the ~99.95% majority):
+  `INSERT … ON CONFLICT(snapshot_id, source_symbol_id, target_symbol_id, kind)
+  DO UPDATE SET` covering all winner-takes-all columns (provenance, extractor
+  version, document path, 4 position columns, is_cross_generated, receiver
+  type constraints) — strictly `>` rank comparison, ties keep the persisted
+  row. `type_arguments_json` is **not** in the bulk DO UPDATE SET; the
+  persisted value is always preserved when the incoming edge carries null type
+  args (non-destructive guarantee, pinned by
+  `SaveEdges_IncomingNullTypeArgs_DoesNotOverwritePersistedTypeArgs`).
+
+- **Split path** (edges carrying non-null `type_arguments_json`, ~0.05%):
+  individual SELECT of the existing persisted type args, merging via
+  `EdgeMerge.MergeTypeArguments` (dedup+resort), then UPDATE with merged type
+  args and winner-takes-all columns.
+
+The unique index `ux_edges_relation` is unchanged. The caller-side pre-collapse
+`EdgeDedup.Deduplicate` remains at `IndexRunner.cs:264` as a redundant guard
+that shares `EdgeMerge.CollapseBatch`; it reduces SQL round-trips on collision-
+heavy full builds and the two-callers hazard is resolved by the shared
+implementation.
+
+Binding tests (2026-08-10, `EdgeWritePathTests.cs`):
+`SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank`,
+`SaveEdges_SameTripleDifferentTypeArguments_MergesVariants`,
+`SaveEdges_CalledTwiceAcrossBatches_MergesAgainstPersistedRow`,
+`SaveEdges_UnknownProvenance_NeverBeatsCanonical`,
+`SaveEdges_FlatTypeArgumentEncoding_NormalizesToNested`,
+`SaveEdges_IncomingNullTypeArgs_DoesNotOverwritePersistedTypeArgs`,
+`SaveEdges_CrossProjectReemit_MergesAgainstCopiedForwardRow`.
+
+**Known narrow parity gap (equal-rank tie-break):** the strictly `>` rank
+comparison means equal-rank collisions keep the persisted / copied-forward row,
+which on a clean rebuild would be whatever allEdges accumulation order produced
+first. Positions can differ in principle. This has not been observed on real
+code; `CleanRebuildEquivalenceTest` is the backstop.
+
+**Freshness-scope:** the hash-based freshness detector (`WorkspaceFreshness`) observes
+file content, compilation inputs (package references, project references, define
+constants, analyzer config), and extractor version. When all are unchanged against
+the previous snapshot identity, the short-circuit avoids a full extraction.
 
 ### T5–T8: Semantic-diff metadata has a producer/consumer contract
 
@@ -526,7 +563,7 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 
 ## Reclassified as done (2026-08-06)
 
-- **Incremental re-extraction is document-scoped.** `IncrementalIndexer` no longer re-extracts every document of every affected project. `ExtractReplacementFacts` receives the extraction scope (changed documents ∪ reverse-edge closure ∪ every document declaring a part of a touched type), converted to the absolute forward-slash form the extraction guards compare against, and `PrepareSnapshotData` deletes over exactly the same set — extraction and deletion narrow in lockstep, so no fact is deleted for a document that is not re-extracted. All six adapters honor `AdapterExtractionContext.ScopeDocuments`; their re-emitted edges are absorbed by the `INSERT OR IGNORE` on `ux_edges_relation`, and re-emitted annotations are deduplicated by retiring the copied-forward rows first (`DeleteAnnotationsByDocumentPaths`).
+- **Incremental re-extraction is document-scoped.** `IncrementalIndexer` no longer re-extracts every document of every affected project. `ExtractReplacementFacts` receives the extraction scope (changed documents ∪ reverse-edge closure ∪ every document declaring a part of a touched type), converted to the absolute forward-slash form the extraction guards compare against, and `PrepareSnapshotData` deletes over exactly the same set — extraction and deletion narrow in lockstep, so no fact is deleted for a document that is not re-extracted. All six adapters honor `AdapterExtractionContext.ScopeDocuments`; their re-emitted edges are merged by `SaveEdges`' `ON CONFLICT DO UPDATE` + `EdgeMerge.MergeTypeArguments`, and re-emitted annotations are deduplicated by retiring the copied-forward rows first (`DeleteAnnotationsByDocumentPaths`).
 - **The cross-document refresh (step 7) is load-bearing again.** It is seeded from the genuinely-changed documents rather than from the invalidation set that had already absorbed the closure — the seeding bug that made `FindAffectedDocPaths` return ∅ while still charging for the walk. `RefreshAsync` subtracts the documents step 6 already re-extracted, so the two phases never re-extract the same document twice in one snapshot.
 - **The closure sees absences, not just edges.** `FindAffectedDocPaths` seeds its frontier from the previous snapshot's `binding_incompleteness` rows whose reason is in `UnobservableReasons`. A document whose reference did not bind produced no edge, so a pure edge BFS had no arc to follow when an edit made it bind.
 - **Adapters honor the extraction scope.** All six now skip out-of-scope work: `DependencyInjectionAdapter` and `SerializationAdapter` guard their `compilation.SyntaxTrees` loop with `IsInScope`, `TestAdapter` guards each declaring syntax reference, and `AspNetCoreAdapter`, `MediatRAdapter`, and `EfCoreAdapter` guard by declaring type via `AdapterExtractionContext.IsSymbolInScope`. In every case the guarded unit is the one the emitted edge (or annotation) is anchored to, so extraction and deletion stay on the same set. `EfCoreAdapter` annotations carry the evidence document of the walk that produced them (migration 26, `annotations.document_path`), and `IIndexStore.DeleteAnnotationsByDocumentPaths` retires copied-forward rows over exactly the extraction scope in `IncrementalIndexer.PrepareSnapshotData` and in the cross-document refresh — the lockstep invariant holds for annotations too.

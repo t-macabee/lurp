@@ -488,7 +488,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         Assert.Equal(rebuildEdge.SourceSymbolId, incrementalEdge.SourceSymbolId);
         Assert.Equal(rebuildEdge.TargetSymbolId, incrementalEdge.TargetSymbolId);
 
-        var rebuildVariants = EdgeDedup.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
+        var rebuildVariants = EdgeMerge.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
         var rebuildKeys = VariantKeys(rebuildVariants);
         foreach (var expectedKey in new[]
         {
@@ -502,7 +502,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         }
         AssertNestedVariantArray(rebuildEdge.TypeArgumentsJson, rebuildVariants.Count);
 
-        var incrementalVariants = EdgeDedup.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
+        var incrementalVariants = EdgeMerge.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
         Assert.True(incrementalVariants.Count == rebuildVariants.Count,
             $"Incremental MayDispatchTo edge carries {incrementalVariants.Count} type-argument variant(s) but the clean rebuild carries {rebuildVariants.Count}. " +
             $"Incremental JSON: {incrementalEdge.TypeArgumentsJson ?? "(null)"}; clean rebuild JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
