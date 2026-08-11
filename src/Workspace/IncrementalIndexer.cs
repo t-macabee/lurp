@@ -108,11 +108,39 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         cancellationToken.ThrowIfCancellationRequested();
         var sw2 = System.Diagnostics.Stopwatch.StartNew();
         _output.Write("Identifying affected projects... ");
+
+        // New-file widening (R3): a NEWLY ADDED file can change overload
+        // resolution for unedited callers in other documents — a new overload
+        // can steal a binding, or a new member can make a previously-unbound
+        // call bind. The BFS can only follow persisted arcs and a new file has
+        // none, so seed it with every document of each added file's project:
+        // their declarations exist in the previous snapshot, so the BFS follows
+        // the old arc to the callers that must be rebound. Guarded to added
+        // files — edits keep today's narrow seed, preserving incremental
+        // performance for the common case.
+        var addedFilePaths = changedDocs
+            .Where(static c => c.ChangeKind == DocumentChangeDetector.DocumentChangeKind.New)
+            .Select(static c => c.RelativePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string>? newFileProjectPaths = addedFilePaths.Count == 0
+            ? null
+            : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
+
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
-        var closureResult = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, changedPaths);
+        var closureSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        if (newFileProjectPaths != null)
+            closureSeed.UnionWith(newFileProjectPaths);
+        var closureResult = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
         var closurePaths = closureResult.AffectedPaths;
         invalidationPaths.UnionWith(closurePaths);
+        if (newFileProjectPaths != null)
+        {
+            invalidationPaths.UnionWith(newFileProjectPaths);
+            closurePaths.UnionWith(newFileProjectPaths);
+        }
+        if (newFileProjectPaths != null)
+            _output.WriteLine($"  {addedFilePaths.Count} new file(s); widened closure to {newFileProjectPaths.Count} document(s) in the new files' project(s).");
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
@@ -149,7 +177,22 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // in every touched project (CrossDocumentEdgeRefresher widened it before
         // returning), so this seed stays at changed-only and extraction stays
         // correspondingly narrow even though invalidationPaths is project-wide.
-        var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, changedPaths);
+        //
+        // Add-file exception (R3): the closure-exclusion premise breaks when a
+        // NEW file is added — documents reached through the closure may rebind
+        // to the new file's overloads even though their own text did not change.
+        // The affected caller must land in the extraction scope (re-extraction),
+        // not just invalidation (FTS/diff), so for this run only the seed is
+        // widened to changed + new-file project documents + the closure. The
+        // widening is guarded to added files; plain edits keep the narrow seed.
+        var extractionScopeSeed = changedPaths;
+        if (newFileProjectPaths != null)
+        {
+            extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+            extractionScopeSeed.UnionWith(newFileProjectPaths);
+            extractionScopeSeed.UnionWith(closurePaths);
+        }
+        var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
         // and forward-slash normalized. Passing the git-root-relative form matches
@@ -583,6 +626,31 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             }
         }
         return paths;
+    }
+
+    /// <summary>
+    /// Maps git-root-relative document paths to the names of the projects that
+    /// own them. Unlike <see cref="DocumentChangeDetector.IdentifyAffectedProjects"/>,
+    /// this does NOT follow project references — only the projects directly
+    /// containing the given documents are returned.
+    /// </summary>
+    private HashSet<string> GetProjectsForPaths(Solution solution, IReadOnlySet<string> paths)
+    {
+        var projectNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            foreach (var document in project.Documents)
+            {
+                if (document.FilePath == null)
+                    continue;
+                if (paths.Contains(DocumentChangeDetector.GetRelativePath(document.FilePath, _gitRoot)))
+                {
+                    projectNames.Add(project.Name);
+                    break;
+                }
+            }
+        }
+        return projectNames;
     }
 
     /// <summary>

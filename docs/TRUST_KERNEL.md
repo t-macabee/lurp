@@ -327,10 +327,12 @@ added (that's architecture Phase 11 / orders 10–11).
 
 Snapshot comparison includes FQNs, metadata JSON, declaration
 paths/spans/flags, and exact source/symbol FTS records. Cases covered
-signature, body-only, document-move, partial-class, base/interface, and
-DI-registration edits. Covered by `IncrementalParityTests.cs` (phase-2 parity
+signature, body-only, document-move, partial-class, base/interface,
+DI-registration, and new-overload-in-new-file edits (R3). Covered by
+`IncrementalParityTests.cs` (phase-2 parity
 matrix across delete-symbol, delete-file, rename, signature, base-type,
-interface, cross-project, partial-type, new-implementation, and generic-dispatch
+interface, cross-project, partial-type, new-implementation, generic-dispatch,
+and new-overload-in-new-file
 scenarios), `CleanRebuildEquivalenceTest.cs`, and `MultiCycleConvergenceTests.cs`.
 The 167/167 figure was a time-of-record count from the deleted full suite.
 
@@ -883,6 +885,61 @@ continue to pass with the corrected predicate.
 filtering needed when all documents are in scope). Affects any incremental index
 where an affected project has out-of-scope documents with external-target
 references.
+
+
+
+## R3 — Overload-resolution BFS gap fix (2026-08-11)
+
+**Origin:** REVIEW.md I3 — "still a narrow known gap": when a NEWLY ADDED
+overload causes an UNEDITED caller to bind to it, the incremental
+cross-document BFS follows the old arc and may not re-extract the caller, so
+incremental can diverge from full rebuild for that caller.
+
+**Reproduction (test only, red first):**
+`ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller`
+(`tests/IncrementalParityTests.cs`). Full-index V1 — Calc project declares
+`M(long)` only; App project has `Caller.Use` calling `c.M(42)` (binds to
+`M(long)` via implicit conversion). Add a NEW file (`Overloads.cs`) declaring
+`M(int)` in the Calc project, incremental-index, fresh full rebuild of the same
+state, assert parity via `SnapshotAssertions.CompareSnapshotsAreEquivalent`.
+FAILED before the fix, exactly on the predicted divergence: incremental kept
+`Caller.Use → M(System.Int64)` (stale) where the full rebuild has
+`Caller.Use → M(System.Int32)`. A second, adjacent divergence on the same root
+cause: the copied-forward `T:Calc.Calc` declaration row in `Provider.cs` kept
+`is_partial = 0` (the type had one declaring syntax reference when snapshot A
+was extracted) instead of `1` — the parity oracle trips on it before the edges.
+
+**Root cause:** the reverse-edge BFS (`CrossDocumentEdgeRefresher.FindAffectedDocPaths`)
+can only follow persisted arcs, and a newly added file has none — no document
+version in the previous snapshot, so no symbols and no incoming edges. The BFS
+seed was exactly the changed paths, so the unedited caller in the other project
+was never reached, its copied-forward edge kept the old binding, and the
+new file's project documents were never re-extracted (stale `is_partial`).
+
+**Fix** (`src/Workspace/IncrementalIndexer.cs` `RunIncrementalAsync`, guarded to
+added files): when `changedDocs` contains any `New` document, (1) widen the BFS
+seed with every document of each added file's project — their declarations
+exist in the previous snapshot, so the BFS follows the old arc to the callers
+that must be rebound; (2) widen `invalidationPaths`/`closurePaths` with the same
+project documents; (3) widen the extraction-scope seed to changed + new-file
+project documents + the closure, so the affected caller lands in the
+EXTRACTION scope (re-extraction, with its copied-forward facts deleted in
+lockstep), not just invalidation (FTS refresh/diff). Edits with no added files
+keep today's narrow seed unchanged — the widening is add-file-only.
+
+**Measured:**
+- `dotnet test --filter "FullyQualifiedName~ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller"` — FAILED before the fix (stale `M(System.Int64)` edge, `is_partial` 0 vs 1), PASSES after (1 passed, 7.8s).
+- `dotnet test --filter "FullyQualifiedName~IncrementalParityTests"` — 13 passed (47.4s), no regression (incl. `ScenarioJ_AddFileWithNewInterfaceImplementation`, `ScenarioI_PartialTypeSpanningFiles_EditOnePartKeepsOtherPartEdges`, `ScenarioH_CrossProjectCallerEdit`).
+- `dotnet test --filter "FullyQualifiedName~CleanRebuildEquivalenceTest"` — passed (5.6s).
+- `dotnet test --filter "FullyQualifiedName~MultiCycleConvergenceTests"` — 2 passed (17.8s). Mutation 1 of `Incremental_FiveSequentialCycles_ConvergesWithCleanRebuild` is an add-file event (`ProductService.cs`), so the new-file widening fires at cycle 1; cycles 2–5 are plain edits and keep the narrow seed. Both tests pass, confirming multi-cycle convergence is unaffected.
+
+**Scope of impact:** incremental-only. Full-run behavior is unchanged. Any
+incremental index where a file is added to a project re-extracts that
+project's documents plus the reverse-edge closure of their symbols for that
+run (perf cost proportional to project + dependent size, on add-file events
+only; plain edits keep the narrow closure).
+
+Note: change is uncommitted on `main` (commit authorization pending).
 
 
 

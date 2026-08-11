@@ -748,4 +748,62 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // leak produces partial records for out-of-scope documents.
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
+
+    [SkippableFact]
+    public async Task ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // V1: only M(long) exists; c.M(42) binds to M(long) via implicit
+        // conversion. V2 adds M(int) in a NEW file — the unedited caller now
+        // binds to M(int) by overload resolution. The incremental
+        // cross-document BFS must re-extract the unedited caller even though
+        // only a file was added (not edited).
+        CreateProject("Calc",
+            new Dictionary<string, string>
+            {
+                ["Provider.cs"] = """
+                    namespace Calc;
+
+                    public partial class Calc
+                    {
+                        public long M(long x) => x;
+                    }
+                    """,
+            });
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Caller.cs"] = """
+                    namespace App;
+
+                    public class Caller
+                    {
+                        public long Use(Calc.Calc c) => c.M(42);
+                    }
+                    """,
+            },
+            projectReferences: ["Calc"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Calc", "Overloads.cs", """
+            namespace Calc;
+
+            public partial class Calc
+            {
+                public int M(int x) => x;
+            }
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        // The parity oracle must succeed — the caller's call edge must point
+        // at the newly preferred overload (M(int)), not the stale M(long).
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+    }
 }
