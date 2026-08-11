@@ -540,6 +540,43 @@ fallback on top of that set, not the only signal.
     instantly. The `groups` aggregation was already designed to answer
     fan-out structure from first hops, making deep exhaustions unnecessary
     for the primary use case. Default lowered to 3.
+10. **Incremental `binding_incompleteness.occurrence_count` undercounts
+    out-of-scope documents in affected projects (REAL parity bug, from the R1
+    FIT-RS2-2026 run; see the R1 section above).** When an edit lands in a
+    project, the affected project's re-extraction collector records partial
+    `filtered_external` counts for documents outside the deletion scope, and
+    the per-project `SaveBindingIncompleteness` upsert
+    (`BindingIncompletenessStore`, `ON CONFLICT … DO UPDATE SET
+    occurrence_count = excluded.occurrence_count`) overwrites their
+    copied-forward full counts. Both incremental save sites —
+    `IncrementalIndexer.ExtractReplacementFacts` (step 6) and
+    `CrossDocumentEdgeRefresher.ProcessCompilationsAsync` (step 7) — save all
+    collector records, not only records whose document was first deleted, so
+    the documented "extraction and deletion narrow in lockstep" invariant is
+    violated for binding incompleteness (it holds for edges and annotations).
+    Minimal reproduction (2026-08-11): one semantics-preserving comment edit
+    in `eCommerce.Services` (FIT-RS2-2026, `eCommerce.sln`) turns
+    `eCommerce.Services/Database/eCommerceConfiguration.cs` from 130 to 73 and
+    `…IncreasePaymentTransactionIdLength.cs` from 16 to 8 in the first
+    incremental cycle; the value stays constant through cycle 5 (A=130/16 →
+    B1=B5=73/8); a fresh full rebuild of the final state keeps 130/16, so
+    `r1-compare` and `SnapshotAssertions.CompareSnapshotsAreEquivalent` fail on
+    binding incompleteness while every other table matches. `occurrence_count`
+    is consumed by `SnapshotCompleteness.BindingIncompletenessTotal`
+    (`status --json`) and by `UncertaintyDetector` capsule-uncertainty sums.
+    **Proposed fix scope (GATED — not implemented):** filter the collector's
+    records to the deletion scope before saving at both sites (restore the
+    lockstep invariant producer-agnostically; the `document_path`-null bucket
+    needs an explicit policy). The exact producer stage was not isolated by
+    static reading — every inspected `RecordFilteredExternal` call site
+    (`CallsEdgeExtractor`, `OverridesEdgeExtractor`,
+    `ParameterDependencyEdgeExtractor`, `ReturnsEdgeExtractor`,
+    `SymbolStructuralEdgeExtractor`, `InterfaceDispatchExtractor`,
+    `VirtualOverrideExtractor`, `StaticDispatchCallExtractor`,
+    `NameOfReflectionExtractor`, `TypeOfReflectionExtractor`) carries a scope
+    gate, so the leak is a gate/attribution mismatch at one of them — confirm
+    under the fix which record site emits out-of-scope records before choosing
+    whether to harden the gate or rely on the save-side filter alone.
 
 ## Explicitly postponed
 
@@ -649,4 +686,151 @@ Edge-kind coverage observed: 23 kinds in-snapshot, including `MayDispatchTo`,
 `ExtensionReceiver`, `ReflectionTypeRef`, `ReflectionMemberRef`,
 `ReflectionNameCandidate`, `ReflectionTargetUnknown` — confirming the
 polymorphism, framework-adapter, and reflection evidence ladders are live.
+
+## R1 — 5-cycle incremental convergence on real solutions (2026-08-11, extractor 1.6.0)
+
+Five consecutive incremental edits were applied to scratchpad copies of two real
+multi-project solutions, followed by a fresh full rebuild of the final state.
+The 5th incremental snapshot (B5) was compared field-by-field against the clean
+rebuild (C) using the same normalization as `SnapshotAssertions.CompareSnapshotsAreEquivalent`
+(all persisted edge value columns — every column except snapshot_id, the partition key — declarations, symbols, diagnostics, annotations, FTS,
+binding incompleteness).
+
+### FIT-RS2-2026 — 4 projects, `eCommerce.sln`
+
+| Edits |
+|---|
+| 1. Doc comment added to `IBaseReadService.GetByIdAsync` |
+| 2. Optional `CancellationToken` parameter added to `IBaseReadService.GetAllAsync` |
+| 3. `CancelAsync` method added to `IOrderService` + `OrderService` |
+| 4. `DeleteAsync` method added to `IBaseReadService` + `BaseReadService` |
+| 5. `Class1.cs` renamed to `ServiceExtensions.cs` with new content |
+
+| Check | Result |
+|---|---|
+| Snapshot ID (B5 ≡ C) | `0e4f03607a6f70d7d653e20e24f96e42` — match |
+| Symbols | 0 diffs |
+| Declarations | 0 diffs |
+| Edges (3,862) | 0 diffs across all persisted value columns |
+| Diagnostics (409) | 0 diffs |
+| Annotations | 0 diffs |
+| FTS (source + symbol) | 0 diffs |
+| Binding incompleteness (167) | **2 records diverge** |
+
+Divergence: two `filtered_external` records undercount `occurrence_count` in the
+incremental snapshot — `eCommerce.Services/Database/eCommerceConfiguration.cs`
+(73 vs 130, lost 57) and `eCommerce.Services/Migrations/…IncreasePaymentTransactionIdLength.cs`
+(8 vs 16, lost 8).
+
+**Edge-column tooling fix (2026-08-11):** `r1-compare/Program.cs` `EdgeDiff` and
+`NormalizeEdges` previously omitted the `extractor_version` column (not compared,
+not in the sort tiebreak). Both are now included, and the FIT-RS2-2026 procedure
+was re-run with the corrected comparator. Edges still report 0 diffs (3,862 edges,
+snapshot IDs `cb7add0815145b1f5a1e91b7033e9920` match). The only divergence
+remains the known R6 binding-incompleteness undercount. All "13 edge columns"
+wording in this section was replaced with the column-agnostic
+"all persisted value columns."
+
+Note on FIT-RS2-2026 snapshot IDs across runs: this section records three
+different final-state IDs for FIT-RS2-2026 — `0e4f0360…` (original 5-edit R1
+run), `a6ac1bc8…` (5-cycle triage reproduction), and `cb7add08…` (edge-column
+re-verify). These differ because each run applied a different edit set, so the
+final states differ, so the deterministic IDs differ — not a contradiction. The
+guarantee each run records is B ≡ C *within that run* (same ID for the 5th
+incremental and the fresh full rebuild), and the edge count (3,862) is stable
+across them.
+
+Housekeeping (2026-08-11): stale external-solution artifacts under `out/`
+(eNoteV2/FIT-RS2 `index.db` snapshots and capsule outputs from these runs) were
+removed so later indexing runs and models are not confused by pre-fix databases.
+The TokenSave code graph under `.tokensave/` is unrelated and was left intact.
+
+**Triage (2026-08-11): this is a REAL incremental/full parity bug in the
+binding-incompleteness carry-forward, now reproduced and minimized.**
+
+- **Reproduction:** the recorded script re-run on a fresh scratchpad copy
+  reproduced the identical divergence: deterministic snapshot ids equal
+  (`a6ac1bc8…` both), `r1-compare` reports a single diff ("Binding
+  incompleteness mismatch") and exits 1, with the same counts (73/8 vs 130/16).
+- **Minimal edit:** EDIT 1 alone — a semantics-preserving doc comment on
+  `eCommerce.Services/IBaseReadService.cs` — reproduces it. One incremental
+  cycle after the initial full index suffices (`/tmp/r1-minimal-repro.sh`,
+  2026-08-11): snapshot A = 130/16 → B1 = 73/8; a fresh full rebuild of the
+  same final state = 130/16; `r1-compare` B1-vs-C' fails identically.
+- **Per-cycle trajectory:** the undercount appears at cycle 1 and is constant —
+  B1 = B5 = 73/8. It is **not cumulative**; the earlier "cumulative
+  degradation across 5 cycles" phrasing was an inference without per-cycle
+  data and is superseded.
+- **Both documents are outside the extraction scope** in every cycle: not
+  changed, not partial parts of types declared in changed documents, and not in
+  the reverse-edge closure (closure narrowed, no fallback).
+- **Root cause:** the per-project `SaveBindingIncompleteness` upsert
+  (`BindingIncompletenessStore`, `ON CONFLICT(snapshot_id, project_name,
+  document_path, reason) DO UPDATE SET occurrence_count = excluded.occurrence_count`)
+  persists ALL records the affected project's re-extraction collector produced
+  — including partial `filtered_external` counts for documents outside the
+  deletion scope, whose rows were copied forward with the full count and are
+  silently overwritten. The deletion scope (`DeleteFactsByDocumentPaths` in
+  `IncrementalIndexer.PrepareSnapshotData` and
+  `DeleteBindingIncompletenessByDocumentPaths` in
+  `CrossDocumentEdgeRefresher.ProcessCompilationsAsync`) is narrower than the
+  save scope, violating the documented lockstep invariant ("extraction and
+  deletion must always be scoped to exactly the same set; documents outside it
+  keep their copied-forward facts intact") for binding incompleteness.
+- **`occurrence_count` is compared and consumed:** both parity oracles
+  (`SnapshotAssertions.CompareSnapshotsAreEquivalent`,
+  `scripts/r1-compare/Program.cs`) compare the records, and consumers sum it —
+  `SnapshotCompleteness.BindingIncompletenessTotal` (`status --json`) and
+  `UncertaintyDetector` capsule-uncertainty descriptions. The divergence is a
+  genuine parity failure of a persisted, consumer-read field, not a benign
+  artifact.
+- **Fix scope (proposed, NOT implemented):** filter the collector's records to
+  the deletion scope before `SaveBindingIncompleteness` at both incremental
+  save sites (producer-agnostic lockstep restoration). Tracked as open finding
+  10 below; see that row for candidates.
+
+### eNoteV2 — 7 projects, `eNote.sln`
+
+| Edits |
+|---|
+| 1. Doc comment added to `IReferenceCrudService.GetByIdAsync` |
+| 2. Optional `includeDeleted` parameter added to `IReferenceCrudService.GetPagedAsync` |
+| 3. `ExistsAsync` method added to `IReferenceCrudService` + `ReferenceCrudService` |
+| 4. `ArchiveAsync` method added to `IReferenceCrudService` + `ReferenceCrudService` |
+| 5. `InstrumentTypeRequest.cs` renamed to `InstrumentTypeUpsertRequest.cs` (class name unchanged) |
+
+| Check | Result |
+|---|---|
+| Snapshot ID (B5 ≡ C) | `138fe56d56b6d1e3927f8763afae38c9` — match |
+| Symbols (3,662) | 0 diffs |
+| Declarations | 0 diffs |
+| Edges (10,771) | 0 diffs across all persisted value columns |
+| Diagnostics (129) | 0 diffs |
+| Annotations | 0 diffs |
+| FTS (source + symbol) | 0 diffs |
+| Binding incompleteness | 0 diffs |
+
+**Zero divergence on all checks.** The binding-incompleteness undercount
+observed on FIT-RS2-2026 did not reproduce here.
+
+### Verdict
+
+**Deterministic snapshot identity + byte-identical edges, declarations, symbols,
+diagnostics, and FTS across 5 incremental cycles confirmed on both solutions.**
+The binding-incompleteness undercount on FIT-RS2-2026 is a REAL, reproducible
+parity bug (see the triage above): it appears at the first incremental cycle of
+any edit in the affected project, holds constant through cycle 5, and fails the
+repo's own parity oracles on a compared, consumer-read field. It did not
+reproduce on eNoteV2 because that solution's affected projects contain no
+out-of-scope documents that hit the affected producer path — pattern-dependent,
+not sequence-dependent (the exact pattern was not isolated; see finding 10).
+The core guarantee promoted from "fixture-only" to "real-code evidence on two
+multi-project solutions" is scoped to edges, declarations, symbols, diagnostics,
+and FTS; binding-incompleteness parity is a separate, open correctness gap
+tracked as finding 10.
+
+**Reproduction:** `scripts/r1-verify-convergence.sh` (FIT-RS2-2026),
+`scripts/r1-verify-enote.sh` (eNoteV2), both using `scripts/r1-compare/` for
+the field-by-field diff.
+
 
