@@ -2,7 +2,7 @@
 
 **Status:** Design reference. All architecture phases are implemented — see
 `TRUST_KERNEL.md` for per-phase verification, evidence, and current deviations.
-**Current:** schema v26, extractor 1.6.0, tool 1.4.0
+**Current:** schema v27, extractor 1.6.0, tool 1.4.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -273,8 +273,8 @@ replacement; route contract change. Three were implemented in
 `tests/OutcomeBenchmarkTests.cs` (`local-validation-change`,
 `handler-dto-modification`, `di-implementation-replacement`), but that test
 file was deleted with the rest of the suite in the Aug 2026 cleanup (commit
-`f1254fc`); those scenarios and their verification are not currently
-reproducible pending a rebuilt suite.
+`f1254fc`) and has not been re-added; those scenarios and their verification
+are not currently reproducible.
 
 Measure: correct starting symbol found? actual source retrieved without
 project exploration? all constraining contracts included? affected callers and

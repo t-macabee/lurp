@@ -21,5 +21,6 @@ It is organized by purpose so visitors can choose the right level of detail.
 These references are not a task queue. Compare the Trust Kernel and
 architecture guide, then inspect the live code and repository state. The live
 repository is the final authority for what exists. (The `tests/` tree and all
-fixtures were removed in the Aug 2026 cleanup, commit `f1254fc`; no test
-project is present until the suite is rebuilt.)
+fixtures were removed in the Aug 2026 cleanup, commit `f1254fc`, and have
+since been rebuilt: `tests/Lurp.Tests.csproj` and the test suite are present
+and run.)

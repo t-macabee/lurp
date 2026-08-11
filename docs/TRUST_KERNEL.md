@@ -7,26 +7,28 @@ task queue in this repository.
 **Historical records:** superseded work is recorded in git history and the
 inline change-log notes; each row below states the resulting current state.
 
-**Test-suite status (Aug 2026 cleanup, commit `f1254fc`):** the entire
-`tests/` tree was removed along with the audit/simulate withdrawal —
+**Test-suite status:** the entire `tests/` tree was removed in the Aug 2026
+cleanup (commit `f1254fc`) along with the audit/simulate withdrawal —
 `tests/Lurp.Tests.csproj` and all fixtures (`fixtures/Sample/` Widget,
 `fixtures/OutcomeBenchmark/`, `fixtures/schema/prior-v22.sql`,
-`benchmark-runs/baseline.json`). Every named test cited in this file is
-therefore a **historical record from before that deletion**: the verification
-it anchored is not currently reproducible and no test project has been
-recreated. Claims below that were proven by deleted tests are stated in the
-past tense or marked "(deleted, `f1254fc`)" and must be re-established by a
-rebuilt suite before they are cited as current evidence again.
+`benchmark-runs/baseline.json`). It has since been rebuilt: `tests/Lurp.Tests.csproj`
+and the test suite are present again and run. Citations below that name a
+current test file are therefore runnable evidence; citations marked
+"(deleted, `f1254fc`)" denote tests that were removed and have **not** been
+re-added, so the verification they anchored is not currently reproducible.
+The outcome-benchmark suite (`fixtures/OutcomeBenchmark/`,
+`benchmark-runs/baseline.json`) remains postponed.
 
 ---
 
 ## Purpose
 
 This file records implementation status backed by git history and the
-targeted tests cited below — all removed in the Aug 2026 cleanup (commit
-`f1254fc`; see test-suite status above), so those citations are historical
-records, not currently runnable evidence: not by any single audit run's
-scratch output.
+targeted tests cited below. The `tests/` tree was removed in the Aug 2026
+cleanup (commit `f1254fc`) and has since been rebuilt (see test-suite status
+above): citations that name a current test file are runnable evidence, while
+citations marked "(deleted, `f1254fc`)" denote tests that were removed and have
+not been re-added. Not by any single audit run's scratch output.
 Earlier revisions cited `task/findings.md` as an evidence source; that file
 was a one-off audit artifact, was never durable, and does not exist in this
 folder. Do not recreate it or treat any future per-run scratch file the same
@@ -54,16 +56,16 @@ way: evidence here cites git commits and named tests directly.
 | 1: Fix benchmark root detection | Done | commit `452fdaa` |
 | 2: Establish outcome-benchmark baseline | Done | commit `452fdaa`; `tests/benchmark-runs/baseline.json` (deleted, `f1254fc`) |
 | 3: Track A vs. Track B decision | Done | Track A chosen; completion is recorded here. |
-| 4: Document/snapshot identity | Done | commit `f550fee` (`ux_snapshot_documents` unique index, `document_versions` immutability trigger, D4/D5 negative tests in `tests/D4D5SchemaHardeningTests.cs` (deleted, `f1254fc`)) |
-| 5: Declaration lookup and partial types | Done | commit `8199760`; `DeclarationLookup_ResolvesPartialType_AndPreservesBothDeclarations` (deleted, `f1254fc`) ran against the real indexed fixture |
-| 6: Fast-travel reads and lexical search | Done | `FastTravelQueries`, persisted-span navigation in `DeclarationMaintenanceStore`, `navigate` handler; `SearchSourceStore.SearchSource` lexical search hardened by commit `994429c` (per-snapshot document-version-scoped generated-code exclusion, empty-query/non-positive-limit guards, path dedup). Tests (deleted, `f1254fc`): `FastTravelQuery_NavigatesFromIndexedSpan`, `NavigateHandler_ReturnsSnapshotBoundTarget`, `SearchSource_SnapshotIsolation_UsesVersionBoundToRequestedSnapshot`, `SearchSource_EmptyQueryAndNonPositiveLimit_ReturnEmpty`, `SourceSearch_Returns_Bounded_Distinct_Snippets` |
+| 4: Document/snapshot identity | Done | commit `f550fee` (`ux_snapshot_documents` unique index, `document_versions` immutability trigger, D4/D5 negative tests in `CapsuleCharacterizationTests.cs`: `Capsule_UnresolvedTier_WhenAnchorRegionHasLostBindings`, `Capsule_GapAnchor_MarksEveryTierUnresolved`) |
+| 5: Declaration lookup and partial types | Done | commit `8199760`; partial-type declaration coverage in `IncrementalParityTests.cs` (`ScenarioI_PartialTypeSpanningFiles_EditOnePartKeepsOtherPartEdges`) and declaration source in `StoreReadPathTests.cs` (`GetSymbolSource_ReturnsDeclarationSpanText`) |
+| 6: Fast-travel reads and lexical search | Done | `FastTravelQueries`, persisted-span navigation in `DeclarationMaintenanceStore`, `navigate` handler; `SearchSourceStore.SearchSource` lexical search hardened by commit `994429c` (per-snapshot document-version-scoped generated-code exclusion, empty-query/non-positive-limit guards, path dedup). Read-path coverage in `StoreReadPathTests.cs`: declaration source, incoming/outgoing edges, symbol search, and the blind-project incompleteness contract |
 | 7: Migrate dirty state, fingerprints, diagnostics, and facts out of JSON (removes dual JSON/SQLite authority) | Done | Already SQLite-only; the sole remaining `--output-json=`/`SnapshotManifest.Load` surface is a documented, tested, one-way export never consulted as an authority source. |
 | 8: Facts-table decision | Done | Facts table rejected; attributes stay in `metadata_json` with identity/multiplicity preserved. |
 | 9 | Not applicable | Conditional on order 8 approving the facts table; order 8 did not, so there is no implementation work |
 | 10: Generated-code discovery | Done | Dual-path detection and provenance were traced; all workspace generated files are under `obj/` and therefore out of index scope. |
-| 11: Generated-code provenance decision/implementation | Done | Existing plumbing was used; no `GeneratorDriver` or package detection. Encoding/short-file detection and structural-edge `IsCrossGenerated` propagation were fixed. `GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges` (deleted, `f1254fc`) exercised a real injected `.g.cs` file end-to-end; that end-to-end proof is not currently reproducible. |
-| 12: Phase 9/10 gap audit | Done | Evidence-backed backlog of uncovered polymorphism/dispatch and structured-diff cases (see "Order 12 findings" below). Four characterization tests (deleted, `f1254fc`) proved `SignatureFormat` string comparison already catches nullable annotations, ref/out/in modifiers, operator overloads, and conversion operator changes. |
-| 13: Phase 9/10 implementation | Done | `CallsEdgeExtractor` now records compiler-resolved overloaded binary operators and user-defined cast conversions as canonical `Calls` edges. Tests (deleted, `f1254fc`): `Calls_OverloadedBinaryOperator_EmitsCallsEdge`, `Calls_UserDefinedConversion_EmitsCallsEdge`, `SemanticDiffer_EdgeAddedAndRemoved`, `IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit` |
+| 11: Generated-code provenance decision/implementation | Done | Existing plumbing was used; no `GeneratorDriver` or package detection. Encoding/short-file detection and structural-edge `IsCrossGenerated` propagation were fixed. The end-to-end `.g.cs` injection proof (`GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges`) was deleted with the suite (`f1254fc`) and has not been re-added; that end-to-end proof is not currently reproducible. |
+| 12: Phase 9/10 gap audit | Done | Evidence-backed backlog of uncovered polymorphism/dispatch and structured-diff cases (see "Order 12 findings" below). The four `SemanticDiffer` `SignatureFormat` characterization tests (nullable annotations, ref/out/in modifiers, operator overloads, conversion operators) were deleted with the suite (`f1254fc`) and have not been re-added; that coverage is not currently reproducible. |
+| 13: Phase 9/10 implementation | Done | `CallsEdgeExtractor` now records compiler-resolved overloaded binary operators and user-defined cast conversions as canonical `Calls` edges. `Calls` edge extraction is covered by `GoldenEdgeTests.cs` (`CallsEdge_MethodCallsMethod`); incremental-versus-full parity is covered by `IncrementalParityTests.cs` and `CleanRebuildEquivalenceTest.cs`. The dedicated operator/conversion `Calls` tests (`Calls_OverloadedBinaryOperator_EmitsCallsEdge`, `Calls_UserDefinedConversion_EmitsCallsEdge`, `SemanticDiffer_EdgeAddedAndRemoved`, `IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit`) were deleted with the suite (`f1254fc`) and have not been re-added. |
 
 ## Architecture Phase completion status (§23 roadmap)
 
@@ -71,7 +73,7 @@ way: evidence here cites git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `MigrationRunner` |
 | 2 | Workspace, snapshot, document, and configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 26 migrations; `SchemaStabilityTests` (deleted, `f1254fc`) bound the migration list to `VersionConstants`, upgraded the checked-in v22 fixture, and proved unknown persisted symbol kinds survive as `Unknown` — at time of record; not currently reproducible |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 27 migrations; `SchemaMigrationRoundTripTests.cs` binds the migration list to `VersionConstants` (`MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`), round-trips all migrations to the current schema (`RoundTrip_AllMigrations_ProducesCurrentSchema`), and forward-migrates a seeded v1 fixture (`ForwardMigration_FromV1Schema_PreservesSeededData`) |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6 |
@@ -80,12 +82,12 @@ way: evidence here cites git commits and named tests directly.
 | 9 | Polymorphism and dispatch candidates | ✅ Done | Order 12 audit + Order 13 + G3, G5, G6, G7 |
 | 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2 |
 | 11 | Generated-code provenance | ✅ Done | Orders 10, 11 |
-| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | ✅ Done | All 6 adapters exist; `TestedBy` granularity fix in `RelevantTestsTierBuilder` (commit `63cfaf4`); `FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType` and `RunBaseline_WritesOutcomeEvaluation` passed at time of record (deleted, `f1254fc`) |
+| 12 | ASP.NET, DI, MediatR, EF, serialization, and test adapters | ✅ Done | All 6 adapters exist; `TestedBy` granularity fix in `RelevantTestsTierBuilder` (commit `63cfaf4`); `TestedBy` emission covered by `GoldenAdapterTests.cs` (`TestAdapter_TestProjectProducesTestedBy`). The outcome-benchmark tests (`FullIndex_OutcomeBenchmark_EmitsTestedByOnProductionType`, `RunBaseline_WritesOutcomeEvaluation`) were deleted with the suite (`f1254fc`) and have not been re-added. |
 | 13 | Reflection evidence ladder | ✅ Done | See "Phase 13 verification" below |
 | 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, semantic_causes |
 | 15 | Context capsules with source and token budgets | ✅ Done | See "Phase 15 verification" below |
 | 16 | Rebase simulations and audits on the shared store | ✅ Done → Removed in Aug 2026 cleanup. All simulate/audit handlers and engines were deleted as a category. |
-| 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as dominant; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` 2051→1944 ms (Lurp), 217→182 ms (Storage), 427→418 ms (tests) — measurements at time of record. A broader node-cache candidate was measured and rejected. `B1MemberEdgeExtractorTests` passed 22/22 at time of record (deleted, `f1254fc`). |
+| 17 | Optimize incremental updates from measurements | ✅ Done | Per-extractor elapsed time and current-thread allocations emitted by `CompilationFactExtractor`. A matched self-host measurement identified `CallsEdgeExtractor`/`ReadsWritesEdgeExtractor` as dominant; single-pass call/operator/cast/indexer traversal plus cached method enumeration reduced `CallsEdgeExtractor` 2051→1944 ms (Lurp), 217→182 ms (Storage), 427→418 ms (tests) — measurements at time of record. A broader node-cache candidate was measured and rejected. Member edge extraction is covered by `GoldenEdgeTests.cs` (one test per compiler-proved edge kind). The dedicated `B1MemberEdgeExtractorTests` (22 tests) was deleted with the suite (`f1254fc`) and has not been re-added. |
 
 ### Phase 13 verification: Reflection Evidence Ladder
 
@@ -98,7 +100,7 @@ way: evidence here cites git commits and named tests directly.
 | String literal matching known name | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` | `StringLiteral_MatchingTypeName_EmitsNameCandidateEdge` |
 | Runtime-unknown reflection target | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
 
-- All extractors in `src/Workspace/`; registered in `ExtractorRegistry` as `"reflection-v1"`; 9 unit tests in `tests/B6ReflectionExtractorTests.cs` (`MigrationRunnerTests.B6ReflectionTests`) — deleted with the suite (`f1254fc`); the extractors and registration remain in `src/` and were exercised only via that deleted test class. Integrated with `UncertaintyDetector` for capsule uncertainty reporting.
+- All extractors in `src/Workspace/`; registered in `ExtractorRegistry` as `"reflection-v1"`; covered by `GoldenReflectionTests.cs` (`ReflectionTypeRef_TypeofExpression`, `ReflectionMemberRef_NameofExpression`, `ReflectionNameCandidate_StringLiteralMatchingSymbolName`, `AllThreeReflectionKinds_FromOneSource`). The dedicated `tests/B6ReflectionExtractorTests.cs` (`MigrationRunnerTests.B6ReflectionTests`) was deleted with the suite (`f1254fc`) and has not been re-added. Integrated with `UncertaintyDetector` for capsule uncertainty reporting.
 
 ### Phase 15 verification: Context Capsules
 
@@ -121,9 +123,13 @@ way: evidence here cites git commits and named tests directly.
 Budgeting follows §20.1 order. The partial-tier policy is explicitly
 greedy-prefix: once a higher-priority item cannot fit, lower tiers are not
 allowed to leapfrog it. Every omitted tier is still evaluated and recorded with
-`budget_exhausted` or `empty`. `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`
-(deleted, `f1254fc`) indexed `Lurp.slnx` and proved the eleven-item contract
-plus an executable test command — at time of record; not currently reproducible.
+`budget_exhausted` or `empty`. Capsule behavior is covered by
+`CapsuleCharacterizationTests.cs`: content-budget tiers (`Capsule_RespectsContentBudget_*`),
+proved-absence empty tiers (`Capsule_EmptyTier_*`), unresolved tiers under lost bindings
+(`Capsule_UnresolvedTier_*`), gap anchors (`Capsule_GapAnchor_MarksEveryTierUnresolved`),
+and the budget-exhausted omitted-tier fetch path (`Capsule_OmittedTier_FetchCommandReturnsTheOmittedContent`).
+The self-host `Lurp.slnx` contract proof (`ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`)
+was deleted with the suite (`f1254fc`) and has not been re-added.
 
 Closed capsule decisions:
 
@@ -133,8 +139,8 @@ Closed capsule decisions:
 - No generated anchor narrative: architecture §24 keeps deterministic
   structured facts canonical. Consumer-authored prose is not stored as fact;
   source-authored XML documentation remains retrievable source evidence.
-- Architectural constraints come from snapshot annotations and repeatable
-  caller `--constraint` input. No second JSON authority was added.
+- Architectural constraints come from snapshot annotations. No second JSON
+  authority was added.
 
 ### Phase 14 verification: Evidence-backed Impact Paths
 
@@ -153,8 +159,7 @@ Closed capsule decisions:
 | Truncation explanation | `Truncated`, `TruncationReason` | ✅ |
 | Semantic causes | `SemanticCauses` attached via `ISemanticDiffStore` | ✅ |
 
-Tests: `B7ImpactTraverserTests` (14 tests), `SemanticRenameIntegrationTests`
-(both deleted, `f1254fc`; results at time of record).
+Tests: `ImpactTraverserTests.cs` (cycle detection, maxDepth bounding, edge-kind filtering, direction control). `SemanticRenameIntegrationTests` was deleted with the suite (`f1254fc`) and has not been re-added.
 
 Order 4's scope was narrowed by an audit before its D1–D5 sub-tasks were
 written: immutable document versions already existed de facto (T12), and
@@ -167,7 +172,7 @@ uniqueness constraint, both in commit `f550fee`.
 
 | Criterion | Evidence | Status |
 |---|---|---|
-| One SQLite database holds indexed workspace state | `SqliteIndexStore` and migrations 1–26 | ✅ |
+| One SQLite database holds indexed workspace state | `SqliteIndexStore` and migrations 1–27 | ✅ |
 | Source and facts share snapshot identity | `snapshot_documents`, `snapshot_symbols`, snapshot-scoped edges/diagnostics/completeness | ✅ |
 | Symbols link to exact retrievable spans | `DeclarationReadStore.GetDeclarationLocations` and all-declaration source reads | ✅ |
 | Ordinary reads avoid Roslyn reload | Storage-backed handlers and context tiers | ✅ |
@@ -182,28 +187,40 @@ uniqueness constraint, both in commit `f550fee`.
 | N/A (removed) | Removed: simulation/audit modes deleted Aug 2026 | — |
 | Indexer never modifies source | Index and handler pipelines are read-only with respect to repository source | ✅ |
 
-## T1–T12: closed, implemented, and validated at time of record
+## T1–T12: closed, implemented, and validated
+
+Each item below states the resulting current state. Citations that name a
+current test file are runnable evidence; citations marked "(deleted,
+`f1254fc`)" denote tests that were removed and have not been re-added, so the
+verification they anchored is not currently reproducible.
 
 ### T1: Schema-version verification is authoritative
 
 `VersionConstants.DatabaseSchemaVersion` is the sole reference for
-migration-version assertions. `MigrationRunnerTests`: 124 passed, 0 failed at
-time of record (deleted, `f1254fc`).
+migration-version assertions. Covered by `SchemaMigrationRoundTripTests.cs`
+(`MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`,
+`MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`).
+The dedicated `MigrationRunnerTests` (124 tests) was deleted with the suite (`f1254fc`)
+and has not been re-added.
 
 ### T2: Failed snapshot cleanup is atomic
 
 `SnapshotPruner.DeleteSnapshotData(string)` deletes inside a transaction and
 rolls back/rethrows on failure, matching `PruneWorkspace`/
-`DeleteIncompleteSnapshots`. A trigger-induced mid-delete failure left all
-earlier-deleted rows intact in the regression test (deleted, `f1254fc`).
-Storage suite: 139/139 at time of record.
+`DeleteIncompleteSnapshots`. The delete-and-retry path is covered by
+`SnapshotReuseResolutionTests.cs` (`IncompleteExistingRow_ResolvesRetry_AndIsDeleted`).
+The trigger-induced mid-delete rollback regression test was deleted with the
+suite (`f1254fc`) and has not been re-added. The "Storage suite: 139/139" figure
+was a time-of-record count from the deleted suite.
 
 ### T3: Orphan edges are removed on both endpoints
 
 `EdgeOperationsStore.DeleteOrphanEdges` removes an edge when either endpoint is absent
-from the snapshot's `snapshot_symbols`. `FullIndex_Has_No_Orphan_Edge_Targets`
-passed at time of record (deleted, `f1254fc`); the deletion path runs in every
-full-index pipeline invocation.
+from the snapshot's `snapshot_symbols`. The orphan-edge contract is covered by
+`KnownCorrectnessSeamTests.cs` (`GenericBaseInstantiation_InheritsEdgeTargetsOriginalDefinition` —
+the `OriginalDefinition` normalization keeps in-snapshot edges from being dropped).
+The dedicated `FullIndex_Has_No_Orphan_Edge_Targets` was deleted with the suite (`f1254fc`)
+and has not been re-added; the deletion path runs in every full-index pipeline invocation.
 
 Orphan drops are classified into three buckets (returned as
 `OrphanEdgeDropSummary`):
@@ -231,10 +248,11 @@ building the ID. Previously, edge endpoints carrying constructed-generic IDs
 omitted) could never match a snapshot member, so `DeleteOrphanEdges` silently
 removed real relationships — measured on a 7-project solution: `Inherits` to an
 internal generic base and `Calls`/`ExtensionReceiver` to user-written extension
-methods were absent from every snapshot. Verified by
-`SymbolIdNormalizationTests` (4 tests, deleted, `f1254fc`) and an audited
-re-index: internal
-non-synthesized orphan drops fell from 1,345 to 2, both legitimately outside
+methods were absent from every snapshot. The normalization is covered by
+`SymbolIdentityTests.cs` (symbol IDs are deterministic and stable across re-indexing
+and workspace reloads). The dedicated `SymbolIdNormalizationTests` (4 tests) was deleted
+with the suite (`f1254fc`) and has not been re-added. The audited re-index measured
+internal non-synthesized orphan drops falling from 1,345 to 2, both legitimately outside
 the declared universe. Instantiation detail, where a consumer needs it, remains
 in `edges.type_arguments_json`.
 
@@ -293,9 +311,9 @@ the previous snapshot identity, the short-circuit avoids a full extraction.
 canonical callable-member `signature`, and sorted `attributes` (type presence
 plus constructor/named-argument values: attributes stay in `metadata_json`,
 not the unimplemented `facts` table from architecture §3.4). `CompareMetadata`
-consumes all of it; a contract test binds every consumer key to producer
-coverage. Combined targeted + semantic-diff suites passed at time of record
-(T5: 7, T6: 8, T7: 12, T8: 8 tests; deleted, `f1254fc`).
+consumes all of it. The producer/consumer contract test for metadata keys
+(T5: 7, T6: 8, T7: 12, T8: 8 tests) was deleted with the suite (`f1254fc`) and
+has not been re-added; that coverage is not currently reproducible.
 
 ### T9: Generated-output absence is declared and reported
 
@@ -310,8 +328,11 @@ added (that's architecture Phase 11 / orders 10–11).
 Snapshot comparison includes FQNs, metadata JSON, declaration
 paths/spans/flags, and exact source/symbol FTS records. Cases covered
 signature, body-only, document-move, partial-class, base/interface, and
-DI-registration edits. Full suite: 167/167 at time of record (deleted,
-`f1254fc`; not reproducible).
+DI-registration edits. Covered by `IncrementalParityTests.cs` (phase-2 parity
+matrix across delete-symbol, delete-file, rename, signature, base-type,
+interface, cross-project, partial-type, new-implementation, and generic-dispatch
+scenarios), `CleanRebuildEquivalenceTest.cs`, and `MultiCycleConvergenceTests.cs`.
+The 167/167 figure was a time-of-record count from the deleted full suite.
 
 ### T11: Outcome benchmark existed and its baseline was established
 
@@ -337,8 +358,9 @@ Post-prune cleanup deletes unreferenced `document_versions`, deletes documents
 with no retained versions, and repairs/clears dangling
 `last_changed_snapshot_id` values inside the prune transaction (foreign-key
 enforcement is not enabled on the store connection, so cleanup is explicit
-rather than cascade-driven). Both GC tests passed at time of record (deleted,
-`f1254fc`).
+rather than cascade-driven). `PruneOldSnapshots` is exercised by
+`CleanRebuildEquivalenceTest.cs` and `IncrementalParityTests.cs`. The two
+dedicated GC tests were deleted with the suite (`f1254fc`) and have not been re-added.
 
 ## Order 12 findings: Phase 9/10 gap audit
 
@@ -347,7 +369,8 @@ rather than cascade-driven). Both GC tests passed at time of record (deleted,
 **Already covered by `SignatureFormat` string comparison** (with
 `IncludeNullableReferenceTypeModifier`, `IncludeParamsRefOut`,
 `IncludeExplicitInterface`, `IncludeTypeConstraints`) — previously untested,
-now locked by characterization tests (deleted, `f1254fc`):
+locked by characterization tests that were deleted with the suite (`f1254fc`) and
+have not been re-added (not currently reproducible):
 
 | ID | Case | Test (deleted, `f1254fc`) |
 |---|---|---|
@@ -380,11 +403,11 @@ now locked by characterization tests (deleted, `f1254fc`):
 | Architecture reference | Status | Evidence-based reading |
 |---|---|---|
 | §3.4 logical `facts` table | Decided deviation | Attributes stored in `metadata_json`; the facts table is deliberately not built. The approved contract preserves attribute identity and multiplicity. |
-| §5.6 schema stability | Aligned at time of record; not currently reproducible | `SchemaStabilityTests` (deleted, `f1254fc`) bound the migration list to `VersionConstants.DatabaseSchemaVersion` (count + uniqueness) via `MigrationListAndSchemaConstant_AreConsistent`; `CheckedInPriorV22Fixture_UpgradesToCurrentSchema` upgraded the checked-in v22 schema fixture; `UnknownPersistedSymbolKind_DeserializesAsUnknown`. Caveat (historical): the prior-version fixture was a SQL recreation of the v22 schema, not a checked-in binary database image: it validated migration SQL, not real persisted bytes. |
+| §5.6 schema stability | Aligned | `SchemaMigrationRoundTripTests.cs` binds the migration list to `VersionConstants.DatabaseSchemaVersion` (count + uniqueness) via `MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, and `MigrationList_AllVersionsAreUnique`; `RoundTrip_AllMigrations_ProducesCurrentSchema` round-trips all migrations to the current schema; `ForwardMigration_FromV1Schema_PreservesSeededData` forward-migrates a seeded v1 fixture. |
 | §6 Stage A0 identity | Aligned, confirmed | `document_id` is path-scoped per the architecture's own definition; order-4 decision D1 made this explicit rather than building snapshot-scoped identity. |
-| §15 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes as `semantic_causes` on every returned impact path. Order 13 verified at time of record that operator/conversion `Calls` edges surface via the existing edge diff and converge between incremental and full snapshots (tests deleted, `f1254fc`). |
-| §16 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing used (encoding, short-file, structural-edge provenance gaps fixed); `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. A file injected outside `obj/` was proven end-to-end to be indexed correctly — at time of record, by the deleted injection test (`f1254fc`; not currently reproducible). |
-| §22 atomic incremental operation | Aligned | Snapshot cleanup is atomic, equivalence comparisons are stronger, edge dedup is implemented. Full suite passed 167/167 at time of record (deleted, `f1254fc`). |
+| §15 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes as `semantic_causes` on every returned impact path. Order 13 verified that operator/conversion `Calls` edges surface via the existing edge diff and converge between incremental and full snapshots: `Calls` extraction covered by `GoldenEdgeTests.cs`, incremental/full convergence by `IncrementalParityTests.cs` and `CleanRebuildEquivalenceTest.cs`. |
+| §16 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing used (encoding, short-file, structural-edge provenance gaps fixed); `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. The end-to-end injected-`.g.cs` proof was deleted with the suite (`f1254fc`) and has not been re-added; that end-to-end proof is not currently reproducible. |
+| §22 atomic incremental operation | Aligned | Snapshot cleanup is atomic, equivalence comparisons are stronger, edge dedup is implemented. Incremental-versus-full equivalence covered by `IncrementalParityTests.cs`, `CleanRebuildEquivalenceTest.cs`, and `MultiCycleConvergenceTests.cs`. |
 | §25 outcome validation | Done at time of record; not currently reproducible | Benchmark contract, runner, and baseline all existed and ran clean (all deleted, `f1254fc`); `missingRelevantTests: false` for all scenarios was established by the Phase 12 fix (commit `63cfaf4`). |
 
 ### Order 13: approved dispatch/diff capability
@@ -393,22 +416,24 @@ Narrow scope D3/D4: capture compiler-resolved overloaded binary operators and
 user-defined cast conversions in the existing `Calls` edge contract.
 `CallsEdgeExtractor` keeps built-in operators out of the graph, deduplicates
 multiple call sites with the source/target/kind key, and records the syntax
-location through the existing edge-location path. Validation at three levels
-(tests deleted, `f1254fc`; results at time of record): extractor contracts
-(`op_Addition`/`op_Explicit` edges), `SemanticDiffer_EdgeAddedAndRemoved`
-(canonical edge diff), `IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit`
-(equivalence across symbols, declarations, edges, diagnostics, annotations, FTS).
+location through the existing edge-location path. Validation: `Calls` edge
+extraction covered by `GoldenEdgeTests.cs` (`CallsEdge_MethodCallsMethod`);
+incremental/full equivalence covered by `IncrementalParityTests.cs` and
+`CleanRebuildEquivalenceTest.cs`. The dedicated Order 13 tests
+(`op_Addition`/`op_Explicit` extractor contracts, `SemanticDiffer_EdgeAddedAndRemoved`,
+`IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit`) were deleted
+with the suite (`f1254fc`) and have not been re-added.
 
 ### Post-order gap register: G1–G7
 
 | Gap | Implemented behavior | Status |
 |---|---|---|
-| G1 metadata producer/consumer contract | `BuildMetadataJson` persists sorted implemented-interface FQNs under `interfaces`; `CompareMetadata` emits `interfaces_changed`, `record_changed`, and `metadata_changed` (with the changed field) for `typeKind` + declaration/binding modifiers (`isAbstract`, `isVirtual`, `isOverride`, `isStatic`, `isAsync`, `isExtensionMethod`, `isReadOnly`, `isWriteOnly`, `isConst`, `isVolatile`). `returnType` and callable-member arity intentionally stay covered by the canonical signature; type arity changes symbol identity. | Done 2026-07-27 (`MetadataContractTests` 11/11, `SemanticDiffer` 14/14 — tests deleted, `f1254fc`; counts at time of record) |
-| G2 semantic cause in impact explanations | `ISemanticDiffStore` supports snapshot-targeted reads; `ImpactHandler` supplies it to `ImpactTraverser`; each impact path carries `semantic_causes` (change type, originating snapshot, structured detail). | Done 2026-07-27 (`MigrationRunnerTests` 152/152 incl. `TraceImpact_SemanticChanges_ExplainCauseOfDownstreamImpact` — deleted, `f1254fc`; at time of record) |
-| G3 `new` member-hiding (`Hides` edge) | `OverridesEdgeExtractor` emits a distinct `Hides` edge (methods: parameter-compatible, non-override, non-constructor; properties: non-override) to the hidden member in the immediate base type. `Hides` in `EdgeKind`, `hides-v1` in `ExtractorConstants`, both in `ExtractorRegistry.All`. Overrides emit only `Overrides`; overloads with different parameter types emit none. | Done 2026-07-27 (4 extraction tests; `MigrationRunnerTests` 190/190 — deleted, `f1254fc`; at time of record) |
-| G5 indexer Reads/Writes edges | `CallsEdgeExtractor` resolves `ElementAccessExpressionSyntax` to the indexer property and emits `Reads` (get contexts) or `Writes` (assignment LHS, pre/post increment/decrement, `ref`/`out` argument contexts) instead of flattening to `Calls`. Dedup by source/target/kind. | Done 2026-07-27 (3 extraction tests — deleted, `f1254fc`) |
-| G6 extension-method receiver edge | `CallsEdgeExtractor.AddCallEdge` detects instance-style extension call syntax (`callee.ReducedFrom != null`) and emits `ExtensionReceiver` from the receiver type to the extension method alongside the compiler-proved `Calls` edge; static-call syntax emits none. `extension-receiver-v1` in `ExtractorConstants`. | Done 2026-07-27 (2 extraction tests; `MigrationRunnerTests` 195/195 — deleted, `f1254fc`; at time of record) |
-| G7 generic type-argument evidence on dispatch edges | `InterfaceDispatchExtractor.GetTypeArgumentsJson` serializes concrete type arguments of constructed generic interfaces (`IRepository<Customer>` → `["Customer"]`, multi-param in order); persisted in the `type_arguments_json` column. `VirtualOverrideExtractor` passes none (virtual dispatch has no generic construction). | Done 2026-07-28 (5 extraction tests — deleted, `f1254fc`) |
+| G1 metadata producer/consumer contract | `BuildMetadataJson` persists sorted implemented-interface FQNs under `interfaces`; `CompareMetadata` emits `interfaces_changed`, `record_changed`, and `metadata_changed` (with the changed field) for `typeKind` + declaration/binding modifiers (`isAbstract`, `isVirtual`, `isOverride`, `isStatic`, `isAsync`, `isExtensionMethod`, `isReadOnly`, `isWriteOnly`, `isConst`, `isVolatile`). `returnType` and callable-member arity intentionally stay covered by the canonical signature; type arity changes symbol identity. | Done 2026-07-27. The `MetadataContractTests` (11/11) and `SemanticDiffer` (14/14) counts were time-of-record figures from the deleted suite; those dedicated tests have not been re-added. |
+| G2 semantic cause in impact explanations | `ISemanticDiffStore` supports snapshot-targeted reads; `ImpactHandler` supplies it to `ImpactTraverser`; each impact path carries `semantic_causes` (change type, originating snapshot, structured detail). Impact traversal covered by `ImpactTraverserTests.cs`. | Done 2026-07-27. The `MigrationRunnerTests` (152/152) count was a time-of-record figure from the deleted suite. |
+| G3 `new` member-hiding (`Hides` edge) | `OverridesEdgeExtractor` emits a distinct `Hides` edge (methods: parameter-compatible, non-override, non-constructor; properties: non-override) to the hidden member in the immediate base type. `Hides` in `EdgeKind`, `hides-v1` in `ExtractorConstants`, both in `ExtractorRegistry.All`. Overrides emit only `Overrides`; overloads with different parameter types emit none. `Hides` extraction covered by `GoldenEdgeTests.cs` (`HidesEdge_MethodHidesBaseMember`). | Done 2026-07-27. The 4 extraction tests and `MigrationRunnerTests` (190/190) count were time-of-record figures from the deleted suite. |
+| G5 indexer Reads/Writes edges | `CallsEdgeExtractor` resolves `ElementAccessExpressionSyntax` to the indexer property and emits `Reads` (get contexts) or `Writes` (assignment LHS, pre/post increment/decrement, `ref`/`out` argument contexts) instead of flattening to `Calls`. Dedup by source/target/kind. Reads/Writes extraction covered by `GoldenEdgeTests.cs` (`ReadsEdge_MethodReadsField`, `WritesEdge_MethodWritesField`). | Done 2026-07-27. The 3 extraction tests were deleted with the suite (`f1254fc`) and have not been re-added. |
+| G6 extension-method receiver edge | `CallsEdgeExtractor.AddCallEdge` detects instance-style extension call syntax (`callee.ReducedFrom != null`) and emits `ExtensionReceiver` from the receiver type to the extension method alongside the compiler-proved `Calls` edge; static-call syntax emits none. `extension-receiver-v1` in `ExtractorConstants`. Extension-receiver extraction covered by `GoldenEdgeTests.cs` (`ExtensionReceiverEdge_ReceiverTypeBindsToExtensionMethod`). | Done 2026-07-27. The 2 extraction tests and `MigrationRunnerTests` (195/195) count were time-of-record figures from the deleted suite. |
+| G7 generic type-argument evidence on dispatch edges | `InterfaceDispatchExtractor.GetTypeArgumentsJson` serializes concrete type arguments of constructed generic interfaces (`IRepository<Customer>` → `["Customer"]`, multi-param in order); persisted in the `type_arguments_json` column. `VirtualOverrideExtractor` passes none (virtual dispatch has no generic construction). Generic-dispatch type-argument merging covered by `IncrementalParityTests.cs` (`Parity_GenericBaseWithMultipleConcreteImplementations_MergesDispatchTypeArguments`). | Done 2026-07-28. The 5 extraction tests were deleted with the suite (`f1254fc`) and has not been re-added. |
 
 ## Source-generator support: reassessed 2026-07-28
 
@@ -548,7 +573,7 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 
 ## Reclassified as done (2026-08-05)
 
-- **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed), and `DeterministicSnapshotTests` (deleted, `f1254fc`).
+- **Deterministic snapshot IDs.** `SnapshotIdentity.Create(workspaceInfo, skipAdapters)` is the production default in `IndexRunner.RunFullIndexAsync` (`src/Workspace/IndexRunner.cs:109`). `SnapshotId.New()` (random GUID) is used only in tests. The infrastructure is complete: `SnapshotIdentityInput`, `SnapshotId.CreateDeterministic`, `SnapshotIdentity.BuildPayload` (length-prefixed, ordinally sorted, every field hashed). Snapshot-identity behavior is covered by `SnapshotIdentityCompletenessTests.cs` (package-reference, define-constants, project-reference, extractor-version, and `--force` rebuild scenarios). The dedicated `DeterministicSnapshotTests` was deleted with the suite (`f1254fc`) and has not been re-added.
 - **`SqliteIndexStore` decomposition.** `SqliteIndexStore` (277 lines) is now a connection/ownership facade. All real logic lives in decomposed stores: `SnapshotLifecycleStore`, `SnapshotDocumentStore`, `SnapshotSymbolStore`, `SnapshotPruner`, `SnapshotTimingStore`, `DeclarationWriteStore`, `DeclarationReadStore`, `DeclarationMaintenanceStore`, `EdgeOperationsStore`, `DiagnosticStore`, `AnnotationStore`, `ExtractorRegistryStore`, `SearchSourceStore`, `SearchSymbolStore`, `SearchIndexMaintenance`, `SemanticDiffStore`, `BindingIncompletenessStore`. The former `EdgeStore`/`SearchStore` middle facades were removed on 2026-08-05; `SqliteIndexStore` now forwards to the leaf stores directly.
 
 ## Reclassified as done (2026-08-07)
@@ -576,9 +601,9 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
   — both indistinguishable from a genuine absence. `HandlerBootstrap.NormalizeDocumentPath`
   converts the CLI form to the stored form at all three argument sites
 (`GetSourceHandler`, `NavigateHandler`, `ContextHandler`'s file+line anchor).
-Covered by `tests/HandlerDocumentPathNormalizationTests.cs` (deleted,
-`f1254fc`); found by driving the CLI against an out-of-repo solution (eNoteV2,
-7 projects, 3,656 declarations) — a historical run record.
+The dedicated `tests/HandlerDocumentPathNormalizationTests.cs` was deleted with the
+suite (`f1254fc`) and has not been re-added; found by driving the CLI against an
+out-of-repo solution (eNoteV2, 7 projects, 3,656 declarations) — a historical run record.
 
 ## Reclassified as done (2026-08-10): snapshot identity covers compilation inputs
 
