@@ -114,7 +114,17 @@ else
 var incB = NormalizeBindingIncompleteness(storeB.GetBindingIncompleteness(snapshotB));
 var incC = NormalizeBindingIncompleteness(storeC.GetBindingIncompleteness(snapshotC));
 if (!incB.SequenceEqual(incC))
-    errors.Add("Binding incompleteness mismatch.");
+{
+    static string BiKey(BindingIncompletenessRecord r) =>
+        $"{r.ProjectName}|{r.DocumentPath ?? ""}|{r.Reason}|{r.Count}";
+    var bSet = incB.Select(BiKey).ToHashSet();
+    var cSet = incC.Select(BiKey).ToHashSet();
+    var onlyB = bSet.Except(cSet).Take(10).ToList();
+    var onlyC = cSet.Except(bSet).Take(10).ToList();
+    errors.Add($"Binding incompleteness mismatch: B={incB.Count} rows C={incC.Count} rows.");
+    if (onlyB.Count > 0) errors.Add($"  Only in B (incremental): {string.Join("; ", onlyB)}");
+    if (onlyC.Count > 0) errors.Add($"  Only in C (full): {string.Join("; ", onlyC)}");
+}
 
 // --- Annotations ---
 var annB = storeB.GetAnnotations(snapshotB);

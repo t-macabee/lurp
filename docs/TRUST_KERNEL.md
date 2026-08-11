@@ -809,9 +809,12 @@ reproduce on eNoteV2 because that solution's affected projects contain no
 out-of-scope documents that hit the affected producer path — pattern-dependent,
 not sequence-dependent (the exact pattern was not isolated; see finding 10).
 The core guarantee promoted from "fixture-only" to "real-code evidence on two
-multi-project solutions" is scoped to edges, declarations, symbols, diagnostics,
-and FTS. Binding-incompleteness parity was an open gap (finding 10) until the
-R6 lockstep fix closed it (see R6 section below).
+multi-project solutions" covers edges, declarations, symbols, diagnostics, and
+FTS. Binding-incompleteness parity was an open gap (finding 10) until the R6
+lockstep fix closed it; a post-fix re-run of both procedures (2026-08-12) now
+reports zero binding-incompleteness diffs on FIT-RS2-2026 and eNoteV2, so that
+field is included in the real-code guarantee as well (see the R6 section's
+"Post-fix R1 re-run verification").
 
 **Reproduction:** `scripts/r1-verify-convergence.sh` (FIT-RS2-2026),
 `scripts/r1-verify-enote.sh` (eNoteV2), both using `scripts/r1-compare/` for
@@ -885,6 +888,36 @@ continue to pass with the corrected predicate.
 filtering needed when all documents are in scope). Affects any incremental index
 where an affected project has out-of-scope documents with external-target
 references.
+
+**Post-fix R1 re-run verification (2026-08-12):** the full R1 five-cycle
+procedure was re-executed on scratchpad copies of both real solutions with the
+lockstep fix in place. `scripts/r1-compare` (which compares
+`binding_incompleteness` via `GetBindingIncompleteness` →
+`NormalizeBindingIncompleteness` → `SequenceEqual`, alongside symbols, edges,
+declarations, diagnostics, annotations, and FTS) reported `PASS` on both, and an
+independent direct `sqlite3` diff of the `binding_incompleteness` table between
+B5 (incremental) and C (full rebuild) confirmed zero diffs:
+
+| Solution | Snapshot B5 ≡ C | Edges | Symbols | binding_incompleteness (rows / Σ occurrence_count) | Diff |
+|---|---|---|---|---|---|
+| FIT-RS2-2026 (`eCommerce.sln`, 4 proj) | `d864b5c2…` | 3,862 | 1,646 | 167 / 18,477 | 0 |
+| eNoteV2 (`eNote.sln`, 7 proj) | `d60fa183…` | 10,771 | 3,662 | 410 / 26,754 | 0 |
+
+On FIT-RS2-2026 the two rows that previously undercounted now carry their full
+counts in the incremental snapshot, matching the full rebuild
+(`…/Database/eCommerceConfiguration.cs` `filtered_external` = 130;
+`…IncreasePaymentTransactionIdLength.cs` = 16). **The R6 acceptance clause
+("a re-run of the R1 FIT-RS2-2026 procedure reports zero binding-incompleteness
+diffs") is satisfied, and binding-incompleteness parity is now confirmed on both
+real multi-project solutions, not only the synthetic `ScenarioR6` fixture.**
+
+**Comparator diagnosability note (2026-08-12):** `scripts/r1-compare` already
+compared `binding_incompleteness`, but on mismatch it emitted a bare
+`"Binding incompleteness mismatch."`. It now reports the row counts and the
+first offending rows on each side (project|document|reason|count), mirroring the
+edge/symbol mismatch output, so a future R6-class regression on a real run is
+directly localizable (e.g. an undercounted `…|filtered_external|73` would print
+against the full-rebuild `…|filtered_external|130`).
 
 
 
