@@ -1,5 +1,6 @@
 using Lurp.Shared;
 using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
@@ -280,6 +281,125 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Calculator"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::CalculatorTests.Add"), edge.TargetSymbolId);
         Assert.Equal("test-v3", edge.ExtractorVersion);
+    }
+
+    // ── R5 characterization tests ──────────────────────────────────────
+
+    /// <summary>
+    /// Characterization (R5): a non-conventional DI registration
+    /// (<c>AddHostedService&lt;T&gt;</c>) produces <see cref="Provenance.RuntimeUnknown"/>
+    /// edges, NOT <see cref="Provenance.FrameworkDerived"/>. The adapter detects the
+    /// registration but declares the runtime semantics unmodeled.
+    /// </summary>
+    [SkippableFact]
+    public async Task DIAdapter_AddHostedService_ProducesRuntimeUnknown()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Registration.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+                    using Microsoft.Extensions.Hosting;
+
+                    namespace App;
+
+                    public class MyHostedService : IHostedService
+                    {
+                        public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+                        public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+                    }
+
+                    public static class Registration
+                    {
+                        public static void Configure(IServiceCollection services)
+                        {
+                            services.AddHostedService<MyHostedService>();
+                        }
+                    }
+                    """,
+            },
+            frameworkReferences: [AspNetCoreFramework]);
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        // Non-conventional → RuntimeUnknown, never FrameworkDerived.
+        var runtimeUnknown = QueryEdges(snapshotId, "Registers", Provenance.RuntimeUnknown);
+        Assert.NotEmpty(runtimeUnknown);
+
+        var frameworkDerived = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
+        Assert.Empty(frameworkDerived);
+
+        // One of the RuntimeUnknown edges must target the runtime:unknown sentinel.
+        Assert.Contains(runtimeUnknown, e => e.TargetSymbolId == GraphNodeIds.RuntimeUnknown);
+    }
+
+    /// <summary>
+    /// Characterization (R5): MediatR adapter only recognizes
+    /// <c>IRequestHandler</c> and <c>INotificationHandler</c>. Other handler
+    /// patterns (stream handlers) are silently skipped — no edge is emitted,
+    /// and no false "proved" claim is made.
+    /// </summary>
+    [SkippableFact]
+    public async Task MediatRAdapter_StreamHandler_IsSilentlySkipped()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["StreamPing.cs"] = """
+                    using MediatR;
+
+                    namespace App;
+
+                    public class StreamPing : IStreamRequest<string> { }
+
+                    public class StreamPingHandler : IStreamRequestHandler<StreamPing, string>
+                    {
+                        public IAsyncEnumerable<string> Handle(StreamPing request, CancellationToken ct)
+                            => AsyncEnumerable.Empty<string>();
+                    }
+                    """,
+            },
+            packageReferences: ["MediatR@12.4.1"]);
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        // Stream handler pattern is not recognized — zero Handles edges.
+        var handles = QueryEdges(snapshotId, "Handles", Provenance.FrameworkDerived);
+        Assert.Empty(handles);
+
+        // Confirm no false Registers claim either.
+        var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
+        Assert.Empty(registers);
+    }
+
+    /// <summary>
+    /// Characterization (R5): <see cref="DeclaredBoundaries.Known"/> registry
+    /// contains exactly the expected entries. This is a lightweight staleness
+    /// check — if a new boundary is added or removed, this test forces a
+    /// conscious update.
+    /// </summary>
+    [Fact]
+    public void DeclaredBoundaries_RegistryContainsExpectedEntries()
+    {
+        var expectedIds = new[]
+        {
+            "di_hosted_service",
+            "di_options",
+            "di_external_extension",
+            "masstransit_consumer",
+            "ef_convention",
+            "shape_similarity",
+        };
+
+        var actualIds = DeclaredBoundaries.Known.Select(e => e.Id).OrderBy(id => id).ToList();
+        var expected = expectedIds.OrderBy(id => id).ToList();
+
+        Assert.Equal(expected, actualIds);
     }
 }
 

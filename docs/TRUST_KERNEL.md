@@ -988,3 +988,75 @@ Roslyn, no MSBuild). Both emit two `Dep.dll` builds with identical
 Measured: `dotnet test --filter "FullyQualifiedName~AssemblyIdentityGranularityTests"`
 -> 2 passed (2.2s). `--filter "FullyQualifiedName~SnapshotIdentityCompletenessTests"`
 -> 6 passed (30.8s), no regression (identical-workspace determinism preserved).
+
+## R4 — Cross-compiler-version symbol-identity stability (characterized 2026-08-12)
+
+`SymbolIdFactory.Make` (`src/Shared/SymbolIdFactory.cs:10`) produces
+`{docCommentId}|{assemblyIdentity}` after normalizing to `OriginalDefinition`
+and un-reducing `ReducedFrom` (T3). The four inputs are:
+
+| Input | Source | Cross-version stability |
+|---|---|---|
+| Doc-comment ID | `ISymbol.GetDocumentationCommentId()` | Stable for canonical cases (ECMA-334 §D.4.2 format). Edge cases (nullable annotations, tuple element names, function pointer conventions) are Roslyn-implementation-defined and have not been observed to shift across Roslyn 4.x minor versions, but are not contractually guaranteed. |
+| Assembly identity | `ContainingAssembly.Identity.GetDisplayName()` | Stable — derived from assembly metadata bytes, not compiler version. Strengthened by R2 content-hash fold. |
+| `ReducedFrom` normalization | `IMethodSymbol.ReducedFrom` | Stable — semantic property of extension method declarations, not compiler-version-dependent. |
+| `OriginalDefinition` normalization | `ISymbol.OriginalDefinition` | Stable — fundamental Roslyn semantic, not compiler-version-dependent. |
+
+**Protection mechanism:** the snapshot identity payload includes
+`CompilerVersion` (`typeof(CSharpCompilation).Assembly.GetName().Version`),
+and `WorkspaceFreshness.CheckSdkAndCompiler` emits `CompilerChanged` on
+version mismatch, triggering a full rebuild. A compiler upgrade therefore
+produces a fresh snapshot with symbol IDs derived entirely from the new
+compiler — no cross-version ID comparison occurs.
+
+**Known limitation:** if a future Roslyn version changes
+`GetDocumentationCommentId()` output for unchanged source code (no known
+occurrence), symbol IDs within a post-upgrade snapshot would differ from
+a pre-upgrade snapshot for the same logical symbol. The snapshot would
+remain internally consistent. This is a Roslyn API contract risk, not a
+Lurp logic risk. No code change is proposed; the full-rebuild gate is the
+correct mitigation.
+
+**Cross-compiler test characterization:** not feasible with a
+single-toolchain test (would require two Roslyn versions side-by-side with
+the same source). Deferred unless a concrete Roslyn version change is
+identified that shifts `GetDocumentationCommentId()` output.
+
+## R5 — Non-conventional DI/MediatR registration coverage (characterized 2026-08-12)
+
+**Guarantee:** Lurp NEVER claims a non-conventional framework registration as
+`FrameworkDerived` proved. Non-conventional DI registrations are detected and
+emitted with `RuntimeUnknown` provenance; unhandled MediatR handler patterns
+are silently skipped (no edge emitted, no false proved claim).
+
+**Evidence (characterization tests in `tests/GoldenAdapterTests.cs`):**
+
+| Test | What it pins |
+|---|---|
+| `DIAdapter_AddHostedService_ProducesRuntimeUnknown` | `AddHostedService<T>` produces `Registers` edges with `Provenance.RuntimeUnknown`, NOT `FrameworkDerived`. One edge targets the `runtime:unknown` sentinel; the other targets the concrete type. |
+| `MediatRAdapter_StreamHandler_IsSilentlySkipped` | `IStreamRequestHandler` (stream handler pattern) produces zero `Handles` and zero `Registers` edges — the adapter recognizes only `IRequestHandler` and `INotificationHandler`. |
+| `DeclaredBoundaries_RegistryContainsExpectedEntries` | `DeclaredBoundaries.Known` contains exactly 6 entries: `di_hosted_service`, `di_options`, `di_external_extension`, `masstransit_consumer`, `ef_convention`, `shape_similarity`. |
+
+**DI adapter provenance map (observed from `src/Adapters/DependencyInjectionAdapter.cs`):**
+
+| Registration form | Provenance | Code path |
+|---|---|---|
+| `AddScoped<T>`, `AddTransient<T>`, `AddSingleton<T>` (from `ServiceCollectionServiceExtensions` etc.) | `FrameworkDerived` | `ProcessExplicitGeneric` |
+| `AddHostedService<T>`, `Configure<T>`, `AddOptions<T>` | `RuntimeUnknown` | `ProcessRuntimeUnknown` |
+| External IServiceCollection extension methods | `RuntimeUnknown` | `IsExternalMethodWithServiceCollectionParam` → `ProcessRuntimeUnknown` |
+| Convention methods (`Scan`, `AddClasses`, etc.) | `Convention` | `DependencyInjectionConventionMatcher` |
+
+**MediatR adapter scope (observed from `src/Adapters/MediatRAdapter.cs`):**
+`CollectHandlerTypes` recognizes only `IRequestHandler<TRequest, TResponse>`
+and `INotificationHandler<TNotification>` by interface name. Other MediatR
+patterns (stream handlers, `IRequestExceptionHandler`, custom pipeline
+behaviors) are silently skipped — no edge, no incompleteness, no uncertainty
+entry. This is a design limitation, not a false proved claim.
+
+**Capsule uncertainty surfacing:** `UncertaintyDetector.CollectRuntimeUnknownUncertainties`
+iterates `RuntimeUnknown` edges and calls `DeclaredBoundaries.UncertaintyDescription`,
+producing a human-readable uncertainty entry in the capsule. Verified working
+by the `DIAdapter_AddHostedService_ProducesRuntimeUnknown` test.
+
+**No production code changes needed.** The adapters already behave correctly;
+the tests pin the existing behavior.
