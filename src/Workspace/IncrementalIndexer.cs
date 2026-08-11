@@ -636,17 +636,22 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     }
 
     /// <summary>
-    /// Filters binding-incompleteness records to those whose document path is
-    /// in the given scope set (or null/empty, for doc-less aggregates that are
-    /// always carried forward). Restores the lockstep invariant: the save only
-    /// writes facts for documents the delete cleared.
+    /// Filters binding-incompleteness records to exactly those whose document
+    /// path is in the given scope set. Restores the lockstep invariant: the save
+    /// only writes facts for documents the delete cleared. Null/empty-path
+    /// records (doc-less aggregates, e.g. <c>extractor_failure</c>) are dropped
+    /// so their copied-forward value is preserved — EXCLUDE-AND-CARRY-FORWARD.
+    /// A document-scoped incremental pass cannot correctly refresh that bucket
+    /// (no document-scoped delete retires it and no scoped re-extraction
+    /// reproduces the whole-compilation count); a <c>--strategy=full</c> rebuild
+    /// is the reference for it. See TRUST_KERNEL R6 open finding 10.
     /// </summary>
-    private static IReadOnlyList<BindingIncompletenessRecord> ScopeBindingIncompleteness(
+    internal static IReadOnlyList<BindingIncompletenessRecord> ScopeBindingIncompleteness(
         IReadOnlyList<BindingIncompletenessRecord> records,
         IReadOnlySet<string> scopeRelativePaths)
     {
         return records
-            .Where(r => string.IsNullOrEmpty(r.DocumentPath) || scopeRelativePaths.Contains(r.DocumentPath))
+            .Where(r => r.DocumentPath is { } path && scopeRelativePaths.Contains(path))
             .ToList();
     }
 

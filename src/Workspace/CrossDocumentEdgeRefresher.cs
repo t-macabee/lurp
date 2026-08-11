@@ -353,13 +353,15 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
 
             // Lockstep invariant: save binding-incompleteness only for documents
-            // in the deletion scope. Records for out-of-scope documents carry
-            // forward their copied-forward values unchanged.
+            // in the deletion scope. Out-of-scope documents — and null/empty-path
+            // doc-less aggregates, which no scoped delete retires — carry forward
+            // their copied-forward values unchanged (EXCLUDE-AND-CARRY-FORWARD;
+            // see IncrementalIndexer.ScopeBindingIncompleteness and TRUST_KERNEL R6).
             if (scopeRelativePaths != null)
             {
                 var scopedSet = new HashSet<string>(scopeRelativePaths, StringComparer.Ordinal);
                 var scopedBi = result.BindingIncompleteness
-                    .Where(r => string.IsNullOrEmpty(r.DocumentPath) || scopedSet.Contains(r.DocumentPath))
+                    .Where(r => r.DocumentPath is { } path && scopedSet.Contains(path))
                     .ToList();
                 _store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
             }

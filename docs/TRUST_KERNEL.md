@@ -549,7 +549,10 @@ fallback on top of that set, not the only signal.
     delete before calling `SaveBindingIncompleteness`. Null/empty-path records
     (doc-less aggregates) are excluded from the incremental save and carry
     forward their copied-forward values; a `--strategy=full` rebuild is the
-    reference for that bucket. The lockstep invariant ("extraction and deletion
+    reference for that bucket. (Predicate correction 2026-08-11: the exclude was
+    initially inverted — `IsNullOrEmpty || contains` KEPT the null bucket; both
+    sites now use `DocumentPath is { } p && contains(p)`. See the R6 section.)
+    The lockstep invariant ("extraction and deletion
     narrow in lockstep") is now enforced for binding incompleteness as it was
     already for edges and annotations. Regression test
     `ScenarioR6_BindingIncompleteness_IncrementalCarryForward` in
@@ -625,7 +628,8 @@ out-of-repo solution (eNoteV2, 7 projects, 3,656 declarations) — a historical 
 - **The deterministic snapshot identity hashes NuGet references and
   compilation options.** `SnapshotIdentityInput` gained
   `MetadataReferenceIdentities` (per-project, deduplicated, ordinally sorted
-  `AssemblyName.GetAssemblyName` full names; file-name+length+mtime fallback
+  `AssemblyName.GetAssemblyName` full names, each folded with a SHA-256 of the
+  reference file's bytes — see R2 below; file-name+length+mtime fallback
   when the assembly header is unreadable) and `CompilationOptionsFingerprints`
   (optimization, allow-unsafe, nullable context, platform, language version,
   sorted preprocessor symbols). A package version bump or a `<DefineConstants>`
@@ -836,19 +840,44 @@ save and carry forward unchanged.
 | Step 6 (IncrementalIndexer) | `src/Workspace/IncrementalIndexer.cs` `ExtractReplacementFacts` | `ScopeBindingIncompleteness()` filters to `extractionScopePaths` |
 | Step 7 (CrossDocumentEdgeRefresher) | `src/Workspace/CrossDocumentEdgeRefresher.cs` `ProcessCompilationsAsync` | Inline filter to `scopeRelativePaths` |
 
-**Null-path policy:** EXCLUDE-AND-CARRY-FORWARD. Filtering to a document-path
-set naturally drops the null/empty bucket from the incremental save, so its
+**Null-path policy:** EXCLUDE-AND-CARRY-FORWARD. The scoped save keeps only
+records whose `DocumentPath` is in the deletion scope set; null/empty-path
+doc-less aggregates (e.g. `extractor_failure`) are dropped, so their
 copied-forward value is preserved. A `--strategy=full` rebuild is the reference
-for that bucket. The parity test confirms the null bucket matches on the fixture.
+for that bucket — a document-scoped incremental pass cannot correctly refresh it
+(no scoped delete retires it, no scoped re-extraction reproduces the
+whole-compilation count).
 
-**Regression test:** `ScenarioR6_BindingIncompleteness_IncrementalCarryForward`
-in `tests/IncrementalParityTests.cs`. Creates a project with an in-scope
-document (Helper.cs) and an out-of-scope document with external-assembly
-references (ExternalRef.cs using Newtonsoft.Json), edits only Helper.cs, and
-asserts binding-incompleteness parity via
-`SnapshotAssertions.CompareSnapshotsAreEquivalent`. All 12 existing
-`IncrementalParityTests` scenarios and `CleanRebuildEquivalenceTest` continue
-to pass.
+**Null-path policy correction (2026-08-11, branch `r6-null-bucket-parity`):** the
+initial R6 fix documented EXCLUDE-AND-CARRY-FORWARD but the predicate at both
+save sites was `string.IsNullOrEmpty(r.DocumentPath) || scope.Contains(...)`,
+which *kept* null/empty-path records and INCLUDED them in the scoped save — the
+opposite of carry-forward. A partial doc-less aggregate re-emitted by a scoped
+incremental pass would overwrite the copied-forward full count via the
+`ON CONFLICT ... DO UPDATE SET occurrence_count` upsert (the same undercount
+class as the original out-of-scope-document bug, for the null bucket). Both
+predicates are now `r.DocumentPath is { } path && scope.Contains(path)`, dropping
+the null/empty bucket as the policy states. (`IncrementalIndexer.ScopeBindingIncompleteness`
+was also raised from `private` to `internal` so the predicate is unit-testable.)
+The end-to-end null bucket cannot be reproduced deterministically from source —
+it requires an extractor stage to throw (`CompilationFactExtractor.RunStage` →
+`RecordExtractorFailure`, the only true null-path source; `filtered_external`
+null paths were eliminated by `DeclaringSyntaxOrContainingType`) — so the
+guarantee is pinned at the predicate instead.
+
+**Regression tests:**
+- `BindingIncompletenessScopingTests.ScopeBindingIncompleteness_ExcludesNullPathBucket_ForCarryForward`
+  (`tests/BindingIncompletenessScopingTests.cs`, new) — pins that the scope
+  filter drops null- and empty-`DocumentPath` records and keeps only the
+  in-scope one. FAILED before the predicate correction (kept 3 of 4 records),
+  PASSES after.
+- `ScenarioR6_BindingIncompleteness_IncrementalCarryForward`
+  (`tests/IncrementalParityTests.cs`) — end-to-end out-of-scope-document parity
+  (in-scope Helper.cs + out-of-scope ExternalRef.cs using Newtonsoft.Json),
+  asserts parity via `SnapshotAssertions.CompareSnapshotsAreEquivalent`.
+
+All 12 `IncrementalParityTests` scenarios and `CleanRebuildEquivalenceTest`
+continue to pass with the corrected predicate.
 
 **Scope of impact:** incremental-only. Full-run behavior is unchanged (no scope
 filtering needed when all documents are in scope). Affects any incremental index
@@ -856,3 +885,49 @@ where an affected project has out-of-scope documents with external-target
 references.
 
 
+
+## R2 — Assembly-identity granularity in freshness (2026-08-11, branch `r2-assembly-identity`)
+
+**Was the single biggest remaining risk (audit §15).** A metadata reference's
+identity was `AssemblyName.GetAssemblyName(path).FullName` alone
+(`WorkspaceInfo.TryGetAssemblyIdentity`, happy path). The file-name+length+mtime
+signal in `FallbackReferenceToken` only fired when the assembly header was
+unreadable. Both identity (`SnapshotIdentity.BuildPayload`) and freshness
+(`WorkspaceFreshness.CheckMetadataReferences`) consume those strings, so a NuGet
+patch that changed a package's CONTENTS without bumping the assembly version was
+invisible: same full name -> same identity string -> same `SnapshotId` and no
+`MetadataReferencesChanged` mismatch. Lurp could silently serve a graph built
+against different bytes.
+
+**Fix (content hash, no version bump — approved).** `TryGetAssemblyIdentity` now
+folds a SHA-256 of the reference file's bytes into the identity string:
+`{FullName}|sha256={hex}` (`SHA256.HashData` over the file stream). A content
+hash is content-derived and therefore deterministic, so it preserves the
+"identical indexed state => identical id" invariant — unlike file mtime, which
+a `restore` would touch without a byte change. One code site; the two consumers
+are unchanged. No DB schema migration: identities are still stored as `string[]`
+in `projects.metadata_reference_identities`, only the string content is richer.
+
+**Blast radius (intended).** Every existing snapshot gets a new `SnapshotId`, so
+the next index writes a fresh snapshot instead of reusing — a one-time full
+rebuild per existing DB. Pre-fix snapshots (non-null old-format identities)
+report `MetadataReferencesChanged` on first post-fix compare -> safe forced
+rebuild; snapshots predating the field entirely (null JSON) keep the
+"unknown, not different" rule (`SnapshotManifest.FromStorageManifest`), no false
+alarm. Per-index cost: one read+hash per distinct reference DLL at
+workspace-load (bounded, OS-cache-warm since Roslyn already reads them).
+
+**Regression tests** (`tests/AssemblyIdentityGranularityTests.cs`, new — pure
+Roslyn, no MSBuild). Both emit two `Dep.dll` builds with identical
+`AssemblyName.FullName` (`Version=1.0.0.0`) but different IL:
+- `SameAssemblyVersion_DifferentBytes_ProducesDifferentSnapshotId` — asserts
+  `SnapshotIdentity.Create` now returns DIFFERENT ids. Asserted the opposite
+  (same id) on the unfixed code; flipped to `NotEqual` with the fix.
+- `SameAssemblyVersion_DifferentBytes_FreshnessReportsMismatch` — asserts
+  `WorkspaceFreshness.GetFullRebuildMismatches` now reports
+  `MetadataReferencesChanged`. Asserted `DoesNotContain` on the unfixed code;
+  flipped to `Contains` with the fix.
+
+Measured: `dotnet test --filter "FullyQualifiedName~AssemblyIdentityGranularityTests"`
+-> 2 passed (2.2s). `--filter "FullyQualifiedName~SnapshotIdentityCompletenessTests"`
+-> 6 passed (30.8s), no regression (identical-workspace determinism preserved).

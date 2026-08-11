@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -410,12 +411,25 @@ public sealed class WorkspaceInfo
 
         try
         {
-            return AssemblyName.GetAssemblyName(filePath).FullName;
+            // Fold a content hash into the identity so a same-version patch
+            // (different bytes, unchanged assembly full name) yields a different
+            // identity — otherwise it is invisible to SnapshotId and freshness.
+            // The hash is content-derived and therefore deterministic, unlike
+            // file mtime, preserving the "identical indexed state => identical
+            // id" invariant.
+            var fullName = AssemblyName.GetAssemblyName(filePath).FullName;
+            return $"{fullName}|sha256={ComputeFileHash(filePath)}";
         }
         catch
         {
             return null;
         }
+    }
+
+    private static string ComputeFileHash(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static string FallbackReferenceToken(string? filePath)
