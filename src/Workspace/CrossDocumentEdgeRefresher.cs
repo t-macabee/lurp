@@ -335,23 +335,38 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             cancellationToken.ThrowIfCancellationRequested();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             result.EnsureRequiredSuccess();
-            if (scopeDocs != null)
-            {
-                // Binding-incompleteness rows are persisted with paths relative
-                // to the git root (see BindingIncompletenessCollector.Record),
-                // while scopeDocs carries absolute document paths. Deleting with
-                // the absolute form is a silent no-op, leaving stale rows for
-                // reasons that no longer occur. Convert before deleting.
-                var scopeRelativePaths = scopeDocs
-                    .Select(path => GetRelativePath(path, _gitRoot))
-                    .ToList();
+
+            // Binding-incompleteness rows are persisted with paths relative
+            // to the git root (see BindingIncompletenessCollector.Record),
+            // while scopeDocs carries absolute document paths. Convert once
+            // so both the delete and the scoped save share the same set.
+            List<string>? scopeRelativePaths = scopeDocs?
+                .Select(path => GetRelativePath(path, _gitRoot))
+                .ToList();
+
+            if (scopeRelativePaths != null)
                 _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths);
-            }
+
             _store.SaveEdges(newSnapshotId, result.Edges);
             _store.SaveDeclarations(newSnapshotId, result.Declarations);
             _store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
             _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
-            _store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
+
+            // Lockstep invariant: save binding-incompleteness only for documents
+            // in the deletion scope. Records for out-of-scope documents carry
+            // forward their copied-forward values unchanged.
+            if (scopeRelativePaths != null)
+            {
+                var scopedSet = new HashSet<string>(scopeRelativePaths, StringComparer.Ordinal);
+                var scopedBi = result.BindingIncompleteness
+                    .Where(r => string.IsNullOrEmpty(r.DocumentPath) || scopedSet.Contains(r.DocumentPath))
+                    .ToList();
+                _store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
+            }
+            else
+            {
+                _store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
+            }
             if (result.Annotations.Count > 0)
                 _store.SaveAnnotations(newSnapshotId, result.Annotations);
             totalEdges += result.Edges.Count;

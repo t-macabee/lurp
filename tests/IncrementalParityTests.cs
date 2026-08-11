@@ -676,4 +676,76 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         foreach (var element in doc.RootElement.EnumerateArray())
             Assert.Equal(JsonValueKind.Array, element.ValueKind);
     }
+
+    /// <summary>
+    /// R6 regression: when an incremental edit lands in a project that also
+    /// contains an OUT-OF-SCOPE document with external-target references, the
+    /// binding-incompleteness carry-forward must preserve that document's full
+    /// count. The bug was that the unscoped SaveBindingIncompleteness
+    /// overwrote the copied-forward count with a partial (zero) re-extraction
+    /// result.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioR6_BindingIncompleteness_IncrementalCarryForward()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // Helper.cs has no external references — will be edited to trigger
+        // incremental re-extraction of the App project.
+        // ExternalRef.cs references Newtonsoft.Json (external NuGet assembly)
+        // and must NOT be in the extraction scope.
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Helper.cs"] = """
+                    namespace App;
+
+                    public class Helper
+                    {
+                        public int Add(int a, int b) => a + b;
+                    }
+                    """,
+                ["ExternalRef.cs"] = """
+                    using Newtonsoft.Json;
+
+                    namespace App;
+
+                    public class ExternalRef
+                    {
+                        public string Serialize(object obj)
+                        {
+                            return JsonConvert.SerializeObject(obj);
+                        }
+                    }
+                    """,
+            },
+            packageReferences: ["Newtonsoft.Json@13.0.3"]);
+
+        await RestoreSolutionAsync();
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        // Semantics-preserving comment edit — only Helper.cs is dirty.
+        WriteFile("App", "Helper.cs", """
+            namespace App;
+
+            public class Helper
+            {
+                public int Add(int a, int b) => a + b;
+            }
+            // comment-only edit
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        // The parity oracle must succeed — binding-incompleteness counts for
+        // the out-of-scope ExternalRef.cs must be preserved by carry-forward.
+        // The R6 lockstep fix (scope-filtering SaveBindingIncompleteness to the
+        // deletion set) ensures this holds even if an extractor scope gate
+        // leak produces partial records for out-of-scope documents.
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+    }
 }

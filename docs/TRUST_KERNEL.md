@@ -542,41 +542,19 @@ fallback on top of that set, not the only signal.
     for the primary use case. Default lowered to 3.
 10. **Incremental `binding_incompleteness.occurrence_count` undercounts
     out-of-scope documents in affected projects (REAL parity bug, from the R1
-    FIT-RS2-2026 run; see the R1 section above).** When an edit lands in a
-    project, the affected project's re-extraction collector records partial
-    `filtered_external` counts for documents outside the deletion scope, and
-    the per-project `SaveBindingIncompleteness` upsert
-    (`BindingIncompletenessStore`, `ON CONFLICT … DO UPDATE SET
-    occurrence_count = excluded.occurrence_count`) overwrites their
-    copied-forward full counts. Both incremental save sites —
-    `IncrementalIndexer.ExtractReplacementFacts` (step 6) and
-    `CrossDocumentEdgeRefresher.ProcessCompilationsAsync` (step 7) — save all
-    collector records, not only records whose document was first deleted, so
-    the documented "extraction and deletion narrow in lockstep" invariant is
-    violated for binding incompleteness (it holds for edges and annotations).
-    Minimal reproduction (2026-08-11): one semantics-preserving comment edit
-    in `eCommerce.Services` (FIT-RS2-2026, `eCommerce.sln`) turns
-    `eCommerce.Services/Database/eCommerceConfiguration.cs` from 130 to 73 and
-    `…IncreasePaymentTransactionIdLength.cs` from 16 to 8 in the first
-    incremental cycle; the value stays constant through cycle 5 (A=130/16 →
-    B1=B5=73/8); a fresh full rebuild of the final state keeps 130/16, so
-    `r1-compare` and `SnapshotAssertions.CompareSnapshotsAreEquivalent` fail on
-    binding incompleteness while every other table matches. `occurrence_count`
-    is consumed by `SnapshotCompleteness.BindingIncompletenessTotal`
-    (`status --json`) and by `UncertaintyDetector` capsule-uncertainty sums.
-    **Proposed fix scope (GATED — not implemented):** filter the collector's
-    records to the deletion scope before saving at both sites (restore the
-    lockstep invariant producer-agnostically; the `document_path`-null bucket
-    needs an explicit policy). The exact producer stage was not isolated by
-    static reading — every inspected `RecordFilteredExternal` call site
-    (`CallsEdgeExtractor`, `OverridesEdgeExtractor`,
-    `ParameterDependencyEdgeExtractor`, `ReturnsEdgeExtractor`,
-    `SymbolStructuralEdgeExtractor`, `InterfaceDispatchExtractor`,
-    `VirtualOverrideExtractor`, `StaticDispatchCallExtractor`,
-    `NameOfReflectionExtractor`, `TypeOfReflectionExtractor`) carries a scope
-    gate, so the leak is a gate/attribution mismatch at one of them — confirm
-    under the fix which record site emits out-of-scope records before choosing
-    whether to harden the gate or rely on the save-side filter alone.
+    FIT-RS2-2026 run; see the R1 section above). CLOSED (2026-08-11).** Fix
+    applied at both incremental save sites: `IncrementalIndexer.ExtractReplacementFacts`
+    and `CrossDocumentEdgeRefresher.ProcessCompilationsAsync` now filter
+    `result.BindingIncompleteness` to the same document-path set used for the
+    delete before calling `SaveBindingIncompleteness`. Null/empty-path records
+    (doc-less aggregates) are excluded from the incremental save and carry
+    forward their copied-forward values; a `--strategy=full` rebuild is the
+    reference for that bucket. The lockstep invariant ("extraction and deletion
+    narrow in lockstep") is now enforced for binding incompleteness as it was
+    already for edges and annotations. Regression test
+    `ScenarioR6_BindingIncompleteness_IncrementalCarryForward` in
+    `IncrementalParityTests.cs` verifies parity on a synthetic fixture with
+    external-assembly references. See the R6 section below for full details.
 
 ## Explicitly postponed
 
@@ -826,11 +804,55 @@ out-of-scope documents that hit the affected producer path — pattern-dependent
 not sequence-dependent (the exact pattern was not isolated; see finding 10).
 The core guarantee promoted from "fixture-only" to "real-code evidence on two
 multi-project solutions" is scoped to edges, declarations, symbols, diagnostics,
-and FTS; binding-incompleteness parity is a separate, open correctness gap
-tracked as finding 10.
+and FTS. Binding-incompleteness parity was an open gap (finding 10) until the
+R6 lockstep fix closed it (see R6 section below).
 
 **Reproduction:** `scripts/r1-verify-convergence.sh` (FIT-RS2-2026),
 `scripts/r1-verify-enote.sh` (eNoteV2), both using `scripts/r1-compare/` for
 the field-by-field diff.
+
+---
+
+## R6 — Binding-incompleteness incremental carry-forward parity fix (2026-08-11)
+
+**Origin:** R1 FIT-RS2-2026 run. Two `filtered_external` records undercounted
+`occurrence_count` in the incremental snapshot (73/8 vs 130/16). Finding 10.
+
+**Root cause:** the `SaveBindingIncompleteness` call at both incremental save
+sites was unscoped — it persisted ALL collector records, including partial
+counts for documents outside the deletion scope. The delete was scoped to the
+extraction-scope documents, so copied-forward full counts for out-of-scope
+documents survived the delete but were overwritten by the unscoped save. This
+violated the lockstep invariant ("extraction and deletion narrow in lockstep")
+which held for edges and annotations but not for binding incompleteness.
+
+**Fix:** at both save sites, filter `result.BindingIncompleteness` to the same
+document-path set used for the delete before calling `SaveBindingIncompleteness`.
+Null/empty-path records (doc-less aggregates) are excluded from the incremental
+save and carry forward unchanged.
+
+| Site | File | Change |
+|---|---|---|
+| Step 6 (IncrementalIndexer) | `src/Workspace/IncrementalIndexer.cs` `ExtractReplacementFacts` | `ScopeBindingIncompleteness()` filters to `extractionScopePaths` |
+| Step 7 (CrossDocumentEdgeRefresher) | `src/Workspace/CrossDocumentEdgeRefresher.cs` `ProcessCompilationsAsync` | Inline filter to `scopeRelativePaths` |
+
+**Null-path policy:** EXCLUDE-AND-CARRY-FORWARD. Filtering to a document-path
+set naturally drops the null/empty bucket from the incremental save, so its
+copied-forward value is preserved. A `--strategy=full` rebuild is the reference
+for that bucket. The parity test confirms the null bucket matches on the fixture.
+
+**Regression test:** `ScenarioR6_BindingIncompleteness_IncrementalCarryForward`
+in `tests/IncrementalParityTests.cs`. Creates a project with an in-scope
+document (Helper.cs) and an out-of-scope document with external-assembly
+references (ExternalRef.cs using Newtonsoft.Json), edits only Helper.cs, and
+asserts binding-incompleteness parity via
+`SnapshotAssertions.CompareSnapshotsAreEquivalent`. All 12 existing
+`IncrementalParityTests` scenarios and `CleanRebuildEquivalenceTest` continue
+to pass.
+
+**Scope of impact:** incremental-only. Full-run behavior is unchanged (no scope
+filtering needed when all documents are in scope). Affects any incremental index
+where an affected project has out-of-scope documents with external-target
+references.
 
 

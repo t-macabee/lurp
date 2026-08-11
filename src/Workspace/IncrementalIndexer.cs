@@ -218,7 +218,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             cancellationToken.ThrowIfCancellationRequested();
             var sw6 = System.Diagnostics.Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
-                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths);
+                ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths, extractionScopePaths);
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -363,7 +363,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
         WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations,
-        IReadOnlySet<string> extractionScopeAbsolutePaths)
+        IReadOnlySet<string> extractionScopeAbsolutePaths,
+        IReadOnlySet<string> extractionScopeRelativePaths)
     {
         _output.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
@@ -391,7 +392,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             totalEdge += result.Edges.Count;
             _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
             totalDiag += result.Diagnostics.Count;
-            _store.SaveBindingIncompleteness(newSnapshotIdStr, result.BindingIncompleteness);
+
+            // Lockstep invariant: save binding-incompleteness only for documents
+            // in the extraction scope (the same set the delete cleared). Records
+            // for out-of-scope documents carry forward their copied-forward
+            // values unchanged.
+            var scopedBi = ScopeBindingIncompleteness(result.BindingIncompleteness, extractionScopeRelativePaths);
+            _store.SaveBindingIncompleteness(newSnapshotIdStr, scopedBi);
             if (result.Annotations.Count > 0)
                 _store.SaveAnnotations(newSnapshotIdStr, result.Annotations);
             foreach (var measurement in result.Measurements)
@@ -626,6 +633,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         }
 
         return expanded;
+    }
+
+    /// <summary>
+    /// Filters binding-incompleteness records to those whose document path is
+    /// in the given scope set (or null/empty, for doc-less aggregates that are
+    /// always carried forward). Restores the lockstep invariant: the save only
+    /// writes facts for documents the delete cleared.
+    /// </summary>
+    private static IReadOnlyList<BindingIncompletenessRecord> ScopeBindingIncompleteness(
+        IReadOnlyList<BindingIncompletenessRecord> records,
+        IReadOnlySet<string> scopeRelativePaths)
+    {
+        return records
+            .Where(r => string.IsNullOrEmpty(r.DocumentPath) || scopeRelativePaths.Contains(r.DocumentPath))
+            .ToList();
     }
 
 }
