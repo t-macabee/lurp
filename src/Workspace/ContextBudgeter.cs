@@ -34,7 +34,7 @@ namespace Lurp.Workspace
                     continue;
                 }
 
-                var tierCost = items.Sum(item => ContextAssembler.EstimateTokens(item.Source));
+                var tierCost = items.Sum(item => ContextAssembler.EstimateTokens(item));
                 if (runningTotal + tierCost <= budget)
                 {
                     ContextAssembler.AddTierToCapsule(capsule, tier.Name, items);
@@ -47,7 +47,7 @@ namespace Lurp.Workspace
                 // first item that cannot fit.
                 foreach (var item in items)
                 {
-                    var itemCost = ContextAssembler.EstimateTokens(item.Source);
+                    var itemCost = ContextAssembler.EstimateTokens(item);
                     if (runningTotal + itemCost > budget)
                     {
                         budgetExhausted = true;

@@ -392,6 +392,28 @@ namespace Lurp.Workspace
         }
 
         /// <summary>
+        /// Estimates the token cost of one tier item, charging a small framing
+        /// constant for path-only items that carry no source. The anchor pass
+        /// keeps the string overload (a null anchor source costs nothing: the
+        /// anchor carries no JSON framing), but tier selection must not treat a
+        /// source-less item as free — a path-heavy tier would otherwise leapfrog
+        /// a source-bearing tier at the selection boundary.
+        /// </summary>
+        internal static int EstimateTokens(CapsuleItem item)
+        {
+            if (!string.IsNullOrEmpty(item.Source))
+                return item.Source!.Length / 4;
+
+            // Framing estimate for a path-only item: path + FQN + provenance +
+            // edge_kind + coordinates + inclusion_reason, matching the JSON
+            // envelope emitted by CapsuleBudgetEnforcer's serializer. Keep the
+            // constant conservative so it bounds tier selection without
+            // starving low-priority tiers that legitimately carry small sources.
+            const int PathOnlyFramingChars = 160;   // ~40 tokens
+            return PathOnlyFramingChars / 4;
+        }
+
+        /// <summary>
         /// True when any document the anchor is declared in lost bindings during
         /// extraction. In that region an absent relation is unobservable rather than
         /// absent, so nothing may report it as a proved emptiness.
