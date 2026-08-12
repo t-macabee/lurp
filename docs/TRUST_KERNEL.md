@@ -461,17 +461,17 @@ fallback on top of that set, not the only signal.
 
 ## Open findings for follow-up
 
-1. **`search` output cannot round-trip directly into `context`/
-   `impact`.** `search` prints a fully-qualified name; those commands need
-   the `docCommentId|assemblyIdentity` form only `find-symbol` returns. Every
-   driving-session query needed a `search` → `find-symbol` → `context`
-   round-trip; this mismatch was the structural cause of the `--mode=context`
-   `FormatException` crash now guarded by `ContextHandler.ValidateSymbolIdFormat`
-   (change log, 2026-08-04). Two shapes considered, neither implemented:
-   `search` emitting the resolvable form directly, or a `search --resolve`
-   variant that does the round trip server-side. Decide whether
-   `context`/`impact` should accept a bare FQN or file+line and
-   resolve the symbol ID internally.
+1. **`search` output cannot round-trip directly into `context`/`impact`.**
+   (Resolved 2026-08-07, commit `d63d251`.) `context` and `impact` now accept a
+   bare fully-qualified name (e.g. `global::Some.Type`) or a bare doc-comment ID
+   (e.g. `T:Some.Type`) in addition to the full `docCommentId|assemblyIdentity`
+   form: `HandlerBootstrap.ResolveSymbolArg`
+   (`src/Handlers/HandlerBootstrap.cs`) resolves any of the three via
+   `ResolveSymbolInfo` before the handler runs, so the `search` →
+   `find-symbol` → `context` round-trip is no longer required. The
+   `FormatException` crash that mismatch once caused is now guarded by
+   `ContextHandler.ValidateSymbolIdFormat`, which is defensive-only: the
+   `--tier=` continuation resolves through the same path.
 2. **`--mode=impact --output=summary`'s per-group lines name caller/callee
     symbol IDs but not human-readable names.** Each row shows
     `first_hop_source_symbol_id → first_hop_target_symbol_id [edge_kind]` plus a
@@ -572,6 +572,10 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
   `--solution=` from `index` now gets a working DB path instead of a rejection.
    Also accepted via env var `LURP_SOLUTION_PATH`.
 - **`impact` default `--max-depth` lowered from 10 to 3.** (See finding 9.)
+- **`context`/`impact` accept a bare FQN or doc-comment ID.** (See finding 1.)
+  `HandlerBootstrap.ResolveSymbolArg` resolves a bare fully-qualified name or a
+  bare doc-comment ID (e.g. `T:Some.Type`) to the canonical
+  `docCommentId|assemblyIdentity` form before the handler runs.
 
 ## Reclassified as done (2026-08-06)
 
@@ -817,7 +821,7 @@ guarantee is pinned at the predicate instead.
   (in-scope Helper.cs + out-of-scope ExternalRef.cs using Newtonsoft.Json),
   asserts parity via `SnapshotAssertions.CompareSnapshotsAreEquivalent`.
 
-All 12 `IncrementalParityTests` scenarios and `CleanRebuildEquivalenceTest`
+All 16 `IncrementalParityTests` scenarios and `CleanRebuildEquivalenceTest`
 continue to pass with the corrected predicate.
 
 **Scope of impact:** incremental-only. Full-run behavior is unchanged (no scope

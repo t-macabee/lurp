@@ -85,7 +85,7 @@ Look up symbol metadata or source by view kind.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to look up. |
+| `--symbol=<id>` | Yes | The symbol ID to look up. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--view=<kind>` | Yes | View kind: `metadata`, `signature`, `body`, `declaration`, `containing-type`, `surrounding`. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
@@ -187,7 +187,7 @@ Trace the impact path of a changed symbol.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to trace from. |
+| `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
@@ -212,7 +212,7 @@ Assemble a context capsule for a symbol or source location.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes* | Symbol ID to anchor on. |
+| `--symbol=<id>` | Yes* | Symbol ID to anchor on. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--file=<path>` | Yes* | Source file path (use with `--line`). |
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |

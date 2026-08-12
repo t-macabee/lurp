@@ -108,7 +108,8 @@ ordinary typed facts into the shared model:
 | Test | `TestedBy` (production symbol → covering test) |
 
 Each fact retains its evidence level: `compiler_proved`, `framework_derived`,
-or `possible`.
+`global_implementation_relation`, `possible`, `convention`, `name_candidate`,
+or `runtime_unknown`.
 
 ## Documentation and status
 
