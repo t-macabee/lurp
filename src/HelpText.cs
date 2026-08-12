@@ -137,8 +137,6 @@ internal static class HelpText
         Console.WriteLine("ENVIRONMENT VARIABLES");
         Console.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
         Console.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
-        Console.WriteLine("  INDEXER_SOLUTION_PATH   Deprecated alias for LURP_SOLUTION_PATH.");
-        Console.WriteLine("  INDEXER_OUTPUT_DIR      Deprecated alias for LURP_OUTPUT_DIR.");
     }
 
     private const int FlagColumn = 24;

@@ -30,8 +30,7 @@ tasks. All capabilities share one document identity, one symbol identity, one
 workspace snapshot, one freshness model, one persistent database, and one query
 interface.
 
-It remains an indexer and context provider. It does not become an agent,
-editor, dashboard, or autonomous refactoring system.
+It remains an indexer and context provider (see §8 for what it does not become).
 
 ## 2. The Product Model
 
@@ -144,7 +143,7 @@ WorkspaceLoader.LoadAsync
   → IndexRunner.RunFullIndexAsync
       → CompilationFactExtractor (per-document extraction)
           → SymbolExtractor / SymbolDeclarationExtractor
-          → StructuralEdgeExtractor / MemberEdgeExtractor
+          → SymbolStructuralEdgeExtractor / MemberEdgeExtractor
           → CallsEdgeExtractor / ReadsWritesEdgeExtractor / OverridesEdgeExtractor
           → InterfaceDispatchExtractor / VirtualOverrideExtractor
           → ReflectionExtractor (TypeOf, NameOf, StringLiteral, UnknownPattern)
@@ -182,7 +181,8 @@ ordinary typed facts into the shared model:
 | Test | `TestedBy` (production symbol → covering test) |
 
 Each fact retains its evidence level: `compiler_proved`, `framework_derived`,
-`convention`, `possible`, or `runtime_unknown`.
+`global_implementation_relation`, `possible`, `convention`, `name_candidate`,
+or `runtime_unknown`.
 
 ### 4.4 Reflection evidence ladder
 
@@ -214,8 +214,7 @@ interfaces. They do not re-run Roslyn analysis (except `--mode=status
 | `ContextHandler` | Context capsule assembly (`ContextAssembler`, tier builders, `CapsuleBudgetEnforcer`) |
 | `StatusHandler` | Snapshot freshness, schema version, completeness |
 | `TimingsHandler` | Per-step performance data |
-| `AnnotationHandler` | Write annotations |
-| `GetAnnotationsHandler` | Read annotations |
+| `AnnotationHandler` | Write annotations (`annotate`) and read them (`get-annotations`) |
 
 ## 6. Context Capsules
 
@@ -330,8 +329,10 @@ handler/DTO modification; cross-project interface change; apparently unused
 type deletion; entity change affecting EF or serialization; DI implementation
 replacement; route contract change.
 
-The outcome-benchmark suite (`fixtures/OutcomeBenchmark/`) is currently
-postponed.
+The outcome-benchmark suite (`tests/fixtures/OutcomeBenchmark/`) was built and
+its baseline established at time of record, then deleted with the test-suite
+cleanup (`f1254fc`); it is not currently reproducible. See `TRUST_KERNEL.md`
+§T11.
 
 Measure: correct starting symbol found? actual source retrieved without
 project exploration? all constraining contracts included? affected callers and

@@ -356,8 +356,6 @@ Each indexing run (full or incremental) creates a **new** snapshot. The last 3 s
 |---|---|
 | `LURP_SOLUTION_PATH` | Equivalent to `--solution=<path>`. |
 | `LURP_OUTPUT_DIR` | Equivalent to `--output-dir=<path>`. |
-| `INDEXER_SOLUTION_PATH` | Deprecated alias for `LURP_SOLUTION_PATH`. |
-| `INDEXER_OUTPUT_DIR` | Deprecated alias for `LURP_OUTPUT_DIR`. |
 
 ## License
 

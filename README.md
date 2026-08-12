@@ -28,8 +28,7 @@ Or run the built binary directly:
 ```
 
 Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
-`--solution=` and `--output-dir=`. The older `INDEXER_SOLUTION_PATH` / `INDEXER_OUTPUT_DIR`
-names are accepted for backwards compatibility.
+`--solution=` and `--output-dir=`.
 
 ## The mental model
 
