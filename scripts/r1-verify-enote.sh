@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# R1: Five-cycle convergence on eNoteV2 (7 projects)
+# R1: Five-cycle incremental convergence on eNoteV2 (7 projects).
+# Usage: ./scripts/r1-verify-enote.sh <solution-dir> <solution-file>
+# Example: ./scripts/r1-verify-enote.sh /c/Users/Tarik/Desktop/eNoteV2/eNote eNote.sln
 set -euo pipefail
 
+SOLUTION_DIR="${1:?Usage: $0 <solution-dir> <solution-file>}"
+SOLUTION_FILE="${2:?}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SOLUTION_DIR="C:/Users/Tarik/Desktop/eNoteV2/eNote"
-SOLUTION_FILE="eNote.sln"
 
 TMPROOT="$(mktemp -d)"
 SCRATCH="$TMPROOT/eNote"
