@@ -164,4 +164,68 @@ public sealed class EdgeWritePathTests : IDisposable
         var allArgs = variants.SelectMany(v => v).OrderBy(s => s).ToList();
         Assert.Equal(["First", "Second"], allArgs);
     }
+
+    // Characterization tests for the strict-`>` tie-break at
+    // EdgeOperationsStore.WriteBulkEdges: `@incomingRank > persistedRank`.
+    // An equal-rank incoming edge must NOT overwrite the persisted
+    // (copied-forward) row's provenance/path/coordinates/is_cross_generated,
+    // so a future `> → >=` loosening or non-deterministic extraction
+    // regression trips these tests. Only type_arguments_json merges
+    // unconditionally (EdgeOperationsStore.cs:163).
+    [Fact]
+    public void EqualRankCollision_KeepsCopiedForwardRowIdenticalToFreshExtraction()
+    {
+        using var store = OpenStore();
+
+        // Seed the "copied-forward" row (MakeEdge defaults SourceDocumentPath = "src/Test.cs").
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved", sourceStartLine: 10, sourceEndLine: 11)]);
+
+        // Re-emit an equal-rank incoming edge with *different* location/path/
+        // cross-generated to give the `>` clause something it must NOT take.
+        // EdgeRecord is a class with init-only setters, so the differing edge
+        // is constructed explicitly instead of via a `with` expression.
+        store.SaveEdges(SnapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "src",
+                TargetSymbolId = "tgt",
+                Kind = "Calls",
+                Provenance = "compiler_proved",
+                ExtractorVersion = "1.0.0",
+                SourceDocumentPath = "src/Other.cs",
+                SourceStartLine = 999,
+                SourceStartColumn = 1,
+                SourceEndLine = 1000,
+                SourceEndColumn = 10,
+                IsCrossGenerated = true,
+            }
+        ]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+
+        // The persisted (copied-forward) values won the equal-rank collision.
+        Assert.Equal("src/Test.cs", edge.SourceDocumentPath);
+        Assert.Equal(10, edge.SourceStartLine);
+        Assert.Equal(11, edge.SourceEndLine);
+        Assert.False(edge.IsCrossGenerated);
+        Assert.Equal("compiler_proved", edge.Provenance);
+    }
+
+    // Inverse direction: a higher-rank row persisted first must survive a
+    // lower-rank incoming (name_candidate after compiler_proved). Together
+    // with the equal-rank test this pins the strict-`>` invariant from both
+    // orderings.
+    [Fact]
+    public void EqualRankCollision_HigherRankIncomingOverwrites()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved", sourceStartLine: 10)]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "name_candidate", sourceStartLine: 999)]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal("compiler_proved", edge.Provenance);
+        Assert.Equal(10, edge.SourceStartLine);
+    }
 }
