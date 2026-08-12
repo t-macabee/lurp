@@ -806,4 +806,199 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // at the newly preferred overload (M(int)), not the stale M(long).
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
+
+    /// <summary>
+    /// DI adapter: changing the implementation type in an AddScoped registration
+    /// must delete old Registers edges and re-extract new ones that match a clean
+    /// rebuild. Exercises the incremental delete+re-extract path for
+    /// framework-derived edges (the existing Parity_FrameworkDerivedEdge test only
+    /// covers copy-forward).
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioK_DIRegistrationChange_UpdatesRegistersEdges()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        await RunParityScenarioAsync("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Di.cs"] = """
+                    namespace Microsoft.Extensions.DependencyInjection;
+
+                    public interface IServiceCollection { }
+
+                    public static class ServiceCollectionServiceExtensions
+                    {
+                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                            where TService : class
+                            where TImplementation : class, TService => services;
+                        public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
+                            where TService : class
+                            where TImplementation : class, TService => services;
+                    }
+                    """,
+                ["App.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    namespace TestProject;
+
+                    public interface ISvc { }
+                    public class Svc : ISvc { }
+
+                    public static class Startup
+                    {
+                        public static void Register(IServiceCollection services)
+                        {
+                            services.AddScoped<ISvc, Svc>();
+                        }
+                    }
+                    """,
+            },
+            () =>
+            {
+                WriteFile("TestProject", "App.cs", """
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    namespace TestProject;
+
+                    public interface ISvc { }
+                    public class Svc : ISvc { }
+                    public class SvcV2 : ISvc { }
+
+                    public static class Startup
+                    {
+                        public static void Register(IServiceCollection services)
+                        {
+                            services.AddScoped<ISvc, SvcV2>();
+                        }
+                    }
+                    """);
+            });
+    }
+
+    /// <summary>
+    /// DI adapter: adding a new typeof()-form registration to an existing file
+    /// must extract new Registers edges that match a clean rebuild. Exercises
+    /// ResolveRegistrationTypeArgs's TypeOfExpressionSyntax fallback path.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioL_DIRegistrationAdd_ExtractsNewEdges()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        await RunParityScenarioAsync("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Di.cs"] = """
+                    namespace Microsoft.Extensions.DependencyInjection;
+
+                    public interface IServiceCollection { }
+
+                    public static class ServiceCollectionServiceExtensions
+                    {
+                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                            where TService : class
+                            where TImplementation : class, TService => services;
+                        public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
+                            where TService : class
+                            where TImplementation : class, TService => services;
+                        public static IServiceCollection AddTransient(this IServiceCollection services, Type serviceType, Type implementationType) => services;
+                    }
+                    """,
+                ["App.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    namespace TestProject;
+
+                    public interface ISvc { }
+                    public class Svc : ISvc { }
+
+                    public static class Startup
+                    {
+                        public static void Register(IServiceCollection services)
+                        {
+                            services.AddScoped<ISvc, Svc>();
+                        }
+                    }
+                    """,
+            },
+            () =>
+            {
+                WriteFile("TestProject", "App.cs", """
+                    using Microsoft.Extensions.DependencyInjection;
+
+                    namespace TestProject;
+
+                    public interface ISvc { }
+                    public class Svc : ISvc { }
+                    public interface ILog { }
+                    public class ConsoleLog : ILog { }
+
+                    public static class Startup
+                    {
+                        public static void Register(IServiceCollection services)
+                        {
+                            services.AddScoped<ISvc, Svc>();
+                            services.AddTransient(typeof(ILog), typeof(ConsoleLog));
+                        }
+                    }
+                    """);
+            });
+    }
+
+    /// <summary>
+    /// ASP.NET Core adapter: changing a controller route attribute must delete
+    /// the old RoutesTo edge (with its synthetic route:// source node) and
+    /// re-extract a new one matching the updated template. Exercises the
+    /// delete+re-extract path for edges with synthetic source nodes.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioM_ControllerRouteChange_UpdatesRoutesToEdges()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["ItemsController.cs"] = """
+                    using Microsoft.AspNetCore.Mvc;
+
+                    namespace App;
+
+                    [Route("api/[controller]")]
+                    public class ItemsController : ControllerBase
+                    {
+                        [HttpGet("{id}")]
+                        public Item Get(int id) => new Item();
+                    }
+
+                    public class Item { public int Id { get; set; } }
+                    """,
+            },
+            frameworkReferences: ["Microsoft.AspNetCore.App"]);
+
+        await RestoreSolutionAsync();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("App", "ItemsController.cs", """
+            using Microsoft.AspNetCore.Mvc;
+
+            namespace App;
+
+            [Route("api/[controller]")]
+            public class ItemsController : ControllerBase
+            {
+                [HttpGet("{id}/details")]
+                public Item Get(int id) => new Item();
+            }
+
+            public class Item { public int Id { get; set; } }
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+    }
 }

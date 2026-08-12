@@ -20,6 +20,7 @@ internal static class GetSymbolHandler
         HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var view = ResolveViewSelection(viewArg!, contextLinesArg);
+            symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
             WriteRequestedView(store, view, symbolArg!, snapshotId, viewArg!, includeGenerated);
             return null;
         });
