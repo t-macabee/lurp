@@ -128,6 +128,61 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task DIConventionMatcher_ScanCallProducesConventionRegistersEdge()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Registration.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+                    using Scrutor;
+
+                    namespace App;
+
+                    public class App
+                    {
+                    }
+
+                    public static class Registration
+                    {
+                        public static void Configure(IServiceCollection services)
+                        {
+                            services.Scan(scan => scan
+                                .FromAssembliesOf<App>()
+                                .AddClasses()
+                                .AsImplementedInterfaces()
+                                .WithScopedLifetime());
+                        }
+                    }
+                    """,
+            },
+            packageReferences: ["Scrutor@4.2.2"]);
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var registers = QueryEdges(snapshotId, "Registers", Provenance.Convention);
+        var edge = Assert.Single(registers);
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Registration.Configure"), edge.SourceSymbolId);
+        Assert.StartsWith("convention:assembly_scan:", edge.TargetSymbolId);
+        Assert.Equal("di-v1", edge.ExtractorVersion);
+
+        // Node kinds are not round-tripped through the edges read path; the
+        // graph_nodes table carries them.
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
+            command.Parameters.AddWithValue("@nodeId", edge.TargetSymbolId);
+            var actual = command.ExecuteScalar();
+            Assert.Equal(GraphNodeKind.Convention.ToString(), actual);
+        }
+    }
+
+    [SkippableFact]
     public async Task MediatRAdapter_RequestHandlerProducesHandles()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
@@ -195,6 +250,56 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.AppDbContext.Blogs"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Blog"), edge.TargetSymbolId);
         Assert.Equal("efcore-v1", edge.ExtractorVersion);
+    }
+
+    [SkippableFact]
+    public async Task EfCoreAdapter_HasQueryFilterProducesQueryFilterAnnotation()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Blogging.cs"] = """
+                    using Microsoft.EntityFrameworkCore;
+
+                    namespace App;
+
+                    public class Blog
+                    {
+                        public int Id { get; set; }
+                        public bool IsDeleted { get; set; }
+                    }
+
+                    public class AppDbContext : DbContext
+                    {
+                        public DbSet<Blog> Blogs { get; set; } = null!;
+
+                        protected override void OnModelCreating(ModelBuilder modelBuilder)
+                        {
+                            modelBuilder.Entity<Blog>().HasQueryFilter(b => !b.IsDeleted);
+                        }
+                    }
+                    """,
+            },
+            packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var blogId = ResolveSymbolId(snapshotId, "global::App.Blog");
+
+        using (var store = OpenStore(DbPath))
+        {
+            var constraints = store.GetAnnotations(snapshotId)
+                .Where(a => a.Kind == "ef_query_filter_constraint")
+                .ToList();
+
+            var annotation = Assert.Single(constraints);
+            Assert.Equal(blogId, annotation.SymbolId);
+            Assert.Equal("Blog: HasQueryFilter: b => !b.IsDeleted", annotation.Value);
+            Assert.EndsWith("Blogging.cs", annotation.DocumentPath);
+        }
     }
 
     [Fact]
