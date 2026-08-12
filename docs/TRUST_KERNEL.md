@@ -912,7 +912,7 @@ project's documents plus the reverse-edge closure of their symbols for that
 run (perf cost proportional to project + dependent size, on add-file events
 only; plain edits keep the narrow closure).
 
-Note: change is uncommitted on `main` (commit authorization pending).
+Committed in 5923efe.
 
 
 
