@@ -173,7 +173,7 @@ public sealed class EdgeWritePathTests : IDisposable
     // regression trips these tests. Only type_arguments_json merges
     // unconditionally (EdgeOperationsStore.cs:163).
     [Fact]
-    public void EqualRankCollision_KeepsCopiedForwardRowIdenticalToFreshExtraction()
+    public void EqualRankCollision_KeepsCopiedForwardRow_OverIncomingWithDifferentLocation()
     {
         using var store = OpenStore();
 
@@ -215,9 +215,10 @@ public sealed class EdgeWritePathTests : IDisposable
     // Inverse direction: a higher-rank row persisted first must survive a
     // lower-rank incoming (name_candidate after compiler_proved). Together
     // with the equal-rank test this pins the strict-`>` invariant from both
-    // orderings.
+    // orderings. The name reflects what the test verifies: the lower-rank
+    // incoming does NOT overwrite the already-persisted higher-rank row.
     [Fact]
-    public void EqualRankCollision_HigherRankIncomingOverwrites()
+    public void LowerRankIncoming_DoesNotOverwrite_HigherRankPersisted()
     {
         using var store = OpenStore();
 

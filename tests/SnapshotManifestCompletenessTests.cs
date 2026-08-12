@@ -50,7 +50,8 @@ public sealed class SnapshotManifestCompletenessTests : IDisposable
         var manifest = SnapshotManifest.FromWorkspace(
             workspace, SnapshotIdentity.Create(workspace, new HashSet<string>()));
 
-        Assert.False(manifest.Completeness!.GeneratedTreesIncluded);
+        Assert.NotNull(manifest.Completeness);
+        Assert.False(manifest.Completeness.GeneratedTreesIncluded);
     }
 
     /// <summary>

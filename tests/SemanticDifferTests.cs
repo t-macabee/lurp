@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
@@ -30,17 +31,19 @@ public sealed class SemanticDifferTests : IDisposable
 
     private static byte[] StringToBytes(string text) => System.Text.Encoding.UTF8.GetBytes(text);
 
-    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId)
+    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId, string? customSource = null)
     {
-        var sourceBytes = StringToBytes(
-            "using System;\n" +
-            "namespace TestNs {\n" +
-            "    public class Foo {\n" +
-            "        public void Bar() { Console.WriteLine(); }\n" +
-            "    }\n" +
-            "}\n");
+        var sourceBytes = customSource != null
+            ? StringToBytes(customSource)
+            : StringToBytes(
+                "using System;\n" +
+                "namespace TestNs {\n" +
+                "    public class Foo {\n" +
+                "        public void Bar() { Console.WriteLine(); }\n" +
+                "    }\n" +
+                "}\n");
 
-        var lineStarts = "[0,14,33,56,107,113]";
+        var lineStarts = customSource != null ? "[0]" : "[0,14,33,56,107,113]";
 
         var manifest = new SnapshotRow
         {
@@ -275,8 +278,9 @@ public sealed class SemanticDifferTests : IDisposable
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
         Assert.NotNull(signatureChanged);
         Assert.Equal(symbolId, signatureChanged.SymbolId);
-        Assert.Contains("string input", signatureChanged.DetailJson!);
-        Assert.Contains("string? input", signatureChanged.DetailJson!);
+        using var s1Detail = JsonDocument.Parse(signatureChanged.DetailJson!);
+        Assert.Equal("string Bar(string input)", s1Detail.RootElement.GetProperty("before").GetString());
+        Assert.Equal("string Bar(string? input)", s1Detail.RootElement.GetProperty("after").GetString());
     }
 
     [Fact]
@@ -326,8 +330,9 @@ public sealed class SemanticDifferTests : IDisposable
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
         Assert.NotNull(signatureChanged);
         Assert.Equal(symbolId, signatureChanged.SymbolId);
-        Assert.Contains("int value", signatureChanged.DetailJson!);
-        Assert.Contains("ref int value", signatureChanged.DetailJson!);
+        using var s2Detail = JsonDocument.Parse(signatureChanged.DetailJson!);
+        Assert.Equal("void Baz(int value)", s2Detail.RootElement.GetProperty("before").GetString());
+        Assert.Equal("void Baz(ref int value)", s2Detail.RootElement.GetProperty("after").GetString());
     }
 
     [Fact]
@@ -377,8 +382,9 @@ public sealed class SemanticDifferTests : IDisposable
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
         Assert.NotNull(signatureChanged);
         Assert.Equal(symbolId, signatureChanged.SymbolId);
-        Assert.Contains("Money operator", signatureChanged.DetailJson!);
-        Assert.Contains("decimal operator", signatureChanged.DetailJson!);
+        using var s5Detail = JsonDocument.Parse(signatureChanged.DetailJson!);
+        Assert.Equal("Money operator +(Money a, Money b)", s5Detail.RootElement.GetProperty("before").GetString());
+        Assert.Equal("decimal operator +(Money a, Money b)", s5Detail.RootElement.GetProperty("after").GetString());
     }
 
     [Fact]
@@ -428,8 +434,9 @@ public sealed class SemanticDifferTests : IDisposable
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
         Assert.NotNull(signatureChanged);
         Assert.Equal(symbolId, signatureChanged.SymbolId);
-        Assert.Contains("implicit operator", signatureChanged.DetailJson!);
-        Assert.Contains("explicit operator", signatureChanged.DetailJson!);
+        using var s6Detail = JsonDocument.Parse(signatureChanged.DetailJson!);
+        Assert.Equal("implicit operator int(Fraction f)", s6Detail.RootElement.GetProperty("before").GetString());
+        Assert.Equal("explicit operator int(Fraction f)", s6Detail.RootElement.GetProperty("after").GetString());
     }
 
     // ── MatchTransitions ────────────────────────────────────────────────────
@@ -437,27 +444,38 @@ public sealed class SemanticDifferTests : IDisposable
     [Fact]
     public void MatchTransitions_SymbolRemovedAndAddedPair_ReportsSymbolRenamed()
     {
+        // Source design: both sources have the same return type, parameter list,
+        // and body — only the method name differs ("OldName" vs "NewName").
+        // BuildContinuityKey normalizes the name out of the signature hash by
+        // replacing [nameStart, nameEnd) with a placeholder before hashing, so
+        // the two declarations produce identical continuity keys. SymbolTransitionMatcher
+        // pairs them; ClassifyTransition sees different simple names and returns Rename.
+        //
+        // Span layout for "public void OldName() { }" (25 bytes, ASCII):
+        //   [0,  21) = signature  "public void OldName()"
+        //   [12, 19) = name       "OldName" / "NewName"  (7 bytes each)
+        //   [21, 25) = body       " { }"
+        //   [0,  25) = full span
+        const string oldNameSource = "public void OldName() { }";
+        const string newNameSource = "public void NewName() { }";
+
         using var store = OpenStore();
 
         const string fromSnapshotId = "snap-rename-from";
         const string toSnapshotId = "snap-rename-to";
-        CreateSnapshotWithDocument(store, fromSnapshotId);
-        CreateSnapshotWithDocument(store, toSnapshotId);
+        CreateSnapshotWithDocument(store, fromSnapshotId, oldNameSource);
+        CreateSnapshotWithDocument(store, toSnapshotId, newNameSource);
 
-        // The removed and added declarations share identical spans, so their
-        // normalized-signature + body fingerprints match (the declared name is
-        // normalized out). SymbolTransitionMatcher pairs them by continuity key;
-        // the differing simple name classifies the transition as a rename.
         store.SaveDeclarations(fromSnapshotId, [MakeDecl(
             symbolId: "M:Ns.OldName|asm1",
             docCommentId: "M:Ns.OldName",
             assembly: "asm1",
             kind: IndexedSymbolKind.Method,
             docVersionId: "doc-snap-rename-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
+            fullS: 0, fullE: 25,
+            sigS: 0, sigE: 21,
+            bodyS: 21, bodyE: 25,
+            nameS: 12, nameE: 19,
             fqn: "Ns.OldName")]);
 
         store.SaveDeclarations(toSnapshotId, [MakeDecl(
@@ -466,25 +484,27 @@ public sealed class SemanticDifferTests : IDisposable
             assembly: "asm1",
             kind: IndexedSymbolKind.Method,
             docVersionId: "doc-snap-rename-to:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
+            fullS: 0, fullE: 25,
+            sigS: 0, sigE: 21,
+            bodyS: 21, bodyE: 25,
+            nameS: 12, nameE: 19,
             fqn: "Ns.NewName")]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         // The raw removed/added pair is consumed by MatchTransitions and
-        // re-emitted as a single rename.
+        // re-emitted as a single SymbolRenamed change.
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRemoved);
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolAdded);
 
         var renamed = Assert.Single(changes);
         Assert.Equal(ChangeType.SymbolRenamed, renamed.ChangeType);
         Assert.Equal("M:Ns.NewName|asm1", renamed.SymbolId);
-        Assert.Contains("M:Ns.OldName|asm1", renamed.DetailJson!);
-        Assert.Contains("M:Ns.NewName|asm1", renamed.DetailJson!);
+        using var renameDetail = JsonDocument.Parse(renamed.DetailJson!);
+        Assert.Equal("M:Ns.OldName|asm1", renameDetail.RootElement.GetProperty("previous_symbol_id").GetString());
+        Assert.Equal("M:Ns.NewName|asm1", renameDetail.RootElement.GetProperty("current_symbol_id").GetString());
+        Assert.Equal("Rename", renameDetail.RootElement.GetProperty("transition_kind").GetString());
     }
 
     // ── DiffEdges payload classification ────────────────────────────────────
@@ -496,6 +516,8 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string fromSnapshotId = "snap-b3-009";
         const string toSnapshotId = "snap-b3-010";
+        CreateSnapshotWithDocument(store, fromSnapshotId);
+        CreateSnapshotWithDocument(store, toSnapshotId);
 
         var fromEdges = new List<EdgeRecord>
         {
@@ -552,6 +574,8 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string fromSnapshotId = "snap-edge-payload-from";
         const string toSnapshotId = "snap-edge-payload-to";
+        CreateSnapshotWithDocument(store, fromSnapshotId);
+        CreateSnapshotWithDocument(store, toSnapshotId);
         var fromEdge = new EdgeRecord
         {
             SourceSymbolId = "M:Ns.Foo|asm1",
