@@ -1,53 +1,34 @@
 # Trust Kernel: Implementation Status
 
-**Status:** implementation-status reference. Compare with `CLAUDE.md` for
-architecture, then inspect the relevant live code. There is no live
-task queue in this repository.
-**Architecture:** `docs/LURP_ARCHITECTURE.md` (design rules, boundaries, layout).
-**Historical records:** superseded work is recorded in git history and the
-inline change-log notes; each row below states the resulting current state.
+**Status:** implementation-status reference. The architecture is documented in
+`docs/LURP_ARCHITECTURE.md` and `CLAUDE.md`; this file records the
+evidence-backed status of implementation, verification, and known deviations.
+There is no live task queue in this repository.
 
-**Test-suite status:** the entire `tests/` tree was removed in the Aug 2026
-cleanup (commit `f1254fc`) along with the audit/simulate withdrawal —
-`tests/Lurp.Tests.csproj` and all fixtures (`fixtures/Sample/` Widget,
-`fixtures/OutcomeBenchmark/`, `fixtures/schema/prior-v22.sql`,
-`benchmark-runs/baseline.json`). It has since been rebuilt: `tests/Lurp.Tests.csproj`
-and the test suite are present again and run. Citations below that name a
-current test file are therefore runnable evidence; citations marked
-"(deleted, `f1254fc`)" denote tests that were removed and have **not** been
-re-added, so the verification they anchored is not currently reproducible.
-The outcome-benchmark suite (`fixtures/OutcomeBenchmark/`,
-`benchmark-runs/baseline.json`) remains postponed.
+**Test-suite status:** the `tests/` tree was removed in the Aug 2026 cleanup
+(commit `f1254fc`) and has been partially rebuilt. Citations below that name
+a current test file are runnable evidence; citations marked "(deleted,
+`f1254fc`)" denote tests that were removed and have **not** been re-added, so
+the verification they anchored is not currently reproducible.
 
 ---
 
 ## Purpose
 
 This file records implementation status backed by git history and the
-targeted tests cited below. The `tests/` tree was removed in the Aug 2026
-cleanup (commit `f1254fc`) and has since been rebuilt (see test-suite status
-above): citations that name a current test file are runnable evidence, while
-citations marked "(deleted, `f1254fc`)" denote tests that were removed and have
-not been re-added. Not by any single audit run's scratch output.
-Earlier revisions cited `task/findings.md` as an evidence source; that file
-was a one-off audit artifact, was never durable, and does not exist in this
-folder. Do not recreate it or treat any future per-run scratch file the same
-way: evidence here cites git commits and named tests directly.
+targeted tests cited below. Evidence here cites git commits and named tests
+directly.
 
 ## Two numbering schemes in this folder: read this before touching either
 
 - **T1–T12**: a flat, now-closed list from the original trust audit. All
   twelve items were implemented and validated at time of record: the evidence
-  is inlined below. (An earlier per-iteration `task/task_list.txt` scratch file
-  existed briefly and has been removed; it was never durable and its content is
-  fully captured here.) This list is not extended going forward: there is no
-  T13.
+  is inlined below. This list is not extended going forward: there is no T13.
 - **order 1–13**: a completed historical implementation sequence. Orders 1–2
   were the final loose ends of T11 (root-detection fix and baseline run: see
-  T11). Order 3 is the Track A/B roadmap decision. Orders 4–13 implement
-  `LURP_ARCHITECTURE.md` §23 Phases 4–13. Per-order planning artifacts are
-  consolidated into this tracker; do not recreate a task queue from closed
-  work.
+  T11). Order 3 is the storage strategy decision. Orders 4–13 implement
+  the architecture phases. Per-order planning artifacts are consolidated
+  into this tracker; do not recreate a task queue from closed work.
 
 ## Where we are right now
 
@@ -67,7 +48,7 @@ way: evidence here cites git commits and named tests directly.
 | 12: Phase 9/10 gap audit | Done | Evidence-backed backlog of uncovered polymorphism/dispatch and structured-diff cases (see "Order 12 findings" below). The four `SemanticDiffer` `SignatureFormat` characterization tests (nullable annotations, ref/out/in modifiers, operator overloads, conversion operators) were deleted with the suite (`f1254fc`) and have not been re-added; that coverage is not currently reproducible. |
 | 13: Phase 9/10 implementation | Done | `CallsEdgeExtractor` now records compiler-resolved overloaded binary operators and user-defined cast conversions as canonical `Calls` edges. `Calls` edge extraction is covered by `GoldenEdgeTests.cs` (`CallsEdge_MethodCallsMethod`); incremental-versus-full parity is covered by `IncrementalParityTests.cs` and `CleanRebuildEquivalenceTest.cs`. The dedicated operator/conversion `Calls` tests (`Calls_OverloadedBinaryOperator_EmitsCallsEdge`, `Calls_UserDefinedConversion_EmitsCallsEdge`, `SemanticDiffer_EdgeAddedAndRemoved`, `IncrementalIndex_Matches_FullRebuild_AfterOperatorAndConversionCallEdit`) were deleted with the suite (`f1254fc`) and have not been re-added. |
 
-## Architecture Phase completion status (§23 roadmap)
+## Architecture Phase completion status
 
 | Phase | Description | Status | Evidence |
 |---|---|---|---|
@@ -91,7 +72,7 @@ way: evidence here cites git commits and named tests directly.
 
 ### Phase 13 verification: Reflection Evidence Ladder
 
-**Architecture §18 requirements:**
+**Architecture §4.4 requirements:**
 
 | Requirement | Edge Kind | Extractor | Tests |
 |---|---|---|---|
@@ -104,7 +85,7 @@ way: evidence here cites git commits and named tests directly.
 
 ### Phase 15 verification: Context Capsules
 
-**Architecture §20 requirements:**
+**Architecture §6.2 requirements:**
 
 | Requirement | Implementation | Status |
 |---|---|---|
@@ -120,7 +101,7 @@ way: evidence here cites git commits and named tests directly.
 | Affected public surfaces | Derived from persisted declaration accessibility | ✅ |
 | Reason every item was included | Per-group `InclusionReasons` plus per-item `InclusionReason`, authored explicitly by every tier builder | ✅ |
 
-Budgeting follows §20.1 order. The partial-tier policy is explicitly
+Budgeting follows §6.2 order. The partial-tier policy is explicitly
 greedy-prefix: once a higher-priority item cannot fit, lower tiers are not
 allowed to leapfrog it. Every omitted tier is still evaluated and recorded with
 `budget_exhausted` or `empty`. Capsule behavior is covered by
@@ -133,10 +114,10 @@ was deleted with the suite (`f1254fc`) and has not been re-added.
 
 Closed capsule decisions:
 
-- No occurrence multigraph: architecture §12/§13 defines one evidence-bearing
+- No occurrence multigraph: architecture §6 defines one evidence-bearing
   relation edge, not exhaustive call-site storage. A future occurrence table
   would require an architecture amendment.
-- No generated anchor narrative: architecture §24 keeps deterministic
+- No generated anchor narrative: architecture §8 keeps deterministic
   structured facts canonical. Consumer-authored prose is not stored as fact;
   source-authored XML documentation remains retrievable source evidence.
 - Architectural constraints come from snapshot annotations. No second JSON
@@ -144,7 +125,7 @@ Closed capsule decisions:
 
 ### Phase 14 verification: Evidence-backed Impact Paths
 
-**Architecture §19 completion condition:**
+**Architecture §5 requirements:**
 
 > An agent can see why a code location is considered affected and inspect the exact source at every hop.
 
@@ -164,11 +145,11 @@ Tests: `ImpactTraverserTests.cs` (cycle detection, maxDepth bounding, edge-kind 
 Order 4's scope was narrowed by an audit before its D1–D5 sub-tasks were
 written: immutable document versions already existed de facto (T12), and
 "snapshot-scoped document identity" as literally worded was rejected as
-inconsistent with `LURP_ARCHITECTURE.md` Stage A0 (decision D1). The remaining
+inconsistent with `LURP_ARCHITECTURE.md` §3.3 (decision D1). The remaining
 work was schema-level immutability enforcement and a `snapshot_documents`
 uniqueness constraint, both in commit `f550fee`.
 
-### Architecture §26 definitive-version checklist
+### Architecture §10 definitive-version checklist
 
 | Criterion | Evidence | Status |
 |---|---|---|
@@ -340,7 +321,7 @@ The 167/167 figure was a time-of-record count from the deleted full suite.
 
 The benchmark (local-validation, handler/DTO, DI-replacement scenarios) had a
 fixture, machine-readable scenario contract, runner, and baseline JSON, and
-recorded the ten architecture §25 measures without fabricating the
+recorded the ten architecture §9 measures without fabricating the
 post-capsule worker-token measure. Two blockers, both fixed (commit `452fdaa`):
 `LocateRepositoryRoot()` searched for a nonexistent `task/task_list.txt`
 sentinel (replaced with the solution-file marker); `SearchSymbolStore` FQN lookups
@@ -405,12 +386,12 @@ have not been re-added (not currently reproducible):
 | Architecture reference | Status | Evidence-based reading |
 |---|---|---|
 | §3.4 logical `facts` table | Decided deviation | Attributes stored in `metadata_json`; the facts table is deliberately not built. The approved contract preserves attribute identity and multiplicity. |
-| §5.6 schema stability | Aligned | `SchemaMigrationRoundTripTests.cs` binds the migration list to `VersionConstants.DatabaseSchemaVersion` (count + uniqueness) via `MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, and `MigrationList_AllVersionsAreUnique`; `RoundTrip_AllMigrations_ProducesCurrentSchema` round-trips all migrations to the current schema; `ForwardMigration_FromV1Schema_PreservesSeededData` forward-migrates a seeded v1 fixture. |
-| §6 Stage A0 identity | Aligned, confirmed | `document_id` is path-scoped per the architecture's own definition; order-4 decision D1 made this explicit rather than building snapshot-scoped identity. |
-| §15 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes as `semantic_causes` on every returned impact path. Order 13 verified that operator/conversion `Calls` edges surface via the existing edge diff and converge between incremental and full snapshots: `Calls` extraction covered by `GoldenEdgeTests.cs`, incremental/full convergence by `IncrementalParityTests.cs` and `CleanRebuildEquivalenceTest.cs`. |
-| §16 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing used (encoding, short-file, structural-edge provenance gaps fixed); `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. The end-to-end injected-`.g.cs` proof was deleted with the suite (`f1254fc`) and has not been re-added; that end-to-end proof is not currently reproducible. |
-| §22 atomic incremental operation | Aligned | Snapshot cleanup is atomic, equivalence comparisons are stronger, edge dedup is implemented. Incremental-versus-full equivalence covered by `IncrementalParityTests.cs`, `CleanRebuildEquivalenceTest.cs`, and `MultiCycleConvergenceTests.cs`. |
-| §25 outcome validation | Done at time of record; not currently reproducible | Benchmark contract, runner, and baseline all existed and ran clean (all deleted, `f1254fc`); `missingRelevantTests: false` for all scenarios was established by the Phase 12 fix (commit `63cfaf4`). |
+| §7.6 schema stability | Aligned | `SchemaMigrationRoundTripTests.cs` binds the migration list to `VersionConstants.DatabaseSchemaVersion` (count + uniqueness) via `MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, and `MigrationList_AllVersionsAreUnique`; `RoundTrip_AllMigrations_ProducesCurrentSchema` round-trips all migrations to the current schema; `ForwardMigration_FromV1Schema_PreservesSeededData` forward-migrates a seeded v1 fixture. |
+| §3.3 document identity | Aligned, confirmed | `document_id` is path-scoped per the architecture's own definition; order-4 decision D1 made this explicit rather than building snapshot-scoped identity. |
+| §4.1 structured semantic diffs | Aligned | Base type, signature, attributes, interfaces, record status, type kind, and persisted declaration/binding modifiers have producer/consumer coverage. `ImpactHandler` passes `SemanticDiffStore` to `ImpactTraverser`, which attaches persisted changes as `semantic_causes` on every returned impact path. Order 13 verified that operator/conversion `Calls` edges surface via the existing edge diff and converge between incremental and full snapshots: `Calls` extraction covered by `GoldenEdgeTests.cs`, incremental/full convergence by `IncrementalParityTests.cs` and `CleanRebuildEquivalenceTest.cs`. |
+| §4.4 generated semantics | Aligned, narrow scope | Existing detection/identity/`IsCrossGenerated` plumbing used (encoding, short-file, structural-edge provenance gaps fixed); `GeneratorDriver` generation and package-metadata detection remain postponed. `SnapshotCompleteness.GeneratedTreesIncluded` is `false` because all workspace generated files are under `obj/`, which `IsBuildOutputPath` excludes. The end-to-end injected-`.g.cs` proof was deleted with the suite (`f1254fc`) and has not been re-added; that end-to-end proof is not currently reproducible. |
+| §4.2 atomic incremental operation | Aligned | Snapshot cleanup is atomic, equivalence comparisons are stronger, edge dedup is implemented. Incremental-versus-full equivalence covered by `IncrementalParityTests.cs`, `CleanRebuildEquivalenceTest.cs`, and `MultiCycleConvergenceTests.cs`. |
+| §9 outcome validation | Done at time of record; not currently reproducible | Benchmark contract, runner, and baseline all existed and ran clean (all deleted, `f1254fc`); `missingRelevantTests: false` for all scenarios was established by the Phase 12 fix (commit `63cfaf4`). |
 
 ### Order 13: approved dispatch/diff capability
 

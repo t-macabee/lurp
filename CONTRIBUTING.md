@@ -16,10 +16,10 @@ dotnet test Lurp.slnx
 
 ## Repository layout
 
-- `src/` — the application (`Lurp` Exe) and its CLI handlers.
-- `src/Storage/` — the `Lurp.Storage` library that owns the SQLite persistence layer.
-- `tests/` — the `Lurp.Tests` project (xunit) and its `tests/fixtures/` sample code.
+- `src/` — the solution: `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/, Migrations/).
+- `tests/` — the `Lurp.Tests` project (xunit).
 - `docs/` — architecture and status documents.
+- `scripts/` — convergence verification scripts (`r1-*`).
 
 ## Conventions
 

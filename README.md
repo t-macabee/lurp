@@ -50,11 +50,8 @@ names are accepted for backwards compatibility.
 
 ## A real example journey
 
-The sample fixture (`tests/fixtures/Sample/`, partial `Widget` type) and the
-fixture-derived graph that previously illustrated this section were removed
-with the test suite in the Aug 2026 cleanup (commit `f1254fc`). No sample
-fixture or screenshot is currently committed; this section will be restored
-with a rebuilt sample fixture and its `context` output.
+Index a solution, then build a context capsule or trace impact from a source
+location. See [src/README.md](src/README.md) for the full command reference.
 
 ## Quick start
 
@@ -92,9 +89,10 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 - Exact source retrieved from the indexed document version.
 - Symbols, declarations, callers, callees, contracts, and tests.
-- Typed relationships with provenance, including possible dispatch targets.
+- Typed relationships with provenance, including possible dispatch targets and framework-mediated relationships.
 - Snapshot freshness and completeness information.
 - Explicit uncertainty when the compiler or workspace cannot establish a fact.
+- Token-bounded context capsules with inclusion reasons and evidence levels.
 
 ## Framework adapters
 

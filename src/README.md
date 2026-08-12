@@ -20,7 +20,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
 codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=search`,
-`--mode=context`, `--scope=`, etc.) — you cannot index a subset up front.
+`--mode=context`, etc.) — you cannot index a subset up front.
 
 ## Read-command options
 
@@ -222,7 +222,7 @@ Assemble a context capsule for a symbol or source location.
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
-| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `directCallees`, `directCallers`, `registeredImplementations`, `relevantTests`, `secondDegreeContext`, `surroundingSource`. |
+| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `direct_callees`, `direct_callers`, `registered_implementations`, `relevant_tests`, `second_degree_context`, `surrounding_source`. |
 | `--tier-limit=<n>` | No | Items per tier page (default: 25). |
 | `--cursor=<token>` | No | Continue a tier from its `next_cursor` (`--tier` only). |
 
@@ -358,21 +358,6 @@ Each indexing run (full or incremental) creates a **new** snapshot. The last 3 s
 | `LURP_OUTPUT_DIR` | Equivalent to `--output-dir=<path>`. |
 | `INDEXER_SOLUTION_PATH` | Deprecated alias for `LURP_SOLUTION_PATH`. |
 | `INDEXER_OUTPUT_DIR` | Deprecated alias for `LURP_OUTPUT_DIR`. |
-
-## Migration from Legacy Modes
-
-The following modes from earlier versions have been replaced:
-
-| Old mode | Replacement |
-|---|---|
-| `--mode=discover` | `--mode=search --type=symbol --kind=<SymbolKind>` |
-| `--mode=structure` | `--mode=context --intent=inspect` |
-| `--mode=fingerprint` | No direct replacement; use `--mode=get-symbol --view=metadata`. |
-| `--mode=who-references` | `--mode=impact --direction=upstream` |
-| `--mode=recompute-all` | Removed. Re-index with `--strategy=full`. |
-| `--mode=mark-dirty` | Removed. Incremental indexing detects changes automatically. |
-| `--mode=sweep` | Removed. No longer needed. |
-| `--mode=lint` | Removed. No direct replacement. |
 
 ## License
 

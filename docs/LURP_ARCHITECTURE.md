@@ -1,7 +1,7 @@
 # Lurp Architecture
 
-**Status:** Design reference. All architecture phases are implemented — see
-`TRUST_KERNEL.md` for per-phase verification, evidence, and current deviations.
+**Status:** Design reference. The architecture described here is fully implemented
+— see `TRUST_KERNEL.md` for verification evidence and known deviations.
 **Current:** schema v27, extractor 1.6.0, tool 1.4.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
@@ -10,8 +10,8 @@
 ## 1. Purpose of This Document
 
 This document describes Lurp's **design**: the product model, the data model,
-the non-negotiable rules, and the two development tracks that were merged into
-one system. It is a *what-and-why* reference, not a build roadmap.
+the non-negotiable rules, and what the system explicitly does not do. It is a
+*what-and-why* reference, not a build roadmap or implementation status tracker.
 
 For implementation status, verification evidence, gap audits, and recorded
 deviations, see `TRUST_KERNEL.md`.
@@ -66,71 +66,39 @@ ICustomerRepository.EmailExistsAsync
 Evidence: compiler_proved
 Location: UpdateCustomerHandler.cs, invocation span
 Snapshot: workspace-0184
-Extractor: invocation-v3
+Extractor: calls-v1
 ```
 
 Source retrieval uses the same identity: `symbol ID → document version →
 exact source span`. There is no translation layer between a symbol ID and its
 source.
 
-## 3. One Database Instead of Numerous JSON Files
+## 3. Storage
 
-### 3.1 Decision
+### 3.1 One SQLite database
 
-Yes: one primary SQLite database (`index.db` in the output directory) replaces the
-operational JSON files as the indexer's canonical persisted output. JSON
-remains appropriate for CLI response output, portable exports, debugging
-snapshots, test fixtures/golden files, and optional human inspection — it is
-no longer the internal database or the coordination mechanism between parts of
-the indexer.
+One primary SQLite database (`index.db` in the output directory) is the
+canonical persisted state. JSON is appropriate for CLI response output and
+one-way export — it is never a parallel authority.
 
-### 3.2 Why SQLite fits this project
+The database is a single source of truth for the **indexed snapshot**, not a
+replacement for the repository or compiler. Logical boundaries:
+
+1. **Repository source files** — authoritative content.
+2. **Roslyn compilation** — authoritative static semantics for a build config.
+3. **`index.db`** — persistent materialized snapshot.
+4. **Context capsules** — task-specific projections of stored facts + source.
+5. **Annotations** — human/agent interpretation, kept separate from compiler facts.
+
+### 3.2 Why SQLite
 
 The indexer is a local single-binary CLI that needs many small indexed
 lookups, atomic related-record updates, safe concurrent readers, no database
 server, and explicit schema migrations. SQLite provides indexed lookup,
 transactions, foreign keys, full-text search, and reliable atomic commits
-without external infrastructure. A graph database would add operational
-complexity without solving anything SQLite cannot handle at this scale; the
-data model may be graph-shaped while storage stays relational.
+without external infrastructure.
 
-### 3.3 The database is not the ultimate authority
-
-1. **Repository source files** — authoritative source content.
-2. **Roslyn compilation** — authoritative static semantics for a specific build configuration.
-3. **`index.db`** — persistent materialized representation of a known workspace snapshot.
-4. **Context capsule** — task-specific projection of database facts and source.
-5. **Annotations** — human or agent interpretation, kept separate from compiler-derived facts.
-
-The database is a single source of truth for the **indexed snapshot**, not a
-replacement for the repository or compiler.
-
-### 3.4 Recommended logical tables
-
-Start with the minimum stable foundation; grow only when a roadmap stage
-requires it.
-
-| Table | Role |
-|---|---|
-| `schema_metadata` | Database format and migration state |
-| `workspaces` | Repository and solution identity |
-| `snapshots` | Indexed workspace versions and build configuration |
-| `projects` | Project identity, target framework, references |
-| `documents` | Logical source files and current document identity |
-| `document_versions` | Immutable content hashes, source text, encoding |
-| `symbols` | Types and members with stable semantic identity |
-| `declarations` | Symbol-to-document spans and declaration metadata |
-| `edges` | Typed semantic relationships |
-| `facts` | Attributes and other non-edge semantic facts — **rejected** (stored in `metadata_json` instead; see TRUST_KERNEL.md §Architecture alignment) |
-| `diagnostics` | Snapshot-bound compiler/build diagnostics |
-| `semantic_changes` | Structured differences between snapshots |
-| `annotations` | Explicitly non-compiler-authored knowledge |
-| `extractors` | Extractor identity and version |
-
-Full-text search via an FTS5 virtual table over indexed source content and
-selected symbol names.
-
-### 3.5 How source should be stored
+### 3.3 Source storage model
 
 Store complete document contents once per content hash; never make separately
 copied method bodies the canonical representation:
@@ -140,104 +108,200 @@ document → immutable document version → complete source text
 symbol declaration → span inside that document version
 ```
 
-This gives instant method-body retrieval without duplicating overlapping
-source, and supports containing-type context, surrounding lines, partial
-declarations, local functions, attributes, and historical comparisons.
-Source text may be compressed later if measurement shows database size
-matters; compression is not a first-stage concern.
+### 3.4 Logical storage organization
 
-## 4. The Two Development Tracks
+The `Lurp.Storage` library decomposes persistence behind `IIndexStore` into
+focused stores:
 
-**Track A — Fast Travel and Persistent Memory:** immediate retrieval without
-reopening or reparsing for normal reads: persistent documents/source, stable
-symbol-to-source links, lexical + symbol lookup, exact body/signature/
-declaration retrieval, snapshot consistency, database-backed freshness.
+| Store | Responsibility |
+|---|---|
+| `SnapshotLifecycleStore` | Snapshot creation, identity resolution, status |
+| `SnapshotDocumentStore` | Document + document-version persistence |
+| `SnapshotSymbolStore` | Symbol identity and metadata |
+| `SnapshotPruner` | Old-snapshot cleanup (retains last 3) |
+| `SnapshotTimingStore` | Per-step timing records |
+| `DeclarationWriteStore` / `DeclarationReadStore` | Declaration persistence and retrieval |
+| `DeclarationMaintenanceStore` | Incremental declaration updates |
+| `EdgeOperationsStore` | Typed relationship persistence (merge-on-write) |
+| `DiagnosticStore` | Snapshot-bound compiler diagnostics |
+| `AnnotationStore` | User/agent annotations |
+| `ExtractorRegistryStore` | Extractor identity and version |
+| `SearchSourceStore` / `SearchSymbolStore` | Full-text search over source and symbols |
+| `SemanticDiffStore` | Structured semantic changes between snapshots |
+| `BindingIncompletenessStore` | Binding-failure records per document |
 
-**Track B — Deepening the Semantic Map:** member-level entities, typed
-semantic edges, polymorphic dispatch candidates, structured semantic changes,
-generated-code awareness, framework-mediated relationships, bounded impact
-paths, task-specific context capsules.
+Schema migrations: 27 sequential migrations managed by `MigrationRunner`,
+bound to `VersionConstants.DatabaseSchemaVersion`.
 
-Both tracks are implemented. Track A's storage foundation came first; then the
-tracks interleaved. For the phase-by-phase build order and its completion
-evidence, see `TRUST_KERNEL.md` §"Architecture Phase completion status".
+## 4. Indexing Pipeline
 
----
+### 4.1 Full indexing
 
-# Design Reference
+```
+WorkspaceLoader.LoadAsync
+  → WorkspaceInfo (solution identity, compilation inputs)
+  → SnapshotIdentity.Create (deterministic, content-derived)
+  → IndexRunner.RunFullIndexAsync
+      → CompilationFactExtractor (per-document extraction)
+          → SymbolExtractor / SymbolDeclarationExtractor
+          → StructuralEdgeExtractor / MemberEdgeExtractor
+          → CallsEdgeExtractor / ReadsWritesEdgeExtractor / OverridesEdgeExtractor
+          → InterfaceDispatchExtractor / VirtualOverrideExtractor
+          → ReflectionExtractor (TypeOf, NameOf, StringLiteral, UnknownPattern)
+          → Framework adapters (AspNetCore, DI, MediatR, EF Core, Serialization, Test)
+      → EdgeOperationsStore.SaveEdges (merge-on-write, provenance-ranked)
+      → SemanticDiffStep (compare against previous snapshot)
+      → SnapshotLifecycleStore.Commit
+```
 
-The following sections are the active design contract. For the build sequence
-and its completion evidence, see `TRUST_KERNEL.md`.
+### 4.2 Incremental indexing
 
----
+`IncrementalIndexer.RunIncrementalAsync` creates a new snapshot without
+re-extracting unchanged documents:
 
-## 5. Non-Negotiable Design Rules
+1. Detect changed documents (hash-based `WorkspaceFreshness`).
+2. Compute reverse-edge closure + new-file widening.
+3. Re-extract only the scoped document set.
+4. Delete copied-forward facts in lockstep with extraction (edges, annotations,
+   binding incompleteness).
+5. Refresh cross-document edges (`CrossDocumentEdgeRefresher`).
+6. Commit new snapshot.
 
-### 5.1 Product boundary
+### 4.3 Framework adapters
+
+Lurp models framework-mediated relationships through six adapters that emit
+ordinary typed facts into the shared model:
+
+| Adapter | Facts emitted |
+|---|---|
+| ASP.NET Core | `RoutesTo` (route → controller action) |
+| Dependency Injection | `Registers` (service → implementation), `RuntimeUnknown` for non-conventional forms |
+| MediatR | `Handles` / `Registers` (request/notification → handler) |
+| EF Core | `MapsTo` (entity, `DbSet`, configuration) |
+| Serialization | DTO/property contract participation |
+| Test | `TestedBy` (production symbol → covering test) |
+
+Each fact retains its evidence level: `compiler_proved`, `framework_derived`,
+`convention`, `possible`, or `runtime_unknown`.
+
+### 4.4 Reflection evidence ladder
+
+Four extractors cover reflection-based relationships:
+
+| Extractor | Edge kind | Coverage |
+|---|---|---|
+| `TypeOfReflectionExtractor` | `ReflectionTypeRef` | `typeof(T)` |
+| `NameOfReflectionExtractor` | `ReflectionMemberRef` | `nameof(M)` |
+| `StringLiteralReflectionExtractor` | `ReflectionNameCandidate` | string literals matching known names |
+| `UnknownPatternReflectionExtractor` | `ReflectionTargetUnknown` | `Type.GetType()`, `Activator.CreateInstance()` |
+
+## 5. Read Path (Handlers)
+
+Handlers consume persisted facts through `IIndexStore` and related store
+interfaces. They do not re-run Roslyn analysis (except `--mode=status
+--solution=`, which performs a storage-backed freshness check).
+
+| Handler | Responsibility |
+|---|---|
+| `IndexHandler` | Orchestrates `IndexRunner` / `IncrementalIndexer` |
+| `SearchHandler` | Full-text search over source + symbols (`SearchSourceStore`, `SearchSymbolStore`) |
+| `FindSymbolHandler` | FQN resolution to symbol ID |
+| `GetSymbolHandler` | Symbol metadata / signature / body / declaration / containing-type / surrounding |
+| `GetSourceHandler` | Full source text for a document |
+| `NavigateHandler` | Declaration lookup by file + line |
+| `DiffHandler` | Semantic diff between two snapshots |
+| `ImpactHandler` | Impact path traversal (`ImpactTraverser`) with semantic causes |
+| `ContextHandler` | Context capsule assembly (`ContextAssembler`, tier builders, `CapsuleBudgetEnforcer`) |
+| `StatusHandler` | Snapshot freshness, schema version, completeness |
+| `TimingsHandler` | Per-step performance data |
+| `AnnotationHandler` | Write annotations |
+| `GetAnnotationsHandler` | Read annotations |
+
+## 6. Context Capsules
+
+A context capsule is a bounded, evidence-backed package of relevant code
+assembled for an agent task. Built by `ContextAssembler` with tier builders
+and enforced by `CapsuleBudgetEnforcer`.
+
+### 6.1 Tier builders (priority order)
+
+| Tier builder | Produces | Tier name |
+|---|---|---|
+| `ContractsTierBuilder` | Relevant contracts (interfaces, base types) | `contracts` |
+| `DirectCalleesTierBuilder` | Direct outgoing calls | `direct_callees` |
+| `DirectCallersTierBuilder` | Direct incoming calls | `direct_callers` |
+| `RegisteredImplementationsTierBuilder` | Registered or possible runtime targets | `registered_implementations` |
+| `RelevantTestsTierBuilder` | Tests covering the anchor | `relevant_tests` |
+| `SurroundingSiblingsTierBuilder` | Surrounding type members | `surrounding_source` |
+| `SecondDegreeContextTierBuilder` | Second-degree relationships | `second_degree_context` |
+
+### 6.2 Capsule contract
+
+- Anchor symbol / source location
+- Relevant contracts and implementations
+- Relevant tests
+- Uncertainties and unchecked vectors (via `UncertaintyDetector`)
+- Incoming and outgoing paths (with exact source spans)
+- Suggested verification commands
+- Likely change sites
+- Affected public surfaces
+- Per-item inclusion reasons
+
+Budgeting: `--content-budget` bounds content tokens; tiers are included in
+priority order (greedy-prefix) until the budget is exhausted; omitted tiers
+are reported with reason (`budget_exhausted`, `empty`, `unresolved`,
+`summarized`). Individual tiers can be refetched with `--tier=<name>`.
+
+## 7. Non-Negotiable Design Rules
+
+### 7.1 Product boundary
 
 A capability belongs in the core only if it materially improves: code
 localization; exact source retrieval; semantic context selection; consequence
 tracing; freshness; verification selection; representation of uncertainty.
 
-### 5.2 Read-only relationship to source
+### 7.2 Read-only relationship to source
 
 May: read source; index source; report consequences. Must not: apply fixes;
 compile hypothetical or in-memory modified solutions; rewrite the working tree;
 decide architectural intent; call an LLM to make changes; become the worker
 agent.
 
-### 5.3 C#/.NET specialization
+### 7.3 C#/.NET specialization
 
 Remain Roslyn-native; do not weaken the semantic model for generic syntax
-trees or multiple languages. Flutter/Dart, if ever needed, is a separate
-analyzer whose facts may be joined at application boundaries — not a reason to
-become a generic parser platform.
+trees or multiple languages.
 
-### 5.4 Fact before interpretation
+### 7.4 Fact before interpretation
 
 The core records `implements MediatR.IRequest<CustomerDto>`; it does not claim
 "query" as compiler-proved business intent. Project conventions may derive
 such classifications with distinct provenance.
 
-### 5.5 Unknown is a valid result
+### 7.5 Unknown is a valid result
 
 Do not eliminate `not_determinable` by guessing; make each blind spot the
 strongest honest form available: compiler-proved relationship;
 framework-derived relationship; possible target set; string/name candidate;
 explicitly unknown runtime target.
 
-### 5.6 Schema stability
+### 7.6 Schema stability
 
-Every field is a contract with future consumers:
+Every field is a contract with future consumers. Never silently change a
+field's meaning. Add compatible optional fields only in minor schema
+revisions. Rename, removal, retyping, or semantic change requires a major
+revision. Treat unknown enum values as survivable input.
 
-- Never silently change a field's meaning.
-- Add compatible optional fields only in minor schema revisions.
-- Rename, removal, retyping, or semantic change requires a major revision.
-- Store database schema, output schema, extractor version, and tool version separately.
-- Test migrations from real prior database fixtures.
-- Treat unknown enum values as survivable input.
+### 7.7 Roslyn boundary
 
-## 23. Phases (reference)
+Roslyn analysis belongs in `src/Workspace/` and `src/Adapters/` only. Never
+put Roslyn semantic analysis into `src/Storage/` — the boundary is enforced
+at the project reference. Do not write raw SQL from analysis or handlers;
+persist through store interfaces.
 
-The 17-phase build order that combined both tracks is defined in
-`TRUST_KERNEL.md` §"Architecture Phase completion status". All phases are complete except Phase 16, whose deliverables (simulate and
-audit modes) were withdrawn from the product in the Aug 2026 cleanup; see
-`TRUST_KERNEL.md` for the row.
+## 8. What Not to Build
 
-### 23.1 Historical milestones
-
-- **After Phase 6:** one database; snapshot-bound source content; type/member
-  lookup; immediate signature/body/declaration retrieval; lexical search
-  without reparsing.
-- **After Phase 10:** persistent fast travel; member-level semantic
-  relationships; polymorphic paths; explainable changes between snapshots.
-- **After Phase 15:** the system takes an anchor and produces a bounded package
-  containing both the relevant semantic neighborhood and the actual code
-  required to work there.
-
-## 24. What Not to Build
-
-Explicitly outside the core even when individually useful:
+Explicitly outside the core:
 
 - **UI, dashboard, or visualization** — a separate consumer may render
   database queries; the indexer optimizes for correct facts and stable
@@ -248,33 +312,26 @@ Explicitly outside the core even when individually useful:
 - **Autonomous editing** — the indexer is the map and retrieval system, not
   the hand changing the code.
 - **LLM-authored canonical summaries** — interpretive summaries go stale and
-  cannot be reproduced deterministically; if useful, store them as annotations
-  with their own provenance and snapshot association, never as compiler facts.
+  cannot be reproduced deterministically; store them as annotations with
+  their own provenance if useful, never as compiler facts.
 - **General-purpose architecture scoring** — complexity, redundancy, and
-  dead-code audits are not part of the product (the audit mode was withdrawn
-  in the Aug 2026 cleanup); the indexer optimizes for correct facts and stable
-  machine-readable retrieval, not authoritative judgments about code quality.
-- **Change simulation / preflight** — the `simulate-rename|move|remove` family
-  of modes was withdrawn in the Aug 2026 cleanup. Pre-computing the consequences
-  of hypothetical source edits is outside core scope.
+  dead-code audits are not part of the product; the indexer optimizes for
+  correct facts and stable machine-readable retrieval.
+- **Change simulation / preflight** — withdrawn from the product. Pre-computing
+  the consequences of hypothetical source edits is outside core scope.
 - **Premature daemon/server architecture** — begin with a local CLI and
-  persistent SQLite store; a long-running service is justified only if measured
-  Roslyn startup and incremental-update costs remain unacceptable after
-  database-backed reads exist.
+  persistent SQLite store.
 
-## 25. Validation Strategy
+## 9. Validation Strategy
 
-Judge by agent outcomes, not database size or indexed edge counts. The intended
-benchmark set — drawn from real eNoteV2 tasks and previous agent failures —
-covers eight scenarios: vague cleanup request; local validation change;
+Judge by agent outcomes, not database size or indexed edge counts. The
+intended benchmark set covers: vague cleanup request; local validation change;
 handler/DTO modification; cross-project interface change; apparently unused
 type deletion; entity change affecting EF or serialization; DI implementation
-replacement; route contract change. Three were implemented in
-`tests/OutcomeBenchmarkTests.cs` (`local-validation-change`,
-`handler-dto-modification`, `di-implementation-replacement`), but that test
-file was deleted with the rest of the suite in the Aug 2026 cleanup (commit
-`f1254fc`) and has not been re-added; those scenarios and their verification
-are not currently reproducible.
+replacement; route contract change.
+
+The outcome-benchmark suite (`fixtures/OutcomeBenchmark/`) is currently
+postponed.
 
 Measure: correct starting symbol found? actual source retrieved without
 project exploration? all constraining contracts included? affected callers and
@@ -283,10 +340,7 @@ declared? how much irrelevant source entered the capsule? how many tokens the
 worker required after receiving it? did the resulting patch avoid unrelated
 changes? did incremental and clean indexing agree?
 
-Every proposed major feature should fix a demonstrated failure in these
-benchmarks or strengthen a foundational invariant.
-
-## 26. Definition of the Definitive Version
+## 10. Definition of the Definitive Version
 
 The tool has reached its definitive conceptual form when:
 
@@ -303,28 +357,3 @@ The tool has reached its definitive conceptual form when:
 - context capsules return bounded relevant code plus its surroundings;
 - every fact states its provenance and extractor version;
 - the indexer never becomes the actor modifying source.
-
-The final one-line technical description:
-
-> **A Roslyn-grounded, persistent and incremental semantic workspace mirror
-> that provides software agents with immediate, evidence-backed, token-bounded
-> access to both code and its relationships.**
-
-## 27. Final Answer to the Sequencing Question
-
-The missing fast-travel half is implemented first **at the foundation level**,
-because both future source retrieval and the richer semantic map need the same
-database, identities, spans, snapshots, and freshness rules. The implementation
-is not two independent projects:
-
-```text
-shared identity and SQLite foundation
-    → stored documents and symbol-linked fast travel
-    → migrate current map into the database
-    → deepen it into the full semantic graph
-    → combine retrieval and graph traversal into context capsules
-```
-
-This preserves the existing indexer's capabilities, replaces Tokensave's
-accidental role deliberately, and prevents either half from becoming a second
-source of truth.

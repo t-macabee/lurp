@@ -5,13 +5,13 @@ It is organized by purpose so visitors can choose the right level of detail.
 
 ## Architecture and design
 
-- [Lurp Architecture](LURP_ARCHITECTURE.md): the product model, persistence
-  boundaries, semantic graph, context capsules, and longer-term roadmap.
+- [Lurp Architecture](LURP_ARCHITECTURE.md): the product model, storage
+  boundaries, semantic graph, context capsules, and non-negotiable rules.
 
 ## Current implementation status
 
 - [Trust Kernel](TRUST_KERNEL.md): the evidence-backed record of implemented
-  phases, verified behavior, deliberate deviations, and postponed work.
+  capabilities, verified behavior, deliberate deviations, and postponed work.
 
 ## Operational CLI reference
 
@@ -20,7 +20,4 @@ It is organized by purpose so visitors can choose the right level of detail.
 
 These references are not a task queue. Compare the Trust Kernel and
 architecture guide, then inspect the live code and repository state. The live
-repository is the final authority for what exists. (The `tests/` tree and all
-fixtures were removed in the Aug 2026 cleanup, commit `f1254fc`, and have
-since been rebuilt: `tests/Lurp.Tests.csproj` and the test suite are present
-and run.)
+repository is the final authority for what exists.
