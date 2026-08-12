@@ -749,6 +749,117 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
 
+    /// <summary>
+    /// R6 end-to-end (GAP 2(c)): a null-path (doc-less) <c>extractor_failure</c>
+    /// binding-incompleteness row seeded into a full-rebuild snapshot must carry
+    /// forward byte-identically through an incremental pass over a changed
+    /// in-scope document. The null bucket's stored <c>document_path</c> is
+    /// <c>""</c> — never in the extraction scope, so no document-scoped delete
+    /// can retire it — and the scoped re-extraction save drops null-path rows
+    /// (EXCLUDE-AND-CARRY-FORWARD), so the only way the row lands in the new
+    /// snapshot is the verbatim <c>CopyBindingIncompleteness</c>. This promotes
+    /// the R6 null-bucket guarantee from the predicate-level
+    /// <see cref="BindingIncompletenessScopingTests"/> pin to end-to-end.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioR6_NullPathExtractorFailure_CarriesForwardAcrossIncremental()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // Same fixture as the predicate-level R6 test: Helper.cs (edited below)
+        // has no external references; ExternalRef.cs targets Newtonsoft.Json and
+        // stays out of the incremental extraction scope.
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Helper.cs"] = """
+                    namespace App;
+
+                    public class Helper
+                    {
+                        public int Add(int a, int b) => a + b;
+                    }
+                    """,
+                ["ExternalRef.cs"] = """
+                    using Newtonsoft.Json;
+
+                    namespace App;
+
+                    public class ExternalRef
+                    {
+                        public string Serialize(object obj)
+                        {
+                            return JsonConvert.SerializeObject(obj);
+                        }
+                    }
+                    """,
+            },
+            packageReferences: ["Newtonsoft.Json@13.0.3"]);
+
+        await RestoreSolutionAsync();
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        // Fault injection (CompilationFactExtractorRunStageTests pattern): a
+        // throwing stage degrades through the RunStage catch arm into
+        // RecordExtractorFailure with a null document path. Seed that single
+        // record into the persisted snapshot A.
+        var ctx = new CompilationFactExtractor.StageContext(
+            "App",
+            new List<CompilationFactExtractor.ExtractionFailure>(),
+            new BindingIncompletenessCollector("App", TestDir));
+
+        CompilationFactExtractor.RunStage(
+            ctx, "Polymorphism", null, null,
+            _ => _,
+            () => throw new InvalidOperationException("injected null-path failure"));
+
+        var injectedRow = Assert.Single(ctx.Incompleteness.ToRecords());
+        Assert.Equal("extractor_failure", injectedRow.Reason);
+        Assert.Null(injectedRow.DocumentPath);
+        Assert.Equal(1, injectedRow.Count);
+        Assert.Equal(VersionConstants.ExtractorVersion, injectedRow.ExtractorVersion);
+
+        using (var store = OpenStore(DbPath))
+        {
+            store.SaveBindingIncompleteness(snapshotA, new[] { injectedRow });
+        }
+
+        // Semantics-preserving comment edit — only Helper.cs is dirty.
+        WriteFile("App", "Helper.cs", """
+            namespace App;
+
+            public class Helper
+            {
+                public int Add(int a, int b) => a + b;
+            }
+            // comment-only edit
+            """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        // Byte-identical carry-forward: the null-path row in B must equal the
+        // row in A. (The R6 parity oracle is intentionally NOT invoked here:
+        // SnapshotAssertions.CompareSnapshotsAreEquivalent compares the full
+        // binding_incompleteness row sets, and a clean rebuild of the same
+        // workspace cannot reproduce the injected extractor_failure row — so
+        // the assertion narrows to this direct row-equality check.)
+        using (var store = OpenStore(DbPath))
+        {
+            var rowsA = store.GetBindingIncompleteness(snapshotA, "App")
+                .Where(r => r.Reason == "extractor_failure" && r.DocumentPath == null)
+                .ToList();
+            var rowsB = store.GetBindingIncompleteness(snapshotB, "App")
+                .Where(r => r.Reason == "extractor_failure" && r.DocumentPath == null)
+                .ToList();
+
+            var rowA = Assert.Single(rowsA);
+            Assert.Equal(rowA, Assert.Single(rowsB));
+        }
+    }
+
     [SkippableFact]
     public async Task ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller()
     {
