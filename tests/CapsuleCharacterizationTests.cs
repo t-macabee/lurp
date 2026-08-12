@@ -393,4 +393,128 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             store.Close();
         }
     }
+
+    // ── T7 ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// One tier builder that always emits the exact items it was given, so the
+    /// selection boundary can be exercised without an indexed fixture.
+    /// </summary>
+    private sealed class FixedTierBuilder(string name, params CapsuleItem[] items) : IContextTierBuilder
+    {
+        public string Name => name;
+        public string InclusionReason => $"Synthetic tier for {name}.";
+        public List<CapsuleItem> Build() => [.. items];
+    }
+
+    /// <summary>
+    /// Pins the contract introduced by the T6 framing fix: tier selection must
+    /// not treat a source-less (path-only) item as free, while source-bearing
+    /// items and the anchor pass keep their original estimates.
+    /// </summary>
+    [Fact]
+    public void EstimateTokens_ChargesFramingForPathOnlyItems()
+    {
+        var pathOnly = new CapsuleItem(
+            symbolId: "T:System.IDisposable|System.Runtime, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
+            kind: nameof(IndexedSymbolKind.Type),
+            fullyQualifiedName: "System.IDisposable",
+            provenance: "compiler_proved",
+            edgeKind: "Implements",
+            source: null);
+        Assert.True(ContextAssembler.EstimateTokens(pathOnly) > 0,
+            "A source-less (path-only) item must not be estimated as free: tier selection "
+          + "would otherwise let a path-heavy tier leapfrog a source-bearing tier.");
+
+        const string source = "public int UsedByCaller(int x) => x;";
+        var withSource = new CapsuleItem(
+            symbolId: "M:TestProject.ExternalContract.UsedByCaller(System.Int32)|TestProject",
+            kind: nameof(IndexedSymbolKind.Method),
+            fullyQualifiedName: "TestProject.ExternalContract.UsedByCaller",
+            provenance: "compiler_proved",
+            edgeKind: "Calls",
+            source: source);
+        Assert.Equal(source.Length / 4, ContextAssembler.EstimateTokens(withSource));
+
+        // The anchor pass keeps the string overload: a null anchor source stays 0
+        // (the anchor carries no JSON framing).
+        Assert.Equal(0, ContextAssembler.EstimateTokens((string?)null));
+    }
+
+    /// <summary>
+    /// REGRESSION test for the T6 framing fix (commit 286f72a): a path-heavy
+    /// tier must not leapfrog a source-bearing tier at the selection boundary.
+    ///
+    /// The selection boundary is exercised through <see cref="ContextBudgeter.Apply"/>
+    /// directly (the exact code T6 changed at ContextBudgeter.cs:37,50) with a
+    /// source-bearing tier first and a path-only tier second, at a budget that
+    /// admits the source tier plus half the path-only framing charge (40/2). The
+    /// path-only tier fits under the old 0-cost estimate (anchor + source tier + 0)
+    /// but not under the new 40-token-per-item estimate, so pre-T6 it was admitted
+    /// for free and post-T6 it is truncated while the source tier survives.
+    ///
+    /// This deliberately does not run the full <c>ResolveAndAssemble</c> pipeline:
+    /// CapsuleBudgetEnforcer's retained floor (the omittedTiers.* recovery
+    /// instruction, ~110-145 tokens for a capsule with budget_exhausted tiers)
+    /// exceeds the budgeter's path-tier exclusion window (anchor + source tier +
+    /// 40 at most), so at every budget where the path tier is excluded the
+    /// enforcer also clears the source tier — the selection difference T6 makes is
+    /// not observable in the final artifact. The boundary assertion therefore pins
+    /// the selection stage, which is the layer T6 changed.
+    /// </summary>
+    [Fact]
+    public void PathHeavyTier_DoesNotLeapfrogSourceTier_AtSelectionBoundary()
+    {
+        var anchor = new CapsuleAnchor(
+            symbolId: "T:TestProject.ExternalContract|TestProject",
+            fullyQualifiedName: "TestProject.ExternalContract",
+            kind: nameof(IndexedSymbolKind.Type),
+            source: new string('a', 100)); // anchor cost = 25 tokens
+
+        var sourceItem = new CapsuleItem(
+            symbolId: "M:TestProject.LeapfrogCaller.CallAnchor()|TestProject",
+            kind: nameof(IndexedSymbolKind.Method),
+            fullyQualifiedName: "TestProject.LeapfrogCaller.CallAnchor",
+            provenance: "compiler_proved",
+            edgeKind: "Calls",
+            source: new string('b', 100)); // source tier cost = 25 tokens
+
+        // Path-only item: no source. Pre-T6 this estimated at 0 tokens; post-T6
+        // it is charged PathOnlyFramingChars / 4 = 40 tokens.
+        var pathItem = new CapsuleItem(
+            symbolId: "T:System.IDisposable|System.Runtime",
+            kind: nameof(IndexedSymbolKind.Type),
+            fullyQualifiedName: "System.IDisposable",
+            provenance: "compiler_proved",
+            edgeKind: "Implements",
+            source: null);
+
+        var capsule = new ContextCapsule(anchor);
+        var anchorCost = ContextAssembler.EstimateTokens(anchor.Source);
+        var sourceTierCost = ContextAssembler.EstimateTokens(sourceItem);
+        // Boundary budget: anchor + source tier + half the path-only framing
+        // charge. PathOnlyFramingChars is the deciding factor: the path tier fits
+        // at anchor + source tier + 0 (old estimate) but not at + 40.
+        var budget = anchorCost + sourceTierCost + 20;
+
+        ContextBudgeter.Apply(
+            capsule,
+            [
+                new FixedTierBuilder("direct_callers", sourceItem),
+                new FixedTierBuilder("contracts", pathItem),
+            ],
+            budget,
+            runningTotal: anchorCost);
+
+        // The source-bearing tier (higher priority) is admitted at the boundary...
+        Assert.NotEmpty(capsule.DirectCallers);
+        Assert.DoesNotContain(capsule.TruncatedCategories, category => category == "direct_callers");
+        // ...while the path-heavy tier is NOT: its framing charge exceeds the
+        // headroom and the budgeter truncates it. Pre-T6 it was admitted for free
+        // (Contracts would contain the path-only item here).
+        Assert.Empty(capsule.Contracts);
+        Assert.Contains(capsule.TruncatedCategories, category => category == "contracts");
+        Assert.Contains(capsule.OmittedTiers,
+            entry => entry.Category == "contracts" && entry.Reason == "budget_exhausted");
+    }
 }
