@@ -33,3 +33,32 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build --configuration Release
+
+  # Long-running real-solution parity gate, run only on main pushes against a
+  # self-hosted runner that has FIT-RS2-2026 and eNoteV2 checked out at fixed
+  # paths. PRs run only the synthetic `build` job above.
+  real-parity:
+    needs: build
+    runs-on: [self-hosted, real-parity]
+    timeout-minutes: 30
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The R1 scripts invoke `dotnet run --no-build` (Debug default) and
+      # r1-verify-convergence.sh points at bin/Debug/net10.0/r1-compare, so
+      # Debug artifacts are required — a Release build would fail the first
+      # --no-build run. r1-compare is not part of Lurp.slnx, so build both.
+      - name: Build Lurp + r1-compare (Debug)
+        run: |
+          dotnet build src/Lurp.csproj
+          dotnet build scripts/r1-compare/r1-compare.csproj
+
+      - name: R1 convergence (FIT-RS2-2026)
+        shell: bash
+        run: ./scripts/r1-verify-convergence.sh "C:/Users/Tarik/Desktop/FIT-RS2-2026/eCommerce" "eCommerce.sln"
+
+      - name: R1 eNote (eNoteV2)
+        shell: bash
+        run: ./scripts/r1-verify-enote.sh "C:/Users/Tarik/Desktop/eNoteV2/eNote" "eNote.sln"
