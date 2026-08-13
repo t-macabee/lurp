@@ -30,7 +30,7 @@ internal static class HelpText
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
         ["--json"] = "Emit structured JSON instead of plain text.",
         ["--file="] = "Source file path (paired with --line=) to anchor by location.",
-        ["--line="] = "1-based line number, paired with --file=.",
+        ["--line="] = "1-based line number, paired with --file=. Every emitted line number (edge source_line, declaration locations) is 1-based too, so a reported start_line feeds straight back into --line=.",
 
         // Read-command output controls (search, find-symbol, impact, context)
         ["--output="] = "Payload rendering: summary | json | jsonl (default: json). 'jsonl' emits a {\"type\":\"meta\"} envelope then one compact object per result; it is rejected for a whole capsule.",

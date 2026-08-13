@@ -21,6 +21,12 @@ internal static class GetSourceHandler
                 HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot.");
             }
 
+            // Raw source goes to stdout verbatim (no JSON envelope), so freshness
+            // travels on the channel that exists for it: the stderr line, plus the
+            // exit code when --require-fresh rejects the read. Resolve before any
+            // byte is written so --require-fresh exits 2 without emitting stale source.
+            HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+
             Console.Write(source);
             return null;
         });

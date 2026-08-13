@@ -24,7 +24,9 @@ internal static class NavigateHandler
             {
                 HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
             }
-            Console.WriteLine(JsonSerializer.Serialize(new { snapshot_id = snapshot, target }, HandlerBootstrap.IndentedJson));
+
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshot);
+            Console.WriteLine(JsonSerializer.Serialize(new { snapshot_id = snapshot, freshness = HandlerBootstrap.FreshnessJson(freshness), target }, HandlerBootstrap.IndentedJson));
             return null;
         });
     }

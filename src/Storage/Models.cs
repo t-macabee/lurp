@@ -59,8 +59,14 @@ namespace Lurp.Storage
         public string SnapshotId { get; init; } = string.Empty;
         public string ExtractorVersion { get; init; } = string.Empty;
         public string? SourceDocumentPath { get; init; }
+
+        /// <summary>0-based (Roslyn-native). Storage keeps the raw
+        /// <c>LinePosition.Line</c>; convert with <see cref="LineNumbers.ToOneBased(int?)"/>
+        /// before this value reaches a consumer. See LineNumbers.cs (audit T4).</summary>
         public int? SourceStartLine { get; init; }
         public int? SourceStartColumn { get; init; }
+
+        /// <summary>0-based (Roslyn-native) — see <see cref="SourceStartLine"/>.</summary>
         public int? SourceEndLine { get; init; }
         public int? SourceEndColumn { get; init; }
         public bool IsCrossGenerated { get; init; }
@@ -132,6 +138,7 @@ namespace Lurp.Storage
         public const string SymbolRemoved = "symbol_removed";
         public const string SymbolRenamed = "symbol_renamed";
         public const string SymbolMoved = "symbol_moved";
+        public const string SymbolRelocated = "symbol_relocated";
         public const string AccessibilityChanged = "accessibility_changed";
         public const string SignatureChanged = "signature_changed";
         public const string BaseTypeChanged = "base_type_changed";

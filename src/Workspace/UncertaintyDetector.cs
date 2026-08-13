@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using Lurp.Storage;
 
 namespace Lurp.Workspace
@@ -364,9 +365,10 @@ namespace Lurp.Workspace
                     var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
                     var testName = testInfo?.FullyQualifiedName ?? testId;
                     var projectPath = ResolveOwningProject(testId);
+                    var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
                     var command = projectPath == null
-                        ? $"dotnet test --filter \"FullyQualifiedName={testName}\""
-                        : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={testName}\"";
+                        ? $"dotnet test --filter \"FullyQualifiedName={normalizedTestName}\""
+                        : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={normalizedTestName}\"";
 
                     capsule.SuggestedVerification.Add(new VerificationSuggestion(
                         testId: testId,

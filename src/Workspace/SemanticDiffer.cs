@@ -156,6 +156,25 @@ namespace Lurp.Workspace
             changes.AddRange(sourceChanges);
             skippedComparisons += sourceSkipped;
 
+            var fromLocations = _declarationStore.GetDeclarationLocations(symbolId, fromSnapshotId);
+            var toLocations = _declarationStore.GetDeclarationLocations(symbolId, toSnapshotId);
+
+            if (fromLocations != null && toLocations != null)
+            {
+                var fromPaths = fromLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+                var toPaths = toLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+
+                if (!fromPaths.SetEquals(toPaths))
+                {
+                    var detail = new
+                    {
+                        before = fromPaths.OrderBy(p => p, StringComparer.Ordinal).ToList(),
+                        after = toPaths.OrderBy(p => p, StringComparer.Ordinal).ToList()
+                    };
+                    changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRelocated, symbolId, detail));
+                }
+            }
+
             return (changes, skippedComparisons);
         }
 
@@ -287,9 +306,12 @@ namespace Lurp.Workspace
             static object LocationPayload(EdgeRecord edge) => new
             {
                 document_path = edge.SourceDocumentPath,
-                start_line = edge.SourceStartLine,
+                // Edges persist Roslyn-native 0-based lines; convert at the emit
+                // boundary through the LineNumbers choke point so the detail a
+                // consumer reads is 1-based (matching --line=).
+                start_line = LineNumbers.ToOneBased(edge.SourceStartLine),
                 start_column = edge.SourceStartColumn,
-                end_line = edge.SourceEndLine,
+                end_line = LineNumbers.ToOneBased(edge.SourceEndLine),
                 end_column = edge.SourceEndColumn,
             };
         }

@@ -29,6 +29,8 @@ internal static class FindSymbolHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+
             var payload = new
             {
                 symbol_id = info.SymbolId.Value,
@@ -40,7 +42,8 @@ internal static class FindSymbolHandler
                 declaration_count = info.DeclarationCount,
                 is_partial = info.IsPartial,
                 snapshot_id = snapshotId,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = HandlerBootstrap.FreshnessJson(freshness),
+                locations = locations
             };
 
             switch (outputMode)
@@ -48,6 +51,8 @@ internal static class FindSymbolHandler
                 case OutputMode.Summary:
                     Console.WriteLine($"{payload.fully_qualified_name} ({payload.kind})");
                     Console.WriteLine($"  symbol_id: {payload.symbol_id}");
+                    if (locations.Count > 0)
+                        Console.WriteLine($"  location: {locations[0].DocumentPath}:{locations[0].StartLine}");
                     Console.WriteLine($"  declarations: {payload.declaration_count}  partial: {payload.is_partial}");
                     Console.WriteLine($"  snapshot: {snapshotId}  freshness: {freshness.State}");
                     break;

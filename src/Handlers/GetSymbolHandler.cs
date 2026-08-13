@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -21,7 +22,12 @@ internal static class GetSymbolHandler
         {
             var view = ResolveViewSelection(viewArg!, contextLinesArg);
             symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
-            WriteRequestedView(store, view, symbolArg!, snapshotId, viewArg!, includeGenerated);
+
+            // Resolved once for every view: the raw-source views carry freshness on
+            // stderr plus the exit code only, while the metadata view additionally
+            // embeds the block in its JSON payload.
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            WriteRequestedView(store, view, symbolArg!, snapshotId, viewArg!, includeGenerated, freshness);
             return null;
         });
     }
@@ -52,10 +58,10 @@ internal static class GetSymbolHandler
         }
     }
 
-    private static void WriteRequestedView(IDeclarationStore store, ViewSelection view, string symbolArg, string snapshotId, string viewArg, bool includeGenerated)
+    private static void WriteRequestedView(IDeclarationStore store, ViewSelection view, string symbolArg, string snapshotId, string viewArg, bool includeGenerated, FreshnessStamp freshness)
     {
         if (view.IsMetadataView)
-            WriteMetadataView(store, symbolArg, snapshotId);
+            WriteMetadataView(store, symbolArg, snapshotId, freshness);
         else if (view.IsContainingType)
             WriteContainingTypeView(store, symbolArg, snapshotId);
         else if (view.IsSurrounding)
@@ -64,13 +70,15 @@ internal static class GetSymbolHandler
             WriteSourceView(store, symbolArg, snapshotId, view.ViewKind, viewArg, includeGenerated);
     }
 
-    private static void WriteMetadataView(IDeclarationStore store, string symbolArg, string snapshotId)
+    private static void WriteMetadataView(IDeclarationStore store, string symbolArg, string snapshotId, FreshnessStamp freshness)
     {
         var info = store.GetSymbolInfo(symbolArg, snapshotId);
         if (info == null)
         {
             HandlerBootstrap.Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
         }
+
+        var locations = store.GetDeclarationLocations(symbolArg, snapshotId, includeGenerated: true);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -82,7 +90,9 @@ internal static class GetSymbolHandler
             metadata_json = info.MetadataJson,
             declaration_count = info.DeclarationCount,
             is_partial = info.IsPartial,
-            snapshot_id = snapshotId
+            snapshot_id = snapshotId,
+            freshness = HandlerBootstrap.FreshnessJson(freshness),
+            locations = locations
         }, HandlerBootstrap.IndentedJson);
 
         Console.WriteLine(json);

@@ -98,13 +98,16 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             if (span.Content == null || span.Start == null || span.End == null || span.LineStarts is not { Length: > 0 })
                 continue;
 
-            int startLine = FindLineIndex(span.LineStarts, span.Start.Value);
-            int endLine = FindLineIndex(span.LineStarts, span.End.Value - 1);
-            int expandedStartLine = Math.Max(0, startLine - contextLines);
-            int expandedEndLine = Math.Min(span.LineStarts.Length - 1, endLine + contextLines);
-            int byteStart = span.LineStarts[expandedStartLine];
-            int byteEnd = expandedEndLine + 1 < span.LineStarts.Length
-                ? span.LineStarts[expandedEndLine + 1]
+            // These are 0-based indexes into line_starts (never consumer-facing
+            // line numbers); names carry the Index suffix to keep the boundary
+            // with the 1-based DeclarationLocation values self-documenting.
+            int startLineIndex = FindLineIndex(span.LineStarts, span.Start.Value);
+            int endLineIndex = FindLineIndex(span.LineStarts, span.End.Value - 1);
+            int expandedStartLineIndex = Math.Max(0, startLineIndex - contextLines);
+            int expandedEndLineIndex = Math.Min(span.LineStarts.Length - 1, endLineIndex + contextLines);
+            int byteStart = span.LineStarts[expandedStartLineIndex];
+            int byteEnd = expandedEndLineIndex + 1 < span.LineStarts.Length
+                ? span.LineStarts[expandedEndLineIndex + 1]
                 : span.Content.Length;
             var source = SliceToString(span.Content, byteStart, byteEnd);
             if (source != null && !views.Contains(source, StringComparer.Ordinal))
@@ -144,14 +147,20 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             var content = (byte[])reader[4];
             if (lineStarts is not { Length: > 0 } || start < 0 || end < start || end > content.Length)
                 continue;
-            var startLine = FindLineIndex(lineStarts, start);
-            var endLine = FindLineIndex(lineStarts, end);
+            // FindLineIndex returns a 0-based index into line_starts; storage is
+            // Roslyn-native 0-based. The 0-to-1 conversion happens ONLY here via the
+            // LineNumbers choke point, so the DeclarationLocation a consumer reads
+            // is 1-based (matching --line=). The raw indexes still index line_starts.
+            var startLineIndex = FindLineIndex(lineStarts, start);
+            var endLineIndex = FindLineIndex(lineStarts, end);
+            var startLine = LineNumbers.ToOneBased(startLineIndex);
+            var endLine = LineNumbers.ToOneBased(endLineIndex);
             results.Add(new DeclarationLocation(
                 reader.GetString(0),
                 startLine,
-                Utf8Column(content, lineStarts[startLine], start),
+                Utf8Column(content, lineStarts[startLineIndex], start),
                 endLine,
-                Utf8Column(content, lineStarts[endLine], end),
+                Utf8Column(content, lineStarts[endLineIndex], end),
                 reader.GetInt32(5) == 1));
         }
         return results;

@@ -188,7 +188,9 @@ namespace Lurp.Storage
         [property: JsonPropertyName("full_start")] int FullStart,
         [property: JsonPropertyName("full_end")] int FullEnd,
         [property: JsonPropertyName("name_start")] int NameStart,
-        [property: JsonPropertyName("name_end")] int NameEnd);
+        [property: JsonPropertyName("name_end")] int NameEnd,
+        [property: JsonPropertyName("start_line")] int StartLine,
+        [property: JsonPropertyName("end_line")] int EndLine);
 
     public sealed record DeclarationLocation(
         [property: JsonPropertyName("document_path")] string DocumentPath,

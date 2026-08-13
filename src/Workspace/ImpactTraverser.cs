@@ -115,9 +115,12 @@ namespace Lurp.Workspace
 
                 var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,
                     sourceDocument: includeSource ? edge.SourceDocumentPath : null,
-                    sourceLine: includeSource ? edge.SourceStartLine : null,
+                    // Edges persist Roslyn-native 0-based lines; convert at the emit
+                    // boundary through the LineNumbers choke point so the hop a
+                    // consumer reads is 1-based (matching --line=).
+                    sourceLine: includeSource ? LineNumbers.ToOneBased(edge.SourceStartLine) : null,
                     sourceColumn: includeSource ? edge.SourceStartColumn : null,
-                    sourceEndLine: includeSource ? edge.SourceEndLine : null,
+                    sourceEndLine: includeSource ? LineNumbers.ToOneBased(edge.SourceEndLine) : null,
                     sourceEndColumn: includeSource ? edge.SourceEndColumn : null);
 
                 var newHops = new List<ImpactHop>(hopsSoFar) { newHop };

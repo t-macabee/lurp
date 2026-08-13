@@ -360,6 +360,7 @@ characterization tests in `tests/SemanticDifferTests.cs`:
 | S9 | `isRecord` written but never compared | Done: G1 emits `record_changed` |
 | S10 | `returnType`, `isAbstract`, `isVirtual`, `isOverride`, `isStatic`, `isAsync`, `arity`, `isExtensionMethod`, `typeKind` persisted but never compared | Done: G1 — modifiers are independently semantic (`metadata_changed` with field); `returnType`/callable arity covered by the canonical signature; type arity changes symbol identity |
 | S11 | `semantic_changes` not queried for invalidation explanation | Done: G2 attaches `semantic_causes` to impact paths |
+| S12 | `diff` reports nothing when a declaration moves to another file (FQN unchanged) | Done: `ComputeSymbolDiff` compares `GetDeclarationLocations` document sets and emits `symbol_relocated` (detail: `{before: [paths…], after: [paths…]}`). Tests in `SemanticDifferTests.cs`: `SymbolRelocated_WhenDeclarationMovesToNewFile`, `SymbolRelocated_NotEmitted_WhenSymbolAbsentFromOneSnapshot`, `SymbolRelocated_PartialType_GainingSecondFile`, `SymbolRelocated_NamespaceChange_NoFileChange`. |
 
 ### Phase 9 (polymorphism/dispatch): gaps found
 
@@ -1100,3 +1101,133 @@ by the `DIAdapter_AddHostedService_ProducesRuntimeUnknown` test.
 
 **No production code changes needed.** The adapters already behave correctly;
 the tests pin the existing behavior.
+
+## T1 — read-mode freshness signal on get-source / get-symbol / navigate (2026-08-13)
+
+**Was:** `src/README.md` claimed *"Every read response carries a `freshness`
+block"* while three Fast-travel modes (`get-source`, `get-symbol`, `navigate`)
+served indexed content with no staleness signal at all. A stale read was
+presented as current — audit §9's missing-invariant table names this first.
+
+**Fix.** The freshness machinery (`HandlerBootstrap.ResolveFreshness` +
+`EnforceRequireFresh` exit 2 + `PrintFreshnessLine` stderr, the same proven
+path `find-symbol` uses) is now wired into all three handlers. Raw source is
+written to stdout verbatim (consumers pipe it to files/compilers; wrapping it
+in JSON would break that contract), so the contract is two-tier and now
+documented as such in `src/README.md`:
+
+- every read mode emits a freshness **signal** (stderr line, `--quiet`-aware)
+  and honors `--require-fresh` (exit 2, before any stale byte is written);
+- JSON-envelope modes (`navigate`, `get-symbol --view=metadata`) additionally
+  embed the `freshness` **block** in the payload, like `find-symbol`;
+- raw-source modes (`get-source`, the five source views of `get-symbol`) are
+  stderr + exit code only.
+
+Registry: `get-source`, `get-symbol`, `navigate` now declare
+`--freshness=`, `--require-fresh`, `--quiet` in `Program.ModeRegistry`
+(help text renders from the registry — no hand-edited help).
+
+**Pinned by `tests/ReadModeFreshnessTests.cs`** (new): the durable registry
+invariant (every read mode in a declared set carries the freshness flags; the
+exempt set — `index`, `annotate`, `timings`, `diff`, `status`,
+`get-annotations` — is an explicit literal, so a new read mode added without
+freshness fails the build), plus per-mode behavioral tests: index a fixture,
+mutate a source file on disk without re-indexing, then assert stderr reports
+`state=stale`, `--require-fresh` exits 2 without emitting bytes, `--quiet`
+suppresses the line but still exits 2, and the served stdout is byte-identical
+to the pre-edit indexed content.
+
+## T4 — 1-based line-number convention on every emitted line (2026-08-13)
+
+**Was:** storage is Roslyn-native 0-based, but that convention leaked onto
+output. Edge lines were persisted from `LinePosition.Line` raw
+(`src/Shared/EdgeLocationResolver.cs`), so `impact`/`context`/`diff` payloads
+reported 0-based lines; declaration lines were derived at read time as a
+0-based index into `line_starts` (`src/Storage/DeclarationReadStore.cs`
+`FindLineIndex`). Input (`--line=`) was already 1-based
+(`src/Storage/DeclarationMaintenanceStore.cs` `line - 1`), so an agent reading
+an emitted edge location and passing it to `navigate --line=` landed one line
+early, silently. The audit confirmed the off-by-one empirically across 5 edges
+in one file (reported L18/26/34/45/53, actual 19/27/35/46/54).
+
+**Decision (approved): Option A — normalize at the emit boundary.** Storage
+keeps Roslyn-native 0-based lines; conversion to 1-based happens ONLY where a
+line reaches a consumer. Verified against source: edge line values do NOT feed
+the deterministic snapshot ID (`SnapshotIdentityInput.BuildPayload` hashes
+workspace/versions/TFMs/project graph/metadata references/compilation options/
+document hashes/skipped adapters only), so no migration, no extractor-version
+bump, no reindex, and existing `index.db` files stay valid. `--strategy=full`
+parity and snapshot identity are untouched.
+
+**Single choke point (the refinement that removes A's dual-convention risk):**
+all 0-to-1 conversions go through `LineNumbers.ToOneBased`
+(`src/Storage/LineNumbers.cs`, new — it lives in the Storage project so both the
+Storage assembly and Lurp consumers reach it; Lurp.Shared compiles into the Lurp
+project only and would be unreachable from Storage). The literal `+ 1` exists in exactly one
+place; any new emit site must route through it. Emit sites converted:
+
+- `DeclarationLocation` construction in
+  `DeclarationReadStore.GetDeclarationLocations` (`startLineIndex`/`endLineIndex`
+  renamed from the 0-based carriers; the values passed to the record are
+  `LineNumbers.ToOneBased(...)`).
+- Edge serialization in `ImpactTraverser` (`ImpactHop.source_line` /
+  `source_end_line`), which covers both the `impact` payload and `context`
+  capsule `incoming_paths`/`outgoing_paths`.
+- Edge serialization in `SemanticDiffer.LocationPayload`
+  (`edge_location_changed` detail `start_line`/`end_line`), which covers the
+  `diff` payload (live and persisted `semantic_changes` rows).
+
+**Deliberately NOT changed:** `NavigateToLocation`/`ResolveSymbolByLocation`
+`line - 1` — input was already 1-based. `GetSurroundingLines`' internal
+slicing indexes — they index `line_starts`, never reach a consumer.
+
+**Pinned by `tests/LineNumberBaseTests.cs`** (new), ground-truthed against a
+fixture whose physical line numbers are known exactly:
+- a `Calls` edge whose call site is on physical line 8 reports
+  `source_line == 8` on the impact hop, while storage
+  (`EdgeRecord.SourceStartLine`) still holds the 0-based 7;
+- a declaration on physical line 14 reports `start_line == 14` via
+  `GetDeclarationLocations`;
+- round-trip: the reported `start_line` fed verbatim to `navigate --line=`
+  resolves to the same `symbol_id` — the property that actually matters to an
+  agent and failed before this fix.
+
+## T3 — lightweight "where is X defined?" without a capsule (2026-08-13)
+
+**Was:** no cheap mode answered "where is X defined?". `find-symbol` returned
+eight metadata fields but no path and no line; `get-symbol --view=metadata`
+was JSON with no location; `navigate` carried only character offsets, no line
+field (audit correction C2). The workaround was FTS `search` (path, no line) or
+a ~15K-token context capsule — a capsule to learn a file and a line.
+
+**Depends on T4:** every line this emits is 1-based via `LineNumbers.ToOneBased`,
+so a reported line feeds `--line=` directly.
+
+**Fix.** The data already existed on `IDeclarationStore.GetDeclarationLocations`
+(path + 1-based lines + `is_generated`); T3 surfaces it on the three light modes:
+
+- `find-symbol` — payload gains a `locations` **array** (one entry per
+  declaration: `{ document_path, start_line, end_line, is_generated }`). An
+  array, not a scalar, because partial types legitimately have several and the
+  payload already reports `declaration_count`/`is_partial`; a scalar would
+  contradict them. The existing `--include-generated` flag is threaded through
+  (no second policy). `--output=summary` prints the first location as
+  `path:start_line`.
+- `get-symbol --view=metadata` — same `locations` array in its JSON envelope.
+  The five raw-source views are untouched (byte-exact source by contract).
+- `navigate` — `NavigationTarget` gains 1-based `start_line`/`end_line`
+  (`DeclarationMaintenanceStore.NavigateToLocation` reuses the `line_starts` it
+  already loads for the input conversion — no extra query). The character
+  offsets stay, since they are the exact-span contract other consumers depend
+  on. The 0-to-1 conversion routes through the shared `LineNumbers.ToOneBased`
+  (T4's single choke point) — no local `+ 1`.
+
+No new CLI mode, no change to FTS `search`, no migration, no schema change.
+
+**Pinned by `tests/SymbolLocationRetrievalTests.cs`** (new): `find-symbol` and
+`get-symbol --view=metadata` return `locations[0].document_path`/`start_line`
+matching ground truth in one call; a partial type returns
+`locations.Length == declaration_count` with `is_partial == true` (the case a
+scalar would have gotten wrong); `--include-generated` toggles whether generated
+declarations appear; `navigate` output carries a line that round-trips through
+`--line=` to the same `symbol_id` (shared property with T4).

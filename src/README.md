@@ -24,7 +24,7 @@ codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=s
 
 ## Read-command options
 
-Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=impact`, and `--mode=context`.
+Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=impact`, `--mode=context`, `--mode=get-source`, `--mode=get-symbol`, and `--mode=navigate`.
 
 | Argument | Required | Description |
 |---|---|---|
@@ -33,7 +33,13 @@ Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=i
 | `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
-Every read response carries a `freshness` block reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, so a stale read is never presented as a current one.
+Freshness is delivered in two tiers, because two payload shapes exist:
+
+- **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code — `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
+- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `find-symbol`, `impact`, `context`, `navigate`, and `get-symbol --view=metadata`.
+- **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
+
+**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` — for example to `navigate` — and resolves to the same symbol.
 
 ## Modes
 
@@ -73,6 +79,8 @@ Retrieve source text for a document.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 
+Also accepts the shared [read-command options](#read-command-options). The source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code — never as a JSON wrapper.
+
 ---
 
 ### `--mode=get-symbol`
@@ -91,6 +99,8 @@ Look up symbol metadata or source by view kind.
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
 | `--include-generated` | No | Include source-generated symbols. |
+
+Also accepts the shared [read-command options](#read-command-options). `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code.
 
 ---
 
@@ -137,6 +147,8 @@ Also accepts the shared [read-command options](#read-command-options).
 
 `declarationCount` is scoped to the requested snapshot, so a non-partial type reports `1` however many historical declarations retention still holds; a partial type reports its true multiplicity in that snapshot.
 
+The payload carries a `locations` array — one entry per declaration in the snapshot, each `{ document_path, start_line, end_line, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`.
+
 ---
 
 ### `--mode=navigate`
@@ -155,7 +167,9 @@ Resolve an indexed declaration by file and line.
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated declarations. |
 
-Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location.
+Also accepts the shared [read-command options](#read-command-options); the JSON payload embeds the `freshness` block.
+
+Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; the reported `start_line` round-trips — passing it back as `--line=` resolves to the same symbol.
 
 ---
 

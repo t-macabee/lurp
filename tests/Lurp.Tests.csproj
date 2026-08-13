@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Lurp.Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\src\Lurp.csproj" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 

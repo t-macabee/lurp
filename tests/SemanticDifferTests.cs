@@ -31,7 +31,7 @@ public sealed class SemanticDifferTests : IDisposable
 
     private static byte[] StringToBytes(string text) => System.Text.Encoding.UTF8.GetBytes(text);
 
-    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId, string? customSource = null)
+    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId, string? customSource = null, string filePath = "src/Foo.cs")
     {
         var sourceBytes = customSource != null
             ? StringToBytes(customSource)
@@ -56,7 +56,7 @@ public sealed class SemanticDifferTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new List<DocumentVersion>
             {
-                new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = "src/Foo.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+                new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
             }
         };
         store.SaveSnapshot(manifest);
@@ -507,55 +507,294 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Equal("Rename", renameDetail.RootElement.GetProperty("transition_kind").GetString());
     }
 
-    // ── DiffEdges payload classification ────────────────────────────────────
+        // ── DiffEdges payload classification ────────────────────────────────────
+
+        [Fact]
+        public void SemanticDiffer_EdgeAddedAndRemoved()
+        {
+            using var store = OpenStore();
+
+            const string fromSnapshotId = "snap-b3-009";
+            const string toSnapshotId = "snap-b3-010";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            var fromEdges = new List<EdgeRecord>
+            {
+                new()
+                {
+                    SourceSymbolId = "M:Ns.Foo|asm1",
+                    TargetSymbolId = "M:Ns.Bar|asm1",
+                    Kind = "Calls",
+                    Provenance = "compiler_proved",
+                },
+            };
+            var toEdges = new List<EdgeRecord>
+            {
+                new()
+                {
+                    SourceSymbolId = "M:Ns.Bar|asm1",
+                    TargetSymbolId = "M:Ns.Baz|asm1",
+                    Kind = "Calls",
+                    Provenance = "compiler_proved",
+                },
+            };
+
+            store.SaveEdges(fromSnapshotId, fromEdges);
+            store.SaveEdges(toSnapshotId, toEdges);
+
+            var differ = new SemanticDiffer(store, store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
+            Assert.NotNull(edgeAdded);
+            Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
+            Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
+
+            var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
+            Assert.NotNull(edgeRemoved);
+            Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
+            Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
+        }
+
+        // ── SymbolRelocated change type ───────────────────────────────────────────
 
     [Fact]
-    public void SemanticDiffer_EdgeAddedAndRemoved()
+    public void SymbolRelocated_WhenDeclarationMovesToNewFile()
     {
         using var store = OpenStore();
 
-        const string fromSnapshotId = "snap-b3-009";
-        const string toSnapshotId = "snap-b3-010";
-        CreateSnapshotWithDocument(store, fromSnapshotId);
-        CreateSnapshotWithDocument(store, toSnapshotId);
+        const string fromSnapshotId = "snap-relocate-from";
+        const string toSnapshotId = "snap-relocate-to";
+        CreateSnapshotWithDocument(store, fromSnapshotId, filePath: "src/Foo.cs");
+        CreateSnapshotWithDocument(store, toSnapshotId, filePath: "src/Foo2.cs");
 
-        var fromEdges = new List<EdgeRecord>
-        {
-            new()
-            {
-                SourceSymbolId = "M:Ns.Foo|asm1",
-                TargetSymbolId = "M:Ns.Bar|asm1",
-                Kind = "Calls",
-                Provenance = "compiler_proved",
-            },
-        };
-        var toEdges = new List<EdgeRecord>
-        {
-            new()
-            {
-                SourceSymbolId = "M:Ns.Bar|asm1",
-                TargetSymbolId = "M:Ns.Baz|asm1",
-                Kind = "Calls",
-                Provenance = "compiler_proved",
-            },
-        };
+        const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveEdges(fromSnapshotId, fromEdges);
-        store.SaveEdges(toSnapshotId, toEdges);
+        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+            symbolId: symbolId,
+            docCommentId: "T:Ns.Foo",
+            assembly: "asm1",
+            kind: IndexedSymbolKind.NamedType,
+            docVersionId: "doc-snap-relocate-from:hash1",
+            fullS: 0, fullE: 10,
+            sigS: 0, sigE: 5,
+            bodyS: 6, bodyE: 10,
+            nameS: 0, nameE: 5,
+            metadataJson: """{"isRecord": false}""")]);
+
+        store.SaveDeclarations(toSnapshotId, [MakeDecl(
+            symbolId: symbolId,
+            docCommentId: "T:Ns.Foo",
+            assembly: "asm1",
+            kind: IndexedSymbolKind.NamedType,
+            docVersionId: "doc-snap-relocate-to:hash1",
+            fullS: 0, fullE: 10,
+            sigS: 0, sigE: 5,
+            bodyS: 6, bodyE: 10,
+            nameS: 0, nameE: 5,
+            metadataJson: """{"isRecord": false}""")]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-        var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
-        Assert.NotNull(edgeAdded);
-        Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
-        Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
+        var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
+        Assert.NotNull(relocated);
+        Assert.Equal(symbolId, relocated.SymbolId);
 
-        var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
-        Assert.NotNull(edgeRemoved);
-        Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
-        Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
+        using var detail = JsonDocument.Parse(relocated.DetailJson!);
+        var before = detail.RootElement.GetProperty("before").EnumerateArray().Select(p => p.GetString()).ToList();
+        var after = detail.RootElement.GetProperty("after").EnumerateArray().Select(p => p.GetString()).ToList();
+
+        Assert.Single(before);
+        Assert.Single(after);
+        Assert.Equal("src/Foo.cs", before[0]);
+        Assert.Equal("src/Foo2.cs", after[0]);
+
+        Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolMoved);
+        Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRenamed);
+        Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolAdded);
+        Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRemoved);
     }
+
+        [Fact]
+        public void SymbolRelocated_NotEmitted_WhenSymbolAbsentFromOneSnapshot()
+        {
+            using var store = OpenStore();
+
+            const string fromSnapshotId = "snap-absent-from";
+            const string toSnapshotId = "snap-absent-to";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            const string symbolId = "T:Ns.Foo|asm1";
+
+            store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-absent-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""")]);
+
+            var differ = new SemanticDiffer(store, store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRelocated);
+            var removed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRemoved);
+            Assert.NotNull(removed);
+            Assert.Equal(symbolId, removed.SymbolId);
+        }
+
+    [Fact]
+    public void SymbolRelocated_PartialType_GainingSecondFile()
+    {
+        using var store = OpenStore();
+
+        const string fromSnapshotId = "snap-partial-from";
+        const string toSnapshotId = "snap-partial-to";
+        CreateSnapshotWithDocument(store, fromSnapshotId, filePath: "src/Partial.cs");
+
+        // The to snapshot needs BOTH files: src/Partial.cs (unchanged) and src/Partial2.cs (new).
+        // Build the to snapshot manually with two documents so GetDeclarationLocations sees both.
+        var partialSource = StringToBytes(
+            "using System;\n" +
+            "namespace TestNs {\n" +
+            "    public class Foo {\n" +
+            "        public void Bar() { Console.WriteLine(); }\n" +
+            "    }\n" +
+            "}\n");
+        var partialLineStarts = "[0,14,33,56,107,113]";
+        var toManifest = new SnapshotRow
+        {
+            SnapshotId = toSnapshotId,
+            WorkspaceId = "workspace:///root/proj",
+            GitRoot = "/root",
+            SolutionPath = "/root/proj",
+            SdkVersion = "10.0.301",
+            CompilerVersion = "4.12.0.0",
+            CreatedAtUtc = DateTime.UtcNow,
+            Documents = new List<DocumentVersion>
+            {
+                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = partialLineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
+                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = partialLineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
+            }
+        };
+        store.SaveSnapshot(toManifest);
+
+        const string symbolId = "T:Ns.Partial|asm1";
+
+        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+            symbolId: symbolId,
+            docCommentId: "T:Ns.Partial",
+            assembly: "asm1",
+            kind: IndexedSymbolKind.NamedType,
+            docVersionId: "doc-snap-partial-from:hash1",
+            fullS: 0, fullE: 10,
+            sigS: 0, sigE: 5,
+            bodyS: 6, bodyE: 10,
+            nameS: 0, nameE: 5,
+            metadataJson: """{"isPartial": true}""",
+            isPartial: true)]);
+
+        store.SaveDeclarations(toSnapshotId, new[]
+        {
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Partial",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-to-partial:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isPartial": true}""",
+                isPartial: true),
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Partial",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-to-partial2:hash1",
+                fullS: 20, fullE: 30,
+                sigS: 20, sigE: 25,
+                bodyS: 26, bodyE: 30,
+                nameS: 20, nameE: 25,
+                metadataJson: """{"isPartial": true}""",
+                isPartial: true)
+        });
+
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+        var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
+        Assert.NotNull(relocated);
+        Assert.Equal(symbolId, relocated.SymbolId);
+
+        using var detail = JsonDocument.Parse(relocated.DetailJson!);
+        var before = detail.RootElement.GetProperty("before").EnumerateArray().Select(p => p.GetString()).ToList();
+        var after = detail.RootElement.GetProperty("after").EnumerateArray().Select(p => p.GetString()).ToList();
+
+        Assert.Single(before);
+        Assert.Equal(2, after.Count);
+        Assert.Equal("src/Partial.cs", before[0]);
+        Assert.Contains("src/Partial.cs", after);
+        Assert.Contains("src/Partial2.cs", after);
+    }
+
+        [Fact]
+        public void SymbolRelocated_NamespaceChange_NoFileChange()
+        {
+            using var store = OpenStore();
+
+            const string fromSnapshotId = "snap-ns-from";
+            const string toSnapshotId = "snap-ns-to";
+            CreateSnapshotWithDocument(store, fromSnapshotId);
+            CreateSnapshotWithDocument(store, toSnapshotId);
+
+            const string symbolId = "T:Ns.Foo|asm1";
+
+            store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-ns-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""",
+                fqn: "Ns.Foo")]);
+
+            store.SaveDeclarations(toSnapshotId, [MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-ns-to:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""",
+                fqn: "NewNs.Foo")]);
+
+            var differ = new SemanticDiffer(store, store, store, store);
+            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+
+            var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
+            Assert.Null(relocated);
+
+            var moved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolMoved);
+            Assert.NotNull(moved);
+            Assert.Equal(symbolId, moved.SymbolId);
+        }
 
     [Theory]
     [InlineData("possible", null, false, null, ChangeType.EdgeEvidenceChanged)]
