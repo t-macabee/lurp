@@ -48,7 +48,7 @@ Index a solution and store facts in the database.
 | Argument | Required | Description |
 |---|---|---|
 | `--solution=<path>` | Yes | Path to the `.sln` or `.slnx` file. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | No | Directory where `index.db` is stored. Defaults to the solution's directory. Also accepted via `LURP_OUTPUT_DIR`. |
 | `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON. |
 | `--skip-adapter=<name>` | No | Skip a named framework adapter. Valid: `ASP.NET Core`, `Dependency Injection`, `MediatR`, `EF Core`, `Serialization`, `Test`. |

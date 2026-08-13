@@ -175,7 +175,7 @@ ordinary typed facts into the shared model:
 |---|---|
 | ASP.NET Core | `RoutesTo` (route → controller action) |
 | Dependency Injection | `Registers` (service → implementation), `RuntimeUnknown` for non-conventional forms |
-| MediatR | `Handles` / `Registers` (request/notification → handler) |
+| MediatR | `Handles` (request/notification → handler) |
 | EF Core | `MapsTo` (entity, `DbSet`, configuration) |
 | Serialization | DTO/property contract participation |
 | Test | `TestedBy` (production symbol → covering test) |

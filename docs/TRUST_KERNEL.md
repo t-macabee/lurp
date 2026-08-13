@@ -110,7 +110,12 @@ proved-absence empty tiers (`Capsule_EmptyTier_*`), unresolved tiers under lost 
 (`Capsule_UnresolvedTier_*`), gap anchors (`Capsule_GapAnchor_MarksEveryTierUnresolved`),
 and the budget-exhausted omitted-tier fetch path (`Capsule_OmittedTier_FetchCommandReturnsTheOmittedContent`).
 The self-host `Lurp.slnx` contract proof (`ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`)
-was deleted with the suite (`f1254fc`).
+was restored after the suite deletion (`f1254fc`); it indexes `Lurp.slnx` through a minimal
+`IntegrationHarness`, resolves `Lurp.Shared.EdgeLocationResolver`, and asserts the structural contract
+against the live capsule. For this anchor the `contracts`, `registered_implementations`, and
+`relevant_tests` tiers are empty and reason-coded `unresolved` (the anchor's document carries an
+`unsupported_syntax` binding gap), so the test asserts them through the reason-coded `OmittedTiers`
+channel rather than as non-empty collections.
 
 Closed capsule decisions:
 
@@ -349,15 +354,15 @@ dedicated GC tests were deleted with the suite (`f1254fc`).
 
 **Already covered by `SignatureFormat` string comparison** (with
 `IncludeNullableReferenceTypeModifier`, `IncludeParamsRefOut`,
-`IncludeExplicitInterface`, `IncludeTypeConstraints`) — previously untested,
-locked by characterization tests that were deleted with the suite (`f1254fc`):
+`IncludeExplicitInterface`, `IncludeTypeConstraints`) — locked by
+characterization tests in `tests/SemanticDifferTests.cs`:
 
-| ID | Case | Test (deleted, `f1254fc`) |
+| ID | Case | Test |
 |---|---|---|
-| S1 | Nullable annotation change (`string` → `string?`) | `SemanticDiffer_NullableAnnotationChanged` |
-| S2 | ref/out/in modifier change | `SemanticDiffer_RefParameterModifierChanged` |
-| S5 | Operator overload return type change | `SemanticDiffer_OperatorOverloadSignatureChanged` |
-| S6 | implicit↔explicit conversion operator change | `SemanticDiffer_ConversionOperatorSignatureChanged` |
+| S1 | Nullable annotation change (`string` → `string?`) | `S1_NullableAnnotationChanged` (`SemanticDifferTests.cs:234`) |
+| S2 | ref/out/in modifier change | `S2_RefParameterModifierChanged` (`SemanticDifferTests.cs:286`) |
+| S5 | Operator overload return type change | `S5_OperatorOverloadSignatureChanged` (`SemanticDifferTests.cs:338`) |
+| S6 | implicit↔explicit conversion operator change | `S6_ConversionOperatorSignatureChanged` (`SemanticDifferTests.cs:390`) |
 
 **Remaining gaps, all since closed:**
 

@@ -23,7 +23,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         return edges;
     }
 
-    private static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
+    internal static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
     {
         return invocation.Expression is IdentifierNameSyntax identifier
             && identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal)

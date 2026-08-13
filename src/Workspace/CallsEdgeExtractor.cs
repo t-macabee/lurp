@@ -98,6 +98,14 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         var symbolInfo = semanticModel.GetSymbolInfo(syntax);
         if (symbolInfo.Symbol is not IMethodSymbol callee)
         {
+            // nameof(...) is an InvocationExpressionSyntax with no method symbol, but it
+            // is not an unresolved call: NameOfReflectionExtractor emits a
+            // ReflectionMemberRef edge for it. Recording it as unsupported_syntax would
+            // falsely mark the document's binding region incomplete.
+            if (syntax is InvocationExpressionSyntax nameOfInvocation &&
+                NameOfReflectionExtractor.IsNameOfInvocation(nameOfInvocation))
+                return;
+
             if (syntax is InvocationExpressionSyntax || symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0)
                 context.RecordUnresolvedBinding(symbolInfo, syntax, semanticModel);
             return;

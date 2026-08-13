@@ -34,14 +34,24 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release
 
-  # Long-running real-solution parity gate, run only on main pushes against a
-  # self-hosted runner that has FIT-RS2-2026 and eNoteV2 checked out at fixed
-  # paths. PRs run only the synthetic `build` job above.
+  # Long-running real-solution parity gate, run against a self-hosted runner
+  # that has FIT-RS2-2026 and eNoteV2 checked out at fixed paths.
+  #
+  # Fires on:
+  #   - every push to main (the post-merge regression backstop), and
+  #   - pull requests carrying the `real-parity` label (opt-in pre-merge gate
+  #     for changes touching incremental indexing, storage, or extractors).
+  #
+  # The label gate preserves the self-hosted runner as a scarce resource: a
+  # maintainer adds `real-parity` only when the change class warrants it.
+  # PRs without the label run only the synthetic `build` job above.
   real-parity:
     needs: build
     runs-on: [self-hosted, real-parity]
     timeout-minutes: 30
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'real-parity'))
 
     steps:
       - uses: actions/checkout@v4
