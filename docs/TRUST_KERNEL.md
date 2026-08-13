@@ -586,7 +586,7 @@ explicit scope decision recorded in TRUST_KERNEL.md §Declared boundaries regist
 ## Reclassified as done (2026-08-06)
 
 - **Incremental re-extraction is document-scoped.** `IncrementalIndexer` no longer re-extracts every document of every affected project. `ExtractReplacementFacts` receives the extraction scope (changed documents ∪ reverse-edge closure ∪ every document declaring a part of a touched type), converted to the absolute forward-slash form the extraction guards compare against, and `PrepareSnapshotData` deletes over exactly the same set — extraction and deletion narrow in lockstep, so no fact is deleted for a document that is not re-extracted. All six adapters honor `AdapterExtractionContext.ScopeDocuments`; their re-emitted edges are merged by `SaveEdges`' `ON CONFLICT DO UPDATE` + `EdgeMerge.MergeTypeArguments`, and re-emitted annotations are deduplicated by retiring the copied-forward rows first (`DeleteAnnotationsByDocumentPaths`).
-- **The cross-document refresh (step 7) is load-bearing again.** It is seeded from the genuinely-changed documents rather than from the invalidation set that had already absorbed the closure — the seeding bug that made `FindAffectedDocPaths` return ∅ while still charging for the walk. `RefreshAsync` subtracts the documents step 6 already re-extracted, so the two phases never re-extract the same document twice in one snapshot.
+- **The cross-document refresh (step 7) is load-bearing again.** It is seeded from the genuinely-changed documents rather than from the invalidation set that had already absorbed the closure — the seeding bug that made `FindAffectedDocPaths` return ∅ while still charging for the walk. (Superseded 2026-08-13, R7: step 7's refresh scope now *unions* the documents step 6 re-extracted rather than subtracting them, so a changed implementor's type-argument variant is present when a closure-reached aggregated dispatch edge is rebuilt; the changed documents' own facts are deleted-then-resaved idempotently, keeping extraction and deletion in lockstep. See the R7 section.)
 - **The closure sees absences, not just edges.** `FindAffectedDocPaths` seeds its frontier from the previous snapshot's `binding_incompleteness` rows whose reason is in `UnobservableReasons`. A document whose reference did not bind produced no edge, so a pure edge BFS had no arc to follow when an edit made it bind.
 - **Adapters honor the extraction scope.** All six now skip out-of-scope work: `DependencyInjectionAdapter` and `SerializationAdapter` guard their `compilation.SyntaxTrees` loop with `IsInScope`, `TestAdapter` guards each declaring syntax reference, and `AspNetCoreAdapter`, `MediatRAdapter`, and `EfCoreAdapter` guard by declaring type via `AdapterExtractionContext.IsSymbolInScope`. In every case the guarded unit is the one the emitted edge (or annotation) is anchored to, so extraction and deletion stay on the same set. `EfCoreAdapter` annotations carry the evidence document of the walk that produced them (migration 26, `annotations.document_path`), and `IIndexStore.DeleteAnnotationsByDocumentPaths` retires copied-forward rows over exactly the extraction scope in `IncrementalIndexer.PrepareSnapshotData` and in the cross-document refresh — the lockstep invariant holds for annotations too.
 - **Binding incompleteness is attributable to a document.** Implicitly-declared symbols (default constructor, record synthesized member, auto-property accessor) have no syntax of their own, and previously landed in a document-less bucket that was a whole-compilation aggregate: no document-scoped delete could retire it and no document-scoped re-extraction could reproduce it. `BindingIncompletenessCollector.DeclaringSyntaxOrContainingType` falls back to the containing type's declaring syntax, the same resolution used for null-path edges in `CrossDocumentEdgeRefresher`.
@@ -864,6 +864,85 @@ first offending rows on each side (project|document|reason|count), mirroring the
 edge/symbol mismatch output, so a future R6-class regression on a real run is
 directly localizable (e.g. an undercounted `…|filtered_external|73` would print
 against the full-rebuild `…|filtered_external|130`).
+
+
+
+## R7 — Cross-document dispatch type-argument aggregation lockstep fix (2026-08-13)
+
+**Origin:** R1 eNoteV2 run with the broadened scenarios (commit `54f9c55`
+added an add-file edit and an implementor edit beyond the original 5). Seven
+`MayDispatchTo` edges from `IReferenceCrudService<>` interface methods to the
+`ReferenceCrudService<>` base methods
+(`eNote.Application/Features/Rentals/ReferenceData/ReferenceCrudService.cs`)
+diverged on `TypeArgumentsJson`: the incremental snapshot dropped the
+`InstrumentTypeDto/InstrumentTypeRequest/InstrumentTypeSearchObject` variant that
+the full rebuild carried, while the `Address*` and `MusicStore*` sibling variants
+survived.
+
+**Root cause:** an aggregated `MayDispatchTo` edge is anchored on the dispatch
+TARGET document (the base/interface method's file, via
+`PolymorphismExtractionContext.MakeMayDispatchEdge` →
+`GetDocumentPath(targetSymbol)`) yet draws one type-argument variant from EACH
+implementing type. The cross-document refresh (step 7,
+`RefreshCrossDocumentEdgesAsync`) subtracted the documents step 6 already
+re-extracted from its scope (`residuePaths.ExceptWith(ExtractedPaths)`). When an
+implementor's OWN document is the change, the target document enters the
+reverse-edge closure (reached backward from the changed implementor's symbols),
+so step 7 deletes-and-rebuilds the aggregated edge — but with the changed
+implementor excluded from the extraction scope, `InterfaceDispatchExtractor` never
+processes it (`PolymorphismExtractor.ExtractAll` filters types by
+`IsTypeInScope`), so its variant cannot be rebuilt. Unchanged sibling implementors
+stay in the closure and survive; only the changed contributor's variant is lost.
+Changing the BASE never failed: the base-anchored edge stays out of its own
+closure, so step 7 does not delete it and step 6's merge-on-save
+(`WriteSplitEdges` → `EdgeMerge.MergeTypeArguments`) keeps the copied-forward
+variants whole.
+
+**Reproduction (empirical, snapshot trace):** across the accumulated incremental
+snapshots the aggregated `GetPagedAsync` dispatch edge carried all three
+implementor variants through the add-file cycle (`111`) and dropped the
+InstrumentType variant only on the implementor-edit cycle (`101`), isolating the
+defect to the implementor-change path.
+
+**Fix** (`src/Workspace/IncrementalIndexer.cs` `RefreshCrossDocumentEdgesAsync`):
+union the already-extracted (changed) documents INTO the step-7 refresh scope
+instead of subtracting them (`UnionWith` replacing `ExceptWith`). Every
+contributor's type is then in scope when the aggregated edge is rebuilt; the
+changed documents' own facts were written in step 6 and are deleted-then-resaved
+idempotently here, so extraction and deletion stay in lockstep (the same
+invariant R6 restored for binding incompleteness).
+
+**Test-harness correction:** `scripts/r1-verify-enote.sh` EDIT 7 previously added
+an unused `using System.ComponentModel;`. Roslyn elides an unused using, so the
+compilation checksum was unchanged and `SnapshotIdentity.Create` reused the prior
+snapshot — the edit exercised nothing. EDIT 7 now applies a real
+`[System.ComponentModel.Description(...)]` attribute to `InstrumentTypeService`
+(assembly metadata changes, interface-implementation structure does not), so the
+procedure genuinely exercises implementor re-extraction — the path this fix
+corrects.
+
+**Regression:** all 17 `IncrementalParityTests` pass (including
+`Parity_GenericBaseWithMultipleConcreteImplementations_MergesDispatchTypeArguments`
+and `ScenarioG_ChangeImplementedInterface_SwapsImplementsAndDispatchEdges`). Both
+R1 procedures converge with zero diffs (see the post-fix table below).
+
+**Scope of impact:** incremental-only. Full-run behavior is unchanged (all types
+are already in scope on a full extraction). Affects any incremental index where an
+edited document contributes a type-argument variant to an aggregated dispatch edge
+anchored on a different (closure-reached) document.
+
+**Post-fix R1 re-run verification (2026-08-13):** both procedures re-run at HEAD
+with the broadened scenarios and the fix in place:
+
+| Solution | Snapshot B5 ≡ C | Edges | Symbols | Diff |
+|---|---|---|---|---|
+| FIT-RS2-2026 (`eCommerce.sln`, 4 proj) | `ca7781e4…` | 3,862 | 1,646 | 0 across symbols, edges, declarations, diagnostics, annotations, FTS, binding incompleteness |
+| eNoteV2 (`eNote.sln`, 7 proj) | `e167df31…` | 10,787 | 3,670 | 0 across symbols, edges, declarations, diagnostics, annotations, FTS, binding incompleteness |
+
+The eNoteV2 edge/symbol counts differ from the R1 §Post-fix table above
+(10,771/3,662) because the broadened script adds `VirtualInstrumentTypeService.cs`
+and the `[Description]` attribute to the final state, changing the deterministic
+snapshot the two sides converge on.
 
 
 

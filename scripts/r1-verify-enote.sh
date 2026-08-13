@@ -386,10 +386,54 @@ public sealed class VirtualInstrumentTypeService
 CSHARP
 run_incr
 
-# ==================== EDIT 7: using directive change in InstrumentTypeService ====================
+# ==================== EDIT 7: attribute change in InstrumentTypeService ====================
+# Must alter compiled output so SnapshotIdentity.Create produces a NEW snapshot id
+# (an unused using is elided by Roslyn and leaves the compilation checksum unchanged,
+# causing the incremental indexer to reuse the prior snapshot without re-extraction).
+# A fully-qualified [Description] attribute lands in assembly metadata, forcing a
+# distinct hash, without touching the interface-implementation edge structure.
 echo ""
-echo "=== EDIT 7: Add explicit using directive to InstrumentTypeService.cs ==="
-sed -i '1s/^/using System.ComponentModel;\n/' "$SCRATCH/$SVC"
+echo "=== EDIT 7: Add [Description] attribute to InstrumentTypeService.cs ==="
+edit_file "$SVC" <<'CSHARP'
+namespace eNote.Application.Features.Rentals.ReferenceData.InstrumentTypes;
+
+[System.ComponentModel.Description("R1 convergence probe")]
+public sealed class InstrumentTypeService(IAppDbContext context)
+    : ReferenceCrudService<InstrumentType, InstrumentTypeDto, InstrumentTypeRequest, InstrumentTypeSearchObject>(context), IInstrumentTypeService
+{
+    protected override string NotFoundMessage => Messages.InstrumentTypeNotFound;
+
+    protected override InstrumentTypeDto Map(InstrumentType entity) => new()
+    {
+        Id = entity.Id,
+        Type = entity.Type,
+        MonthlyFee = entity.MonthlyFee
+    };
+
+    protected override InstrumentType CreateEntity(InstrumentTypeRequest request) => new()
+    {
+        Type = request.Type.Trim(),
+        MonthlyFee = request.MonthlyFee
+    };
+
+    protected override void ApplyUpdate(InstrumentType entity, InstrumentTypeRequest request)
+    {
+        entity.Type = request.Type.Trim();
+        entity.MonthlyFee = request.MonthlyFee;
+    }
+
+    protected override IQueryable<InstrumentType> ApplySearch(IQueryable<InstrumentType> query, InstrumentTypeSearchObject search) => query.ApplySearch(search);
+    protected override IOrderedQueryable<InstrumentType> Order(IQueryable<InstrumentType> query) => query.OrderBy(x => x.Type);
+
+    protected override async Task EnsureDeletableAsync(InstrumentType entity, CancellationToken ct = default)
+    {
+        if (await Db.Set<Instrument>().AnyAsync(x => x.InstrumentTypeId == entity.Id, ct))
+        {
+            throw new BusinessException(Messages.InstrumentTypeDeleteBlocked);
+        }
+    }
+}
+CSHARP
 run_incr
 
 # ==================== STEP 6: fresh full rebuild ====================

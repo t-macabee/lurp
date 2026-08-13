@@ -554,18 +554,28 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         // The reverse-edge closure was already computed in step 2 via
         // FindAffectedDocPaths on the genuinely-changed documents plus
-        // binding-incompleteness seeding.  Subtract the documents step 6
-        // already re-extracted (changed documents + type-part expansion) so
-        // step 7 handles exactly the residue — documents that reference
-        // changed symbols but whose own declarations did not change.
-        var residuePaths = new HashSet<string>(
+        // binding-incompleteness seeding. Union in the documents step 6 already
+        // re-extracted (changed documents + type-part expansion): an aggregated
+        // cross-document edge — a MayDispatchTo edge whose TypeArgumentsJson holds
+        // one type-argument variant per implementing type — is anchored on the
+        // dispatch TARGET (the base/interface method's document) yet draws a
+        // variant from EACH implementor. When an implementor's own document is the
+        // change, the target document enters the closure through the reverse edge
+        // and step 7 deletes-and-rebuilds the aggregated edge; if the changed
+        // implementor were excluded from the extraction scope its variant would be
+        // dropped, diverging from a full rebuild (only the changed implementor's
+        // tuple, never its unchanged siblings, since those stay in the closure).
+        // Keeping the changed documents in scope makes every contributor's type
+        // visible; their own facts were written in step 6 and are deleted then
+        // re-saved idempotently here, so extraction and deletion stay in lockstep.
+        var refreshPaths = new HashSet<string>(
             (HashSet<string>)context.Changes.CrossDocumentClosurePaths,
             StringComparer.OrdinalIgnoreCase);
-        residuePaths.ExceptWith(context.Changes.ExtractedPaths);
+        refreshPaths.UnionWith(context.Changes.ExtractedPaths);
         var crossDocEdgesProcessed = await refresher.RefreshWithAffectedPathsAsync(
             context.Solution, context.Workspace,
             context.Snapshots.ToSnapshotId,
-            residuePaths,
+            refreshPaths,
             cancellationToken);
         _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();

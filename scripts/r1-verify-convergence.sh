@@ -826,63 +826,90 @@ run_incr
 
 # ==================== EDIT 6: attribute change on existing controller ====================
 echo ""
-echo "=== EDIT 6: Change [HttpGet] → [HttpPost] on one action in ProductsController.cs ==="
-CTRL="eCommerce.API/Controllers/ProductsController.cs"
+echo "=== EDIT 6: Change [HttpGet(\"MaxName\")] → [HttpPost(\"MaxName\")] in ProductsController.cs ==="
+CTRL="eCommerce.WebAPI/Controllers/ProductsController.cs"
 edit_file "$CTRL" <<'CSHARP'
-using eCommerce.API.Controllers;
-using eCommerce.API.DTOs;
-using eCommerce.API.Services;
+using eCommerce.Services;
+using eCommerce.Model.Responses;
+using eCommerce.Model.SearchObjects;
 using Microsoft.AspNetCore.Mvc;
-using System.Threading.Tasks;
+using eCommerce.Model.Requests;
 
-namespace eCommerce.API.Controllers
+namespace eCommerce.WebAPI.Controllers;
+
+public class ProductsController : BaseCRUDController<ProductResponse, ProductSearchObject, ProductInsertRequest, ProductUpdateRequest, IProductService>
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class ProductsController : ControllerBase
+    public ProductsController(IProductService productService) : base(productService)
     {
-        private readonly IProductService _productService;
-
-        public ProductsController(IProductService productService)
-        {
-            _productService = productService;
-        }
-
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts()
-        {
-            var products = await _productService.GetAllProductsAsync();
-            return Ok(products);
-        }
-
-        [HttpGet("{id}")]
-        public async Task<ActionResult<ProductDto>> GetProductById(int id)
-        {
-            var product = await _productService.GetProductByIdAsync(id);
-            return product == null ? NotFound() : Ok(product);
-        }
-
-        [HttpPost]
-        public async Task<ActionResult<ProductDto>> CreateProduct(CreateProductDto createProductDto)
-        {
-            var product = await _productService.CreateProductAsync(createProductDto);
-            return CreatedAtAction(nameof(GetProductById), new { id = product.Id }, product);
-        }
-
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateProduct(int id, UpdateProductDto updateProductDto)
-        {
-            var result = await _productService.UpdateProductAsync(id, updateProductDto);
-            return result ? NoContent() : NotFound();
-        }
-
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteProduct(int id)
-        {
-            var result = await _productService.DeleteProductAsync(id);
-            return result ? NoContent() : NotFound();
-        }
     }
+
+    /// <summary>
+    /// Retrieves the product that has the longest name matching the given search criteria.
+    /// </summary>
+    /// <param name="search">Optional search criteria to filter products.</param>
+    /// <returns>The longest description product</returns>
+    /// <remarks>
+    /// Sample response:
+    ///
+    ///     POST /Todo
+    ///     {
+    ///         "id": 2,
+    ///         "name": "Mechanical Keyboard",
+    ///         "description": "RGB backlit mechanical keyboard with blue switches.",
+    ///         "price": 79.99,
+    ///         "stockQuantity": 75,
+    ///         "isActive": true,
+    ///         "createdAt": "2026-02-27T12:15:43.4170502Z",
+    ///         "updatedAt": null,
+    ///         "sku": "MK-2002",
+    ///         "weight": 1200,
+    ///         "productTypeId": 2,
+    ///         "unitOfMeasureId": 1
+    ///     }
+    ///
+    /// </remarks>
+    /// <response code="200">Product found - returns the product with the longest name.</response>
+    /// <response code="404">No product matches the provided search criteria.</response>
+
+    [HttpPost("MaxName")]
+    [Produces("application/json")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProductResponse>> GetWithMaxName([FromQuery] ProductSearchObject? search)
+    {
+        var result = await _service.GetWithMaxNameAsync(search);
+        return Ok(result);
+
+    }
+
+
+    [HttpPost("{id}/Activate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProductResponse>> Activate(int id)
+    {
+        var result = await _service.ActivateAsync(id);
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/Deactivate")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProductResponse>> Deactivate(int id)
+    {
+        var result = await _service.DeactivateAsync(id);
+        return Ok(result);
+    }
+
+    [HttpGet("{id}/AllowedActions")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<string>>> GetAllowedActions(int id)
+    {
+        var result = await _service.GetAllowedActionsAsync(id);
+        return Ok(result);
+    }
+
 }
 CSHARP
 run_incr
