@@ -59,6 +59,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 if (ifaceName is null || !unmodeledIfaceNames.Contains(ifaceName))
                     continue;
                 var typeSymbolId = SymbolIdFactory.Make(type, assemblyIdentity);
+                if (typeSymbolId is null) continue;
                 var (path, _, _, _, _) = locationResolver.Resolve(type);
                 unmodeledAnnotations.Add(new AnnotationRecord(
                     typeSymbolId, "unmodeled_mediatr_pattern", ifaceName, path));
