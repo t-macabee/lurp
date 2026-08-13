@@ -108,16 +108,18 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
     // A section that is genuinely empty for this anchor must prove it through
     // the reason-coded OmittedTiers channel instead of a vacuous Assert.NotNull
     // on a collection that is non-null by construction. The reason is "empty"
-    // when the region's bindings were observable, "unresolved" when the anchor
-    // sits in a region where bindings were lost : both are honest reason-coded
-    // omissions, and which one applies depends on the persisted completeness.
+    // when the region's bindings were observable. "unresolved" would only apply
+    // if the anchor sat in an unobservable binding region — but the sole
+    // unobservable record for EdgeLocationResolver (nameof(gitRoot) recorded as
+    // unsupported_syntax) is now skipped by CallsEdgeExtractor, so these tiers
+    // must prove their emptiness as "empty", not "unresolved".
     private static void AssertSectionPresentOrOmitted(
         ContextCapsule capsule, string category, List<CapsuleItem> items)
     {
         if (items.Count > 0)
             return;
         Assert.Contains(capsule.OmittedTiers,
-            entry => entry.Category == category && entry.Reason is "empty" or "unresolved");
+            entry => entry.Category == category && entry.Reason == "empty");
     }
 
     private static IEnumerable<CapsuleItem> AllItems(ContextCapsule capsule)

@@ -60,6 +60,52 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task NameOfExpression_DoesNotRecordUnsupportedSyntax()
+    {
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class Target
+            {
+                public string Name { get; set; }
+            }
+            public class User
+            {
+                public void Use() { var n = nameof(Target.Name); }
+            }
+            """));
+
+        // nameof(...) is fully handled by NameOfReflectionExtractor, so
+        // CallsEdgeExtractor must not record it as an unsupported_syntax
+        // binding-incompleteness region (which would falsely mark the document's
+        // binding region unobservable and flip its empty tiers to "unresolved").
+        Assert.DoesNotContain(extraction.Result.BindingIncompleteness,
+            r => r.Reason == "unsupported_syntax" && r.DocumentPath?.EndsWith(Doc) == true);
+
+        // The reflection member-reference edge is still emitted for the nameof.
+        var edge = extraction.SingleEdge("ReflectionMemberRef", "global::N.User.Use", "global::N.Target.Name");
+        AssertReflectionContract(edge, "ReflectionMemberRef", Provenance.CompilerProved, extraction.ResolveId("global::N.User.Use"));
+    }
+
+    [Fact]
+    public async Task UnresolvableInvocation_StillRecordsCompilerError()
+    {
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class User
+            {
+                public void Use() { MissingMethod(); }
+            }
+            """));
+
+        // A genuinely unresolvable invocation must still record a binding
+        // incompleteness for the document — compiler_error (CS0103), not
+        // unsupported_syntax — proving the nameof skip does not over-broaden
+        // to every invocation without a method symbol.
+        Assert.Contains(extraction.Result.BindingIncompleteness,
+            r => r.DocumentPath?.EndsWith(Doc) == true && r.Reason == "compiler_error");
+    }
+
+    [Fact]
     public async Task ReflectionNameCandidate_StringLiteralMatchingSymbolName()
     {
         var extraction = await ExtractAsync(One("""

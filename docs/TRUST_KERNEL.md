@@ -113,9 +113,10 @@ The self-host `Lurp.slnx` contract proof (`ContextCapsuleAcceptanceTests.SelfHos
 was restored after the suite deletion (`f1254fc`); it indexes `Lurp.slnx` through a minimal
 `IntegrationHarness`, resolves `Lurp.Shared.EdgeLocationResolver`, and asserts the structural contract
 against the live capsule. For this anchor the `contracts`, `registered_implementations`, and
-`relevant_tests` tiers are empty and reason-coded `unresolved` (the anchor's document carries an
-`unsupported_syntax` binding gap), so the test asserts them through the reason-coded `OmittedTiers`
-channel rather than as non-empty collections.
+`relevant_tests` tiers are empty and reason-coded `empty` (the anchor's bindings are fully
+observable — the only unbound record, `nameof(gitRoot)` formerly mis-recorded as
+`unsupported_syntax`, is now correctly skipped by `CallsEdgeExtractor`), so the test asserts them
+through the reason-coded `OmittedTiers` channel rather than as non-empty collections.
 
 Closed capsule decisions:
 
