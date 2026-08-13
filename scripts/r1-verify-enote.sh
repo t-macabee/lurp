@@ -355,6 +355,43 @@ public sealed class InstrumentTypeRequest
 CSHARP
 run_incr
 
+# ==================== EDIT 6: add new file implementing existing interface ====================
+echo ""
+echo "=== EDIT 6: Add VirtualInstrumentTypeService.cs (new file implementing IReferenceCrudService) ==="
+NEW_SVC="eNote.Application/Features/Rentals/ReferenceData/InstrumentTypes/VirtualInstrumentTypeService.cs"
+edit_file "$NEW_SVC" <<'CSHARP'
+using eNote.Application.Common.Search;
+
+namespace eNote.Application.Features.Rentals.ReferenceData.InstrumentTypes;
+
+/// <summary>Stub implementation added by R1 edit-shape test (add-file).</summary>
+public sealed class VirtualInstrumentTypeService
+    : IReferenceCrudService<object, object, BaseSearchObject>
+{
+    public Task<PagedResult<object>> GetPagedAsync(BaseSearchObject search, CancellationToken cancellationToken = default, bool includeDeleted = false)
+        => throw new NotImplementedException();
+    public Task<object> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+    public Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+    public Task<object> CreateAsync(object request, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+    public Task<object> UpdateAsync(int id, object request, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+    public Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+    public Task ArchiveAsync(int id, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+}
+CSHARP
+run_incr
+
+# ==================== EDIT 7: using directive change in InstrumentTypeService ====================
+echo ""
+echo "=== EDIT 7: Add explicit using directive to InstrumentTypeService.cs ==="
+sed -i '1s/^/using System.ComponentModel;\n/' "$SCRATCH/$SVC"
+run_incr
+
 # ==================== STEP 6: fresh full rebuild ====================
 echo ""
 echo "=== STEP 6: Fresh full rebuild -> snapshot C ==="

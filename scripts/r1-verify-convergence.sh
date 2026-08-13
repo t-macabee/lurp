@@ -824,6 +824,69 @@ CSHARP
 
 run_incr
 
+# ==================== EDIT 6: attribute change on existing controller ====================
+echo ""
+echo "=== EDIT 6: Change [HttpGet] → [HttpPost] on one action in ProductsController.cs ==="
+CTRL="eCommerce.API/Controllers/ProductsController.cs"
+edit_file "$CTRL" <<'CSHARP'
+using eCommerce.API.Controllers;
+using eCommerce.API.DTOs;
+using eCommerce.API.Services;
+using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
+
+namespace eCommerce.API.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProductsController : ControllerBase
+    {
+        private readonly IProductService _productService;
+
+        public ProductsController(IProductService productService)
+        {
+            _productService = productService;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts()
+        {
+            var products = await _productService.GetAllProductsAsync();
+            return Ok(products);
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<ProductDto>> GetProductById(int id)
+        {
+            var product = await _productService.GetProductByIdAsync(id);
+            return product == null ? NotFound() : Ok(product);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<ProductDto>> CreateProduct(CreateProductDto createProductDto)
+        {
+            var product = await _productService.CreateProductAsync(createProductDto);
+            return CreatedAtAction(nameof(GetProductById), new { id = product.Id }, product);
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id, UpdateProductDto updateProductDto)
+        {
+            var result = await _productService.UpdateProductAsync(id, updateProductDto);
+            return result ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            var result = await _productService.DeleteProductAsync(id);
+            return result ? NoContent() : NotFound();
+        }
+    }
+}
+CSHARP
+run_incr
+
 # ==================== STEP 6: fresh full rebuild → snapshot C ====================
 echo ""
 echo "=== STEP 6: Fresh full rebuild → snapshot C ==="
