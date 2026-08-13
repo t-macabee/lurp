@@ -480,6 +480,13 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         // Confirm no false Registers claim either.
         var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
         Assert.Empty(registers);
+
+        // After the fix: stream handler emits an "unmodeled_mediatr_pattern" annotation.
+        var store = OpenStore(DbPath);
+        var annotations = store.GetAnnotations(snapshotId);
+        Assert.Contains(annotations, a =>
+            a.Kind == "unmodeled_mediatr_pattern" &&
+            a.Value == "IStreamRequestHandler");
     }
 
     /// <summary>
@@ -498,6 +505,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             "di_external_extension",
             "masstransit_consumer",
             "ef_convention",
+            "mediatr_exception_handler",
+            "mediatr_pipeline_behavior",
+            "mediatr_pre_post_processor",
+            "mediatr_stream_handler",
             "shape_similarity",
         };
 

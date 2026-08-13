@@ -38,7 +38,35 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen, locationResolver);
         }
 
-        return edges;
+        // Collect annotations for unmodeled MediatR patterns (no edge emitted, but
+        // signal the consumer that the pattern was seen).
+        var unmodeledAnnotations = new List<AnnotationRecord>();
+        var unmodeledIfaceNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "IStreamRequestHandler", "IAsyncStreamHandler",
+            "IPipelineBehavior",
+            "IRequestExceptionHandler",
+            "IRequestPreProcessor", "IRequestPostProcessor",
+        };
+
+        foreach (var type in allTypes)
+        {
+            if (type.TypeKind != TypeKind.Class && type.TypeKind != TypeKind.Struct)
+                continue;
+            foreach (var iface in type.AllInterfaces)
+            {
+                var ifaceName = iface.OriginalDefinition?.Name;
+                if (ifaceName is null || !unmodeledIfaceNames.Contains(ifaceName))
+                    continue;
+                var typeSymbolId = SymbolIdFactory.Make(type, assemblyIdentity);
+                var (path, _, _, _, _) = locationResolver.Resolve(type);
+                unmodeledAnnotations.Add(new AnnotationRecord(
+                    typeSymbolId, "unmodeled_mediatr_pattern", ifaceName, path));
+                break; // one annotation per type is enough
+            }
+        }
+
+        return new AdapterExtractionResult(edges, unmodeledAnnotations);
     }
 
     private static List<(INamedTypeSymbol HandlerType, INamedTypeSymbol RequestType)> CollectHandlerTypes(List<INamedTypeSymbol> allTypes)

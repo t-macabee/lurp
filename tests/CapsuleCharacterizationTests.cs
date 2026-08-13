@@ -517,4 +517,52 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         Assert.Contains(capsule.OmittedTiers,
             entry => entry.Category == "contracts" && entry.Reason == "budget_exhausted");
     }
+
+    /// <summary>
+    /// A capsule assembled over any symbol in a project that contains pipeline
+    /// behaviors includes an uncertainty entry for the skipped MediatR pattern.
+    /// </summary>
+    [SkippableFact]
+    public async Task Capsule_PipelineBehavior_SurfacesUnmodeledMediatRUncertainty()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Ping.cs"] = """
+                    using MediatR;
+
+                    namespace App;
+                    public class Ping : IRequest<string> { }
+                    public class PingHandler : IRequestHandler<Ping, string>
+                    {
+                        public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult("pong");
+                    }
+                    public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+                        where TRequest : notnull
+                    {
+                        public Task<TResponse> Handle(TRequest req, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+                            => next();
+                    }
+                    """,
+            },
+            packageReferences: ["MediatR@12.4.1"]);
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var store = OpenStore(DbPath);
+
+        // Resolve anchor = PingHandler
+        var symbols = store.SearchSymbols(snapshotId, "PingHandler");
+        Skip.If(!symbols.Any(), "PingHandler not found in snapshot.");
+        var anchor = symbols.First();
+
+        // Assemble capsule
+        var lookup = new ContextLookup(snapshotId, anchor.SymbolId, null, null);
+        var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
+        var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+        Assert.Contains(capsule.Uncertainties, u => u.RelationshipKind == "unmodeled_mediatr_pattern");
+    }
 }

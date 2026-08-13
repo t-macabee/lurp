@@ -49,6 +49,7 @@ namespace Lurp.Workspace
             CollectFrameworkConventionUncertainties(capsule, neighborhood);
             CollectRuntimeUnknownUncertainties(capsule, neighborhood);
             CollectBindingIncompletenessUncertainties(capsule);
+            CollectUnmodeledMediatRPatternUncertainties(capsule);
 
             if (!_includeGenerated)
                 CollectGeneratedExclusionUncertainties(capsule, neighborhood);
@@ -309,6 +310,40 @@ namespace Lurp.Workspace
                 {
                     capsule.Uncertainties.Add(new UncertaintyEntry([symbolId], "generated_excluded", $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
                 }
+            }
+        }
+
+        private void CollectUnmodeledMediatRPatternUncertainties(ContextCapsule capsule)
+        {
+            // GetAnnotations with no symbolId returns all annotations for the snapshot.
+            var unmodeledAnnotations = _edgeStore
+                .GetAnnotations(_snapshotId)
+                .Where(a => a.Kind == "unmodeled_mediatr_pattern")
+                .ToList();
+
+            if (unmodeledAnnotations.Count == 0)
+                return;
+
+            // Group by interface name so one entry per pattern kind, not per implementing type.
+            foreach (var group in unmodeledAnnotations
+                         .GroupBy(a => a.Value, StringComparer.Ordinal)
+                         .OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                var ifaceName = group.Key;
+                var symbolIds = group.Select(a => a.SymbolId).Distinct().ToList();
+                var boundaryId = ifaceName switch
+                {
+                    "IStreamRequestHandler" or "IAsyncStreamHandler" => "mediatr_stream_handler",
+                    "IPipelineBehavior"                              => "mediatr_pipeline_behavior",
+                    "IRequestExceptionHandler"                       => "mediatr_exception_handler",
+                    "IRequestPreProcessor" or "IRequestPostProcessor" => "mediatr_pre_post_processor",
+                    _ => null,
+                };
+                var reason = boundaryId is not null
+                    ? DeclaredBoundaries.FindById(boundaryId)?.UncertaintyReason
+                      ?? $"MediatR pattern '{ifaceName}' is not modeled: the implementing type was detected but no edge was emitted."
+                    : $"MediatR pattern '{ifaceName}' is not modeled: the implementing type was detected but no edge was emitted.";
+                capsule.Uncertainties.Add(new UncertaintyEntry(symbolIds, "unmodeled_mediatr_pattern", reason));
             }
         }
 

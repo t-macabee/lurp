@@ -85,6 +85,42 @@ internal static class DeclaredBoundaries
                 "implementations of a shared interface, shared base types and overrides, callers/callees, " +
                 "and containing-declaration siblings."
         ),
+        new(
+            Id: "mediatr_stream_handler",
+            ConstructClass: "IStreamRequestHandler / IAsyncStreamHandler",
+            Description: "MediatR stream request handler patterns (IStreamRequestHandler<TRequest,TResponse> and " +
+                         "IAsyncStreamHandler<TRequest,TResponse>) are not modeled: no Handles edge is emitted.",
+            UncertaintyReason:
+                "MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: " +
+                "the implementing type was detected but no Handles edge was emitted."
+        ),
+        new(
+            Id: "mediatr_pipeline_behavior",
+            ConstructClass: "IPipelineBehavior",
+            Description: "MediatR pipeline behavior (IPipelineBehavior<TRequest,TResponse>) intercepts the request " +
+                         "pipeline. No adapter models this pattern; no edge is emitted.",
+            UncertaintyReason:
+                "MediatR pipeline behavior (IPipelineBehavior) is not modeled: the implementing type was detected " +
+                "but no edge was emitted. Pipeline behaviors affect all requests passing through the pipeline."
+        ),
+        new(
+            Id: "mediatr_exception_handler",
+            ConstructClass: "IRequestExceptionHandler",
+            Description: "MediatR request-exception handler (IRequestExceptionHandler<TRequest,TResponse,TException>) " +
+                         "is not modeled: no edge is emitted for exception-handler types.",
+            UncertaintyReason:
+                "MediatR exception handler (IRequestExceptionHandler) is not modeled: the implementing type was " +
+                "detected but no edge was emitted."
+        ),
+        new(
+            Id: "mediatr_pre_post_processor",
+            ConstructClass: "IRequestPreProcessor / IRequestPostProcessor",
+            Description: "MediatR pre- and post-processors (IRequestPreProcessor<TRequest>, " +
+                         "IRequestPostProcessor<TRequest,TResponse>) are not modeled: no edge is emitted.",
+            UncertaintyReason:
+                "MediatR pre/post processor (IRequestPreProcessor or IRequestPostProcessor) is not modeled: " +
+                "the implementing type was detected but no edge was emitted."
+        ),
     ];
 
     internal static BoundaryEntry? FindById(string id)
