@@ -363,7 +363,7 @@ Retrieve annotations for a symbol.
 
 ## Snapshot Lifecycle
 
-Each indexing run (full or incremental) creates a **new** snapshot. The last 3 snapshots are retained; older ones are pruned automatically. Snapshots are never mutated: incremental indexing creates a new snapshot, it does not modify the previous one.
+Each indexing run (full or incremental) creates a **new** snapshot, unless source content and compilation inputs are unchanged — in which case the existing snapshot is reused (content-addressed dedup). The last 3 snapshots are retained; older ones are pruned automatically. Snapshots are never mutated: incremental indexing creates a new snapshot when content changes, it does not modify the previous one.
 
 ## Environment Variables
 

@@ -78,7 +78,10 @@ source.
 
 One primary SQLite database (`index.db` in the output directory) is the
 canonical persisted state. JSON is appropriate for CLI response output and
-one-way export — it is never a parallel authority.
+one-way export — it is never a parallel authority. Snapshot identity is
+content-derived and content-addressed: when source content and compilation
+inputs are unchanged, a re-index reuses the existing snapshot rather than
+writing a duplicate row.
 
 The database is a single source of truth for the **indexed snapshot**, not a
 replacement for the repository or compiler. Logical boundaries:
@@ -156,7 +159,10 @@ WorkspaceLoader.LoadAsync
 ### 4.2 Incremental indexing
 
 `IncrementalIndexer.RunIncrementalAsync` creates a new snapshot without
-re-extracting unchanged documents:
+re-extracting unchanged documents. When the whole workspace is byte-identical
+to the previous snapshot (no document, compilation-input, or extractor-version
+change), no new snapshot is written — the existing one is reused via
+content-addressed dedup:
 
 1. Detect changed documents (hash-based `WorkspaceFreshness`).
 2. Compute reverse-edge closure + new-file widening.

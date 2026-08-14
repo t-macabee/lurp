@@ -136,10 +136,12 @@ internal static class HelpText
         }
         Console.WriteLine();
         Console.WriteLine("SNAPSHOT LIFECYCLE");
-        Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot.");
+        Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot,");
+        Console.WriteLine("  unless source content and compilation inputs are unchanged, in which");
+        Console.WriteLine("  case the existing snapshot is reused (content-addressed dedup).");
         Console.WriteLine("  The last 3 snapshots are retained; older ones are pruned automatically.");
-        Console.WriteLine("  Snapshots are never mutated : incremental creates a new snapshot,");
-        Console.WriteLine("  it does NOT modify the previous one.");
+        Console.WriteLine("  Snapshots are never mutated : a new snapshot is created when content");
+        Console.WriteLine("  changes, and it does NOT modify the previous one.");
         Console.WriteLine();
         Console.WriteLine("ENVIRONMENT VARIABLES");
         Console.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
