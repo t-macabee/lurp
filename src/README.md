@@ -206,7 +206,7 @@ Trace the impact path of a changed symbol.
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
-| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to restrict traversal to compiler-verified edges only, excluding polymorphic inference (`MayDispatchTo`), convention DI (`Registers`), and string reflection (`Reflection*`). |
+| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges. This keeps compiler-verified dispatch — direct (non-inherited) interface implementations and all virtual/override `MayDispatchTo` edges — plus `Calls`, `Constructs`, `Implements`, `Inherits` and `Overrides`. It excludes framework-derived convention DI (`Registers`), string-reflection candidates (`Reflection*`), and interface-dispatch edges whose implementation is only inherited (`MayDispatchTo` provenance=`possible`). |
 | `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |

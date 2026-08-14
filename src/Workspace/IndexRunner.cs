@@ -288,6 +288,13 @@ public static class IndexRunner
 
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
 
+            // Step: Remove edges targeting symbols not declared in this snapshot
+            // Runs before the semantic diff so the diff compares the new snapshot's
+            // post-cleanup edge set against the previous snapshot's post-cleanup set,
+            // matching the incremental path's phase order.
+            cancellationToken.ThrowIfCancellationRequested();
+            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
+
             if (!skipDiff && previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
                 // Step: Semantic Diff — skipped when the caller passed --skip-diff.
@@ -297,10 +304,6 @@ public static class IndexRunner
                     store, sink, previousManifest.SnapshotId, snapshotIdStr,
                     changedSymbolIds: null, timings);
             }
-
-            // Step: Remove edges targeting symbols not declared in this snapshot
-            cancellationToken.ThrowIfCancellationRequested();
-            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
 
             var totalProjects = extractedProjects + blindProjects.Count;
             var declarationsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);

@@ -25,7 +25,7 @@ internal static class HelpText
     {
         // Shared across modes
         ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
-        ["--snapshot="] = "Snapshot to use (default: latest).",
+        ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly). Not honored by --mode=timings, which resolves its own snapshot independently of this flag.",
         ["--include-generated"] = "Include source-generated symbols.",
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
         ["--json"] = "Emit structured JSON instead of plain text.",
@@ -65,8 +65,11 @@ internal static class HelpText
         ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",
         ["--kinds="] = "Comma-separated edge kinds to follow.",
         ["--provenance="] = "Comma-separated provenance values to follow (e.g. compiler_proved,framework_derived). "
-            + "Pass compiler_proved to restrict traversal to compiler-verified edges only, "
-            + "excluding polymorphic inference (MayDispatchTo), convention DI (Registers), and string reflection (Reflection*).",
+            + "Pass compiler_proved to follow only compiler-verified edges. This keeps edges such as Calls, "
+            + "Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
+            + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
+            + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
+            + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible).",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
         ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
 

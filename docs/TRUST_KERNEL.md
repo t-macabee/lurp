@@ -518,6 +518,15 @@ fallback on top of that set, not the only signal.
     regression test
     `ScenarioR6_BindingIncompleteness_IncrementalCarryForward`
     (`IncrementalParityTests.cs`). See the R6 section below for full details.
+11. **`--mode=timings` does not honor `--snapshot=latest`.** `TimingsHandler.Run`
+    (`src/Handlers/TimingsHandler.cs:8-42`) bypasses `HandlerBootstrap.WithStore`/
+    `ResolveSnapshotId` entirely — it opens the store directly and branches on
+    `--snapshot=` itself (literal value if present, `GetLatestSnapshotId()` via its
+    own path if absent), so the `ResolveSnapshotId` fix (R8) never reaches it.
+    `--mode=timings --snapshot=latest` still reports "No timing data for snapshot
+    latest." Deferred by explicit decision to keep the `ResolveSnapshotId` fix
+    single-site rather than also restructuring `TimingsHandler`'s control flow. See
+    the R8 section below for full details.
 
 ## Explicitly postponed
 
@@ -1192,6 +1201,70 @@ fixture whose physical line numbers are known exactly:
 - round-trip: the reported `start_line` fed verbatim to `navigate --line=`
   resolves to the same `symbol_id` — the property that actually matters to an
   agent and failed before this fix.
+
+## R8 — Live-test audit findings: persisted-diff ordering, snapshot resolution, search fallback (2026-08-14)
+
+Three independent live-functional-test passes (increasing model strength) were run against
+two real solutions (eNoteV2, 7 projects; FIT-RS2-2026/eCommerce, 4 projects), each covering
+full/incremental indexing, search, impact/provenance filtering, context capsules, diff,
+status/timings, and annotations. Three real defects were confirmed against source and fixed;
+one adjacent gap was found and deliberately deferred (see open finding 11).
+
+### Persisted semantic diff ran before orphan-edge cleanup during full indexing
+
+**Was:** `IndexRunner`'s full-index path computed and persisted the semantic diff
+(`SemanticDiffStep.ComputeAndPersist`) before `store.DeleteOrphanEdges` ran, so the diff
+compared the new snapshot's pre-cleanup edge set (including edges to out-of-scope external
+symbols) against the previous snapshot's already-cleaned set. Confirmed on real data: an
+isolated one-parameter change to a real method produced 3,534 persisted `semantic_changes`
+rows, 3,520 of them spurious `edge_added` entries pointing at `System.*` targets, vs. 8
+genuine ones — matching what the explicit `--mode=diff` command (which runs after both
+snapshots are fully settled) reported for the same pair. `IncrementalIndexer.FinalizeSnapshotAsync`
+already got this ordering right and says so in its own comment ("Phase order is load-bearing:
+reverse refresh → orphan cleanup → FTS → semantic diff → complete"); the full-index path was
+simply inconsistent with that already-established invariant, not implementing an intentional
+alternative order.
+
+**Fix.** `IndexRunner.cs`: `store.DeleteOrphanEdges(snapshotIdStr)` now runs before
+`SemanticDiffStep.ComputeAndPersist(...)`, matching the incremental path. Covered by
+`SemanticDifferTests.cs` and `CleanRebuildEquivalenceTest.cs`; no new dedicated test was added
+— the manual A→B `semantic_changes` regression from the audit round is the evidence of record
+for the specific spurious-edge-added symptom.
+
+### `--snapshot=latest` was not resolved
+
+**Was:** `HandlerBootstrap.ResolveSnapshotId` returned any non-empty `--snapshot=` value
+verbatim; passing the literal string `latest` (rather than omitting the flag) used `"latest"`
+itself as a snapshot ID, which never matches a real one, so every mode returned empty/not-found.
+Omitting `--snapshot` entirely already worked correctly (falls through to `GetLatestSnapshotId()`).
+
+**Fix.** `ResolveSnapshotId` now special-cases `"latest"` (case-insensitive) the same as
+omission. Covered by new test `ResolveSnapshotId_Latest_ResolvesToSameIdAsOmittingSnapshot`
+(`CliExitSmokeTests.cs`), which asserts equivalence with the omitted-flag path rather than a
+hardcoded snapshot id. `TimingsHandler` was deliberately excluded from this fix — see open
+finding 11.
+
+### Punctuation-only search query matched every result instead of zero
+
+**Was:** `IsPlainIdentifierQuery` (duplicated in `SearchSymbolStore.cs` and
+`SearchSourceStore.cs`) treated `.` and `_` as valid identifier characters with no requirement
+for an actual letter or digit, so a query of `.` alone passed the plain-identifier check, fell
+into the LIKE-based substring fallback, and matched every fully-qualified name (or every
+document body, in the source-search case) via `LIKE '%.%'`. Confirmed independently on both
+solutions across two audit rounds.
+
+**Fix.** Both copies of `IsPlainIdentifierQuery` now require at least one letter-or-digit
+character. `.`/`_`-only queries fall through to the (already-correctly-empty) FTS5
+phrase-match result instead of triggering the substring fallback; fragment queries (`"Service"`)
+and dotted queries with real identifier content (`"CourseService.CreateAsync"`) are unaffected.
+Covered by the existing `StoreReadPathTests.cs`/`CapsuleCharacterizationTests.cs` search-path
+tests (regression, not a new punctuation-specific test); the manual regression matrix from the
+audit rounds is the evidence of record for the punctuation cases specifically.
+
+This is also this repo's fourth FTS5-search fix originating from real-solution testing rather
+than synthetic cases (alongside the dotted-query `MATCH` crash fix from the same session,
+`ToFtsPhrase` in both search stores) — search-query robustness against real symbol names keeps
+surfacing gaps that fixture-based tests didn't reach.
 
 ## T3 — lightweight "where is X defined?" without a capsule (2026-08-13)
 

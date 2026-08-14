@@ -108,6 +108,26 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void ResolveSnapshotId_Latest_ResolvesToSameIdAsOmittingSnapshot()
+    {
+        using var store = OpenEmptyStore();
+        store.SaveSnapshot(new SnapshotRow
+        {
+            SnapshotId = "s1",
+            WorkspaceId = "w1",
+            GitRoot = "gitroot",
+            SolutionPath = "solution.sln",
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        store.MarkSnapshotComplete("s1");
+
+        var byLatest = HandlerBootstrap.ResolveSnapshotId(store, "latest");
+        var byNull = HandlerBootstrap.ResolveSnapshotId(store, null);
+
+        Assert.Equal(byNull, byLatest);
+    }
+
+    [Fact]
     public void ResolveSymbolArg_Unresolvable_Throws()
     {
         using var store = OpenEmptyStore();

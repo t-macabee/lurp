@@ -232,7 +232,8 @@ internal static class HandlerBootstrap
 
     public static string ResolveSnapshotId(SqliteIndexStore store, string? snapshotArg)
     {
-        if (!string.IsNullOrEmpty(snapshotArg))
+        if (!string.IsNullOrEmpty(snapshotArg) &&
+            !string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase))
             return snapshotArg;
 
         var snapshotId = store.GetLatestSnapshotId();

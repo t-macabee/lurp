@@ -26,6 +26,14 @@ internal sealed class SearchSymbolStore
                   )";
     private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
 
+    // FTS5's query grammar (distinct from the unicode61 tokenizer) rejects unquoted
+    // punctuation such as '.', so a raw user query like "CourseService.CreateAsync"
+    // throws a SqliteException before any result is returned. Wrapping the query as a
+    // quoted FTS5 phrase literal makes it a literal-text match instead of parsing it
+    // through FTS5's operator grammar. Only the double quote needs escaping (doubled)
+    // inside a phrase literal.
+    private static string ToFtsPhrase(string query) => "\"" + query.Replace("\"", "\"\"") + "\"";
+
     /// <inheritdoc cref="ISearchStore.SearchSymbols"/>
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
@@ -81,7 +89,7 @@ internal sealed class SearchSymbolStore
             LIMIT @limit;
         ";
 
-        command.Parameters.AddWithValue("@query", query);
+        command.Parameters.AddWithValue("@query", ToFtsPhrase(query));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit);
 
@@ -186,7 +194,7 @@ internal sealed class SearchSymbolStore
             LIMIT @limit;
         ";
 
-        command.Parameters.AddWithValue("@query", query);
+        command.Parameters.AddWithValue("@query", ToFtsPhrase(query));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit + 1);
 
@@ -305,12 +313,15 @@ internal sealed class SearchSymbolStore
 
     private static bool IsPlainIdentifierQuery(string query)
     {
+        var hasIdentifierChar = false;
         foreach (var c in query)
         {
-            if (!(char.IsLetterOrDigit(c) || c == '.' || c == '_'))
+            if (char.IsLetterOrDigit(c))
+                hasIdentifierChar = true;
+            else if (c != '.' && c != '_')
                 return false;
         }
-        return true;
+        return hasIdentifierChar;
     }
 
     private List<SymbolSearchResult> SearchSymbolsBySubstring(string query, string snapshotId, int limit, bool includeGenerated, string? kind)
