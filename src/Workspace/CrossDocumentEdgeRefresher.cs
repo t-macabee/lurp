@@ -64,7 +64,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     /// The caller is responsible for subtracting any paths that were already
     /// re-extracted this snapshot.
     /// </param>
-    internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken)
+    internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken, IReadOnlySet<string>? alreadyCoveredProjectNames = null)
     {
         if (affectedPaths.Count == 0)
             return 0;
@@ -73,7 +73,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (affectedProjectNames.Count == 0)
             return 0;
 
-        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
+        return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken, alreadyCoveredProjectNames);
     }
 
     /// <remarks>
@@ -226,7 +226,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             yield break;
         }
 
-        var containingTypeSymbolId = DeriveContainingTypeSymbolId(edge.SourceSymbolId);
+        var containingTypeSymbolId = SymbolId.DeriveContainingTypeSymbolId(edge.SourceSymbolId);
         if (containingTypeSymbolId == null)
             yield break;
 
@@ -236,22 +236,6 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (visitedPaths.Add(loc.DocumentPath))
                 yield return loc.DocumentPath;
         }
-    }
-
-    private static string? DeriveContainingTypeSymbolId(string sourceSymbolId)
-    {
-        var pipeIndex = sourceSymbolId.IndexOf('|');
-        if (pipeIndex < 0)
-            return null;
-
-        var docCommentId = sourceSymbolId[..pipeIndex];
-        var assemblyIdentity = sourceSymbolId[(pipeIndex + 1)..];
-
-        var typeDocCommentId = SymbolId.DeriveContainingTypeDocCommentId(docCommentId);
-        if (typeDocCommentId == null)
-            return null;
-
-        return $"{typeDocCommentId}|{assemblyIdentity}";
     }
 
     private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)
@@ -276,7 +260,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return affectedProjectNames;
     }
 
-    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths, CancellationToken cancellationToken)
+    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths, CancellationToken cancellationToken, IReadOnlySet<string>? alreadyCoveredProjectNames = null)
     {
         // Compute per-project affected absolute paths for scoped re-extraction
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -349,8 +333,21 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
 
             _store.SaveEdges(newSnapshotId, result.Edges);
             _store.SaveDeclarations(newSnapshotId, result.Declarations);
-            _store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
-            _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
+
+            // ARCH-005: Step 6 (IncrementalIndexer.ExtractReplacementFacts) already
+            // re-wrote full-compilation diagnostics for every project in
+            // affectedProjects, and the cross-doc closure is a subset of those
+            // projects in the common case — so this would just be a redundant
+            // delete/insert of identical data. However, the closure can in rare
+            // edge cases (binding-incompleteness seeds, shared/linked files) reach
+            // a project Step 6 did not re-extract. For such projects the copied-
+            // forward diagnostics from the previous snapshot would otherwise stay
+            // stale, so keep the write only for projects Step 6 did NOT cover.
+            if (alreadyCoveredProjectNames == null || !alreadyCoveredProjectNames.Contains(project.Name))
+            {
+                _store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
+                _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
+            }
 
             // Lockstep invariant: save binding-incompleteness only for documents
             // in the deletion scope. Out-of-scope documents — and null/empty-path

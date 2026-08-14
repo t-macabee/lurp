@@ -120,6 +120,24 @@ namespace Lurp.Storage
 
             return "T:" + methodNamePart[..lastDot];
         }
+
+        /// <summary>
+        /// Given a member-style symbol id ("docCommentId|assemblyIdentity"), return
+        /// the symbol id of the containing type, or null when the symbol has no
+        /// derivable containing type (no pipe, a type/namespace doc comment id, or a
+        /// top-level member).
+        /// </summary>
+        public static string? DeriveContainingTypeSymbolId(string symbolId)
+        {
+            if (!TryParse(symbolId, out var parsed))
+                return null;
+
+            var typeDocCommentId = DeriveContainingTypeDocCommentId(parsed.DocCommentId);
+            if (typeDocCommentId == null)
+                return null;
+
+            return $"{typeDocCommentId}|{parsed.AssemblyIdentity}";
+        }
     }
 
     public sealed class DeclarationSpan
@@ -135,30 +153,6 @@ namespace Lurp.Storage
             Start = start;
             End = end;
         }
-
-        public byte[]? Slice(byte[] source)
-        {
-            if (source == null)
-                throw new ArgumentNullException(nameof(source));
-            if (!Start.HasValue || !End.HasValue)
-                return null;
-            if (Start.Value < 0 || End.Value > source.Length)
-                return null;
-            var length = End.Value - Start.Value;
-            if (length == 0)
-                return Array.Empty<byte>();
-            var result = new byte[length];
-            Array.Copy(source, Start.Value, result, 0, length);
-            return result;
-        }
-
-        public string? SliceToString(byte[] source)
-        {
-            var sliced = Slice(source);
-            return sliced != null ? System.Text.Encoding.UTF8.GetString(sliced) : null;
-        }
-
-        public bool IsEmpty => !Start.HasValue || !End.HasValue || Start.Value == End.Value;
 
         public override string ToString() =>
             Start.HasValue && End.HasValue

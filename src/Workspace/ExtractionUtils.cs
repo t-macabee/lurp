@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 
@@ -48,5 +50,64 @@ internal static class ExtractionUtils
         if (string.IsNullOrEmpty(filePath))
             return true;
         return scopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath));
+    }
+
+    /// <summary>
+    /// Every method-like declaration (methods, constructors, accessors) owned by
+    /// the given types, paired with its syntax node. When <paramref name="inScope"/>
+    /// is provided, declarations whose declaring syntax tree is out of scope are
+    /// skipped; a null predicate leaves every declaration in.
+    /// </summary>
+    internal static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(
+        IEnumerable<INamedTypeSymbol> types,
+        Func<SyntaxTree, bool>? inScope = null)
+    {
+        foreach (var typeSymbol in types)
+        {
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                if (member is IMethodSymbol method)
+                {
+                    foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                    {
+                        if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                            continue;
+                        var syntax = syntaxRef.GetSyntax();
+                        if (syntax is MethodDeclarationSyntax methodSyntax)
+                            yield return (method, methodSyntax);
+                        else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
+                            yield return (method, ctorSyntax);
+                    }
+                }
+
+                if (member is IPropertySymbol property)
+                {
+                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                    {
+                        if (accessor == null)
+                            continue;
+
+                        foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                        {
+                            if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                                continue;
+                            if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
+                                yield return (accessor, accessorSyntax);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
+    {
+        return node switch
+        {
+            MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
+            ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
+            AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
+            _ => null
+        };
     }
 }

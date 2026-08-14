@@ -356,7 +356,7 @@ public static class IndexRunner
 
             // Try to save whatever timings we have
             try { store.SaveTimings(snapshotIdStr, timings); }
-            catch { }
+            catch (Exception tex) { sink.WriteErrorLine($"WARNING: Failed to save timings: {tex.Message}"); }
 
             throw;
         }

@@ -276,6 +276,7 @@ public sealed class ImpactTraverserTests
         public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId) => throw new NotSupportedException();
         public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths) => throw new NotSupportedException();
         public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId) => throw new NotSupportedException();
+        public void PruneSnapshotGraphNodes(string snapshotId) => throw new NotSupportedException();
         public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors) => throw new NotSupportedException();
         public bool HasStaleExtractorVersions(string snapshotId) => throw new NotSupportedException();
     }

@@ -70,6 +70,15 @@ public static class EdgeMerge
         return variants.Count == 0 ? null : SerializeTypeArguments(variants);
     }
 
+    // Receiver-type-constraint JSON uses the same canonical List<List<string>>
+    // encoding as type-argument JSON, so the union algorithm is identical. This
+    // lives in Storage (not Workspace's ReceiverTypeConstraints) so EdgeOperationsStore
+    // can union-merge without a dependency on Microsoft.CodeAnalysis.
+    public static string? MergeReceiverTypeConstraints(string? leftJson, string? rightJson)
+    {
+        return MergeTypeArguments(leftJson, rightJson);
+    }
+
     public static List<List<string>> DeserializeTypeArguments(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

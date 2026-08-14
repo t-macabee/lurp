@@ -57,7 +57,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
         var path = syntaxRef.SyntaxTree?.FilePath;
         if (string.IsNullOrEmpty(path))
             return null;
-        return DocumentChangeDetector.GetRelativePath(path, _gitRoot);
+        return PathNormalizer.ToGitRelative(path, _gitRoot);
     }
 
     internal bool IsTypeInScope(INamedTypeSymbol typeSymbol)

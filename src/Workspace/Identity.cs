@@ -235,21 +235,6 @@ public readonly record struct DocumentVersionId
         return new DocumentVersionId(documentId.RelativePath, Hex(hash));
     }
 
-    public static DocumentVersionId Compute(byte[] data)
-    {
-        var hash = SHA256.HashData(data);
-        return new DocumentVersionId(Hex(hash));
-    }
-
-    public static DocumentVersionId Compute(string text)
-        => Compute(Encoding.UTF8.GetBytes(text));
-
-    public static DocumentVersionId Compute(Stream stream)
-    {
-        var hash = SHA256.HashData(stream);
-        return new DocumentVersionId(Hex(hash));
-    }
-
     public override string ToString() => $"{DocumentPath}:{Hash}";
 
     private static string Hex(byte[] bytes)

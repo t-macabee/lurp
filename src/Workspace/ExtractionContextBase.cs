@@ -62,7 +62,7 @@ internal abstract class ExtractionContextBase
 
         var lineSpan = location.GetLineSpan();
         var filePath = location.SourceTree?.FilePath;
-        var relativePath = string.IsNullOrEmpty(filePath) ? null : DocumentChangeDetector.GetRelativePath(filePath, _gitRoot);
+        var relativePath = string.IsNullOrEmpty(filePath) ? null : PathNormalizer.ToGitRelative(filePath, _gitRoot);
         return (relativePath,
                 lineSpan.StartLinePosition.Line,
                 lineSpan.StartLinePosition.Character,

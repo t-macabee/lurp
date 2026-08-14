@@ -126,9 +126,6 @@ internal static class DeclaredBoundaries
     internal static BoundaryEntry? FindById(string id)
         => Known.FirstOrDefault(entry => entry.Id == id);
 
-    internal static BoundaryEntry? FindByConstructClass(string constructClass)
-        => Known.FirstOrDefault(entry => entry.ConstructClass == constructClass);
-
     internal static string UncertaintyDescription(string edgeKind)
         => $"Unmodeled construct: a '{edgeKind}' edge carries 'runtime_unknown' provenance because the " +
            "construct is listed in DeclaredBoundaries.Known as deliberately not fully modeled. " +

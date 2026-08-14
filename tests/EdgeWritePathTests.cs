@@ -34,6 +34,7 @@ public sealed class EdgeWritePathTests : IDisposable
 
     private static EdgeRecord MakeEdge(string source, string target, string kind,
         string provenance = "compiler_proved", string? typeArgs = null,
+        string? receiverConstraints = null,
         int? sourceStartLine = 1, int? sourceEndLine = 2)
         => new()
         {
@@ -42,6 +43,7 @@ public sealed class EdgeWritePathTests : IDisposable
             Kind = kind,
             Provenance = provenance,
             TypeArgumentsJson = typeArgs,
+            ReceiverTypeConstraintsJson = receiverConstraints,
             ExtractorVersion = "1.0.0",
             SourceDocumentPath = "src/Test.cs",
             SourceStartLine = sourceStartLine,
@@ -163,6 +165,138 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(2, variants.Count);
         var allArgs = variants.SelectMany(v => v).OrderBy(s => s).ToList();
         Assert.Equal(["First", "Second"], allArgs);
+    }
+
+    // ARCH-003 regression: receiver_type_constraints_json must union-merge across
+    // re-emits (split declaration / incremental pass) exactly like type_arguments_json.
+    // Previously it used a rank-gated overwrite, so an equal-or-lower-rank re-emit
+    // silently dropped the persisted receiver constraints.
+    [Fact]
+    public void SaveEdges_SameSplitEdgeDifferentReceiverConstraints_UnionMerges()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
+            typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
+            typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""")]);
+
+        var persisted = store.GetEdges(SnapshotId);
+        var edge = Assert.Single(persisted);
+
+        var variants = EdgeMerge.DeserializeTypeArguments(edge.TypeArgumentsJson);
+        Assert.Equal(2, variants.Count);
+
+        var constraints = EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson);
+        Assert.Equal(2, constraints.Count);
+        var allConstraints = constraints.SelectMany(c => c).OrderBy(s => s).ToList();
+        Assert.Equal(["R1", "R2"], allConstraints);
+    }
+
+    // Equal-rank re-emit must still union-merge receiver constraints (matching the
+    // unconditional type-argument merge) rather than dropping the incoming ones.
+    [Fact]
+    public void SaveEdges_EqualRankReemit_ReceiverConstraintsUnionMergedNotOverwritten()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
+            provenance: "compiler_proved", typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
+            provenance: "compiler_proved", typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""")]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+
+        var constraints = EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson);
+        Assert.Equal(2, constraints.Count);
+        var allConstraints = constraints.SelectMany(c => c).OrderBy(s => s).ToList();
+        Assert.Equal(["R1", "R2"], allConstraints);
+    }
+
+    // ARCH-003 regression, bulk-path gap: real CallsEdgeExtractor output is a "Calls"
+    // edge with ReceiverTypeConstraintsJson set and TypeArgumentsJson null — unlike the
+    // two tests above, which use a "MayDispatchTo" edge with type arguments and so only
+    // exercise WriteSplitEdges. A Calls edge with no type arguments used to route through
+    // WriteBulkEdges, whose receiver_type_constraints_json column was still a rank-gated
+    // overwrite, silently dropping constraints on an equal-or-lower-rank re-emit even
+    // after the WriteSplitEdges merge fix landed.
+    [Fact]
+    public void SaveEdges_CallsEdgeNoTypeArgs_ReceiverConstraintsUnionMergeNotOverwritten()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls",
+            provenance: "compiler_proved", receiverConstraints: """[["R1"]]""")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls",
+            provenance: "compiler_proved", receiverConstraints: """[["R2"]]""")]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Null(edge.TypeArgumentsJson);
+
+        var constraints = EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson);
+        Assert.Equal(2, constraints.Count);
+        var allConstraints = constraints.SelectMany(c => c).OrderBy(s => s).ToList();
+        Assert.Equal(["R1", "R2"], allConstraints);
+    }
+
+    // ARCH-006 regression: PruneSnapshotGraphNodes must drop synthetic/route nodes
+    // that CopyEdgesToSnapshot carried forward but which no longer have any edge or
+    // declaration in this snapshot, while keeping nodes that are still edge endpoints.
+    [Fact]
+    public void PruneSnapshotGraphNodes_RemovesUnreferenced_KeepsEdgeEndpoints()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId,
+        [
+            new EdgeRecord
+            {
+                SourceSymbolId = "src",
+                TargetSymbolId = "tgt",
+                Kind = "Calls",
+                Provenance = "compiler_proved",
+                ExtractorVersion = "1.0.0",
+                SourceDocumentPath = "src/Test.cs",
+                SourceStartLine = 1,
+                SourceStartColumn = 1,
+                SourceEndLine = 2,
+                SourceEndColumn = 10,
+                SourceNodeKind = GraphNodeKind.Route,
+                TargetNodeKind = GraphNodeKind.ExternalType,
+            }
+        ]);
+
+        // Inject a stale synthetic node that no longer has any edge or declaration.
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO snapshot_graph_nodes (snapshot_id, node_id) VALUES (@s, @n);";
+            cmd.Parameters.AddWithValue("@s", SnapshotId);
+            cmd.Parameters.AddWithValue("@n", "stale::synthetic::route");
+            cmd.ExecuteNonQuery();
+        }
+
+        store.PruneSnapshotGraphNodes(SnapshotId);
+
+        long staleCount, edgeNodeCount;
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id = @n;";
+            cmd.Parameters.AddWithValue("@s", SnapshotId);
+            cmd.Parameters.AddWithValue("@n", "stale::synthetic::route");
+            staleCount = Convert.ToInt64(cmd.ExecuteScalar());
+
+            using var cmd2 = conn.CreateCommand();
+            cmd2.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id IN ('src','tgt');";
+            cmd2.Parameters.AddWithValue("@s", SnapshotId);
+            edgeNodeCount = Convert.ToInt64(cmd2.ExecuteScalar());
+        }
+
+        Assert.Equal(0, staleCount);
+        Assert.Equal(2, edgeNodeCount);
     }
 
     // Characterization tests for the strict-`>` tie-break at

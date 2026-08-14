@@ -56,7 +56,7 @@ public sealed class SemanticDifferTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new List<DocumentVersion>
             {
-                new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8", LineStart = lineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+                new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
             }
         };
         store.SaveSnapshot(manifest);
@@ -680,8 +680,8 @@ public sealed class SemanticDifferTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new List<DocumentVersion>
             {
-                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = partialLineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
-                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1", Encoding = "utf-8", LineStart = partialLineStarts, CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
+                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
+                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
             }
         };
         store.SaveSnapshot(toManifest);

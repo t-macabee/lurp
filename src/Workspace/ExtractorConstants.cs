@@ -2,8 +2,6 @@ namespace Lurp.Workspace;
 
 internal static class ExtractorConstants
 {
-    internal const string Version = "member-edges-v1";
-
     internal const string DeclaresExtractor = "declares-v1";
     internal const string CallsExtractor = "calls-v2";
     internal const string ConstructsExtractor = "constructs-v1";

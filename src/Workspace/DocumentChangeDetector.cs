@@ -51,7 +51,7 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
                 if (document.FilePath == null)
                     continue;
 
-                var relPath = GetRelativePath(document.FilePath, _gitRoot);
+                var relPath = PathNormalizer.ToGitRelative(document.FilePath, _gitRoot);
 
                 if (changedPaths.Contains(relPath))
                 {
@@ -129,7 +129,4 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
 
         return results;
     }
-
-    public static string GetRelativePath(string fullPath, string gitRoot)
-        => PathNormalizer.ToGitRelative(fullPath, gitRoot);
 }

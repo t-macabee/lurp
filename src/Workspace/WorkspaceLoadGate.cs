@@ -61,7 +61,7 @@ internal static class WorkspaceLoadGate
 
             records.Add(new BindingIncompletenessRecord(
                 projectName,
-                DocumentChangeDetector.GetRelativePath(tree.FilePath, gitRoot),
+                PathNormalizer.ToGitRelative(tree.FilePath, gitRoot),
                 BindingIncompletenessReason.ProjectUnreadable,
                 Count: 1,
                 VersionConstants.ExtractorVersion));

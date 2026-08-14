@@ -14,8 +14,14 @@ internal sealed class EdgeOperationsStore
     public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
         var collapsed = EdgeMerge.CollapseBatch(edges);
-        var bulkEdges = collapsed.Where(e => e.TypeArgumentsJson == null).ToList();
-        var splitEdges = collapsed.Where(e => e.TypeArgumentsJson != null).ToList();
+        // Both TypeArgumentsJson and ReceiverTypeConstraintsJson need an app-side JSON
+        // union merge on conflict (see WriteSplitEdges), which requires reading the
+        // existing row first. An edge carrying either one must take that path — routing
+        // only on TypeArgumentsJson left Calls edges (which carry receiver constraints
+        // but never type arguments) on the bulk path, where receiver_type_constraints_json
+        // was still a rank-gated overwrite instead of a merge (ARCH-003).
+        var bulkEdges = collapsed.Where(e => e.TypeArgumentsJson == null && e.ReceiverTypeConstraintsJson == null).ToList();
+        var splitEdges = collapsed.Where(e => e.TypeArgumentsJson != null || e.ReceiverTypeConstraintsJson != null).ToList();
 
         using var transaction = _connection.BeginTransaction();
         try
@@ -129,7 +135,7 @@ internal sealed class EdgeOperationsStore
 
         using var selectCmd = _connection.CreateCommand();
         selectCmd.Transaction = transaction;
-        selectCmd.CommandText = "SELECT type_arguments_json, provenance FROM edges WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k LIMIT 1;";
+        selectCmd.CommandText = "SELECT type_arguments_json, receiver_type_constraints_json, provenance FROM edges WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k LIMIT 1;";
         var selectS = selectCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
         var selectSrc = selectCmd.Parameters.Add(new SqliteParameter("@src", null));
         var selectTgt = selectCmd.Parameters.Add(new SqliteParameter("@tgt", null));
@@ -169,7 +175,7 @@ internal sealed class EdgeOperationsStore
                 source_end_line = CASE WHEN {winnerWins} THEN @sourceEndLine ELSE edges.source_end_line END,
                 source_end_column = CASE WHEN {winnerWins} THEN @sourceEndColumn ELSE edges.source_end_column END,
                 is_cross_generated = CASE WHEN {winnerWins} THEN @isCrossGenerated ELSE edges.is_cross_generated END,
-                receiver_type_constraints_json = CASE WHEN {winnerWins} THEN @receiverTypeConstraintsJson ELSE edges.receiver_type_constraints_json END
+                receiver_type_constraints_json = @receiverTypeConstraintsJson
             WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k;
         ";
         var upSid = splitUpdateCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
@@ -195,6 +201,7 @@ internal sealed class EdgeOperationsStore
             selectK.Value = edge.Kind;
 
             object? existingTypeArgs = null;
+            object? existingReceiverConstraints = null;
             bool hasRow = false;
             using (var reader = selectCmd.ExecuteReader())
             {
@@ -202,6 +209,7 @@ internal sealed class EdgeOperationsStore
                 if (hasRow)
                 {
                     existingTypeArgs = reader.IsDBNull(0) ? null : reader.GetString(0);
+                    existingReceiverConstraints = reader.IsDBNull(1) ? null : reader.GetString(1);
                 }
             }
 
@@ -225,6 +233,7 @@ internal sealed class EdgeOperationsStore
             else
             {
                 var merged = EdgeMerge.MergeTypeArguments(existingTypeArgs as string, edge.TypeArgumentsJson);
+                var mergedReceiverConstraints = EdgeMerge.MergeReceiverTypeConstraints(existingReceiverConstraints as string, edge.ReceiverTypeConstraintsJson);
                 var incomingRank = EdgeMerge.ProvenanceRank(edge.Provenance ?? "");
 
                 upSrc.Value = edge.SourceSymbolId;
@@ -238,7 +247,7 @@ internal sealed class EdgeOperationsStore
                 upEl.Value = (object?)edge.SourceEndLine ?? DBNull.Value;
                 upEc.Value = (object?)edge.SourceEndColumn ?? DBNull.Value;
                 upCg.Value = edge.IsCrossGenerated;
-                upRc.Value = (object?)edge.ReceiverTypeConstraintsJson ?? DBNull.Value;
+                upRc.Value = (object?)mergedReceiverConstraints ?? DBNull.Value;
                 upMerged.Value = (object?)merged ?? DBNull.Value;
                 upRank.Value = incomingRank;
                 splitUpdateCmd.ExecuteNonQuery();
@@ -547,6 +556,24 @@ internal sealed class EdgeOperationsStore
         }
         var total = external + compilerSynthesized + other;
         return new OrphanEdgeDropSummary(total, external, compilerSynthesized, other);
+    }
+
+    public void PruneSnapshotGraphNodes(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            DELETE FROM snapshot_graph_nodes
+            WHERE snapshot_id = @snapshotId
+              AND node_id NOT IN (
+                  SELECT source_symbol_id FROM edges WHERE snapshot_id = @snapshotId
+                  UNION
+                  SELECT target_symbol_id FROM edges WHERE snapshot_id = @snapshotId
+                  UNION
+                  SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
+              );
+        ";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.ExecuteNonQuery();
     }
 
     private static List<EdgeRecord> ReadEdgeRecords(SqliteCommand command)

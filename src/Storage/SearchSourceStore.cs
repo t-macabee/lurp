@@ -15,14 +15,6 @@ internal sealed class SearchSourceStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    // FTS5's query grammar (distinct from the unicode61 tokenizer) rejects unquoted
-    // punctuation such as '.', so a raw user query like "CourseService.CreateAsync"
-    // throws a SqliteException before any result is returned. Wrapping the query as a
-    // quoted FTS5 phrase literal makes it a literal-text match instead of parsing it
-    // through FTS5's operator grammar. Only the double quote needs escaping (doubled)
-    // inside a phrase literal.
-    private static string ToFtsPhrase(string query) => "\"" + query.Replace("\"", "\"\"") + "\"";
-
     /// <inheritdoc cref="ISearchStore.SearchSource"/>
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
@@ -69,7 +61,7 @@ internal sealed class SearchSourceStore
             LIMIT @limit;
         ";
 
-        command.Parameters.AddWithValue("@query", ToFtsPhrase(query));
+        command.Parameters.AddWithValue("@query", SearchUtils.ToFtsPhrase(query));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit);
         command.Parameters.AddWithValue("@snippetTokens", snippetTokens);
@@ -86,7 +78,7 @@ internal sealed class SearchSourceStore
         // matches whole tokens only, missing camelCase substrings. When FTS5
         // saturates fewer than the requested limit, fall back to LIKE over
         // document content for plain identifier queries.
-        if (results.Count < limit && IsPlainIdentifierQuery(query))
+        if (results.Count < limit && SearchUtils.IsPlainIdentifierQuery(query))
         {
             var remaining = limit - results.Count;
             var seen = new HashSet<string>(results.Select(static r => r.DocumentPath));
@@ -129,19 +121,6 @@ internal sealed class SearchSourceStore
         }
 
         return results;
-    }
-
-    private static bool IsPlainIdentifierQuery(string query)
-    {
-        var hasIdentifierChar = false;
-        foreach (var c in query)
-        {
-            if (char.IsLetterOrDigit(c))
-                hasIdentifierChar = true;
-            else if (c != '.' && c != '_')
-                return false;
-        }
-        return hasIdentifierChar;
     }
 
     private static string TruncateSnippet(string content, string query)

@@ -26,9 +26,9 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         var edges = new List<EdgeRecord>();
         var seen = new HashSet<(string source, string target, string kind)>();
 
-        foreach (var (methodSymbol, methodSyntax) in EnumerateMethodDeclarations(allTypes))
+        foreach (var (methodSymbol, methodSyntax) in ExtractionUtils.EnumerateMethodDeclarations(allTypes))
         {
-            var bodySyntax = GetMethodBody(methodSyntax);
+            var bodySyntax = ExtractionUtils.GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 
@@ -91,54 +91,4 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         });
     }
 
-    /// <summary>
-    /// Enumerate all method-like declarations (methods, constructors, accessors)
-    /// owned by types in the current compilation, paired with their syntax nodes.
-    /// </summary>
-    private static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(List<INamedTypeSymbol> allTypes)
-    {
-        foreach (var typeSymbol in allTypes)
-        {
-            foreach (var member in typeSymbol.GetMembers())
-            {
-                if (member is IMethodSymbol method)
-                {
-                    foreach (var syntaxRef in method.DeclaringSyntaxReferences)
-                    {
-                        var syntax = syntaxRef.GetSyntax();
-                        if (syntax is MethodDeclarationSyntax methodSyntax)
-                            yield return (method, methodSyntax);
-                        else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
-                            yield return (method, ctorSyntax);
-                    }
-                }
-
-                if (member is IPropertySymbol property)
-                {
-                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
-                    {
-                        if (accessor == null)
-                            continue;
-
-                        foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
-                        {
-                            if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
-                                yield return (accessor, accessorSyntax);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
-    {
-        return node switch
-        {
-            MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
-            ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
-            AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
-            _ => null
-        };
-    }
 }

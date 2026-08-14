@@ -74,57 +74,13 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes() => ExtractionUtils.GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
-    {
-        return node switch
-        {
-            MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
-            ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
-            AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
-            _ => null
-        };
-    }
+        => ExtractionUtils.GetMethodBody(node);
 
     internal IReadOnlyList<(IMethodSymbol Method, CSharpSyntaxNode Syntax)> EnumerateMethodDeclarations()
     {
         if (_methodDeclarations != null)
             return _methodDeclarations;
-        var result = new List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>();
-        foreach (var typeSymbol in GetAllNamedTypes())
-        {
-            foreach (var member in typeSymbol.GetMembers())
-            {
-                if (member is IMethodSymbol method)
-                {
-                    foreach (var syntaxRef in method.DeclaringSyntaxReferences)
-                    {
-                        if (!IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
-                            continue;
-                        var syntax = syntaxRef.GetSyntax();
-                        if (syntax is MethodDeclarationSyntax methodSyntax)
-                            result.Add((method, methodSyntax));
-                        else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
-                            result.Add((method, ctorSyntax));
-                    }
-                }
-
-                if (member is IPropertySymbol property)
-                {
-                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
-                    {
-                        if (accessor == null)
-                            continue;
-
-                        foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
-                        {
-                            if (!IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
-                                continue;
-                            if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
-                                result.Add((accessor, accessorSyntax));
-                        }
-                    }
-                }
-            }
-        }
+        var result = ExtractionUtils.EnumerateMethodDeclarations(GetAllNamedTypes(), IsSyntaxTreeInScope).ToList();
         _methodDeclarations = result;
         return result;
     }

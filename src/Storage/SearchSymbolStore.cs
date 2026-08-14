@@ -26,14 +26,6 @@ internal sealed class SearchSymbolStore
                   )";
     private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
 
-    // FTS5's query grammar (distinct from the unicode61 tokenizer) rejects unquoted
-    // punctuation such as '.', so a raw user query like "CourseService.CreateAsync"
-    // throws a SqliteException before any result is returned. Wrapping the query as a
-    // quoted FTS5 phrase literal makes it a literal-text match instead of parsing it
-    // through FTS5's operator grammar. Only the double quote needs escaping (doubled)
-    // inside a phrase literal.
-    private static string ToFtsPhrase(string query) => "\"" + query.Replace("\"", "\"\"") + "\"";
-
     /// <inheritdoc cref="ISearchStore.SearchSymbols"/>
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
@@ -89,7 +81,7 @@ internal sealed class SearchSymbolStore
             LIMIT @limit;
         ";
 
-        command.Parameters.AddWithValue("@query", ToFtsPhrase(query));
+        command.Parameters.AddWithValue("@query", SearchUtils.ToFtsPhrase(query));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit);
 
@@ -110,7 +102,7 @@ internal sealed class SearchSymbolStore
         // "Service" misses "CourseService". When FTS5 saturates fewer than the
         // requested limit, fall back to case-insensitive substring matching over
         // fully qualified names to fill the gap.
-        if (results.Count < limit && IsPlainIdentifierQuery(query))
+        if (results.Count < limit && SearchUtils.IsPlainIdentifierQuery(query))
         {
             return SearchSymbolsBySubstring(query, snapshotId, limit, includeGenerated, kind);
         }
@@ -134,7 +126,7 @@ internal sealed class SearchSymbolStore
             var page = SearchSymbolsFtsPage(query, snapshotId, limit, includeGenerated, kind, cursor);
             // Only fall back to substring on the *first* page of a plain identifier query.
             // Trigger when FTS5 saturates fewer than the requested limit.
-            if (page.Items.Count < limit && cursor == null && IsPlainIdentifierQuery(query))
+            if (page.Items.Count < limit && cursor == null && SearchUtils.IsPlainIdentifierQuery(query))
                 return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, null);
             return page;
         }
@@ -194,7 +186,7 @@ internal sealed class SearchSymbolStore
             LIMIT @limit;
         ";
 
-        command.Parameters.AddWithValue("@query", ToFtsPhrase(query));
+        command.Parameters.AddWithValue("@query", SearchUtils.ToFtsPhrase(query));
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@limit", limit + 1);
 
@@ -309,19 +301,6 @@ internal sealed class SearchSymbolStore
             LastSymbolId: last.SymbolId);
 
         return new SymbolSearchPage(results, nextCursor.Encode());
-    }
-
-    private static bool IsPlainIdentifierQuery(string query)
-    {
-        var hasIdentifierChar = false;
-        foreach (var c in query)
-        {
-            if (char.IsLetterOrDigit(c))
-                hasIdentifierChar = true;
-            else if (c != '.' && c != '_')
-                return false;
-        }
-        return hasIdentifierChar;
     }
 
     private List<SymbolSearchResult> SearchSymbolsBySubstring(string query, string snapshotId, int limit, bool includeGenerated, string? kind)

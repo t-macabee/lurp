@@ -74,8 +74,6 @@ namespace Lurp.Storage
         public string? ReceiverTypeConstraintsJson { get; init; }
         public GraphNodeKind? SourceNodeKind { get; init; }
         public GraphNodeKind? TargetNodeKind { get; init; }
-
-        public bool Is(EdgeKind kind) => Kind == kind.ToString();
     }
 
     public sealed class DiagnosticRecord
@@ -198,7 +196,6 @@ namespace Lurp.Storage
         public string FilePath { get; init; } = string.Empty;
         public string ContentHash { get; init; } = string.Empty;
         public string Encoding { get; init; } = string.Empty;
-        public string LineStart { get; init; } = string.Empty;
         public DateTime CreatedAtUtc { get; init; }
 
         public byte[]? Content { get; }

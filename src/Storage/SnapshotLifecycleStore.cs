@@ -398,7 +398,6 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                 FilePath = reader.GetString(1),
                 ContentHash = reader.GetString(2),
                 Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                LineStart = lineStarts,
                 CreatedAtUtc = DateTime.MinValue,
             });
         }

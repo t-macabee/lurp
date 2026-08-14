@@ -530,6 +530,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         cancellationToken.ThrowIfCancellationRequested();
         var orphanEdgesDropped = _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
 
+        // Step 7c: Drop stale synthetic/route graph nodes carried forward by
+        // CopyEdgesToSnapshot that no longer have any edge or declaration in this
+        // snapshot. Without this they linger in snapshot_graph_nodes and keep
+        // masking genuinely orphaned edges in DeleteOrphanEdges (ARCH-006).
+        cancellationToken.ThrowIfCancellationRequested();
+        _store.PruneSnapshotGraphNodes(context.Snapshots.ToSnapshotId);
+
         // Step 8a: FTS Rebuild (incremental)
         RebuildSearchIndex(context, timings);
 
@@ -576,7 +583,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             context.Solution, context.Workspace,
             context.Snapshots.ToSnapshotId,
             refreshPaths,
-            cancellationToken);
+            cancellationToken,
+            context.Changes.AffectedProjects);
         _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();
         timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));
@@ -632,7 +640,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             foreach (var document in project.Documents)
             {
                 if (!string.IsNullOrEmpty(document.FilePath))
-                    paths.Add(DocumentChangeDetector.GetRelativePath(document.FilePath, _gitRoot));
+                    paths.Add(PathNormalizer.ToGitRelative(document.FilePath, _gitRoot));
             }
         }
         return paths;
@@ -653,7 +661,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             {
                 if (document.FilePath == null)
                     continue;
-                if (paths.Contains(DocumentChangeDetector.GetRelativePath(document.FilePath, _gitRoot)))
+                if (paths.Contains(PathNormalizer.ToGitRelative(document.FilePath, _gitRoot)))
                 {
                     projectNames.Add(project.Name);
                     break;

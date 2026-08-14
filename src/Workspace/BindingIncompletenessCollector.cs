@@ -144,7 +144,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     {
         var documentPath = string.IsNullOrEmpty(filePath)
             ? null
-            : DocumentChangeDetector.GetRelativePath(filePath, gitRoot);
+            : PathNormalizer.ToGitRelative(filePath, gitRoot);
         var key = (documentPath, reason);
         _counts[key] = _counts.GetValueOrDefault(key) + 1;
     }

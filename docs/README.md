@@ -3,6 +3,12 @@
 This folder contains the deeper material behind the [root README](../../README.md).
 It is organized by purpose so visitors can choose the right level of detail.
 
+Product intent and boundaries (what a code query can't tell you) live in the
+root [`AGENTS.md`](../AGENTS.md) and [`CLAUDE.md`](../CLAUDE.md) — read those
+first; they're loaded automatically for agents working in this repo. This
+folder is on-demand deep reference: pull the section you need for a specific
+question rather than reading a file end-to-end.
+
 ## Architecture and design
 
 - [Lurp Architecture](LURP_ARCHITECTURE.md): the product model, storage

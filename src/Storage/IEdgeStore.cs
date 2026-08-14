@@ -30,6 +30,15 @@
 
         OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId);
 
+        /// <summary>
+        /// Removes <c>snapshot_graph_nodes</c> rows whose node_id is no longer
+        /// referenced by this snapshot's edges or declarations. Without this,
+        /// <see cref="CopyEdgesToSnapshot"/>'s blind copy-forward accumulates
+        /// stale synthetic/route nodes across incremental passes, which keep
+        /// masking genuinely orphaned edges in <see cref="DeleteOrphanEdges"/>.
+        /// </summary>
+        void PruneSnapshotGraphNodes(string snapshotId);
+
         void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors);
         bool HasStaleExtractorVersions(string snapshotId);
     }
