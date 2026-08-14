@@ -48,7 +48,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
                 symbolId,
                 ImpactDirection.Upstream,
                 allowedKinds,
-                context.MaxHops);
+                maxDepth: context.MaxHops);
 
             foreach (var path in paths)
             {

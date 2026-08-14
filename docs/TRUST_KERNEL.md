@@ -140,11 +140,12 @@ Closed capsule decisions:
 | Direction control | `ImpactDirection.Upstream/Downstream` | ✅ |
 | Depth limiting | `maxDepth` parameter | ✅ |
 | Edge filtering | `allowedEdgeKinds` parameter | ✅ |
+| Provenance filtering | `allowedProvenance` parameter (`--provenance=`, commit `e5bbaf0`) | ✅ |
 | Cycle detection | `visited` set per path | ✅ |
 | Truncation explanation | `Truncated`, `TruncationReason` | ✅ |
 | Semantic causes | `SemanticCauses` attached via `ISemanticDiffStore` | ✅ |
 
-Tests: `ImpactTraverserTests.cs` (cycle detection, maxDepth bounding, edge-kind filtering, direction control).
+Tests: `ImpactTraverserTests.cs` (cycle detection, maxDepth bounding, edge-kind filtering, provenance filtering, direction control).
 
 Order 4's scope was narrowed by an audit before its D1–D5 sub-tasks were
 written: immutable document versions already existed de facto (T12), and
