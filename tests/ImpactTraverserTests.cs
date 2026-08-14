@@ -13,14 +13,14 @@ public sealed class ImpactTraverserTests
         return new ImpactTraverser(store, SnapshotId);
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind = "Calls")
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind = "Calls", string provenance = "compiler_proved")
         => new()
         {
             SnapshotId = SnapshotId,
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
-            Provenance = "compiler_proved",
+            Provenance = provenance,
             ExtractorVersion = "1.0.0",
         };
 
@@ -136,6 +136,30 @@ public sealed class ImpactTraverserTests
         foreach (var path in paths)
         {
             Assert.All(path.Hops, hop => Assert.Equal("Calls", hop.EdgeKind));
+        }
+    }
+
+    [Fact]
+    public void TraceImpact_AllowedProvenance_FiltersByProvenance()
+    {
+        var edges = new List<EdgeRecord>
+        {
+            MakeEdge("A", "B", "Calls", "compiler_proved"),
+            MakeEdge("A", "C", "Calls", "framework_derived"),
+            MakeEdge("B", "D", "Calls", "compiler_proved"),
+            MakeEdge("C", "D", "Calls", "framework_derived"),
+        };
+        var traverser = CreateTraverser(edges);
+
+        var compilerProvedOnly = new HashSet<string> { "compiler_proved" };
+        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, allowedProvenance: compilerProvedOnly, maxDepth: 10);
+
+        Assert.NotEmpty(paths);
+        // Only compiler_proved edges should be followed: A→B (compiler_proved), B→D (compiler_proved)
+        // A→C (framework_derived) should be skipped
+        foreach (var path in paths)
+        {
+            Assert.All(path.Hops, hop => Assert.Equal("compiler_proved", hop.Provenance));
         }
     }
 

@@ -54,7 +54,7 @@ public class Program
             ["--from-snapshot=", "--to-snapshot="],
             Sync(DiffHandler.Run)),
         new("impact", "Trace the impact path of a changed symbol.",
-            ["--symbol=", "--direction=", "--kinds=", "--max-depth=", "--max-paths=", "--cursor=",
+            ["--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--max-paths=", "--cursor=",
              "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(ImpactHandler.Run)),
         new("context", "Assemble a context capsule for a symbol.",

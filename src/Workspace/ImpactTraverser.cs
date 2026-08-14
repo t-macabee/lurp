@@ -15,7 +15,7 @@ namespace Lurp.Workspace
             _semanticDiffStore = semanticDiffStore;
         }
 
-        public List<ImpactPath> TraceImpact(string symbolId,ImpactDirection direction,HashSet<string>? allowedEdgeKinds = null,int maxDepth = 10,bool includeSource = true)
+        public List<ImpactPath> TraceImpact(string symbolId,ImpactDirection direction,HashSet<string>? allowedEdgeKinds = null,HashSet<string>? allowedProvenance = null,int maxDepth = 10,bool includeSource = true)
         {
             var results = new List<ImpactPath>();
             var semanticCauses = GetSemanticCauses(symbolId);
@@ -42,7 +42,7 @@ namespace Lurp.Workspace
                     continue;
                 }
 
-                var anyEdgeFollowed = EnqueueNeighbors(queue, edges, direction, allowedEdgeKinds, visited, hopsSoFar, includeSource);
+                var anyEdgeFollowed = EnqueueNeighbors(queue, edges, direction, allowedEdgeKinds, allowedProvenance, visited, hopsSoFar, includeSource);
 
                 if (!anyEdgeFollowed && hopsSoFar.Count > 0)
                 {
@@ -92,13 +92,15 @@ namespace Lurp.Workspace
         }
 
         private static bool EnqueueNeighbors(Queue<(string currentId, List<ImpactHop> hops, HashSet<string> visited)> queue, List<EdgeRecord> edges,
-            ImpactDirection direction, HashSet<string>? allowedEdgeKinds, HashSet<string> visited, List<ImpactHop> hopsSoFar, bool includeSource)
+            ImpactDirection direction, HashSet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance, HashSet<string> visited, List<ImpactHop> hopsSoFar, bool includeSource)
         {
             bool anyEdgeFollowed = false;
 
             foreach (var edge in edges)
             {
                 if (allowedEdgeKinds != null && !allowedEdgeKinds.Contains(edge.Kind))
+                    continue;
+                if (allowedProvenance != null && !allowedProvenance.Contains(edge.Provenance))
                     continue;
 
                 string neighborId = direction switch

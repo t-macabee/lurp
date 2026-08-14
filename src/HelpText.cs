@@ -64,6 +64,9 @@ internal static class HelpText
         // impact
         ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",
         ["--kinds="] = "Comma-separated edge kinds to follow.",
+        ["--provenance="] = "Comma-separated provenance values to follow (e.g. compiler_proved,framework_derived). "
+            + "Pass compiler_proved to restrict traversal to compiler-verified edges only, "
+            + "excluding polymorphic inference (MayDispatchTo), convention DI (Registers), and string reflection (Reflection*).",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
         ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
 
@@ -94,7 +97,8 @@ internal static class HelpText
     // drift). Keyed by mode name; printed after that mode's flag list.
     private static readonly IReadOnlyDictionary<string, string> ModeNotes = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["impact"] = "Every response also carries `groups`: the paths grouped by first hop, computed over ALL paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated.",
+        ["impact"] = "Every response also carries `groups`: the paths grouped by first hop, computed over ALL paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated. "
+            + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
         ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace.",
     };
 

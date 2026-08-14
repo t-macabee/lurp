@@ -38,6 +38,11 @@ internal static class ImpactHandler
             ? [.. kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
             : null;
 
+        var provenanceArg = HandlerBootstrap.GetArgValue(args, "--provenance=");
+        HashSet<string>? allowedProvenance = !string.IsNullOrEmpty(provenanceArg)
+            ? [.. provenanceArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+            : null;
+
         var maxPaths = HandlerBootstrap.ParsePositiveIntArg(args, "--max-paths=", DefaultMaxPaths);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
@@ -49,12 +54,13 @@ internal static class ImpactHandler
                 resolvedSymbolId,
                 direction.ToString(),
                 maxDepth.ToString(CultureInfo.InvariantCulture),
-                kindsArg);
+                kindsArg,
+                provenanceArg);
             var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
             var offset = cursor?.Offset ?? 0;
 
             var traverser = new ImpactTraverser(store, snapshotId, store);
-            var traced = traverser.TraceImpact(symbolId: resolvedSymbolId, direction: direction, allowedEdgeKinds: allowedKinds, maxDepth: maxDepth, includeSource: true);
+            var traced = traverser.TraceImpact(symbolId: resolvedSymbolId, direction: direction, allowedEdgeKinds: allowedKinds, allowedProvenance: allowedProvenance, maxDepth: maxDepth, includeSource: true);
 
             var paths = traced.OrderBy(PathKey, StringComparer.Ordinal).ToList();
 
