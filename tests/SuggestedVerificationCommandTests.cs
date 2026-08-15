@@ -11,7 +11,6 @@ public class SuggestedVerificationCommandTests
     [Fact]
     public void TestName_Normalization_StripsGlobalPrefix_FromCommandOnly()
     {
-        var testId = "global::A.B.C|assembly";
         var testName = "global::A.B.C";
         var command = FqnNormalizer.NormalizeForCommand(testName);
 
@@ -22,7 +21,6 @@ public class SuggestedVerificationCommandTests
     [Fact]
     public void TestName_Normalization_PreservesGlobalPrefix_InDisplayFields()
     {
-        var testId = "global::A.B.C|assembly";
         var testName = "global::A.B.C";
         var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
 

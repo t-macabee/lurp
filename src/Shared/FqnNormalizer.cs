@@ -4,7 +4,7 @@ namespace Lurp.Shared;
 
 internal static class FqnNormalizer
 {
-    public static string NormalizeForCommand(string fqn)
+    public static string? NormalizeForCommand(string? fqn)
     {
         if (string.IsNullOrEmpty(fqn))
             return fqn;
