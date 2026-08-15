@@ -13,16 +13,19 @@ public sealed class ImpactTraverserTests
         return new ImpactTraverser(store, SnapshotId);
     }
 
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind = "Calls", string provenance = "compiler_proved")
-        => new()
+    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind = "Calls",
+        string provenance = "compiler_proved")
+    {
+        return new EdgeRecord
         {
             SnapshotId = SnapshotId,
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
             Kind = kind,
             Provenance = provenance,
-            ExtractorVersion = "1.0.0",
+            ExtractorVersion = "1.0.0"
         };
+    }
 
     // ── Cycle detection ─────────────────────────────────────────────────
 
@@ -32,7 +35,7 @@ public sealed class ImpactTraverserTests
         var edges = new List<EdgeRecord>
         {
             MakeEdge("A", "B"),
-            MakeEdge("B", "A"),
+            MakeEdge("B", "A")
         };
         var traverser = CreateTraverser(edges);
 
@@ -55,7 +58,7 @@ public sealed class ImpactTraverserTests
     {
         var edges = new List<EdgeRecord>
         {
-            MakeEdge("A", "A"),
+            MakeEdge("A", "A")
         };
         var traverser = CreateTraverser(edges);
 
@@ -77,7 +80,7 @@ public sealed class ImpactTraverserTests
             MakeEdge("B", "C"),
             MakeEdge("C", "D"),
             MakeEdge("D", "E"),
-            MakeEdge("E", "F"),
+            MakeEdge("E", "F")
         };
         var traverser = CreateTraverser(edges);
 
@@ -99,7 +102,7 @@ public sealed class ImpactTraverserTests
     {
         var edges = new List<EdgeRecord>
         {
-            MakeEdge("A", "B"),
+            MakeEdge("A", "B")
         };
         var traverser = CreateTraverser(edges);
 
@@ -120,23 +123,20 @@ public sealed class ImpactTraverserTests
     {
         var edges = new List<EdgeRecord>
         {
-            MakeEdge("A", "B", "Calls"),
+            MakeEdge("A", "B"),
             MakeEdge("A", "C", "Constructs"),
-            MakeEdge("B", "D", "Calls"),
-            MakeEdge("C", "D", "Calls"),
+            MakeEdge("B", "D"),
+            MakeEdge("C", "D")
         };
         var traverser = CreateTraverser(edges);
 
         var callsOnly = new HashSet<string> { "Calls" };
-        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, allowedEdgeKinds: callsOnly, maxDepth: 10);
+        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, callsOnly, maxDepth: 10);
 
         Assert.NotEmpty(paths);
         // Only Calls edges should be followed: A→B (Calls), B→D (Calls)
         // A→C (Constructs) should be skipped
-        foreach (var path in paths)
-        {
-            Assert.All(path.Hops, hop => Assert.Equal("Calls", hop.EdgeKind));
-        }
+        foreach (var path in paths) Assert.All(path.Hops, hop => Assert.Equal("Calls", hop.EdgeKind));
     }
 
     [Fact]
@@ -144,23 +144,21 @@ public sealed class ImpactTraverserTests
     {
         var edges = new List<EdgeRecord>
         {
-            MakeEdge("A", "B", "Calls", "compiler_proved"),
+            MakeEdge("A", "B"),
             MakeEdge("A", "C", "Calls", "framework_derived"),
-            MakeEdge("B", "D", "Calls", "compiler_proved"),
-            MakeEdge("C", "D", "Calls", "framework_derived"),
+            MakeEdge("B", "D"),
+            MakeEdge("C", "D", "Calls", "framework_derived")
         };
         var traverser = CreateTraverser(edges);
 
         var compilerProvedOnly = new HashSet<string> { "compiler_proved" };
-        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, allowedProvenance: compilerProvedOnly, maxDepth: 10);
+        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, allowedProvenance: compilerProvedOnly,
+            maxDepth: 10);
 
         Assert.NotEmpty(paths);
         // Only compiler_proved edges should be followed: A→B (compiler_proved), B→D (compiler_proved)
         // A→C (framework_derived) should be skipped
-        foreach (var path in paths)
-        {
-            Assert.All(path.Hops, hop => Assert.Equal("compiler_proved", hop.Provenance));
-        }
+        foreach (var path in paths) Assert.All(path.Hops, hop => Assert.Equal("compiler_proved", hop.Provenance));
     }
 
     [Fact]
@@ -168,12 +166,12 @@ public sealed class ImpactTraverserTests
     {
         var edges = new List<EdgeRecord>
         {
-            MakeEdge("A", "B", "Calls"),
-            MakeEdge("A", "C", "Constructs"),
+            MakeEdge("A", "B"),
+            MakeEdge("A", "C", "Constructs")
         };
         var traverser = CreateTraverser(edges);
 
-        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream, allowedEdgeKinds: null, maxDepth: 10);
+        var paths = traverser.TraceImpact("A", ImpactDirection.Downstream);
 
         Assert.NotEmpty(paths);
         var kinds = paths.SelectMany(p => p.Hops).Select(h => h.EdgeKind).Distinct().ToList();
@@ -189,7 +187,7 @@ public sealed class ImpactTraverserTests
         var edges = new List<EdgeRecord>
         {
             MakeEdge("A", "B"),
-            MakeEdge("B", "C"),
+            MakeEdge("B", "C")
         };
         var traverser = CreateTraverser(edges);
 
@@ -198,15 +196,11 @@ public sealed class ImpactTraverserTests
         Assert.NotEmpty(paths);
         // All hops should flow forward: A→B, B→C
         foreach (var path in paths)
-        {
-            for (int i = 0; i < path.Hops.Count; i++)
-            {
+            for (var i = 0; i < path.Hops.Count; i++)
                 if (i == 0)
                     Assert.Equal("A", path.Hops[i].SourceSymbolId);
                 else
                     Assert.Equal(path.Hops[i - 1].TargetSymbolId, path.Hops[i].SourceSymbolId);
-            }
-        }
     }
 
     [Fact]
@@ -215,7 +209,7 @@ public sealed class ImpactTraverserTests
         var edges = new List<EdgeRecord>
         {
             MakeEdge("B", "A"),
-            MakeEdge("C", "B"),
+            MakeEdge("C", "B")
         };
         var traverser = CreateTraverser(edges);
 
@@ -224,15 +218,11 @@ public sealed class ImpactTraverserTests
         Assert.NotEmpty(paths);
         // Upstream: traces edges backwards — A gets incoming from B, B gets incoming from C
         foreach (var path in paths)
-        {
-            for (int i = 0; i < path.Hops.Count; i++)
-            {
+            for (var i = 0; i < path.Hops.Count; i++)
                 if (i == 0)
                     Assert.Equal("B", path.Hops[i].SourceSymbolId);
                 else if (i == 1)
                     Assert.Equal("C", path.Hops[i].SourceSymbolId);
-            }
-        }
     }
 
     // ── In-memory IEdgeStore implementation ─────────────────────────────
@@ -241,7 +231,10 @@ public sealed class ImpactTraverserTests
     {
         private readonly List<EdgeRecord> _edges;
 
-        public InMemoryEdgeStore(List<EdgeRecord> edges) => _edges = edges;
+        public InMemoryEdgeStore(List<EdgeRecord> edges)
+        {
+            _edges = edges;
+        }
 
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
         {
@@ -253,31 +246,115 @@ public sealed class ImpactTraverserTests
         }
 
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
-            => _edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId).ToList();
+        {
+            return _edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId).ToList();
+        }
 
         public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
-            => _edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId).ToList();
+        {
+            return _edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId).ToList();
+        }
 
         // Unused members — throw to catch accidental usage
-        public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges) => throw new NotSupportedException();
-        public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics) => throw new NotSupportedException();
-        public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations) => throw new NotSupportedException();
-        public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null) => throw new NotSupportedException();
-        public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null) => throw new NotSupportedException();
-        public int CountEdges(string snapshotId) => throw new NotSupportedException();
-        public int CountDiagnostics(string snapshotId) => throw new NotSupportedException();
-        public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind) => throw new NotSupportedException();
-        public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths) => throw new NotSupportedException();
-        public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities) => throw new NotSupportedException();
-        public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds) => throw new NotSupportedException();
-        public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId) => throw new NotSupportedException();
-        public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId) => throw new NotSupportedException();
-        public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames) => throw new NotSupportedException();
-        public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId) => throw new NotSupportedException();
-        public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths) => throw new NotSupportedException();
-        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId) => throw new NotSupportedException();
-        public void PruneSnapshotGraphNodes(string snapshotId) => throw new NotSupportedException();
-        public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors) => throw new NotSupportedException();
-        public bool HasStaleExtractorVersions(string snapshotId) => throw new NotSupportedException();
+        public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations)
+        {
+            throw new NotSupportedException();
+        }
+
+        public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)
+        {
+            throw new NotSupportedException();
+        }
+
+        public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
+        {
+            throw new NotSupportedException();
+        }
+
+        public int CountEdges(string snapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public int CountDiagnostics(string snapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId,
+            IEnumerable<string> assemblyIdentities)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+        {
+            throw new NotSupportedException();
+        }
+
+        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void PruneSnapshotGraphNodes(string snapshotId)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void UpsertExtractors(IEnumerable<(string Name, string Version, string Description)> extractors)
+        {
+            throw new NotSupportedException();
+        }
+
+        public bool HasStaleExtractorVersions(string snapshotId)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

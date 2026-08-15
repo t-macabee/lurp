@@ -19,7 +19,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a => a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
+        var hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a => a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;
@@ -44,7 +44,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             "IStreamRequestHandler", "IAsyncStreamHandler",
             "IPipelineBehavior",
             "IRequestExceptionHandler",
-            "IRequestPreProcessor", "IRequestPostProcessor",
+            "IRequestPreProcessor", "IRequestPostProcessor"
         };
 
         foreach (var type in allTypes)
@@ -90,7 +90,6 @@ public sealed class MediatRAdapter : IFrameworkAdapter
 
                 if (ifaceName == "INotificationHandler")
                 {
-
                     var notificationTypeArg = iface.TypeArguments.FirstOrDefault();
                     if (notificationTypeArg is INamedTypeSymbol namedNotification)
                         handlerTypes.Add((type, namedNotification));
@@ -137,9 +136,8 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = locationResolver.IsGenerated(path),
+                IsCrossGenerated = locationResolver.IsGenerated(path)
             });
         }
     }
-
 }

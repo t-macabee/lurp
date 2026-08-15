@@ -2,8 +2,6 @@ namespace Lurp.Workspace;
 
 internal sealed class FullRebuildRequiredException : InvalidOperationException
 {
-    public IReadOnlyList<SnapshotMismatch> Mismatches { get; }
-
     public FullRebuildRequiredException(IReadOnlyList<SnapshotMismatch> mismatches)
         : base(BuildMessage(mismatches))
     {
@@ -11,6 +9,8 @@ internal sealed class FullRebuildRequiredException : InvalidOperationException
             throw new ArgumentException("At least one mismatch is required.", nameof(mismatches));
         Mismatches = mismatches;
     }
+
+    public IReadOnlyList<SnapshotMismatch> Mismatches { get; }
 
     private static string BuildMessage(IReadOnlyList<SnapshotMismatch> mismatches)
     {

@@ -12,10 +12,14 @@ public sealed partial class SnapshotManifest
     private sealed class SnapshotIdConverter : JsonConverter<SnapshotId>
     {
         public override SnapshotId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-            => SnapshotId.Parse(reader.GetString()!);
+        {
+            return SnapshotId.Parse(reader.GetString()!);
+        }
 
         public override void Write(Utf8JsonWriter writer, SnapshotId value, JsonSerializerOptions options)
-            => writer.WriteStringValue(value.ToString());
+        {
+            writer.WriteStringValue(value.ToString());
+        }
     }
 
     private sealed class NullableSnapshotIdConverter : JsonConverter<SnapshotId?>
@@ -75,7 +79,6 @@ public sealed partial class SnapshotManifest
 
         private static WorkspaceId ParseWorkspaceUri(string uri)
         {
-
             const string prefix = "workspace://";
             if (!uri.StartsWith(prefix, StringComparison.Ordinal))
                 throw new JsonException($"Invalid WorkspaceId URI: {uri}");
@@ -116,10 +119,7 @@ public sealed partial class SnapshotManifest
         public override void Write(Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            foreach (var kvp in value)
-            {
-                writer.WriteString(kvp.Key.ToString(), kvp.Value.ToString());
-            }
+            foreach (var kvp in value) writer.WriteString(kvp.Key.ToString(), kvp.Value.ToString());
             writer.WriteEndObject();
         }
     }

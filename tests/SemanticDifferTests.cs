@@ -1,15 +1,16 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
+using System.Text;
 using System.Text.Json;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// Direct SemanticDiffer tests: ComputeDiff change-kind emission, ComputeSymbolDiff
-/// signature round-trips, MatchTransitions rename pairing, and DiffEdges payload
-/// classification. All pure store + declaration construction — no MSBuild, no Roslyn.
-/// Restores live coverage deleted in f1254fc (tests/MigrationRunnerTests.B3SemanticChanges.cs).
+///     Direct SemanticDiffer tests: ComputeDiff change-kind emission, ComputeSymbolDiff
+///     signature round-trips, MatchTransitions rename pairing, and DiffEdges payload
+///     classification. All pure store + declaration construction — no MSBuild, no Roslyn.
+///     Restores live coverage deleted in f1254fc (tests/MigrationRunnerTests.B3SemanticChanges.cs).
 /// </summary>
 public sealed class SemanticDifferTests : IDisposable
 {
@@ -29,9 +30,13 @@ public sealed class SemanticDifferTests : IDisposable
         return store;
     }
 
-    private static byte[] StringToBytes(string text) => System.Text.Encoding.UTF8.GetBytes(text);
+    private static byte[] StringToBytes(string text)
+    {
+        return Encoding.UTF8.GetBytes(text);
+    }
 
-    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId, string? customSource = null, string filePath = "src/Foo.cs")
+    private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId,
+        string? customSource = null, string filePath = "src/Foo.cs")
     {
         var sourceBytes = customSource != null
             ? StringToBytes(customSource)
@@ -56,7 +61,11 @@ public sealed class SemanticDifferTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new List<DocumentVersion>
             {
-                new DocumentVersion(sourceBytes) { DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts },
+                new(sourceBytes)
+                {
+                    DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8",
+                    CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts
+                }
             }
         };
         store.SaveSnapshot(manifest);
@@ -106,29 +115,33 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-interfaces-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"interfaces": ["T:Ns.IFoo|asm1"]}""")]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-interfaces-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"interfaces": ["T:Ns.IFoo|asm1"]}""")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-interfaces-to:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"interfaces": ["T:Ns.IFoo|asm1", "T:Ns.IBar|asm1"]}""")]);
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-interfaces-to:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"interfaces": ["T:Ns.IFoo|asm1", "T:Ns.IBar|asm1"]}""")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -151,29 +164,33 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-record-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"isRecord": false}""")]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-record-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-record-to:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"isRecord": true}""")]);
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-record-to:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": true}""")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -196,29 +213,33 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-typekind-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"typeKind": "Class"}""")]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-typekind-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"typeKind": "Class"}""")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-typekind-to:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"typeKind": "Struct"}""")]);
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-typekind-to:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"typeKind": "Struct"}""")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -466,29 +487,33 @@ public sealed class SemanticDifferTests : IDisposable
         CreateSnapshotWithDocument(store, fromSnapshotId, oldNameSource);
         CreateSnapshotWithDocument(store, toSnapshotId, newNameSource);
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: "M:Ns.OldName|asm1",
-            docCommentId: "M:Ns.OldName",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.Method,
-            docVersionId: "doc-snap-rename-from:hash1",
-            fullS: 0, fullE: 25,
-            sigS: 0, sigE: 21,
-            bodyS: 21, bodyE: 25,
-            nameS: 12, nameE: 19,
-            fqn: "Ns.OldName")]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: "M:Ns.OldName|asm1",
+                docCommentId: "M:Ns.OldName",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-rename-from:hash1",
+                fullS: 0, fullE: 25,
+                sigS: 0, sigE: 21,
+                bodyS: 21, bodyE: 25,
+                nameS: 12, nameE: 19,
+                fqn: "Ns.OldName")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
-            symbolId: "M:Ns.NewName|asm1",
-            docCommentId: "M:Ns.NewName",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.Method,
-            docVersionId: "doc-snap-rename-to:hash1",
-            fullS: 0, fullE: 25,
-            sigS: 0, sigE: 21,
-            bodyS: 21, bodyE: 25,
-            nameS: 12, nameE: 19,
-            fqn: "Ns.NewName")]);
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
+                symbolId: "M:Ns.NewName|asm1",
+                docCommentId: "M:Ns.NewName",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-rename-to:hash1",
+                fullS: 0, fullE: 25,
+                sigS: 0, sigE: 21,
+                bodyS: 21, bodyE: 25,
+                nameS: 12, nameE: 19,
+                fqn: "Ns.NewName")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -520,25 +545,25 @@ public sealed class SemanticDifferTests : IDisposable
         CreateSnapshotWithDocument(store, toSnapshotId);
 
         var fromEdges = new List<EdgeRecord>
+        {
+            new()
             {
-                new()
-                {
-                    SourceSymbolId = "M:Ns.Foo|asm1",
-                    TargetSymbolId = "M:Ns.Bar|asm1",
-                    Kind = "Calls",
-                    Provenance = "compiler_proved",
-                },
-            };
+                SourceSymbolId = "M:Ns.Foo|asm1",
+                TargetSymbolId = "M:Ns.Bar|asm1",
+                Kind = "Calls",
+                Provenance = "compiler_proved"
+            }
+        };
         var toEdges = new List<EdgeRecord>
+        {
+            new()
             {
-                new()
-                {
-                    SourceSymbolId = "M:Ns.Bar|asm1",
-                    TargetSymbolId = "M:Ns.Baz|asm1",
-                    Kind = "Calls",
-                    Provenance = "compiler_proved",
-                },
-            };
+                SourceSymbolId = "M:Ns.Bar|asm1",
+                TargetSymbolId = "M:Ns.Baz|asm1",
+                Kind = "Calls",
+                Provenance = "compiler_proved"
+            }
+        };
 
         store.SaveEdges(fromSnapshotId, fromEdges);
         store.SaveEdges(toSnapshotId, toEdges);
@@ -571,29 +596,33 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-relocate-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"isRecord": false}""")]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-relocate-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Foo",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-relocate-to:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"isRecord": false}""")]);
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Foo",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-relocate-to:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isRecord": false}""")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -629,7 +658,8 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -639,7 +669,8 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""")]);
+                metadataJson: """{"isRecord": false}""")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -680,26 +711,36 @@ public sealed class SemanticDifferTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             Documents = new List<DocumentVersion>
             {
-                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
-                new DocumentVersion(partialSource) { DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1", Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts },
+                new(partialSource)
+                {
+                    DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1",
+                    Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts
+                },
+                new(partialSource)
+                {
+                    DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1",
+                    Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts
+                }
             }
         };
         store.SaveSnapshot(toManifest);
 
         const string symbolId = "T:Ns.Partial|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
-            symbolId: symbolId,
-            docCommentId: "T:Ns.Partial",
-            assembly: "asm1",
-            kind: IndexedSymbolKind.NamedType,
-            docVersionId: "doc-snap-partial-from:hash1",
-            fullS: 0, fullE: 10,
-            sigS: 0, sigE: 5,
-            bodyS: 6, bodyE: 10,
-            nameS: 0, nameE: 5,
-            metadataJson: """{"isPartial": true}""",
-            isPartial: true)]);
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "T:Ns.Partial",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-snap-partial-from:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: """{"isPartial": true}""",
+                isPartial: true)
+        ]);
 
         store.SaveDeclarations(toSnapshotId, new[]
         {
@@ -759,7 +800,8 @@ public sealed class SemanticDifferTests : IDisposable
 
         const string symbolId = "T:Ns.Foo|asm1";
 
-        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+        store.SaveDeclarations(fromSnapshotId, [
+            MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -770,9 +812,11 @@ public sealed class SemanticDifferTests : IDisposable
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
                 metadataJson: """{"isRecord": false}""",
-                fqn: "Ns.Foo")]);
+                fqn: "Ns.Foo")
+        ]);
 
-        store.SaveDeclarations(toSnapshotId, [MakeDecl(
+        store.SaveDeclarations(toSnapshotId, [
+            MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -783,7 +827,8 @@ public sealed class SemanticDifferTests : IDisposable
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
                 metadataJson: """{"isRecord": false}""",
-                fqn: "NewNs.Foo")]);
+                fqn: "NewNs.Foo")
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
@@ -825,7 +870,7 @@ public sealed class SemanticDifferTests : IDisposable
             SourceStartLine = 10,
             SourceStartColumn = 4,
             SourceEndLine = 10,
-            SourceEndColumn = 9,
+            SourceEndColumn = 9
         };
         var locationOnly = expectedChangeType == ChangeType.EdgeLocationChanged;
         var toEdge = new EdgeRecord
@@ -841,7 +886,7 @@ public sealed class SemanticDifferTests : IDisposable
             SourceStartLine = locationOnly ? 12 : fromEdge.SourceStartLine,
             SourceStartColumn = fromEdge.SourceStartColumn,
             SourceEndLine = locationOnly ? 12 : fromEdge.SourceEndLine,
-            SourceEndColumn = fromEdge.SourceEndColumn,
+            SourceEndColumn = fromEdge.SourceEndColumn
         };
 
         store.SaveEdges(fromSnapshotId, [fromEdge]);

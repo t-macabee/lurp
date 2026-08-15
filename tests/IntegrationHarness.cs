@@ -6,10 +6,10 @@ using Microsoft.Build.Locator;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Minimal self-host integration harness. Exists so the self-host acceptance
-/// test can index the real <c>Lurp.slnx</c> and assemble a capsule over a live
-/// symbol without going through <see cref="IntegrationTestBase"/>, whose
-/// <c>SolutionPath</c>/<c>TestDir</c> are bound to a generated fixture solution.
+///     Minimal self-host integration harness. Exists so the self-host acceptance
+///     test can index the real <c>Lurp.slnx</c> and assemble a capsule over a live
+///     symbol without going through <see cref="IntegrationTestBase" />, whose
+///     <c>SolutionPath</c>/<c>TestDir</c> are bound to a generated fixture solution.
 /// </summary>
 internal static class IntegrationHarness
 {
@@ -42,11 +42,11 @@ internal static class IntegrationHarness
         {
             await IndexRunner.RunAsync(
                 store, solutionPath, outputDir,
-                skipAdapters: [], jsonExportPath: null, strategyArg: "full",
-                cancellationToken: default, verbose: false, output: null, skipDiff: false, force: false);
+                [], null, "full",
+                false, null, false, false, default);
 
             return store.LoadLatestSnapshot()?.SnapshotId
-                ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");
+                   ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");
         }
         finally
         {
@@ -55,5 +55,7 @@ internal static class IntegrationHarness
     }
 
     public static SqliteIndexStore OpenReadStore(string dbPath)
-        => HandlerBootstrap.OpenStore(dbPath);
+    {
+        return HandlerBootstrap.OpenStore(dbPath);
+    }
 }

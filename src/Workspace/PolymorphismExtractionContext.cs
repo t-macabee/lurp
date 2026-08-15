@@ -5,7 +5,8 @@ namespace Lurp.Workspace;
 
 internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 {
-    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal PolymorphismExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null,
+        Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
         : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths)
     {
     }
@@ -43,7 +44,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             SourceEndLine = endLine,
             SourceEndColumn = endColumn,
             TypeArgumentsJson = typeArgumentsJson,
-            IsCrossGenerated = IsGenerated(sourceDocumentPath),
+            IsCrossGenerated = IsGenerated(sourceDocumentPath)
         };
     }
 
@@ -68,6 +69,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             if (filePath != null && ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath)))
                 return true;
         }
+
         return false;
     }
 
@@ -86,10 +88,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             CollectNestedTypes(type, types);
         }
 
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            CollectTypes(childNs, types);
-        }
+        foreach (var childNs in ns.GetNamespaceMembers()) CollectTypes(childNs, types);
     }
 
     private static void CollectNestedTypes(INamedTypeSymbol parent, List<INamedTypeSymbol> types)

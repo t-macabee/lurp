@@ -7,18 +7,21 @@ namespace Lurp.Tests;
 
 public sealed class CleanRebuildEquivalenceTest : IDisposable
 {
-    private readonly string _testDir;
-    private readonly string _solutionPath;
-    private readonly string _dbPath;
     private readonly string _cleanRebuildDbPath;
+    private readonly string _dbPath;
+    private readonly string _solutionPath;
+    private readonly string _testDir;
 
     static CleanRebuildEquivalenceTest()
     {
         if (!MSBuildLocator.IsRegistered)
-        {
-            try { MSBuildLocator.RegisterDefaults(); }
-            catch { }
-        }
+            try
+            {
+                MSBuildLocator.RegisterDefaults();
+            }
+            catch
+            {
+            }
     }
 
     public CleanRebuildEquivalenceTest()
@@ -35,7 +38,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         try
         {
             if (Directory.Exists(_testDir))
-                Directory.Delete(_testDir, recursive: true);
+                Directory.Delete(_testDir, true);
         }
         catch
         {
@@ -113,12 +116,12 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
             """);
 
         File.WriteAllText(_solutionPath, """
-            <Solution>
-              <Folder Name="/src/">
-                <Project Path="src/TestProject/TestProject.csproj" />
-              </Folder>
-            </Solution>
-            """);
+                                         <Solution>
+                                           <Folder Name="/src/">
+                                             <Project Path="src/TestProject/TestProject.csproj" />
+                                           </Folder>
+                                         </Solution>
+                                         """);
     }
 
     private void ModifyOneFile()
@@ -161,11 +164,11 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
         await IndexRunner.RunAsync(
             store, _solutionPath, _testDir,
-            skipAdapters: [], jsonExportPath: null, strategyArg: "full",
-            cancellationToken: default, verbose: false, output: null, skipDiff: false);
+            [], null, "full",
+            false, null, false, cancellationToken: default);
 
         var snapshot = store.LoadLatestSnapshot()
-            ?? throw new InvalidOperationException($"No snapshot found in {_dbPath} after full index.");
+                       ?? throw new InvalidOperationException($"No snapshot found in {_dbPath} after full index.");
 
         Console.WriteLine($"    Snapshot: {snapshot.SnapshotId}");
         return snapshot.SnapshotId;
@@ -184,11 +187,12 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
         await IndexRunner.RunAsync(
             store, _solutionPath, _testDir,
-            skipAdapters: [], jsonExportPath: null, strategyArg: "full",
-            cancellationToken: default, verbose: false, output: null, skipDiff: false);
+            [], null, "full",
+            false, null, false, cancellationToken: default);
 
         var snapshot = store.LoadLatestSnapshot()
-            ?? throw new InvalidOperationException($"No snapshot found in {_cleanRebuildDbPath} after full index.");
+                       ?? throw new InvalidOperationException(
+                           $"No snapshot found in {_cleanRebuildDbPath} after full index.");
 
         Console.WriteLine($"    Snapshot: {snapshot.SnapshotId}");
         return snapshot.SnapshotId;
@@ -203,21 +207,20 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
         using var workspace = MSBuildWorkspace.Create();
         var solution = await workspace.OpenSolutionAsync(_solutionPath);
-        var gitRoot = _testDir;
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        var workspaceInfo = new WorkspaceInfo(solution, _testDir);
 
         var previousManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
         if (previousManifest == null)
             throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
 
         var incrementalIndexer = new IncrementalIndexer(
-            store, gitRoot, [],
-            jsonExportPath: null);
+            store, _testDir, [],
+            null);
 
         var result = await incrementalIndexer.RunIncrementalAsync(
             solution, workspaceInfo, previousManifest);
 
-        store.PruneOldSnapshots(keep: 3);
+        store.PruneOldSnapshots(3);
 
         Console.WriteLine($"    New snapshot: {result.NewSnapshotId}");
         return result.NewSnapshotId;

@@ -1,37 +1,18 @@
 using Microsoft.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
 public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
 {
-    private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
+    private readonly bool _force = force;
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-    private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly string? _jsonExportPath = jsonExportPath;
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
+    private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly bool _skipDiff = skipDiff;
-    private readonly bool _force = force;
-
-    private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
-
-    private sealed record IncrementalChangeScope(
-        IReadOnlySet<string> ChangedPaths,
-        IReadOnlySet<string> PreviousChangedSymbolIds,
-        IReadOnlySet<string> DiffAndSearchSymbolIds,
-        IReadOnlySet<string> AffectedProjects,
-        IReadOnlySet<string> CrossDocumentClosurePaths,
-        IReadOnlySet<string> ExtractedPaths);
-
-    private sealed record SnapshotFinalizationContext(
-        Solution Solution,
-        WorkspaceInfo Workspace,
-        SnapshotPair Snapshots,
-        IncrementalChangeScope Changes);
-
-    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted, OrphanEdgeDropSummary OrphanEdgesDropped)
-    {
-        public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
-    }
+    private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
 
     // Incremental indexing strategy:
     //   1. Hash all documents and compare against the previous manifest to find changed/new/deleted files.
@@ -42,7 +23,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
     //   7. Refresh cross-document edges for documents that reference changed symbols.
     //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
-    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, Storage.SnapshotRow previousManifest, CancellationToken cancellationToken = default)
+    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var previousSnapshotId = previousManifest.SnapshotId;
@@ -58,25 +39,23 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
         _store.UpsertExtractors(ExtractorRegistry.All);
         if (_store.HasStaleExtractorVersions(previousSnapshotId))
-        {
             throw new FullRebuildRequiredException(
             [
                 new SnapshotMismatch(MismatchKind.VersionChanged,
                     "Extractor version staleness detected : some edges in the previous snapshot reference extractor versions not in the current registry.",
-                    Document: null,
-                    Detail: null)
+                    null,
+                    null)
             ]);
-        }
 
         // Step 1: Change Detection
         cancellationToken.ThrowIfCancellationRequested();
-        var sw1 = System.Diagnostics.Stopwatch.StartNew();
+        var sw1 = Stopwatch.StartNew();
         var (changedDocs, changedPaths) = _changeDetector.DetectAndLogChanges(workspaceInfo, previousRichManifest);
         sw1.Stop();
         timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds, DateTime.UtcNow));
 
         if (changedDocs.Count == 0)
-            return new IncrementalResult(NewSnapshotId: previousSnapshotId, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: 0, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
+            return new IncrementalResult(previousSnapshotId, previousSnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty);
 
         // Deterministic identity: identical indexed state must produce the
         // identical snapshot id, so a complete snapshot with this id must be
@@ -94,17 +73,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             else
             {
                 _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-                return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: 0, EdgesExtracted: 0, DiagnosticsExtracted: 0, OrphanEdgesDropped: OrphanEdgeDropSummary.Empty);
+                return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty);
             }
         }
-        if (existing.Disposition == ExistingSnapshotDisposition.Retry)
-        {
-            _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
-        }
+
+        if (existing.Disposition == ExistingSnapshotDisposition.Retry) _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
 
         // Step 2: Affected Project Resolution
         cancellationToken.ThrowIfCancellationRequested();
-        var sw2 = System.Diagnostics.Stopwatch.StartNew();
+        var sw2 = Stopwatch.StartNew();
         _output.Write("Identifying affected projects... ");
 
         // New-file widening (R3): a NEWLY ADDED file can change overload
@@ -120,7 +97,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             .Where(static c => c.ChangeKind == DocumentChangeDetector.DocumentChangeKind.New)
             .Select(static c => c.RelativePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        HashSet<string>? newFileProjectPaths = addedFilePaths.Count == 0
+        var newFileProjectPaths = addedFilePaths.Count == 0
             ? null
             : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
 
@@ -129,21 +106,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var closureSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         if (newFileProjectPaths != null)
             closureSeed.UnionWith(newFileProjectPaths);
-        var closureResult = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
-        var closurePaths = closureResult.AffectedPaths;
+        var (closurePaths, fellBackToProjectScope) = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
         invalidationPaths.UnionWith(closurePaths);
         if (newFileProjectPaths != null)
         {
             invalidationPaths.UnionWith(newFileProjectPaths);
             closurePaths.UnionWith(newFileProjectPaths);
         }
+
         if (newFileProjectPaths != null)
             _output.WriteLine($"  {addedFilePaths.Count} new file(s); widened closure to {newFileProjectPaths.Count} document(s) in the new files' project(s).");
         var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
         var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
         invalidationPaths.UnionWith(affectedDocumentPaths);
         timings.Add(new SnapshotTimingRow(
-            closureResult.FellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
+            fellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
             0, DateTime.UtcNow));
 
         // Extraction scope: the set of documents that will be re-extracted, and
@@ -190,6 +167,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             extractionScopeSeed.UnionWith(newFileProjectPaths);
             extractionScopeSeed.UnionWith(closurePaths);
         }
+
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
@@ -207,31 +185,31 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
         // Step 3: Compilation Load
         cancellationToken.ThrowIfCancellationRequested();
-        var sw3 = System.Diagnostics.Stopwatch.StartNew();
+        var sw3 = Stopwatch.StartNew();
         var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects, cancellationToken);
         sw3.Stop();
         timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds, DateTime.UtcNow));
 
-        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters: _skipAdapters);
+        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), _skipAdapters);
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
-        var sw4 = System.Diagnostics.Stopwatch.StartNew();
+        var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
         _output.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
 
-        int totalDeclarations = 0;
-        int totalEdges = 0;
-        int totalDiagnostics = 0;
-        OrphanEdgeDropSummary orphanEdgesDropped = OrphanEdgeDropSummary.Empty;
+        var totalDeclarations = 0;
+        var totalEdges = 0;
+        var totalDiagnostics = 0;
+        var orphanEdgesDropped = OrphanEdgeDropSummary.Empty;
 
         try
         {
             // Step 5: Stale-Data Removal
             cancellationToken.ThrowIfCancellationRequested();
-            var sw5 = System.Diagnostics.Stopwatch.StartNew();
+            var sw5 = Stopwatch.StartNew();
 
             var unrestoredProjects = WorkspaceLoadGate.GetUnrestoredProjectNames(solution);
             if (unrestoredProjects.Count > 0)
@@ -257,7 +235,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
             // Step 6: Re-extraction
             cancellationToken.ThrowIfCancellationRequested();
-            var sw6 = System.Diagnostics.Stopwatch.StartNew();
+            var sw6 = Stopwatch.StartNew();
             (totalDeclarations, totalEdges, totalDiagnostics) =
                 ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths, extractionScopePaths);
             sw6.Stop();
@@ -277,22 +255,21 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
             // Build the change scope once so downstream phases share the same sets.
             var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, invalidationPaths);
-            var previousChangedSymbolIds = new HashSet<string>(invalidatedOldVersionIds.SelectMany(
-                vid => _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, [vid])));
+            var previousChangedSymbolIds = new HashSet<string>(invalidatedOldVersionIds.SelectMany(vid => _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, [vid])));
             var diffAndSearchSymbolIds = new HashSet<string>(changedSymbolIds);
             var changeScope = new IncrementalChangeScope(
-                ChangedPaths: invalidationPaths,
-                PreviousChangedSymbolIds: previousChangedSymbolIds,
-                DiffAndSearchSymbolIds: diffAndSearchSymbolIds,
-                AffectedProjects: new HashSet<string>(affectedProjects),
-                CrossDocumentClosurePaths: closurePaths,
-                ExtractedPaths: extractionScopePaths);
+                invalidationPaths,
+                previousChangedSymbolIds,
+                diffAndSearchSymbolIds,
+                new HashSet<string>(affectedProjects),
+                closurePaths,
+                extractionScopePaths);
 
             var finalizationContext = new SnapshotFinalizationContext(
-                Solution: solution,
-                Workspace: workspaceInfo,
-                Snapshots: new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
-                Changes: changeScope);
+                solution,
+                workspaceInfo,
+                new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
+                changeScope);
 
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
             cancellationToken.ThrowIfCancellationRequested();
@@ -303,15 +280,27 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         catch (Exception ex)
         {
             var reasonCode = ex is OperationCanceledException ? "cancelled" : "incremental_index_failure";
-            try { _store.MarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message); }
-            catch { }
+            try
+            {
+                _store.MarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message);
+            }
+            catch
+            {
+            }
+
             _output.WriteErrorLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
             throw;
         }
 
         // Persist all timings
-        try { _store.SaveTimings(newSnapshotIdStr, timings); }
-        catch (Exception ex) { _output.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}"); }
+        try
+        {
+            _store.SaveTimings(newSnapshotIdStr, timings);
+        }
+        catch (Exception ex)
+        {
+            _output.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
+        }
 
         var declarationsInSnapshot = _store.CountSymbolsInSnapshot(newSnapshotIdStr);
         var edgesInSnapshot = _store.CountEdges(newSnapshotIdStr);
@@ -331,7 +320,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _output.WriteErrorLine(warning);
         _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
-        return new IncrementalResult(NewSnapshotId: newSnapshotIdStr, PreviousSnapshotId: previousSnapshotId, ChangedDocumentCount: changedDocs.Count, DeclarationsExtracted: totalDeclarations, EdgesExtracted: totalEdges, DiagnosticsExtracted: totalDiagnostics, OrphanEdgesDropped: orphanEdgesDropped);
+        return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped);
     }
 
     private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
@@ -348,6 +337,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
             result[project.Name] = compilation;
         }
+
         _output.WriteLine($"done ({result.Count} compilations).");
         return result;
     }
@@ -367,12 +357,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // must always be scoped to exactly the same set; documents outside it
         // keep their copied-forward edges intact.
         if (extractionScopePaths.Count > 0)
-        {
             // Batched: one temp table populated once, joined by all three deletes,
             // instead of each store rebuilding its own IN-list (or, for
             // binding-incompleteness, issuing one DELETE per path) over the same set.
             _store.DeleteFactsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
-        }
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an
         // implicit default constructor) can't be scoped to a document by path, so we
@@ -443,10 +431,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             if (result.Annotations.Count > 0)
                 _store.SaveAnnotations(newSnapshotIdStr, result.Annotations);
             foreach (var measurement in result.Measurements)
-            {
                 if (verbose)
                     _output.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
-            }
 
             _output.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
         }
@@ -554,7 +540,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
     private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
         var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
         // The reverse-edge closure was already computed in step 2 via
@@ -591,7 +577,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
     private void RebuildSearchIndex(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         _output.Write("Rebuilding FTS5 search index (incremental)... ");
         // Changed/deleted path and symbol sets are final; FTS must finish before MarkSnapshotComplete.
         _store.BuildSearchIndex(
@@ -636,25 +622,23 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             if (!projectNames.Contains(project.Name))
                 continue;
             foreach (var document in project.Documents)
-            {
                 if (!string.IsNullOrEmpty(document.FilePath))
                     paths.Add(PathNormalizer.ToGitRelative(document.FilePath, _gitRoot));
-            }
         }
+
         return paths;
     }
 
     /// <summary>
-    /// Maps git-root-relative document paths to the names of the projects that
-    /// own them. Unlike <see cref="DocumentChangeDetector.IdentifyAffectedProjects"/>,
-    /// this does NOT follow project references — only the projects directly
-    /// containing the given documents are returned.
+    ///     Maps git-root-relative document paths to the names of the projects that
+    ///     own them. Unlike <see cref="DocumentChangeDetector.IdentifyAffectedProjects" />,
+    ///     this does NOT follow project references — only the projects directly
+    ///     containing the given documents are returned.
     /// </summary>
-    private HashSet<string> GetProjectsForPaths(Solution solution, IReadOnlySet<string> paths)
+    private HashSet<string> GetProjectsForPaths(Solution solution, HashSet<string> paths)
     {
         var projectNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
-        {
             foreach (var document in project.Documents)
             {
                 if (document.FilePath == null)
@@ -665,14 +649,14 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                     break;
                 }
             }
-        }
+
         return projectNames;
     }
 
     /// <summary>
-    /// Converts git-root-relative document paths to the absolute, forward-slash
-    /// form that every extraction scope guard compares against
-    /// (<c>SyntaxTree.FilePath.Replace('\\', '/')</c>).
+    ///     Converts git-root-relative document paths to the absolute, forward-slash
+    ///     form that every extraction scope guard compares against
+    ///     (<c>SyntaxTree.FilePath.Replace('\\', '/')</c>).
     /// </summary>
     private HashSet<string> ToAbsoluteNormalizedPaths(IReadOnlySet<string> relativePaths)
     {
@@ -684,16 +668,16 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     }
 
     /// <summary>
-    /// Widens a document set to whole-type granularity: for every type declared in
-    /// <paramref name="seedPaths"/> in the previous snapshot, adds every document
-    /// that declares any part of that type. Non-partial types contribute only the
-    /// document already in the seed, so the expansion is a no-op unless a partial
-    /// type spans files.
+    ///     Widens a document set to whole-type granularity: for every type declared in
+    ///     <paramref name="seedPaths" /> in the previous snapshot, adds every document
+    ///     that declares any part of that type. Non-partial types contribute only the
+    ///     document already in the seed, so the expansion is a no-op unless a partial
+    ///     type spans files.
     /// </summary>
     /// <remarks>
-    /// Reads the previous snapshot, so types introduced by the current edit are not
-    /// expanded — their declaring documents are changed documents and are already in
-    /// the seed. Returned paths are git-root-relative, matching the seed's shape.
+    ///     Reads the previous snapshot, so types introduced by the current edit are not
+    ///     expanded — their declaring documents are changed documents and are already in
+    ///     the seed. Returned paths are git-root-relative, matching the seed's shape.
     /// </remarks>
     private HashSet<string> ExpandToDeclaringTypeParts(string previousSnapshotId, HashSet<string> seedPaths)
     {
@@ -712,7 +696,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             if (!SymbolId.TryParse(symbolId, out var sid) || !sid.IsType)
                 continue;
 
-            foreach (var location in _store.GetDeclarationLocations(symbolId, previousSnapshotId, includeGenerated: true))
+            foreach (var location in _store.GetDeclarationLocations(symbolId, previousSnapshotId, true))
                 expanded.Add(location.DocumentPath);
         }
 
@@ -720,15 +704,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     }
 
     /// <summary>
-    /// Filters binding-incompleteness records to exactly those whose document
-    /// path is in the given scope set. Restores the lockstep invariant: the save
-    /// only writes facts for documents the delete cleared. Null/empty-path
-    /// records (doc-less aggregates, e.g. <c>extractor_failure</c>) are dropped
-    /// so their copied-forward value is preserved — EXCLUDE-AND-CARRY-FORWARD.
-    /// A document-scoped incremental pass cannot correctly refresh that bucket
-    /// (no document-scoped delete retires it and no scoped re-extraction
-    /// reproduces the whole-compilation count); a <c>--strategy=full</c> rebuild
-    /// is the reference for it. See TRUST_KERNEL R6 open finding 10.
+    ///     Filters binding-incompleteness records to exactly those whose document
+    ///     path is in the given scope set. Restores the lockstep invariant: the save
+    ///     only writes facts for documents the delete cleared. Null/empty-path
+    ///     records (doc-less aggregates, e.g. <c>extractor_failure</c>) are dropped
+    ///     so their copied-forward value is preserved — EXCLUDE-AND-CARRY-FORWARD.
+    ///     A document-scoped incremental pass cannot correctly refresh that bucket
+    ///     (no document-scoped delete retires it and no scoped re-extraction
+    ///     reproduces the whole-compilation count); a <c>--strategy=full</c> rebuild
+    ///     is the reference for it. See TRUST_KERNEL R6 open finding 10.
     /// </summary>
     internal static IReadOnlyList<BindingIncompletenessRecord> ScopeBindingIncompleteness(
         IReadOnlyList<BindingIncompletenessRecord> records,
@@ -739,4 +723,22 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             .ToList();
     }
 
+    private sealed record IncrementalChangeScope(
+        IReadOnlySet<string> ChangedPaths,
+        IReadOnlySet<string> PreviousChangedSymbolIds,
+        IReadOnlySet<string> DiffAndSearchSymbolIds,
+        IReadOnlySet<string> AffectedProjects,
+        IReadOnlySet<string> CrossDocumentClosurePaths,
+        IReadOnlySet<string> ExtractedPaths);
+
+    private sealed record SnapshotFinalizationContext(
+        Solution Solution,
+        WorkspaceInfo Workspace,
+        SnapshotPair Snapshots,
+        IncrementalChangeScope Changes);
+
+    public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted, OrphanEdgeDropSummary OrphanEdgesDropped)
+    {
+        public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
+    }
 }

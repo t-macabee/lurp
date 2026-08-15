@@ -72,12 +72,12 @@ internal sealed class DiagnosticStore
                 ORDER BY diagnostic_id;
             ";
         }
+
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var results = new List<DiagnosticRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             results.Add(new DiagnosticRecord
             {
                 ProjectName = reader.GetString(0),
@@ -88,9 +88,8 @@ internal sealed class DiagnosticStore
                 StartLine = reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 StartColumn = reader.IsDBNull(6) ? null : reader.GetInt32(6),
                 EndLine = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                EndColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                EndColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8)
             });
-        }
         return results;
     }
 
@@ -130,7 +129,7 @@ internal sealed class DiagnosticStore
               AND project_name IN (" + string.Join(", ", nameList.Select((_, i) => $"@p{i}")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        int i = 0;
+        var i = 0;
         foreach (var name in nameList)
             command.Parameters.AddWithValue($"@p{i++}", name);
         command.ExecuteNonQuery();

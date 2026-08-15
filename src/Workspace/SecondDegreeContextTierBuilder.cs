@@ -34,10 +34,8 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
         // (Calls + MayDispatchTo) are classified separately: they are indirect
         // dispatch candidates, never direct compiler-proved dependencies.
         foreach (var symbolId in effectiveSymbolIds)
-        {
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddUpstreamNeighbors(dispatchEdge.SourceSymbolId, null, dispatchEdge.Provenance);
-        }
 
         return results;
 
@@ -45,7 +43,6 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
         {
             var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
             foreach (var path in paths)
-            {
                 foreach (var hop in path.Hops)
                 {
                     var neighborId = hop.SourceSymbolId;
@@ -59,10 +56,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                     {
                         var directItem = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
                             inclusionReason);
-                        if (directItem != null)
-                        {
-                            results.Add(directItem);
-                        }
+                        if (directItem != null) results.Add(directItem);
                         continue;
                     }
 
@@ -76,13 +70,9 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                         path.Hops.Select(static hop => hop.Provenance), dispatchProvenance);
                     var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, provenance,
                         BuildDispatchReason(dispatchProvenance, hop.Provenance),
-                        CapsuleRelationship.IndirectDispatchCandidate, direct: false);
-                    if (item != null)
-                    {
-                        results.Add(item);
-                    }
+                        CapsuleRelationship.IndirectDispatchCandidate, false);
+                    if (item != null) results.Add(item);
                 }
-            }
         }
     }
 
@@ -90,9 +80,11 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
     // abstract member, and the MayDispatchTo edge carrying the structural
     // implementation candidate.
     private static string BuildDispatchReason(string dispatchProvenance, string callProvenance)
-        => "Upstream dependency reached through interface dispatch: it calls the "
-         + $"interface/abstract member via a Calls edge ({callProvenance}), which may "
-         + $"dispatch to this implementation at runtime via a MayDispatchTo edge "
-         + $"({dispatchProvenance}). The runtime dispatch target is not compiler-established, "
-         + "so this is not a direct compiler-proved dependency of the anchor.";
+    {
+        return "Upstream dependency reached through interface dispatch: it calls the "
+               + $"interface/abstract member via a Calls edge ({callProvenance}), which may "
+               + "dispatch to this implementation at runtime via a MayDispatchTo edge "
+               + $"({dispatchProvenance}). The runtime dispatch target is not compiler-established, "
+               + "so this is not a direct compiler-proved dependency of the anchor.";
+    }
 }

@@ -34,11 +34,11 @@ internal static class SymbolTransitionMatcher
                 continue;
 
             transitions.Add(new SymbolTransition(
-                PreviousSymbolId: removed.SymbolId,
-                CurrentSymbolId: added.SymbolId,
-                PreviousFullyQualifiedName: removed.FullyQualifiedName,
-                CurrentFullyQualifiedName: added.FullyQualifiedName,
-                Kind: kind.Value));
+                removed.SymbolId,
+                added.SymbolId,
+                removed.FullyQualifiedName,
+                added.FullyQualifiedName,
+                kind.Value));
 
             consumedRemoved.Add(removed.SymbolId);
             consumedAdded.Add(added.SymbolId);
@@ -65,6 +65,7 @@ internal static class SymbolTransitionMatcher
                 list = [];
                 groups[fullKey] = list;
             }
+
             list.Add(candidate);
         }
 
@@ -75,14 +76,14 @@ internal static class SymbolTransitionMatcher
     {
         var fingerprints = candidate.Declarations
             .Select(d => (SigHash: Convert.ToHexString(d.NormalizedSignatureHash),
-                          BodyHash: d.BodyHash != null ? Convert.ToHexString(d.BodyHash) : ""))
+                BodyHash: d.BodyHash != null ? Convert.ToHexString(d.BodyHash) : ""))
             .OrderBy(f => f.SigHash, StringComparer.Ordinal)
             .ThenBy(f => f.BodyHash, StringComparer.Ordinal);
 
         var sb = new StringBuilder();
         sb.Append(candidate.Declarations.Count);
         sb.Append(':');
-        bool first = true;
+        var first = true;
         foreach (var (sigHash, bodyHash) in fingerprints)
         {
             if (!first) sb.Append(',');
@@ -91,6 +92,7 @@ internal static class SymbolTransitionMatcher
             sb.Append(bodyHash);
             first = false;
         }
+
         return sb.ToString();
     }
 
@@ -101,8 +103,8 @@ internal static class SymbolTransitionMatcher
         var previousContainer = GetContainerFromFqn(previousFqn);
         var currentContainer = GetContainerFromFqn(currentFqn);
 
-        bool nameChanged = !string.Equals(previousName, currentName, StringComparison.Ordinal);
-        bool containerChanged = !string.Equals(previousContainer, currentContainer, StringComparison.Ordinal);
+        var nameChanged = !string.Equals(previousName, currentName, StringComparison.Ordinal);
+        var containerChanged = !string.Equals(previousContainer, currentContainer, StringComparison.Ordinal);
 
         if (nameChanged && containerChanged)
             return SymbolTransitionKind.RenameAndMove;
@@ -118,13 +120,13 @@ internal static class SymbolTransitionMatcher
     {
         if (string.IsNullOrEmpty(fqn)) return string.Empty;
         var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? fqn : fqn.Substring(idx + 1);
+        return idx < 0 ? fqn : fqn[(idx + 1)..];
     }
 
     private static string GetContainerFromFqn(string? fqn)
     {
         if (string.IsNullOrEmpty(fqn)) return string.Empty;
         var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? string.Empty : fqn.Substring(0, idx);
+        return idx < 0 ? string.Empty : fqn[..idx];
     }
 }

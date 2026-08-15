@@ -4,42 +4,27 @@ namespace Lurp.Workspace;
 
 internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRoot, HashSet<string> skipAdapters)
 {
-    private readonly IIndexStore _store = store;
-    private readonly string _gitRoot = gitRoot;
-    private readonly HashSet<string> _skipAdapters = skipAdapters;
-
     /// <summary>
-    /// Ratio of a project's document count past which the reverse-edge closure
-    /// stops paying for itself: bookkeeping the narrowed set costs more than the
-    /// extraction it would have saved, so <see cref="FindAffectedDocPaths"/>
-    /// abandons the BFS and widens to project scope instead.
+    ///     Ratio of a project's document count past which the reverse-edge closure
+    ///     stops paying for itself: bookkeeping the narrowed set costs more than the
+    ///     extraction it would have saved, so <see cref="FindAffectedDocPaths" />
+    ///     abandons the BFS and widens to project scope instead.
     /// </summary>
     private const double DefaultFallbackRatio = 0.6;
 
-    /// <param name="AffectedPaths">
-    /// The closure result: a narrowed document set when the BFS ran to
-    /// completion, or every document in every project the closure touched when
-    /// it hit <see cref="FellBackToProjectScope"/>.
-    /// </param>
-    /// <param name="FellBackToProjectScope">
-    /// True when the BFS abandoned itself because the closure exceeded
-    /// <see cref="DefaultFallbackRatio"/> of the documents in the projects it
-    /// had touched so far. Callers that narrow extraction scope on
-    /// <see cref="AffectedPaths"/> must skip that narrowing in this case — the
-    /// widened set already is project scope, so extraction and deletion stay in
-    /// lockstep with the pre-narrowing behavior instead of drifting apart.
-    /// </param>
-    internal readonly record struct DocumentClosureResult(HashSet<string> AffectedPaths, bool FellBackToProjectScope);
+    private readonly string _gitRoot = gitRoot;
+    private readonly HashSet<string> _skipAdapters = skipAdapters;
+    private readonly IIndexStore _store = store;
 
     /// <param name="changedPaths">
-    /// Git-root-relative paths of the genuinely-changed documents — the BFS seed.
-    /// Passing a set that already absorbed the closure makes this a no-op, because
-    /// <see cref="FindAffectedDocPaths"/> seeds its visited set with its own input.
+    ///     Git-root-relative paths of the genuinely-changed documents — the BFS seed.
+    ///     Passing a set that already absorbed the closure makes this a no-op, because
+    ///     <see cref="FindAffectedDocPaths" /> seeds its visited set with its own input.
     /// </param>
     /// <param name="alreadyExtractedPaths">
-    /// Git-root-relative paths the caller has already re-extracted this run.
-    /// Subtracted from the closure so this refresh handles exactly the residue,
-    /// never re-deleting and re-extracting a document twice in one snapshot.
+    ///     Git-root-relative paths the caller has already re-extracted this run.
+    ///     Subtracted from the closure so this refresh handles exactly the residue,
+    ///     never re-deleting and re-extracting a document twice in one snapshot.
     /// </param>
     internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, IReadOnlySet<string>? alreadyExtractedPaths, CancellationToken cancellationToken)
     {
@@ -57,12 +42,13 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     }
 
     /// <param name="affectedPaths">
-    /// Pre-computed document closure (e.g. from a prior BFS pass), already
-    /// scoped to the documents that need cross-document edge re-extraction.
-    /// The caller is responsible for subtracting any paths that were already
-    /// re-extracted this snapshot.
+    ///     Pre-computed document closure (e.g. from a prior BFS pass), already
+    ///     scoped to the documents that need cross-document edge re-extraction.
+    ///     The caller is responsible for subtracting any paths that were already
+    ///     re-extracted this snapshot.
     /// </param>
-    internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken, IReadOnlySet<string>? alreadyCoveredProjectNames = null)
+    internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken,
+        IReadOnlySet<string>? alreadyCoveredProjectNames = null)
     {
         if (affectedPaths.Count == 0)
             return 0;
@@ -75,13 +61,13 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     }
 
     /// <remarks>
-    /// The BFS follows persisted edges, so it can only reach a dependent that
-    /// already had one. A document whose reference did not bind in the previous
-    /// snapshot produced no edge at all, so an edit that makes it bind leaves the
-    /// BFS with no arc to follow (§1.4 scenario 4, and the same shape as scenarios
-    /// 3 and 6). Those documents are exactly the ones that recorded binding
-    /// incompleteness, which is persisted separately — seeding the frontier with
-    /// them turns an absence the BFS cannot see into one it can.
+    ///     The BFS follows persisted edges, so it can only reach a dependent that
+    ///     already had one. A document whose reference did not bind in the previous
+    ///     snapshot produced no edge at all, so an edit that makes it bind leaves the
+    ///     BFS with no arc to follow (§1.4 scenario 4, and the same shape as scenarios
+    ///     3 and 6). Those documents are exactly the ones that recorded binding
+    ///     incompleteness, which is persisted separately — seeding the frontier with
+    ///     them turns an absence the BFS cannot see into one it can.
     /// </remarks>
     internal DocumentClosureResult FindAffectedDocPaths(Solution solution, string previousSnapshotId, HashSet<string> changedPaths, double fallbackRatio = DefaultFallbackRatio)
     {
@@ -103,22 +89,20 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 frontier.Add(record.DocumentPath);
             }
         }
+
         while (frontier.Count > 0)
         {
             var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, frontier);
             var symbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
             var next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var symbolId in symbolIds)
-            {
                 foreach (var edge in _store.GetIncomingEdges(previousSnapshotId, symbolId))
-                {
                     foreach (var path in ResolveSourceDocumentPaths(previousSnapshotId, edge, visitedPaths))
                     {
                         affectedPaths.Add(path);
                         next.Add(path);
                     }
-                }
-            }
+
             frontier = next;
 
             // A cycle in the call graph drags its whole strongly-connected
@@ -152,8 +136,10 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 pathToProject[GetRelativePath(doc.FilePath, _gitRoot)] = project.Name;
                 count++;
             }
+
             projectDocCount[project.Name] = count;
         }
+
         return (pathToProject, projectDocCount);
     }
 
@@ -198,6 +184,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 widened.Add(GetRelativePath(doc.FilePath, _gitRoot));
             }
         }
+
         return widened;
     }
 
@@ -217,10 +204,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (locs.Count > 0)
         {
             foreach (var loc in locs)
-            {
                 if (visitedPaths.Add(loc.DocumentPath))
                     yield return loc.DocumentPath;
-            }
             yield break;
         }
 
@@ -230,10 +215,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
 
         var typeLocs = _store.GetDeclarationLocations(containingTypeSymbolId, previousSnapshotId);
         foreach (var loc in typeLocs)
-        {
             if (visitedPaths.Add(loc.DocumentPath))
                 yield return loc.DocumentPath;
-        }
     }
 
     private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)
@@ -242,7 +225,6 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
 
         var affectedProjectNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
-        {
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
@@ -253,12 +235,12 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                     break;
                 }
             }
-        }
 
         return affectedProjectNames;
     }
 
-    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths, CancellationToken cancellationToken, IReadOnlySet<string>? alreadyCoveredProjectNames = null)
+    private async Task<int> ProcessCompilationsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedProjectNames, HashSet<string> affectedDocPaths, CancellationToken cancellationToken,
+        IReadOnlySet<string>? alreadyCoveredProjectNames = null)
     {
         // Compute per-project affected absolute paths for scoped re-extraction
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -279,6 +261,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 if (affectedAbsPaths.Contains(normalized))
                     projectAffected.Add(normalized);
             }
+
             perProjectAffectedPaths[project.Name] = projectAffected;
         }
 
@@ -286,10 +269,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         // not the entire project's documents.
         var allAffectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var projectPaths in perProjectAffectedPaths.Values)
-        {
             foreach (var path in projectPaths)
                 allAffectedPaths.Add(GetRelativePath(path, _gitRoot));
-        }
         _store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
         _store.DeleteAnnotationsByDocumentPaths(newSnapshotId, allAffectedPaths);
 
@@ -298,7 +279,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
         _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
 
-        int totalEdges = 0;
+        var totalEdges = 0;
         foreach (var project in solution.Projects)
         {
             if (!affectedProjectNames.Contains(project.Name))
@@ -322,7 +303,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             // to the git root (see BindingIncompletenessCollector.Record),
             // while scopeDocs carries absolute document paths. Convert once
             // so both the delete and the scoped save share the same set.
-            List<string>? scopeRelativePaths = scopeDocs?
+            var scopeRelativePaths = scopeDocs?
                 .Select(path => GetRelativePath(path, _gitRoot))
                 .ToList();
 
@@ -364,11 +345,13 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             {
                 _store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
             }
+
             if (result.Annotations.Count > 0)
                 _store.SaveAnnotations(newSnapshotId, result.Annotations);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }
+
         return totalEdges;
     }
 
@@ -385,9 +368,27 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during cross-document edge refresh.");
             compilations[project.Name] = compilation;
         }
+
         return compilations;
     }
 
     private static string GetRelativePath(string fullPath, string gitRoot)
-        => PathNormalizer.ToGitRelative(fullPath, gitRoot);
+    {
+        return PathNormalizer.ToGitRelative(fullPath, gitRoot);
+    }
+
+    /// <param name="AffectedPaths">
+    ///     The closure result: a narrowed document set when the BFS ran to
+    ///     completion, or every document in every project the closure touched when
+    ///     it hit <see cref="FellBackToProjectScope" />.
+    /// </param>
+    /// <param name="FellBackToProjectScope">
+    ///     True when the BFS abandoned itself because the closure exceeded
+    ///     <see cref="DefaultFallbackRatio" /> of the documents in the projects it
+    ///     had touched so far. Callers that narrow extraction scope on
+    ///     <see cref="AffectedPaths" /> must skip that narrowing in this case — the
+    ///     widened set already is project scope, so extraction and deletion stay in
+    ///     lockstep with the pre-narrowing behavior instead of drifting apart.
+    /// </param>
+    internal readonly record struct DocumentClosureResult(HashSet<string> AffectedPaths, bool FellBackToProjectScope);
 }

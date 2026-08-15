@@ -13,10 +13,7 @@ internal static class DiffHandler
 
         var fromSnapshot = HandlerBootstrap.GetArgValue(args, "--from-snapshot=");
         var toSnapshot = HandlerBootstrap.GetArgValue(args, "--to-snapshot=");
-        if (string.IsNullOrEmpty(fromSnapshot) || string.IsNullOrEmpty(toSnapshot))
-        {
-            HandlerBootstrap.Fail("ERROR: --from-snapshot=<id> and --to-snapshot=<id> are required for --mode=diff.");
-        }
+        if (string.IsNullOrEmpty(fromSnapshot) || string.IsNullOrEmpty(toSnapshot)) HandlerBootstrap.Fail("ERROR: --from-snapshot=<id> and --to-snapshot=<id> are required for --mode=diff.");
 
         var store = HandlerBootstrap.OpenStore(dbPath);
 

@@ -1,11 +1,12 @@
 using Microsoft.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Lurp.Shared;
 
 public sealed class EdgeLocationResolver
 {
     private readonly Dictionary<string, string> _documentPathLookup;
-    private readonly IReadOnlySet<string> _generatedDocumentPaths;
+    private readonly HashSet<string> _generatedDocumentPaths;
     private readonly string _gitRoot;
 
     public EdgeLocationResolver(
@@ -46,18 +47,20 @@ public sealed class EdgeLocationResolver
     }
 
     /// <summary>
-    /// Deterministically select the declaring syntax reference used as a symbol's
-    /// single source location. Roslyn does not guarantee a stable order for
-    /// <see cref="ISymbol.DeclaringSyntaxReferences"/> across compilations, so a
-    /// bare <c>FirstOrDefault()</c> can pick a different partial declaration on a
-    /// full vs. incremental rebuild. Ordering by (file path, span start) makes the
-    /// choice reproducible, which the full==incremental parity reference requires.
+    ///     Deterministically select the declaring syntax reference used as a symbol's
+    ///     single source location. Roslyn does not guarantee a stable order for
+    ///     <see cref="ISymbol.DeclaringSyntaxReferences" /> across compilations, so a
+    ///     bare <c>FirstOrDefault()</c> can pick a different partial declaration on a
+    ///     full vs. incremental rebuild. Ordering by (file path, span start) makes the
+    ///     choice reproducible, which the full==incremental parity reference requires.
     /// </summary>
     public static SyntaxReference? PrimaryDeclaration(ISymbol symbol)
-        => symbol.DeclaringSyntaxReferences
+    {
+        return symbol.DeclaringSyntaxReferences
             .OrderBy(static r => r.SyntaxTree.FilePath, StringComparer.Ordinal)
             .ThenBy(static r => r.Span.Start)
             .FirstOrDefault();
+    }
 
     public bool IsGenerated(string? path)
     {
@@ -105,21 +108,19 @@ public sealed class EdgeLocationResolver
         return PathNormalizer.ToGitRelative(filePath, _gitRoot);
     }
 
-    private bool TryResolveNormalizedPath(string normalized, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? match)
+    private bool TryResolveNormalizedPath(string normalized, [NotNullWhen(true)] out string? match)
     {
         if (_documentPathLookup.TryGetValue(normalized, out match))
             return true;
 
         var span = normalized.AsSpan();
-        for (int i = 0; i < span.Length; i++)
-        {
+        for (var i = 0; i < span.Length; i++)
             if (span[i] == '/')
             {
                 var suffix = span[(i + 1)..].ToString();
                 if (_documentPathLookup.TryGetValue(suffix, out match))
                     return true;
             }
-        }
 
         match = null;
         return false;
@@ -136,8 +137,7 @@ public sealed class EdgeLocationResolver
             lookup[path] = path;
 
             var span = path.AsSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
+            for (var i = 0; i < span.Length; i++)
                 if (span[i] == '/')
                 {
                     var suffix = span[(i + 1)..].ToString();
@@ -158,7 +158,6 @@ public sealed class EdgeLocationResolver
                         suffixClaims[suffix] = path;
                     }
                 }
-            }
         }
 
         foreach (var kv in suffixClaims)

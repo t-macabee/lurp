@@ -6,6 +6,7 @@ namespace Lurp.Workspace;
 
 public sealed partial class SnapshotManifest
 {
+    private static readonly JsonSerializerOptions _jsonOptions = LurpJsonOptions.SnakeCaseIndented;
 
     [JsonPropertyName("snapshot_id")]
     [JsonConverter(typeof(SnapshotIdConverter))]
@@ -15,19 +16,16 @@ public sealed partial class SnapshotManifest
     [JsonConverter(typeof(WorkspaceIdConverter))]
     public WorkspaceId WorkspaceId { get; init; }
 
-    [JsonPropertyName("built_at_utc")]
-    public DateTime BuiltAtUtc { get; init; }
+    [JsonPropertyName("built_at_utc")] public DateTime BuiltAtUtc { get; init; }
 
     [JsonPropertyName("document_versions")]
     [JsonConverter(typeof(DocumentVersionMapConverter))]
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
         = [];
 
-    [JsonPropertyName("sdk_version")]
-    public string SdkVersion { get; init; } = "";
+    [JsonPropertyName("sdk_version")] public string SdkVersion { get; init; } = "";
 
-    [JsonPropertyName("compiler_version")]
-    public string CompilerVersion { get; init; } = "";
+    [JsonPropertyName("compiler_version")] public string CompilerVersion { get; init; } = "";
 
     [JsonPropertyName("target_frameworks")]
     public Dictionary<string, string> TargetFrameworks { get; init; }
@@ -54,8 +52,7 @@ public sealed partial class SnapshotManifest
     [JsonPropertyName("extractor_version")]
     public string ExtractorVersion { get; init; } = "";
 
-    [JsonPropertyName("tool_version")]
-    public string ToolVersion { get; init; } = "";
+    [JsonPropertyName("tool_version")] public string ToolVersion { get; init; } = "";
 
     [JsonPropertyName("previous_snapshot_id")]
     [JsonConverter(typeof(NullableSnapshotIdConverter))]
@@ -92,12 +89,10 @@ public sealed partial class SnapshotManifest
                     ? skipAdapters.OrderBy(x => x, StringComparer.Ordinal).ToList()
                     : [],
                 ActiveTfms = new Dictionary<string, string>(workspace.TargetFrameworks),
-                ExtractorVersion = VersionConstants.ExtractorVersion,
-            },
+                ExtractorVersion = VersionConstants.ExtractorVersion
+            }
         };
     }
-
-    private static readonly JsonSerializerOptions _jsonOptions = LurpJsonOptions.SnakeCaseIndented;
 
     public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
@@ -121,14 +116,15 @@ public sealed partial class SnapshotManifest
                ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
     }
 
-    internal Storage.SnapshotRow ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+    internal SnapshotRow ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
         var documents = DocumentVersions.Select(kvp =>
         {
-            var docId = kvp.Key; var docPath = docId.ToString();
+            var docId = kvp.Key;
+            var docPath = docId.ToString();
             byte[]? content = null;
-            string encoding = "";
-            string lineStarts = "";
+            var encoding = "";
+            var lineStarts = "";
 
             if (contents != null && contents.TryGetValue(docId, out var entry))
             {
@@ -144,11 +140,11 @@ public sealed partial class SnapshotManifest
                 ContentHash = kvp.Value.Hash,
                 Encoding = encoding,
                 CreatedAtUtc = DateTime.MinValue,
-                LineStarts = lineStarts,
+                LineStarts = lineStarts
             };
         }).ToList();
 
-        var projects = TargetFrameworks.Select(kvp => new Storage.ProjectRow
+        var projects = TargetFrameworks.Select(kvp => new ProjectRow
         {
             Name = kvp.Key,
             TargetFramework = kvp.Value,
@@ -156,12 +152,14 @@ public sealed partial class SnapshotManifest
                 ? refs.OrderBy(x => x, StringComparer.Ordinal).ToList()
                 : [],
             MetadataReferenceIdentitiesJson = MetadataReferenceIdentities.TryGetValue(kvp.Key, out var ids)
-                ? JsonSerializer.Serialize(ids) : null,
+                ? JsonSerializer.Serialize(ids)
+                : null,
             CompilationOptionsFingerprint = CompilationOptionsFingerprints.TryGetValue(kvp.Key, out var fp)
-                ? fp : null,
+                ? fp
+                : null
         }).ToList();
 
-        return new Storage.SnapshotRow
+        return new SnapshotRow
         {
             SnapshotId = SnapshotId.ToString(),
             WorkspaceId = WorkspaceId.Value,
@@ -177,11 +175,11 @@ public sealed partial class SnapshotManifest
             ToolVersion = ToolVersion,
             PreviousSnapshotId = PreviousSnapshotId?.ToString(),
             Projects = projects,
-            SkippedAdapters = Completeness?.SkippedAdapters ?? [],
+            SkippedAdapters = Completeness?.SkippedAdapters ?? []
         };
     }
 
-    internal static SnapshotManifest FromStorageManifest(Storage.SnapshotRow storage)
+    internal static SnapshotManifest FromStorageManifest(SnapshotRow storage)
     {
         var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
         foreach (var doc in storage.Documents)
@@ -200,11 +198,9 @@ public sealed partial class SnapshotManifest
             targetFrameworks[project.Name] = project.TargetFramework;
             projectGraph[project.Name] = project.References.ToArray();
             if (project.MetadataReferenceIdentitiesJson != null)
-            {
                 metadataReferenceIdentities[project.Name] = JsonSerializer
                     .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!
                     .ToImmutableArray();
-            }
             if (project.CompilationOptionsFingerprint != null)
                 compilationOptionsFingerprints[project.Name] = project.CompilationOptionsFingerprint;
         }
@@ -233,10 +229,8 @@ public sealed partial class SnapshotManifest
                 GeneratedTreesIncluded = false,
                 SkippedAdapters = storage.SkippedAdapters,
                 ActiveTfms = new Dictionary<string, string>(targetFrameworks),
-                ExtractorVersion = storage.ExtractorVersion,
-            },
+                ExtractorVersion = storage.ExtractorVersion
+            }
         };
     }
-
 }
-

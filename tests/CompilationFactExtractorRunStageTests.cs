@@ -5,7 +5,11 @@ namespace Lurp.Tests;
 public sealed class CompilationFactExtractorRunStageTests
 {
     private static CompilationFactExtractor.StageContext NewContext(string projectName = "TestProject")
-        => new(projectName, new List<CompilationFactExtractor.ExtractionFailure>(), new BindingIncompletenessCollector(projectName, "/repo"));
+    {
+        return new CompilationFactExtractor.StageContext(projectName,
+            new List<CompilationFactExtractor.ExtractionFailure>(),
+            new BindingIncompletenessCollector(projectName, "/repo"));
+    }
 
     [Fact]
     public void RunStage_Void_StageThrows_RecordsFailureAndIncompleteness()

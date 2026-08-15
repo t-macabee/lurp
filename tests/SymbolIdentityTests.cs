@@ -4,8 +4,8 @@ using Microsoft.Data.Sqlite;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Phase 3: symbol IDs must be deterministic and stable across re-indexing,
-/// workspace reloads, and incremental passes that touch other files.
+///     Phase 3: symbol IDs must be deterministic and stable across re-indexing,
+///     workspace reloads, and incremental passes that touch other files.
 /// </summary>
 public sealed class SymbolIdentityTests : IntegrationTestBase
 {
@@ -15,8 +15,6 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
     {
         _secondDbPath = Path.Combine(TestDir, "second.db");
     }
-
-    private sealed record SymbolRow(string SymbolId, string? Fqn, string? MetadataJson);
 
     private static List<SymbolRow> ReadSymbolRows(string dbPath, string snapshotId)
     {
@@ -34,16 +32,15 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         var result = new List<SymbolRow>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result.Add(new SymbolRow(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2)));
-        }
         return result;
     }
 
-    private static Dictionary<string, SymbolRow> ReadSymbolRowsByDocument(string dbPath, string snapshotId, string relativePath)
+    private static Dictionary<string, SymbolRow> ReadSymbolRowsByDocument(string dbPath, string snapshotId,
+        string relativePath)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");
         connection.Open();
@@ -65,12 +62,10 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         var result = new Dictionary<string, SymbolRow>(StringComparer.Ordinal);
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result[reader.GetString(0)] = new SymbolRow(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2));
-        }
         return result;
     }
 
@@ -83,13 +78,13 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """
             });
 
         var snapshot1 = await RunFullIndexAsync(DbPath);
@@ -108,21 +103,21 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Add(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
             });
 
         // Each full index opens a fresh MSBuildWorkspace internally, so two
@@ -142,22 +137,22 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                        public int Keep(int v) => v;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                        public int Keep(int v) => v;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Add(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
             });
 
         var snapshotA = await RunFullIndexAsync(DbPath);
@@ -165,13 +160,13 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         // Touch only Service.cs: Calculator.cs symbols must keep their IDs,
         // including the untouched Keep method.
         WriteFile("TestProject", "Service.cs", """
-            namespace TestProject;
+                                               namespace TestProject;
 
-            public class Service
-            {
-                public int Compute(int x, int y) => new Calculator().Add(x, y) + 1;
-            }
-            """);
+                                               public class Service
+                                               {
+                                                   public int Compute(int x, int y) => new Calculator().Add(x, y) + 1;
+                                               }
+                                               """);
 
         var snapshotB = await RunIncrementalIndexAsync();
 
@@ -193,24 +188,24 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Internal.cs"] = """
-                    namespace Shared;
+                                  namespace Shared;
 
-                    internal class Internal
-                    {
-                    }
-                    """,
+                                  internal class Internal
+                                  {
+                                  }
+                                  """
             });
 
         CreateProject("AppTwo",
             new Dictionary<string, string>
             {
                 ["Internal.cs"] = """
-                    namespace Shared;
+                                  namespace Shared;
 
-                    internal class Internal
-                    {
-                    }
-                    """,
+                                  internal class Internal
+                                  {
+                                  }
+                                  """
             });
 
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -234,4 +229,6 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         Assert.Equal(2, matches.Count);
         Assert.NotEqual(matches[0], matches[1]);
     }
+
+    private sealed record SymbolRow(string SymbolId, string? Fqn, string? MetadataJson);
 }

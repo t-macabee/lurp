@@ -25,8 +25,8 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
     internal static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
     {
         return invocation.Expression is IdentifierNameSyntax identifier
-            && identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal)
-            && invocation.ArgumentList.Arguments.Count == 1;
+               && identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal)
+               && invocation.ArgumentList.Arguments.Count == 1;
     }
 
     private void EmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
@@ -39,7 +39,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         var symbolInfo = semanticModel.GetSymbolInfo(argument);
         var resolvedSymbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
 
-        if (resolvedSymbol == null || !resolvedSymbol.CanBeReferencedByName)
+        if (resolvedSymbol is not { CanBeReferencedByName: true })
         {
             if (resolvedSymbol == null)
                 context.RecordUnresolvedBinding(symbolInfo, argument, semanticModel);
@@ -70,7 +70,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
             SourceStartColumn = loc.startColumn,
             SourceEndLine = loc.endLine,
             SourceEndColumn = loc.endColumn,
-            IsCrossGenerated = context.IsGenerated(loc.path),
+            IsCrossGenerated = context.IsGenerated(loc.path)
         });
     }
 }

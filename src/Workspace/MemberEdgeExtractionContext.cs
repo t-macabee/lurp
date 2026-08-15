@@ -3,30 +3,45 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace Lurp.Workspace;
 
-internal sealed class MemberEdgeExtractionContext(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+internal sealed class MemberEdgeExtractionContext(
+    Compilation compilation,
+    IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
+    IReadOnlySet<DocumentId> generatedDocuments,
+    string snapshotId,
+    string gitRoot,
+    IReadOnlySet<string>? scopeDocuments = null,
+    BindingIncompletenessCollector? incompleteness = null,
+    Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
 {
     private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-    private readonly EdgeLocationResolver _locationResolver = new(
+    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = semanticModelCache ?? [];
+    private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
+
+    internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
+
+    internal EdgeLocationResolver LocationResolver { get; } = new(
         documentVersions.Keys.Select(static id => id.ToString()),
         generatedDocuments.Select(static id => id.ToString()),
         gitRoot);
-    private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = semanticModelCache ?? [];
 
-    internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
-    internal EdgeLocationResolver LocationResolver => _locationResolver;
     internal string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
     internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
 
     internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
-        => Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+    {
+        Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+    }
 
     internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
-        => Incompleteness?.RecordUnresolved(node, semanticModel);
+    {
+        Incompleteness?.RecordUnresolved(node, semanticModel);
+    }
 
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
-        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
+    {
+        Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
+    }
 
     private bool IsSyntaxTreeInScope(SyntaxTree? syntaxTree)
     {
@@ -53,25 +68,26 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             if (containingType == null)
                 return true;
             foreach (var syntaxRef in containingType.DeclaringSyntaxReferences)
-            {
                 if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
                     return true;
-            }
             return false;
         }
 
         foreach (var syntaxRef in syntaxRefs)
-        {
             if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
                 return true;
-        }
         return false;
     }
 
-    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes() => ExtractionUtils.GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
+    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
+    {
+        return ExtractionUtils.GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
+    }
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
-        => ExtractionUtils.GetMethodBody(node);
+    {
+        return ExtractionUtils.GetMethodBody(node);
+    }
 
     internal IReadOnlyList<(IMethodSymbol Method, CSharpSyntaxNode Syntax)> EnumerateMethodDeclarations()
     {
@@ -106,17 +122,19 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             SourceStartColumn = location?.sc,
             SourceEndLine = location?.el,
             SourceEndColumn = location?.ec,
-            IsCrossGenerated = isSourceGenerated,
+            IsCrossGenerated = isSourceGenerated
         };
     }
 
     private bool IsGeneratedDocument(string? documentPath)
-        => _locationResolver.IsGenerated(documentPath);
+    {
+        return LocationResolver.IsGenerated(documentPath);
+    }
 
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
         GetMemberSourceLocation(ISymbol member)
     {
-        var result = _locationResolver.Resolve(member);
+        var result = LocationResolver.Resolve(member);
         if (result.path == null && result.sl == null)
             return null;
         return result;
@@ -124,8 +142,9 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
 
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
-        => _locationResolver.Resolve(location);
-
+    {
+        return LocationResolver.Resolve(location);
+    }
 
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
@@ -135,6 +154,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             model = Compilation.GetSemanticModel(syntaxTree);
             _semanticModelCache[syntaxTree] = model;
         }
+
         return model;
     }
 
@@ -145,6 +165,7 @@ internal sealed class MemberEdgeExtractionContext(Compilation compilation, IRead
             model = Compilation.GetSemanticModel(syntaxTree);
             cache[syntaxTree] = model;
         }
+
         return model;
     }
 }

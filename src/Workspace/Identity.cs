@@ -1,6 +1,5 @@
 ﻿using System.Collections.Immutable;
 using System.Globalization;
-
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,19 +7,18 @@ namespace Lurp.Workspace;
 
 public readonly record struct WorkspaceId
 {
-
-    public string GitRoot { get; }
-
-    public string SolutionPath { get; }
-
-    public string Value { get; }
-
     private WorkspaceId(string gitRoot, string solutionPath, string value)
     {
         GitRoot = gitRoot;
         SolutionPath = solutionPath;
         Value = value;
     }
+
+    public string GitRoot { get; }
+
+    public string SolutionPath { get; }
+
+    public string Value { get; }
 
     public static WorkspaceId Create(string gitRoot, string solutionPath)
     {
@@ -35,28 +33,41 @@ public readonly record struct WorkspaceId
         return new WorkspaceId(root, sln, value);
     }
 
-    public override string ToString() => Value;
+    public override string ToString()
+    {
+        return Value;
+    }
 
     private static string Normalise(string path)
-        => PathNormalizer.ToForwardSlash(Path.GetFullPath(path));
+    {
+        return PathNormalizer.ToForwardSlash(Path.GetFullPath(path));
+    }
 }
 
 public readonly record struct SnapshotId
 {
+    public SnapshotId(Guid value)
+    {
+        Value = value;
+    }
 
     public Guid Value { get; }
 
-    public SnapshotId(Guid value) => Value = value;
+    public static SnapshotId Parse(string value)
+    {
+        return new SnapshotId(Guid.Parse(value, CultureInfo.InvariantCulture));
+    }
 
-    public static SnapshotId Parse(string value) => new(Guid.Parse(value, CultureInfo.InvariantCulture));
-
-    public static SnapshotId New() => new(Guid.NewGuid());
+    public static SnapshotId New()
+    {
+        return new SnapshotId(Guid.NewGuid());
+    }
 
     /// <summary>
-    /// Derives a snapshot id deterministically from a canonical identity
-    /// payload: SHA-256 the payload and take a stable 16-byte portion as the
-    /// GUID. Identical payloads produce identical ids; the existing
-    /// <see cref="Parse"/> and <see cref="ToString"/> formats are unchanged.
+    ///     Derives a snapshot id deterministically from a canonical identity
+    ///     payload: SHA-256 the payload and take a stable 16-byte portion as the
+    ///     GUID. Identical payloads produce identical ids; the existing
+    ///     <see cref="Parse" /> and <see cref="ToString" /> formats are unchanged.
     /// </summary>
     public static SnapshotId CreateDeterministic(byte[] canonicalPayload)
     {
@@ -67,14 +78,17 @@ public readonly record struct SnapshotId
         return new SnapshotId(new Guid(guidBytes));
     }
 
-    public override string ToString() => Value.ToString("N", CultureInfo.InvariantCulture);
+    public override string ToString()
+    {
+        return Value.ToString("N", CultureInfo.InvariantCulture);
+    }
 }
 
 /// <summary>
-/// The canonical identity input from which a deterministic
-/// <see cref="SnapshotId"/> is derived. Every field participates in the hash;
-/// fields are serialized ordinally sorted and length-prefixed so that
-/// identical indexed state always yields an identical id.
+///     The canonical identity input from which a deterministic
+///     <see cref="SnapshotId" /> is derived. Every field participates in the hash;
+///     fields are serialized ordinally sorted and length-prefixed so that
+///     identical indexed state always yields an identical id.
 /// </summary>
 public sealed record SnapshotIdentityInput(
     WorkspaceId WorkspaceId,
@@ -89,7 +103,8 @@ public sealed record SnapshotIdentityInput(
     IReadOnlySet<string> SkipAdapters)
 {
     public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
-        => new(
+    {
+        return new SnapshotIdentityInput(
             workspace.Id,
             workspace.Documents.ToDictionary(
                 kvp => kvp.Key.RelativePath,
@@ -106,12 +121,15 @@ public sealed record SnapshotIdentityInput(
             workspace.CompilerVersion.ToString(),
             workspace.ExtractorVersion,
             skipAdapters ?? new HashSet<string>(StringComparer.Ordinal));
+    }
 }
 
 public static class SnapshotIdentity
 {
     public static SnapshotId Create(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
-        => Create(SnapshotIdentityInput.FromWorkspace(workspace, skipAdapters));
+    {
+        return Create(SnapshotIdentityInput.FromWorkspace(workspace, skipAdapters));
+    }
 
     public static SnapshotId Create(SnapshotIdentityInput input)
     {
@@ -122,7 +140,7 @@ public static class SnapshotIdentity
     private static byte[] BuildPayload(SnapshotIdentityInput input)
     {
         using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: false);
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, false);
 
         // Fixed field names plus length-prefixed values (BinaryWriter writes a
         // 7-bit encoded length before each string), so the serialization is
@@ -197,24 +215,21 @@ public static class SnapshotIdentity
 
 public readonly record struct DocumentId
 {
-
-    public string RelativePath { get; }
-
     public DocumentId(string relativePath)
     {
         RelativePath = PathNormalizer.ToForwardSlash(relativePath ?? "");
     }
 
-    public override string ToString() => RelativePath;
+    public string RelativePath { get; }
+
+    public override string ToString()
+    {
+        return RelativePath;
+    }
 }
 
 public readonly record struct DocumentVersionId
 {
-
-    public string DocumentPath { get; }
-
-    public string Hash { get; }
-
     public DocumentVersionId(string documentPath, string hash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hash);
@@ -229,15 +244,23 @@ public readonly record struct DocumentVersionId
         Hash = hash;
     }
 
+    public string DocumentPath { get; }
+
+    public string Hash { get; }
+
     public static DocumentVersionId Compute(DocumentId documentId, byte[] data)
     {
         var hash = SHA256.HashData(data);
         return new DocumentVersionId(documentId.RelativePath, Hex(hash));
     }
 
-    public override string ToString() => $"{DocumentPath}:{Hash}";
+    public override string ToString()
+    {
+        return $"{DocumentPath}:{Hash}";
+    }
 
     private static string Hex(byte[] bytes)
-        => Convert.ToHexStringLower(bytes);
+    {
+        return Convert.ToHexStringLower(bytes);
+    }
 }
-

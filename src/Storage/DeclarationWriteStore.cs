@@ -14,10 +14,7 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
-            foreach (var decl in declarations)
-            {
-                SaveOne(command, snapshotId, decl);
-            }
+            foreach (var decl in declarations) SaveOne(command, snapshotId, decl);
 
             transaction.Commit();
         }

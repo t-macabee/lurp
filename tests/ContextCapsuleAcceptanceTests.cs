@@ -11,7 +11,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
     {
         SqliteConnection.ClearAllPools();
         if (Directory.Exists(_outputDir))
-            Directory.Delete(_outputDir, recursive: true);
+            Directory.Delete(_outputDir, true);
     }
 
     [SkippableFact]
@@ -26,7 +26,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
         var anchor = store.ResolveSymbolByFqn("Lurp.Shared.EdgeLocationResolver", snapshotId)
-            ?? throw new InvalidOperationException("Self-host anchor was not indexed.");
+                     ?? throw new InvalidOperationException("Self-host anchor was not indexed.");
 
         var capsule = ContextAssembler.ResolveAndAssemble(
             store,
@@ -39,8 +39,8 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
                 // proves the Phase-15 structural contract is present, not that
                 // the budget truncates; budget truthfulness is exercised by
                 // CapsuleCharacterizationTests and the --budget CLI criterion.
-                Budget: 500_000,
-                MaxHops: 3,
+                500_000,
+                3,
                 Scope: "src/Shared/EdgeLocationResolver.cs",
                 AffectedProjects: ["Lurp"],
                 GitRoot: repositoryRoot),
@@ -121,13 +121,15 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
     }
 
     private static IEnumerable<CapsuleItem> AllItems(ContextCapsule capsule)
-        => capsule.Contracts
+    {
+        return capsule.Contracts
             .Concat(capsule.DirectCallees)
             .Concat(capsule.DirectCallers)
             .Concat(capsule.RegisteredImplementations)
             .Concat(capsule.RelevantTests)
             .Concat(capsule.SecondDegreeContext)
             .Concat(capsule.SurroundingSource);
+    }
 
     private static string LocateRepositoryRoot()
     {

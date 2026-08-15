@@ -56,14 +56,12 @@ internal sealed class BindingIncompletenessStore(SqliteConnection connection) : 
         var result = new List<BindingIncompletenessRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result.Add(new BindingIncompletenessRecord(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.GetString(2),
                 reader.GetInt32(3),
                 reader.GetString(4)));
-        }
         return result;
     }
 

@@ -40,23 +40,20 @@ internal static class DependencyInjectionConventionMatcher
                 SourceEndLine = el,
                 SourceEndColumn = ec,
                 IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
-                TargetNodeKind = GraphNodeKind.Convention,
+                TargetNodeKind = GraphNodeKind.Convention
             });
         }
 
-        if (methodSymbol.Name == "Scan")
-        {
-            EmitScanConventionRegistrationEdges(invocation, semanticModel, compilation, ctx);
-        }
+        if (methodSymbol.Name == "Scan") EmitScanConventionRegistrationEdges(invocation, semanticModel, compilation, ctx);
     }
 
     /// <summary>
-    /// Emits interface → concrete class edges for the statically recognizable
-    /// Scrutor fluent chain:
-    /// <c>Scan(scan =&gt; scan.FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime())</c>.
-    /// For unsupported, incomplete, or dynamic Scan calls this emits nothing;
-    /// the convention placeholder edge from <see cref="ProcessConventionCandidate"/>
-    /// is preserved in all cases.
+    ///     Emits interface → concrete class edges for the statically recognizable
+    ///     Scrutor fluent chain:
+    ///     <c>Scan(scan =&gt; scan.FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime())</c>.
+    ///     For unsupported, incomplete, or dynamic Scan calls this emits nothing;
+    ///     the convention placeholder edge from <see cref="ProcessConventionCandidate" />
+    ///     is preserved in all cases.
     /// </summary>
     private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
     {
@@ -123,17 +120,17 @@ internal static class DependencyInjectionConventionMatcher
                     SourceStartColumn = sc,
                     SourceEndLine = el,
                     SourceEndColumn = ec,
-                    IsCrossGenerated = isCrossGenerated,
+                    IsCrossGenerated = isCrossGenerated
                 });
             }
         }
     }
 
     /// <summary>
-    /// Resolves the statically known type whose assembly is scanned by a
-    /// <c>Scan</c> call, from <c>FromAssemblyOf&lt;T&gt;()</c> or
-    /// <c>FromAssembliesOf(typeof(T))</c>. Returns null for dynamic or
-    /// unresolved assembly selection.
+    ///     Resolves the statically known type whose assembly is scanned by a
+    ///     <c>Scan</c> call, from <c>FromAssemblyOf&lt;T&gt;()</c> or
+    ///     <c>FromAssembliesOf(typeof(T))</c>. Returns null for dynamic or
+    ///     unresolved assembly selection.
     /// </summary>
     private static ITypeSymbol? ResolveScannedAssemblyType(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel)
     {
@@ -151,24 +148,20 @@ internal static class DependencyInjectionConventionMatcher
                     continue;
 
                 if (access.Name is GenericNameSyntax generic)
-                {
                     foreach (var typeArg in generic.TypeArgumentList.Arguments)
                     {
                         var typeInfo = semanticModel.GetTypeInfo(typeArg);
                         if (typeInfo.Type is { TypeKind: not TypeKind.Error } resolved)
                             return resolved;
                     }
-                }
 
                 foreach (var nestedArg in nested.ArgumentList.Arguments)
-                {
                     if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
                     {
                         var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
                         if (typeInfo.Type is { TypeKind: not TypeKind.Error } resolved)
                             return resolved;
                     }
-                }
             }
         }
 
@@ -176,10 +169,10 @@ internal static class DependencyInjectionConventionMatcher
     }
 
     /// <summary>
-    /// Recognizes the full fluent chain
-    /// <c>FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime()</c>
-    /// inside the Scan lambda. Rejects chains with a predicate filter on
-    /// <c>AddClasses</c> since arbitrary lambda predicates are not evaluated.
+    ///     Recognizes the full fluent chain
+    ///     <c>FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime()</c>
+    ///     inside the Scan lambda. Rejects chains with a predicate filter on
+    ///     <c>AddClasses</c> since arbitrary lambda predicates are not evaluated.
     /// </summary>
     private static bool HasRecognizedConventionChain(InvocationExpressionSyntax scanInvocation)
     {
@@ -218,10 +211,10 @@ internal static class DependencyInjectionConventionMatcher
         }
 
         return !hasPredicateFilter
-            && chainNames.Contains("FromAssembliesOf")
-            && chainNames.Contains("AddClasses")
-            && chainNames.Contains("AsImplementedInterfaces")
-            && chainNames.Contains("WithScopedLifetime");
+               && chainNames.Contains("FromAssembliesOf")
+               && chainNames.Contains("AddClasses")
+               && chainNames.Contains("AsImplementedInterfaces")
+               && chainNames.Contains("WithScopedLifetime");
     }
 
     private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamespaceSymbol namespaceSymbol)
@@ -234,10 +227,8 @@ internal static class DependencyInjectionConventionMatcher
         }
 
         foreach (var nestedNamespace in namespaceSymbol.GetNamespaceMembers())
-        {
             foreach (var type in EnumerateNamedTypes(nestedNamespace))
                 yield return type;
-        }
     }
 
     private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamedTypeSymbol type)
@@ -268,7 +259,7 @@ internal static class DependencyInjectionConventionMatcher
 
     private static string? ResolveAssemblyFromGenericTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
     {
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess || memberAccess.Name is not GenericNameSyntax genericName)
+        if (invocation.Expression is not MemberAccessExpressionSyntax { Name: GenericNameSyntax genericName } memberAccess)
             return null;
 
         foreach (var typeArg in genericName.TypeArgumentList.Arguments)
@@ -301,31 +292,27 @@ internal static class DependencyInjectionConventionMatcher
 
     private static string? ResolveAssemblyFromAssemblyScanCall(InvocationExpressionSyntax nested, SemanticModel semanticModel)
     {
-        if (nested.Expression is not MemberAccessExpressionSyntax nestedAccess || nestedAccess.Name is not SimpleNameSyntax nestedName)
+        if (nested.Expression is not MemberAccessExpressionSyntax { Name: SimpleNameSyntax nestedName } nestedAccess)
             return null;
 
         if (nestedName.Identifier.Text != "FromAssemblyOf" && nestedName.Identifier.Text != "FromAssembliesOf")
             return null;
 
         if (nestedAccess.Name is GenericNameSyntax nestedGeneric)
-        {
             foreach (var typeArg in nestedGeneric.TypeArgumentList.Arguments)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeArg);
                 if (typeInfo.Type?.ContainingAssembly != null)
                     return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
             }
-        }
 
         foreach (var nestedArg in nested.ArgumentList.Arguments)
-        {
             if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
                 if (typeInfo.Type?.ContainingAssembly != null)
                     return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
             }
-        }
 
         return null;
     }

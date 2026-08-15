@@ -37,7 +37,7 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
                 {
                     context.RecordFilteredExternal(ctor, creation);
 
-                    var target = (ISymbol)ctor.ContainingType;
+                    var target = ctor.ContainingType;
                     var targetId = context.MakeSymbolId(target);
                     if (targetId == null)
                         continue;

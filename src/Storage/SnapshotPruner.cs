@@ -17,10 +17,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                 workspaceIds.Add(reader.GetString(0));
         }
 
-        foreach (var workspaceId in workspaceIds)
-        {
-            PruneWorkspace(workspaceId, keep);
-        }
+        foreach (var workspaceId in workspaceIds) PruneWorkspace(workspaceId, keep);
     }
 
     private void PruneWorkspace(string workspaceId, int keep)
@@ -53,10 +50,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
 
-            foreach (var sid in pruneIds)
-            {
-                DeleteSnapshotData(cmd, sid);
-            }
+            foreach (var sid in pruneIds) DeleteSnapshotData(cmd, sid);
 
             transaction.Commit();
         }
@@ -98,24 +92,18 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             {
                 DeleteSnapshotPayload(cmd, snapshotId);
                 if (status == SnapshotStatusValues.Failed)
-                {
                     // Tombstone: keep the row : and with it the failure reason
                     // that P2-9 exists to expose : but mark the payload pruned so
                     // a later run does not rescan the (now empty) payload.
                     cmd.CommandText = "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;";
-                    cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("@sid", snapshotId);
-                    cmd.ExecuteNonQuery();
-                }
                 else
-                {
                     // Crashed in-progress rows have no failure reason to preserve;
                     // restore the original cleanup of deleting the whole row.
                     cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
-                    cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("@sid", snapshotId);
-                    cmd.ExecuteNonQuery();
-                }
+
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@sid", snapshotId);
+                cmd.ExecuteNonQuery();
             }
 
             transaction.Commit();
@@ -160,7 +148,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         [
             "edges", "diagnostics", "annotations", "snapshot_symbols",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
-            "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness",
+            "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness"
         ];
 
         // project_references point at projects by row id, so this snapshot's

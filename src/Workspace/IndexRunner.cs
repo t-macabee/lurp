@@ -7,7 +7,9 @@ public static class IndexRunner
 {
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, CancellationToken cancellationToken = default, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
+
+    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+        bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -15,19 +17,15 @@ public static class IndexRunner
 
         using var loader = new WorkspaceLoader();
 
-        string strategy = ResolveStrategy(store, strategyArg, sink);
+        var strategy = ResolveStrategy(store, strategyArg, sink);
 
         sink.WriteLine($"Strategy: {strategy}");
 
-        if (strategy == FullStrategy)
-        {
-            sink.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
-        }
+        if (strategy == FullStrategy) sink.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
 
         var totalSw = Stopwatch.StartNew();
 
-        var loaded = await loader.LoadAsync(solutionPath, cancellationToken);
-        var solution = loaded.Solution;
+        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, cancellationToken);
 
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
@@ -81,7 +79,7 @@ public static class IndexRunner
                     sink.Write("Pruning old snapshots... ");
 
                     store.DeleteIncompleteSnapshots();
-                    store.PruneOldSnapshots(keep: 3);
+                    store.PruneOldSnapshots();
 
                     sink.WriteLine("done.");
 
@@ -102,16 +100,16 @@ public static class IndexRunner
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
-                new SnapshotTimingRow("solution_load", loaded.LoadElapsedMilliseconds, DateTime.UtcNow),
-                new SnapshotTimingRow("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow),
+                new("solution_load", loadElapsed, DateTime.UtcNow),
+                new("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow)
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, cancellationToken, verbose, sink, skipDiff, force);
+            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
         }
 
         sink.Write("Pruning old snapshots... ");
 
         store.DeleteIncompleteSnapshots();
-        store.PruneOldSnapshots(keep: 3);
+        store.PruneOldSnapshots();
 
         sink.WriteLine("done.");
 
@@ -120,7 +118,8 @@ public static class IndexRunner
         sink.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, CancellationToken cancellationToken, bool verbose, IOutputSink sink, bool skipDiff = false, bool force = false)
+    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
+        bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
@@ -142,10 +141,8 @@ public static class IndexRunner
                 return;
             }
         }
-        if (existing.Disposition == ExistingSnapshotDisposition.Retry)
-        {
-            sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
-        }
+
+        if (existing.Disposition == ExistingSnapshotDisposition.Retry) sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
 
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
@@ -165,9 +162,9 @@ public static class IndexRunner
 
         try
         {
-            int totalDeclarations = 0;
-            int totalEdges = 0;
-            int totalDiagnostics = 0;
+            var totalDeclarations = 0;
+            var totalEdges = 0;
+            var totalDiagnostics = 0;
             var allAnnotations = new List<AnnotationRecord>();
             var projectErrors = new List<Exception>();
 
@@ -224,10 +221,8 @@ public static class IndexRunner
                     store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
                     allAnnotations.AddRange(result.Annotations);
                     foreach (var measurement in result.Measurements)
-                    {
                         if (verbose)
                             sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
-                    }
 
                     extractedProjects++;
 
@@ -269,10 +264,7 @@ public static class IndexRunner
             // Hard stop only when nothing was readable. There is no lit ground to stand
             // on, so every capsule the snapshot could serve would be an empty graph
             // presented as fact.
-            if (extractedProjects == 0 && blindProjects.Count > 0)
-            {
-                throw new WorkspaceUnreadableException(WorkspaceLoadGate.DescribeRemediation(blindProjects));
-            }
+            if (extractedProjects == 0 && blindProjects.Count > 0) throw new WorkspaceUnreadableException(WorkspaceLoadGate.DescribeRemediation(blindProjects));
 
             if (projectErrors.Count > 0 || blindProjects.Count > 0)
             {
@@ -282,6 +274,7 @@ public static class IndexRunner
                     sink.WriteErrorLine($"  - {name}");
                 sink.WriteErrorLine("Capsules anchored in those projects report 'unresolved', not 'empty'.");
             }
+
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
 
@@ -301,7 +294,7 @@ public static class IndexRunner
                 sink.WriteLine();
                 SemanticDiffStep.ComputeAndPersist(
                     store, sink, previousManifest.SnapshotId, snapshotIdStr,
-                    changedSymbolIds: null, timings);
+                    null, timings);
             }
 
             var totalProjects = extractedProjects + blindProjects.Count;
@@ -336,10 +329,14 @@ public static class IndexRunner
             store.MarkSnapshotComplete(snapshotIdStr);
 
             // Persist all timings
-            try { store.SaveTimings(snapshotIdStr, timings); }
-            catch (Exception ex) { sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}"); }
-
-            return;
+            try
+            {
+                store.SaveTimings(snapshotIdStr, timings);
+            }
+            catch (Exception ex)
+            {
+                sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -347,15 +344,27 @@ public static class IndexRunner
             {
                 OperationCanceledException => "cancelled",
                 WorkspaceUnreadableException => "workspace_unreadable",
-                _ => "full_index_failure",
+                _ => "full_index_failure"
             };
-            try { store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message); }
-            catch { }
+            try
+            {
+                store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message);
+            }
+            catch
+            {
+            }
+
             sink.WriteErrorLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");
 
             // Try to save whatever timings we have
-            try { store.SaveTimings(snapshotIdStr, timings); }
-            catch (Exception tex) { sink.WriteErrorLine($"WARNING: Failed to save timings: {tex.Message}"); }
+            try
+            {
+                store.SaveTimings(snapshotIdStr, timings);
+            }
+            catch (Exception tex)
+            {
+                sink.WriteErrorLine($"WARNING: Failed to save timings: {tex.Message}");
+            }
 
             throw;
         }
@@ -368,12 +377,10 @@ public static class IndexRunner
             var strategy = strategyArg.ToLowerInvariant();
 
             if (strategy != IncrementalStrategy && strategy != FullStrategy)
-            {
                 // A caller-contract violation, not a CLI refusal: the Workspace layer
                 // must not exit the process. The CLI validates --strategy before
                 // reaching here (IndexHandler), so a throw means a misbehaving host.
                 throw new InvalidOperationException($"Invalid strategy '{strategyArg}'. Must be '{IncrementalStrategy}' or '{FullStrategy}'.");
-            }
             return strategy;
         }
 

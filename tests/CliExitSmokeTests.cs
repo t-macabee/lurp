@@ -5,11 +5,11 @@ using Microsoft.Data.Sqlite;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Smoke tests for the <see cref="CliExitException"/> contract: every
-/// <see cref="HandlerBootstrap.Fail"/> caller reports failure by throwing the
-/// typed exception (with the exit code) instead of terminating the process, so
-/// the paths are unit-testable and <c>Program.Main</c> owns
-/// <see cref="Environment.Exit(int)"/>.
+///     Smoke tests for the <see cref="CliExitException" /> contract: every
+///     <see cref="HandlerBootstrap.Fail" /> caller reports failure by throwing the
+///     typed exception (with the exit code) instead of terminating the process, so
+///     the paths are unit-testable and <c>Program.Main</c> owns
+///     <see cref="Environment.Exit(int)" />.
 /// </summary>
 public sealed class CliExitSmokeTests : IDisposable
 {
@@ -55,24 +55,23 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ParseOutputMode_JsonlDisallowed_Throws()
     {
-        var ex = Assert.Throws<CliExitException>(
-            () => HandlerBootstrap.ParseOutputMode(["--output=jsonl"], allowJsonl: false));
+        var ex = Assert.Throws<CliExitException>(() => HandlerBootstrap.ParseOutputMode(["--output=jsonl"], false));
         Assert.Contains("single document", ex.Message);
     }
 
     [Fact]
     public void RequireArg_Missing_Throws()
     {
-        var ex = Assert.Throws<CliExitException>(
-            () => HandlerBootstrap.RequireArg([], "--symbol=", "ERROR: --symbol is required."));
+        var ex = Assert.Throws<CliExitException>(() =>
+            HandlerBootstrap.RequireArg([], "--symbol=", "ERROR: --symbol is required."));
         Assert.Equal("ERROR: --symbol is required.", ex.Message);
     }
 
     [Fact]
     public void ParsePositiveIntArg_Invalid_Throws()
     {
-        var ex = Assert.Throws<CliExitException>(
-            () => HandlerBootstrap.ParsePositiveIntArg(["--limit=zero"], "--limit=", 20));
+        var ex = Assert.Throws<CliExitException>(() =>
+            HandlerBootstrap.ParsePositiveIntArg(["--limit=zero"], "--limit=", 20));
         Assert.Contains("must be a positive integer", ex.Message);
     }
 
@@ -94,7 +93,7 @@ public sealed class CliExitSmokeTests : IDisposable
         }
         finally
         {
-            Directory.Delete(emptyDir, recursive: true);
+            Directory.Delete(emptyDir, true);
         }
     }
 
@@ -116,7 +115,7 @@ public sealed class CliExitSmokeTests : IDisposable
             WorkspaceId = "w1",
             GitRoot = "gitroot",
             SolutionPath = "solution.sln",
-            CreatedAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = DateTime.UtcNow
         });
         store.MarkSnapshotComplete("s1");
 
@@ -137,8 +136,8 @@ public sealed class CliExitSmokeTests : IDisposable
     public void CliFlagValidation_UnknownFlag_Throws()
     {
         var entry = new Program.ModeRegistryEntry("search", "help", ["--query="], _ => Task.CompletedTask);
-        var ex = Assert.Throws<CliExitException>(
-            () => CliFlagValidation.Validate(entry, ["--query=x", "--bogus-flag=1"]));
+        var ex = Assert.Throws<CliExitException>(() =>
+            CliFlagValidation.Validate(entry, ["--query=x", "--bogus-flag=1"]));
         Assert.Contains("unknown flag '--bogus-flag='", ex.Message);
     }
 }

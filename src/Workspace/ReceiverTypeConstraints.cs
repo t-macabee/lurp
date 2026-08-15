@@ -22,9 +22,7 @@ internal static class ReceiverTypeConstraints
                 typeParameter.HasConstructorConstraint ||
                 typeParameter.HasNotNullConstraint ||
                 typeParameter.ConstraintTypes.IsEmpty)
-            {
                 return null;
-            }
 
             var constraintIds = new List<string>();
             foreach (var constraint in typeParameter.ConstraintTypes)
@@ -46,10 +44,8 @@ internal static class ReceiverTypeConstraints
     {
         var alternatives = Deserialize(leftJson);
         foreach (var alternative in Deserialize(rightJson))
-        {
             if (!alternatives.Any(existing => existing.SequenceEqual(alternative, StringComparer.Ordinal)))
                 alternatives.Add(alternative);
-        }
 
         return alternatives.Count == 0 ? null : Serialize(alternatives);
     }
@@ -73,7 +69,9 @@ internal static class ReceiverTypeConstraints
     }
 
     internal static string SerializeForTests(params string[] requiredTypeIds)
-        => Serialize([requiredTypeIds.ToList()]);
+    {
+        return Serialize([requiredTypeIds.ToList()]);
+    }
 
     private static string Serialize(IEnumerable<IEnumerable<string>> alternatives)
     {
@@ -108,7 +106,7 @@ internal static class ReceiverTypeConstraints
             TypeArgumentsJson = edge.TypeArgumentsJson,
             ReceiverTypeConstraintsJson = merged,
             SourceNodeKind = edge.SourceNodeKind,
-            TargetNodeKind = edge.TargetNodeKind,
+            TargetNodeKind = edge.TargetNodeKind
         };
     }
 }

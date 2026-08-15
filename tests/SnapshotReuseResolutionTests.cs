@@ -5,9 +5,9 @@ namespace Lurp.Tests;
 
 public sealed class SnapshotReuseResolutionTests : IDisposable
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-reuse-{Guid.NewGuid():N}.db");
     private const string WorkspaceId = "w1";
     private const string SnapshotId = "s1";
+    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-reuse-{Guid.NewGuid():N}.db");
 
     public void Dispose()
     {
@@ -24,14 +24,17 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
         return store;
     }
 
-    private static SnapshotRow NewSnapshot() => new()
+    private static SnapshotRow NewSnapshot()
     {
-        SnapshotId = SnapshotId,
-        WorkspaceId = WorkspaceId,
-        GitRoot = "gitroot",
-        SolutionPath = "solution.sln",
-        CreatedAtUtc = DateTime.UtcNow,
-    };
+        return new SnapshotRow
+        {
+            SnapshotId = SnapshotId,
+            WorkspaceId = WorkspaceId,
+            GitRoot = "gitroot",
+            SolutionPath = "solution.sln",
+            CreatedAtUtc = DateTime.UtcNow
+        };
+    }
 
     [Fact]
     public void NoExistingRow_ResolvesFresh_AndWritesNothing()

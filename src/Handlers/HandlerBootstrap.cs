@@ -1,11 +1,14 @@
 using Lurp.Workspace;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Lurp.Handlers;
 
 /// <summary>
-/// How a read handler renders its payload. <see cref="Json"/> is the historical
-/// default and stays the default everywhere, so no existing consumer changes shape
-/// unless it asks to.
+///     How a read handler renders its payload. <see cref="Json" /> is the historical
+///     default and stays the default everywhere, so no existing consumer changes shape
+///     unless it asks to.
 /// </summary>
 internal enum OutputMode
 {
@@ -16,23 +19,26 @@ internal enum OutputMode
     Json,
 
     /// <summary>
-    /// Newline-delimited JSON: a leading <c>{"type":"meta",...}</c> envelope followed by
-    /// one compact object per result, so a consumer can stream and stop early.
+    ///     Newline-delimited JSON: a leading <c>{"type":"meta",...}</c> envelope followed by
+    ///     one compact object per result, so a consumer can stream and stop early.
     /// </summary>
-    Jsonl,
+    Jsonl
 }
 
 internal static class HandlerBootstrap
 {
+    public static readonly JsonSerializerOptions IndentedJson = LurpJsonOptions.Indented;
+    public static readonly JsonSerializerOptions CompactJson = LurpJsonOptions.Compact;
+
     /// <summary>
-    /// The single error+exit idiom for handlers: throws
-    /// <see cref="CliExitException"/> carrying <paramref name="message"/> and
-    /// <paramref name="code"/>; <c>Program.Main</c> writes the message to stderr
-    /// and terminates with the code. Marked <c>[DoesNotReturn]</c> so callers
-    /// keep the definite-assignment and nullability behaviour they had when calling
-    /// <see cref="Environment.Exit(int)"/> inline.
+    ///     The single error+exit idiom for handlers: throws
+    ///     <see cref="CliExitException" /> carrying <paramref name="message" /> and
+    ///     <paramref name="code" />; <c>Program.Main</c> writes the message to stderr
+    ///     and terminates with the code. Marked <c>[DoesNotReturn]</c> so callers
+    ///     keep the definite-assignment and nullability behaviour they had when calling
+    ///     <see cref="Environment.Exit(int)" /> inline.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+    [DoesNotReturn]
     public static void Fail(string message, int code = 1)
     {
         throw new CliExitException(message, code);
@@ -44,21 +50,20 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// Document paths are persisted with forward slashes (see <c>Identity</c>), so a
-    /// caller on Windows who pastes a native path from the shell would otherwise miss
-    /// every stored document. Normalize the CLI form to the stored form.
+    ///     Document paths are persisted with forward slashes (see <c>Identity</c>), so a
+    ///     caller on Windows who pastes a native path from the shell would otherwise miss
+    ///     every stored document. Normalize the CLI form to the stored form.
     /// </summary>
     public static string? NormalizeDocumentPath(string? path)
-        => path is null ? null : PathNormalizer.ToForwardSlash(path);
-
-    public static readonly System.Text.Json.JsonSerializerOptions IndentedJson = LurpJsonOptions.Indented;
-    public static readonly System.Text.Json.JsonSerializerOptions CompactJson = LurpJsonOptions.Compact;
+    {
+        return path is null ? null : PathNormalizer.ToForwardSlash(path);
+    }
 
     /// <summary>
-    /// Parses <c>--output=summary|json|jsonl</c>. <paramref name="allowJsonl"/> is false for
-    /// surfaces whose payload is a single document rather than a sequence (the context
-    /// capsule): claiming to stream one object per line there would be a lie about the
-    /// shape, so it is rejected instead of silently degraded to <see cref="OutputMode.Json"/>.
+    ///     Parses <c>--output=summary|json|jsonl</c>. <paramref name="allowJsonl" /> is false for
+    ///     surfaces whose payload is a single document rather than a sequence (the context
+    ///     capsule): claiming to stream one object per line there would be a lie about the
+    ///     shape, so it is rejected instead of silently degraded to <see cref="OutputMode.Json" />.
     /// </summary>
     public static OutputMode ParseOutputMode(string[] args, bool allowJsonl = true)
     {
@@ -84,11 +89,14 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// <c>--quiet</c> suppresses everything that is not the payload : the freshness
-    /// stderr line here, and additionally the stdout echo of an artifact that was also
-    /// written to a file (see <c>--mode=context</c>).
+    ///     <c>--quiet</c> suppresses everything that is not the payload : the freshness
+    ///     stderr line here, and additionally the stdout echo of an artifact that was also
+    ///     written to a file (see <c>--mode=context</c>).
     /// </summary>
-    public static bool IsQuiet(string[] args) => args.Contains("--quiet");
+    public static bool IsQuiet(string[] args)
+    {
+        return args.Contains("--quiet");
+    }
 
     public static int ParsePositiveIntArg(string[] args, string prefix, int defaultValue)
     {
@@ -96,17 +104,14 @@ internal static class HandlerBootstrap
         if (string.IsNullOrEmpty(raw))
             return defaultValue;
 
-        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
-        {
-            Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
-        }
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value < 1) Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
 
         return value;
     }
 
     /// <summary>
-    /// Decodes and validates a <see cref="SequenceCursor"/>, exiting 1 with an explicit
-    /// message rather than resuming an offset against a sequence it was not issued for.
+    ///     Decodes and validates a <see cref="SequenceCursor" />, exiting 1 with an explicit
+    ///     message rather than resuming an offset against a sequence it was not issued for.
     /// </summary>
     public static SequenceCursor? ResolveSequenceCursor(string[] args, string snapshotId, string fingerprint, string kind)
     {
@@ -141,33 +146,35 @@ internal static class HandlerBootstrap
         {
             "hash" => FreshnessMode.Hash,
             "off" => FreshnessMode.Off,
-            _ => FreshnessMode.Auto,
+            _ => FreshnessMode.Auto
         };
     }
 
     public static FreshnessStamp ComputeFreshnessStamp(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, string[] args)
-        => WorkspaceFreshness.CheckFreshnessCheap(manifests, documents, snapshotId, ParseFreshnessMode(args));
-
-    public static object FreshnessJson(FreshnessStamp stamp) => new
     {
-        state = stamp.State,
-        method = stamp.Method,
-        changed_document_count = stamp.ChangedDocumentCount,
-        changed_documents_sample = stamp.ChangedDocumentsSample,
-        checked_at_utc = stamp.CheckedAtUtc,
-        snapshot_id = stamp.SnapshotId,
-        scope = stamp.Scope,
-    };
+        return WorkspaceFreshness.CheckFreshnessCheap(manifests, documents, snapshotId, ParseFreshnessMode(args));
+    }
+
+    public static object FreshnessJson(FreshnessStamp stamp)
+    {
+        return new
+        {
+            state = stamp.State,
+            method = stamp.Method,
+            changed_document_count = stamp.ChangedDocumentCount,
+            changed_documents_sample = stamp.ChangedDocumentsSample,
+            checked_at_utc = stamp.CheckedAtUtc,
+            snapshot_id = stamp.SnapshotId,
+            scope = stamp.Scope
+        };
+    }
 
     public static void EnforceRequireFresh(string[] args, FreshnessStamp stamp)
     {
         if (!args.Contains("--require-fresh"))
             return;
 
-        if (stamp.State != "fresh")
-        {
-            Fail($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.", 2);
-        }
+        if (stamp.State != "fresh") Fail($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.", 2);
     }
 
     public static void PrintFreshnessLine(string[] args, FreshnessStamp stamp)
@@ -193,12 +200,12 @@ internal static class HandlerBootstrap
     public static string ResolveOutputDir(string[] args)
     {
         var outputDirArg = GetArgValue(args, "--output-dir=")
-            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
+                           ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
         if (!string.IsNullOrEmpty(outputDirArg))
             return outputDirArg;
 
         var solutionArg = GetArgValue(args, "--solution=")
-            ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
+                          ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         if (!string.IsNullOrEmpty(solutionArg))
         {
             var derived = Path.GetDirectoryName(Path.GetFullPath(solutionArg));
@@ -213,10 +220,7 @@ internal static class HandlerBootstrap
     public static string ResolveDbPath(string outputDir)
     {
         var dbPath = Path.Combine(Path.GetFullPath(outputDir), "index.db");
-        if (!File.Exists(dbPath))
-        {
-            Fail("ERROR: Index database not found at " + dbPath);
-        }
+        if (!File.Exists(dbPath)) Fail("ERROR: Index database not found at " + dbPath);
 
         return dbPath;
     }
@@ -235,18 +239,15 @@ internal static class HandlerBootstrap
             return snapshotArg;
 
         var snapshotId = store.GetLatestSnapshotId();
-        if (snapshotId == null)
-        {
-            Fail("ERROR: No snapshots found in the database.");
-        }
+        if (snapshotId == null) Fail("ERROR: No snapshots found in the database.");
 
         return snapshotId;
     }
 
     /// <summary>
-    /// Opens the store for <paramref name="args"/>, resolves the snapshot id from
-    /// <paramref name="snapshotArg"/> (or the latest snapshot when null), calls
-    /// <paramref name="body"/>, and closes the store in a <c>finally</c>.
+    ///     Opens the store for <paramref name="args" />, resolves the snapshot id from
+    ///     <paramref name="snapshotArg" /> (or the latest snapshot when null), calls
+    ///     <paramref name="body" />, and closes the store in a <c>finally</c>.
     /// </summary>
     public static T WithStore<T>(string[] args, string? snapshotArg, Func<SqliteIndexStore, string, T> body)
     {
@@ -265,9 +266,9 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// Computes freshness, enforces <c>--require-fresh</c>, and prints the freshness
-    /// line (unless <c>--quiet</c>). Returns the stamp so callers can embed it in
-    /// the payload.
+    ///     Computes freshness, enforces <c>--require-fresh</c>, and prints the freshness
+    ///     line (unless <c>--quiet</c>). Returns the stamp so callers can embed it in
+    ///     the payload.
     /// </summary>
     public static FreshnessStamp ResolveFreshness(string[] args, SqliteIndexStore store, string snapshotId)
     {
@@ -278,10 +279,10 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// Resolves a symbol identifier argument to the canonical <c>docCommentId|assemblyIdentity</c>
-    /// form. Accepts the pipe-separated form directly, a bare doc-comment ID (e.g. T:Some.Type),
-    /// or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate
-    /// <c>find-symbol</c> step that was previously required to obtain the resolvable form.
+    ///     Resolves a symbol identifier argument to the canonical <c>docCommentId|assemblyIdentity</c>
+    ///     form. Accepts the pipe-separated form directly, a bare doc-comment ID (e.g. T:Some.Type),
+    ///     or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate
+    ///     <c>find-symbol</c> step that was previously required to obtain the resolvable form.
     /// </summary>
     public static string ResolveSymbolArg(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
@@ -302,10 +303,10 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
-    /// Resolves any accepted symbol identifier form to its indexed record, or null when no
-    /// symbol matches. Accepts the full <c>docCommentId|assemblyIdentity</c> symbol ID
-    /// (validated via its doc-comment part), a bare doc-comment ID (e.g. <c>T:Some.Type</c>),
-    /// or a fully-qualified name (e.g. <c>Some.Namespace.Type</c>).
+    ///     Resolves any accepted symbol identifier form to its indexed record, or null when no
+    ///     symbol matches. Accepts the full <c>docCommentId|assemblyIdentity</c> symbol ID
+    ///     (validated via its doc-comment part), a bare doc-comment ID (e.g. <c>T:Some.Type</c>),
+    ///     or a fully-qualified name (e.g. <c>Some.Namespace.Type</c>).
     /// </summary>
     public static IndexedSymbolInfo? ResolveSymbolInfo(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {

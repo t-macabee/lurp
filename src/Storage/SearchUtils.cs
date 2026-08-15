@@ -13,18 +13,19 @@ internal static class SearchUtils
     // quoted FTS5 phrase literal makes it a literal-text match instead of parsing it
     // through FTS5's operator grammar. Only the double quote needs escaping (doubled)
     // inside a phrase literal.
-    internal static string ToFtsPhrase(string query) => "\"" + query.Replace("\"", "\"\"") + "\"";
+    internal static string ToFtsPhrase(string query)
+    {
+        return "\"" + query.Replace("\"", "\"\"") + "\"";
+    }
 
     internal static bool IsPlainIdentifierQuery(string query)
     {
         var hasIdentifierChar = false;
         foreach (var c in query)
-        {
             if (char.IsLetterOrDigit(c))
                 hasIdentifierChar = true;
             else if (c != '.' && c != '_')
                 return false;
-        }
         return hasIdentifierChar;
     }
 }

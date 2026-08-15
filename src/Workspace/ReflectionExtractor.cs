@@ -1,23 +1,26 @@
 using Microsoft.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
 public sealed class ReflectionExtractor
 {
     private readonly ReflectionExtractionContext _context;
-    public List<CompilationFactExtractor.ExtractionMeasurement> Measurements { get; } = [];
 
     public ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
         : this(compilation, snapshotId, gitRoot, scopeDocuments, null, semanticModelCache)
     {
     }
 
-    internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
+        IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
         _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths);
     }
+
+    public List<CompilationFactExtractor.ExtractionMeasurement> Measurements { get; } = [];
 
     public List<EdgeRecord> Extract()
     {
@@ -28,7 +31,7 @@ public sealed class ReflectionExtractor
             ("TypeOfReflectionExtractor", new TypeOfReflectionExtractor(_context).Extract),
             ("NameOfReflectionExtractor", new NameOfReflectionExtractor(_context).Extract),
             ("StringLiteralReflectionExtractor", new StringLiteralReflectionExtractor(_context).Extract),
-            ("UnknownPatternReflectionExtractor", new UnknownPatternReflectionExtractor(_context).Extract),
+            ("UnknownPatternReflectionExtractor", new UnknownPatternReflectionExtractor(_context).Extract)
         };
         var measurements = new (long ElapsedMs, long AllocatedBytes)[extractors.Length];
 
@@ -47,10 +50,10 @@ public sealed class ReflectionExtractor
             var root = syntaxTree.GetRoot();
             var semanticModel = _context.GetOrCreateSemanticModel(syntaxTree);
 
-            for (int i = 0; i < extractors.Length; i++)
+            for (var i = 0; i < extractors.Length; i++)
             {
                 var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var stopwatch = Stopwatch.StartNew();
                 edges.AddRange(extractors[i].Run(root, semanticModel));
                 stopwatch.Stop();
                 measurements[i].ElapsedMs += stopwatch.ElapsedMilliseconds;
@@ -58,13 +61,11 @@ public sealed class ReflectionExtractor
             }
         }
 
-        for (int i = 0; i < extractors.Length; i++)
-        {
+        for (var i = 0; i < extractors.Length; i++)
             Measurements.Add(new CompilationFactExtractor.ExtractionMeasurement(
                 extractors[i].Name,
                 measurements[i].ElapsedMs,
                 measurements[i].AllocatedBytes));
-        }
 
         return edges;
     }

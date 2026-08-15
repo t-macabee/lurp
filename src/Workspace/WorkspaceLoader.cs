@@ -6,11 +6,11 @@ using System.Diagnostics;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Owns workspace acquisition for indexing: MSBuild registration, workspace
-/// creation, <c>OpenSolutionAsync</c>, language-version recovery, and workspace
-/// disposal. <see cref="IndexRunner"/> consumes only the recovered
-/// <see cref="LoadedSolution"/>; extraction (full or incremental) never sees the
-/// raw workspace output.
+///     Owns workspace acquisition for indexing: MSBuild registration, workspace
+///     creation, <c>OpenSolutionAsync</c>, language-version recovery, and workspace
+///     disposal. <see cref="IndexRunner" /> consumes only the recovered
+///     <see cref="LoadedSolution" />; extraction (full or incremental) never sees the
+///     raw workspace output.
 /// </summary>
 internal sealed class WorkspaceLoader : IDisposable
 {
@@ -30,20 +30,25 @@ internal sealed class WorkspaceLoader : IDisposable
     }
 
     /// <summary>
-    /// Test seam: substitutes the solution opener so recovery ordering can be
-    /// verified deterministically without MSBuild. No workspace is created.
+    ///     Test seam: substitutes the solution opener so recovery ordering can be
+    ///     verified deterministically without MSBuild. No workspace is created.
     /// </summary>
     internal WorkspaceLoader(Func<string, CancellationToken, Task<Solution>> openSolutionAsync)
     {
         _openSolutionAsync = openSolutionAsync ?? throw new ArgumentNullException(nameof(openSolutionAsync));
     }
 
+    public void Dispose()
+    {
+        _workspace?.Dispose();
+    }
+
     /// <summary>
-    /// Open <paramref name="solutionPath"/> and apply language-version recovery
-    /// to the result before it is returned. The stopwatch and console output
-    /// mirror the previous inline behavior: timing covers workspace creation
-    /// and <c>OpenSolutionAsync</c>, and "Loading solution... done (N
-    /// projects)." is written before recovery lines.
+    ///     Open <paramref name="solutionPath" /> and apply language-version recovery
+    ///     to the result before it is returned. The stopwatch and console output
+    ///     mirror the previous inline behavior: timing covers workspace creation
+    ///     and <c>OpenSolutionAsync</c>, and "Loading solution... done (N
+    ///     projects)." is written before recovery lines.
     /// </summary>
     public async Task<LoadedSolution> LoadAsync(string solutionPath, CancellationToken cancellationToken)
     {
@@ -71,8 +76,6 @@ internal sealed class WorkspaceLoader : IDisposable
         _workspace = MSBuildWorkspace.Create();
         return await _workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
     }
-
-    public void Dispose() => _workspace?.Dispose();
 }
 
 /// <summary>The opened and language-version-recovered solution, ready for extraction.</summary>

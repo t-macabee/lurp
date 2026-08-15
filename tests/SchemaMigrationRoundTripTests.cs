@@ -7,6 +7,7 @@ namespace Lurp.Tests;
 
 public sealed class SchemaMigrationRoundTripTests : IDisposable
 {
+    private const int E4PinnedStartVersion = 1;
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-schema-{Guid.NewGuid():N}.db");
 
     public void Dispose()
@@ -105,8 +106,6 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name IN ('metadata_reference_identities', 'compilation_options_fingerprint');";
         Assert.Equal(2L, (long)command.ExecuteScalar()!);
     }
-
-    private const int E4PinnedStartVersion = 1;
 
     [Fact]
     public void ForwardMigration_FromV1Schema_PreservesSeededData()

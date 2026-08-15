@@ -26,13 +26,9 @@ internal static class TimingsHandler
         try
         {
             if (snapshotId != null)
-            {
                 ShowTimingsForSnapshot(store, snapshotId, asJson);
-            }
             else
-            {
                 ShowLatestTimings(store, asJson);
-            }
         }
         finally
         {
@@ -76,12 +72,13 @@ internal static class TimingsHandler
                 var pct = totalMs > 0 ? (double)t.ElapsedMs / totalMs * 100 : 0;
                 Console.WriteLine($"{t.StepName,-40} {t.ElapsedMs,12} {pct,5:F1}%");
             }
+
             Console.WriteLine(new string('-', 65));
             Console.WriteLine($"{"Total",-40} {totalMs,12}");
         }
     }
 
-    private static void ShowLatestTimings(IIndexStore store, bool asJson)
+    private static void ShowLatestTimings(SqliteIndexStore store, bool asJson)
     {
         var latestSnapshotId = store.GetLatestSnapshotId();
         if (latestSnapshotId == null)

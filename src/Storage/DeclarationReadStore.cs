@@ -7,6 +7,7 @@ namespace Lurp.Storage;
 
 internal sealed class DeclarationReadStore(SqliteConnection connection)
 {
+    private static readonly byte[] DeclaredNamePlaceholder = Encoding.UTF8.GetBytes("<DECLARED_NAME>");
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
@@ -40,13 +41,21 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         switch (viewKind)
         {
             case ViewKind.Declaration:
-                startCol = "full_start"; endCol = "full_end"; break;
+                startCol = "full_start";
+                endCol = "full_end";
+                break;
             case ViewKind.Signature:
-                startCol = "signature_start"; endCol = "signature_end"; break;
+                startCol = "signature_start";
+                endCol = "signature_end";
+                break;
             case ViewKind.Body:
-                startCol = "body_start"; endCol = "body_end"; break;
+                startCol = "body_start";
+                endCol = "body_end";
+                break;
             case ViewKind.Name:
-                startCol = "name_start"; endCol = "name_end"; break;
+                startCol = "name_start";
+                endCol = "name_end";
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(viewKind), viewKind,
                     "Use GetContainingTypeSource or GetSurroundingLines for this view kind.");
@@ -101,12 +110,12 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             // These are 0-based indexes into line_starts (never consumer-facing
             // line numbers); names carry the Index suffix to keep the boundary
             // with the 1-based DeclarationLocation values self-documenting.
-            int startLineIndex = FindLineIndex(span.LineStarts, span.Start.Value);
-            int endLineIndex = FindLineIndex(span.LineStarts, span.End.Value - 1);
-            int expandedStartLineIndex = Math.Max(0, startLineIndex - contextLines);
-            int expandedEndLineIndex = Math.Min(span.LineStarts.Length - 1, endLineIndex + contextLines);
-            int byteStart = span.LineStarts[expandedStartLineIndex];
-            int byteEnd = expandedEndLineIndex + 1 < span.LineStarts.Length
+            var startLineIndex = FindLineIndex(span.LineStarts, span.Start.Value);
+            var endLineIndex = FindLineIndex(span.LineStarts, span.End.Value - 1);
+            var expandedStartLineIndex = Math.Max(0, startLineIndex - contextLines);
+            var expandedEndLineIndex = Math.Min(span.LineStarts.Length - 1, endLineIndex + contextLines);
+            var byteStart = span.LineStarts[expandedStartLineIndex];
+            var byteEnd = expandedEndLineIndex + 1 < span.LineStarts.Length
                 ? span.LineStarts[expandedEndLineIndex + 1]
                 : span.Content.Length;
             var source = SliceToString(span.Content, byteStart, byteEnd);
@@ -163,6 +172,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 Utf8Column(content, lineStarts[endLineIndex], end),
                 reader.GetInt32(5) == 1));
         }
+
         return results;
     }
 
@@ -171,8 +181,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         var safeOffset = Math.Clamp(offset, lineStart, content.Length);
         return Encoding.UTF8.GetCharCount(content, lineStart, safeOffset - lineStart);
     }
-
-    private sealed record SymbolSpanContent(byte[]? Content, int? Start, int? End, int[]? LineStarts);
 
     private List<SymbolSpanContent> GetSymbolSpanContents(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
@@ -189,10 +197,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
               AND ss.symbol_id = @symbolId
         ";
 
-        if (!includeGenerated)
-        {
-            command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
-        }
+        if (!includeGenerated) command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
 
         command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
 
@@ -212,23 +217,24 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 reader.IsDBNull(2) ? null : reader.GetInt32(2),
                 lineStarts));
         }
+
         return results;
     }
 
     internal static IndexedSymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
     {
-        var sid = new SymbolId(docCommentId: reader.GetString(1),
-            assemblyIdentity: reader.GetString(2),
-            fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4));
+        var sid = new SymbolId(reader.GetString(1),
+            reader.GetString(2),
+            reader.IsDBNull(4) ? null : reader.GetString(4));
 
         var kindStr = reader.GetString(3);
-        if (!Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind))
+        if (!Enum.TryParse<IndexedSymbolKind>(kindStr, true, out var kind))
             kind = IndexedSymbolKind.Unknown;
 
-        return new IndexedSymbolInfo(symbolId: sid, kind: kind, fullyQualifiedName: reader.IsDBNull(4) ? null : reader.GetString(4),
-            metadataJson: reader.IsDBNull(5) ? null : reader.GetString(5),
-            declarationCount: reader.GetInt32(6),
-            isPartial: !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
+        return new IndexedSymbolInfo(sid, kind, reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.IsDBNull(5) ? null : reader.GetString(5),
+            reader.GetInt32(6),
+            !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
     }
 
     private static int FindLineIndex(int[] lineStarts, int byteOffset)
@@ -236,12 +242,13 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         int lo = 0, hi = lineStarts.Length - 1;
         while (lo < hi)
         {
-            int mid = (lo + hi + 1) / 2;
+            var mid = (lo + hi + 1) / 2;
             if (lineStarts[mid] <= byteOffset)
                 lo = mid;
             else
                 hi = mid - 1;
         }
+
         return lo;
     }
 
@@ -249,13 +256,11 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     {
         if (start < 0 || end > content.Length || start > end)
             return null;
-        int length = end - start;
+        var length = end - start;
         if (length == 0)
             return string.Empty;
         return Encoding.UTF8.GetString(content, start, length);
     }
-
-    private static readonly byte[] DeclaredNamePlaceholder = Encoding.UTF8.GetBytes("<DECLARED_NAME>");
 
     internal IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(
         string snapshotId,
@@ -286,13 +291,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var paramNames = new List<string>();
-        int idx = 0;
+        var idx = 0;
         foreach (var symbolId in symbolIds)
         {
             var paramName = $"@sid{idx++}";
             paramNames.Add(paramName);
             command.Parameters.AddWithValue(paramName, symbolId);
         }
+
         command.CommandText = command.CommandText.Replace("@symbolIds", string.Join(",", paramNames));
 
         var declarationsBySymbol = new Dictionary<string, List<DeclarationFingerprint>>(StringComparer.Ordinal);
@@ -316,7 +322,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
 
             if (!symbolMeta.ContainsKey(symbolId))
             {
-                if (!Enum.TryParse<IndexedSymbolKind>(kindStr, ignoreCase: true, out var kind))
+                if (!Enum.TryParse<IndexedSymbolKind>(kindStr, true, out var kind))
                     kind = IndexedSymbolKind.Unknown;
                 symbolMeta[symbolId] = (kind, assemblyIdentity, fqn);
             }
@@ -325,22 +331,17 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 nameStart == null || nameEnd == null ||
                 !(sigStart <= nameStart && nameStart <= nameEnd && nameEnd <= sigEnd) ||
                 sigEnd > content.Length)
-            {
                 continue;
-            }
 
-            int beforeLen = nameStart.Value - sigStart.Value;
-            int afterLen = sigEnd.Value - nameEnd.Value;
+            var beforeLen = nameStart.Value - sigStart.Value;
+            var afterLen = sigEnd.Value - nameEnd.Value;
             var normalizedSig = new byte[beforeLen + DeclaredNamePlaceholder.Length + afterLen];
-            int pos = 0;
+            var pos = 0;
             Buffer.BlockCopy(content, sigStart.Value, normalizedSig, pos, beforeLen);
             pos += beforeLen;
             Buffer.BlockCopy(DeclaredNamePlaceholder, 0, normalizedSig, pos, DeclaredNamePlaceholder.Length);
             pos += DeclaredNamePlaceholder.Length;
-            if (afterLen > 0)
-            {
-                Buffer.BlockCopy(content, nameEnd.Value, normalizedSig, pos, afterLen);
-            }
+            if (afterLen > 0) Buffer.BlockCopy(content, nameEnd.Value, normalizedSig, pos, afterLen);
 
             var normalizedSigHash = SHA256.HashData(normalizedSig);
 
@@ -356,6 +357,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 list = [];
                 declarationsBySymbol[symbolId] = list;
             }
+
             list.Add(new DeclarationFingerprint(documentPath, normalizedSigHash, bodyHash));
         }
 
@@ -376,5 +378,9 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     }
 
     private static string? DeriveParentTypeDocCommentId(string docCommentId)
-        => SymbolId.DeriveContainingTypeDocCommentId(docCommentId);
+    {
+        return SymbolId.DeriveContainingTypeDocCommentId(docCommentId);
+    }
+
+    private sealed record SymbolSpanContent(byte[]? Content, int? Start, int? End, int[]? LineStarts);
 }

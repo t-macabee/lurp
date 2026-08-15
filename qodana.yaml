@@ -1,0 +1,57 @@
+version: "1.0"
+#-------------------------------------------------------------------------------#
+#               Qodana analysis is configured by qodana.yaml file             #
+#             https://www.jetbrains.com/help/qodana/qodana-yaml.html          #
+#-------------------------------------------------------------------------------#
+linter: jetbrains/qodana-dotnet:latest
+bootstrap: dotnet restore Lurp.slnx
+include:
+  - name: csharp_injection_rule-CommandInjection
+  - name: csharp_injection_rule-SQLInjection
+  - name: ConvertIfStatementToReturnStatement
+  - name: ConvertIfStatementToConditionalTernaryExpression
+  - name: SeparateLocalFunctionsWithJumpStatement
+  - name: AutoPropertyCanBeMadeGetOnly.Global
+  - name: CanReplaceCastWithLambdaReturnType
+  - name: ConvertIfStatementToSwitchStatement
+  - name: ConvertToPrimaryConstructor
+  - name: ConvertToLocalFunction
+  - name: UseAwaitUsing
+  - name: ConvertToUsingDeclaration
+  - name: ConvertToStaticClass
+  - name: ConvertClosureToMethodGroup
+  - name: ConvertToConstant.Local
+  - name: CanSimplifyDictionaryTryGetValueWithGetValueOrDefault
+  - name: ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator
+  - name: InvertIf
+  - name: JoinNullCheckWithUsage
+  - name: JoinDeclarationAndInitializer
+  - name: UseVerbatimString
+  - name: LoopCanBeConvertedToQuery
+  - name: MemberCanBePrivate.Global
+  - name: MemberCanBeProtected.Global
+  - name: MemberCanBeMadeStatic.Local
+  - name: MergeConditionalExpression
+  - name: MergeIntoPattern
+  - name: MergeIntoLogicalPattern
+  - name: MethodHasAsyncOverload
+  - name: UnusedMethodReturnValue.Global
+  - name: ForeachCanBePartlyConvertedToQueryUsingAnotherGetEnumerator
+  - name: PreferConcreteValueOverDefault
+  - name: RedundantTypeDeclarationBody
+  - name: RedundantVerbatimStringPrefix
+  - name: ReplaceWithFieldKeyword
+  - name: ReplaceWithPrimaryConstructorParameter
+  - name: CA1822
+  - name: CA1510
+  - name: CA1859
+  - name: SwitchStatementHandlesSomeKnownEnumValuesWithDefault
+  - name: RedundantAlwaysMatchSubpattern
+  - name: UnusedMemberInSuper.Global
+  - name: UnusedMember.Global
+  - name: UnusedParameter.Global
+  - name: UseNameOfInsteadOfToString
+  - name: UseCollectionExpression
+  - name: SimplifyStringInterpolation
+  - name: UseRawString
+  - name: UseUtf8StringLiteral

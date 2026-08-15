@@ -19,7 +19,13 @@ namespace Lurp.Storage;
 
 public static class LineNumbers
 {
-    public static int ToOneBased(int zeroBasedLine) => zeroBasedLine + 1;
+    public static int ToOneBased(int zeroBasedLine)
+    {
+        return zeroBasedLine + 1;
+    }
 
-    public static int? ToOneBased(int? zeroBasedLine) => zeroBasedLine + 1;
+    public static int? ToOneBased(int? zeroBasedLine)
+    {
+        return zeroBasedLine + 1;
+    }
 }

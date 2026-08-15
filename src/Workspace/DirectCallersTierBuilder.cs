@@ -28,10 +28,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
         // MayDispatchTo) are classified separately: they are indirect dispatch
         // candidates, never direct compiler-proved callers of the anchor.
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddCallersOf(dispatchEdge.SourceSymbolId, null, dispatchEdge.Provenance);
-        }
 
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
@@ -40,9 +38,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
             {
                 if (edge.Kind != EdgeKind.RoutesTo.ToString() &&
                     edge.Kind != EdgeKind.Handles.ToString())
-                {
                     continue;
-                }
 
                 var sourceId = edge.SourceSymbolId;
                 if (!seen.Add(sourceId))
@@ -50,10 +46,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
 
                 var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
                     "Framework route or handler entry point that reaches the anchor.");
-                if (item != null)
-                {
-                    results.Add(item);
-                }
+                if (item != null) results.Add(item);
             }
         }
 
@@ -63,7 +56,6 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
         {
             var paths = traverser.TraceImpact(targetSymbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1);
             foreach (var path in paths)
-            {
                 foreach (var hop in path.Hops)
                 {
                     var callerId = hop.SourceSymbolId;
@@ -76,11 +68,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
                         // anchor stays a direct caller with the hop's own
                         // provenance (compiler_proved for a real call).
                         var directItem = context.BuildCapsuleItem(callerId, hop.EdgeKind, hop.Provenance,
-                            inclusionReason, CapsuleRelationship.DirectCaller, direct: true);
-                        if (directItem != null)
-                        {
-                            results.Add(directItem);
-                        }
+                            inclusionReason, CapsuleRelationship.DirectCaller, true);
+                        if (directItem != null) results.Add(directItem);
                         continue;
                     }
 
@@ -93,13 +82,9 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
                         [hop.Provenance], dispatchProvenance);
                     var item = context.BuildCapsuleItem(callerId, hop.EdgeKind, provenance,
                         BuildDispatchReason(dispatchProvenance, hop.Provenance),
-                        CapsuleRelationship.IndirectDispatchCandidate, direct: false);
-                    if (item != null)
-                    {
-                        results.Add(item);
-                    }
+                        CapsuleRelationship.IndirectDispatchCandidate, false);
+                    if (item != null) results.Add(item);
                 }
-            }
         }
     }
 
@@ -107,9 +92,11 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
     // interface/abstract member, and the MayDispatchTo edge carrying the
     // structural implementation candidate.
     private static string BuildDispatchReason(string dispatchProvenance, string callProvenance)
-        => "Indirect dispatch candidate: this caller directly calls the interface/abstract "
-         + $"member via a Calls edge ({callProvenance}), which may dispatch to this "
-         + $"implementation at runtime via a MayDispatchTo edge ({dispatchProvenance}). The "
-         + "compiler establishes the structural implementation, not the runtime dispatch "
-         + "target, so this caller is not a direct compiler-proved caller of the anchor.";
+    {
+        return "Indirect dispatch candidate: this caller directly calls the interface/abstract "
+               + $"member via a Calls edge ({callProvenance}), which may dispatch to this "
+               + $"implementation at runtime via a MayDispatchTo edge ({dispatchProvenance}). The "
+               + "compiler establishes the structural implementation, not the runtime dispatch "
+               + "target, so this caller is not a direct compiler-proved caller of the anchor.";
+    }
 }

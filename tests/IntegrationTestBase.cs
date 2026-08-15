@@ -1,28 +1,32 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using System.Diagnostics;
+using System.Text;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// Pattern A test infrastructure: on-disk MSBuild solution indexed through the
-/// full pipeline (IndexRunner full / IncrementalIndexer incremental).
+///     Pattern A test infrastructure: on-disk MSBuild solution indexed through the
+///     full pipeline (IndexRunner full / IncrementalIndexer incremental).
 /// </summary>
 public abstract class IntegrationTestBase : IDisposable
 {
-    public readonly string TestDir;
-    public readonly string SolutionPath;
     public readonly string DbPath;
+    public readonly string SolutionPath;
+    public readonly string TestDir;
 
     static IntegrationTestBase()
     {
         if (!MSBuildLocator.IsRegistered)
-        {
-            try { MSBuildLocator.RegisterDefaults(); }
-            catch { }
-        }
+            try
+            {
+                MSBuildLocator.RegisterDefaults();
+            }
+            catch
+            {
+            }
     }
 
     protected IntegrationTestBase()
@@ -38,11 +42,13 @@ public abstract class IntegrationTestBase : IDisposable
         try
         {
             if (Directory.Exists(TestDir))
-                Directory.Delete(TestDir, recursive: true);
+                Directory.Delete(TestDir, true);
         }
         catch
         {
         }
+
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>Writes one .csproj + source files and appends the project to the .slnx.</summary>
@@ -58,17 +64,15 @@ public abstract class IntegrationTestBase : IDisposable
         var projDir = Path.Combine(TestDir, "src", projectName);
         Directory.CreateDirectory(projDir);
 
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         sb.AppendLine(@"<Project Sdk=""Microsoft.NET.Sdk"">");
         sb.AppendLine("  <PropertyGroup>");
         sb.AppendLine($"    <TargetFramework>{targetFramework}</TargetFramework>");
         sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
         sb.AppendLine("    <Nullable>enable</Nullable>");
         if (msbuildProperties is { Count: > 0 })
-        {
             foreach (var (name, value) in msbuildProperties)
                 sb.AppendLine($"    <{name}>{value}</{name}>");
-        }
         sb.AppendLine("  </PropertyGroup>");
         if (packageReferences is { Length: > 0 })
         {
@@ -80,8 +84,10 @@ public abstract class IntegrationTestBase : IDisposable
                     ? $"    <PackageReference Include=\"{name}\" />"
                     : $"    <PackageReference Include=\"{name}\" Version=\"{version}\" />");
             }
+
             sb.AppendLine("  </ItemGroup>");
         }
+
         if (frameworkReferences is { Length: > 0 })
         {
             sb.AppendLine("  <ItemGroup>");
@@ -89,6 +95,7 @@ public abstract class IntegrationTestBase : IDisposable
                 sb.AppendLine($"    <FrameworkReference Include=\"{reference}\" />");
             sb.AppendLine("  </ItemGroup>");
         }
+
         if (projectReferences is { Length: > 0 })
         {
             sb.AppendLine("  <ItemGroup>");
@@ -96,6 +103,7 @@ public abstract class IntegrationTestBase : IDisposable
                 sb.AppendLine($"    <ProjectReference Include=\"..\\{reference}\\{reference}.csproj\" />");
             sb.AppendLine("  </ItemGroup>");
         }
+
         sb.AppendLine("</Project>");
         File.WriteAllText(Path.Combine(projDir, $"{projectName}.csproj"), sb.ToString());
 
@@ -103,7 +111,8 @@ public abstract class IntegrationTestBase : IDisposable
             File.WriteAllText(Path.Combine(projDir, fileName), content);
 
         var slnxContent = File.Exists(SolutionPath) ? File.ReadAllText(SolutionPath) : "<Solution>\n</Solution>";
-        slnxContent = slnxContent.Replace("</Solution>", $"  <Folder Name=\"/src/{projectName}/\">\n    <Project Path=\"src/{projectName}/{projectName}.csproj\" />\n  </Folder>\n</Solution>");
+        slnxContent = slnxContent.Replace("</Solution>",
+            $"  <Folder Name=\"/src/{projectName}/\">\n    <Project Path=\"src/{projectName}/{projectName}.csproj\" />\n  </Folder>\n</Solution>");
         File.WriteAllText(SolutionPath, slnxContent);
     }
 
@@ -117,13 +126,17 @@ public abstract class IntegrationTestBase : IDisposable
 
     /// <summary>Overwrites a source file under the project's directory.</summary>
     public void WriteFile(string projectName, string fileName, string content)
-        => File.WriteAllText(Path.Combine(TestDir, "src", projectName, fileName), content);
+    {
+        File.WriteAllText(Path.Combine(TestDir, "src", projectName, fileName), content);
+    }
 
     /// <summary>Deletes a source file under the project's directory.</summary>
     public void DeleteFile(string projectName, string fileName)
-        => File.Delete(Path.Combine(TestDir, "src", projectName, fileName));
+    {
+        File.Delete(Path.Combine(TestDir, "src", projectName, fileName));
+    }
 
-    public SqliteIndexStore OpenStore(string dbPath)
+    public static SqliteIndexStore OpenStore(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
         store.Open();
@@ -132,18 +145,18 @@ public abstract class IntegrationTestBase : IDisposable
     }
 
     /// <summary>
-    /// Runs <c>dotnet restore</c> on the temp solution so package references
-    /// resolve inside MSBuildWorkspace (which never restores by itself).
+    ///     Runs <c>dotnet restore</c> on the temp solution so package references
+    ///     resolve inside MSBuildWorkspace (which never restores by itself).
     /// </summary>
     public async Task RestoreSolutionAsync()
     {
-        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        using var process = Process.Start(new ProcessStartInfo
         {
             FileName = "dotnet",
             ArgumentList = { "restore", SolutionPath, "--nologo" },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false,
+            UseShellExecute = false
         }) ?? throw new InvalidOperationException("Failed to start dotnet restore.");
 
         var stdout = process.StandardOutput.ReadToEndAsync();
@@ -164,11 +177,11 @@ public abstract class IntegrationTestBase : IDisposable
     }
 
     /// <summary>
-    /// Runs a full index into an existing database without deleting it first,
-    /// so deterministic-identity reuse detection (a second index over an
-    /// identical workspace writing no new snapshot) can be exercised across
-    /// two full runs. <paramref name="force"/> requests <c>--force</c>
-    /// semantics: re-extract even when the identical snapshot already exists.
+    ///     Runs a full index into an existing database without deleting it first,
+    ///     so deterministic-identity reuse detection (a second index over an
+    ///     identical workspace writing no new snapshot) can be exercised across
+    ///     two full runs. <paramref name="force" /> requests <c>--force</c>
+    ///     semantics: re-extract even when the identical snapshot already exists.
     /// </summary>
     public async Task<string> RunFullIndexNoDeleteAsync(string dbPath, bool force = false)
     {
@@ -176,11 +189,11 @@ public abstract class IntegrationTestBase : IDisposable
 
         await IndexRunner.RunAsync(
             store, SolutionPath, TestDir,
-            skipAdapters: [], jsonExportPath: null, strategyArg: "full",
-            cancellationToken: default, verbose: false, output: null, skipDiff: false, force: force);
+            [], null, "full",
+            false, null, false, force, default);
 
         var snapshot = store.LoadLatestSnapshot()
-            ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");
+                       ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");
         return snapshot.SnapshotId;
     }
 
@@ -193,13 +206,14 @@ public abstract class IntegrationTestBase : IDisposable
         var workspaceInfo = new WorkspaceInfo(solution, TestDir);
 
         var previousManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value)
-            ?? throw new InvalidOperationException("No previous snapshot found. Cannot run incremental index.");
+                               ?? throw new InvalidOperationException(
+                                   "No previous snapshot found. Cannot run incremental index.");
 
-        var incrementalIndexer = new IncrementalIndexer(store, TestDir, [], jsonExportPath: null);
+        var incrementalIndexer = new IncrementalIndexer(store, TestDir, [], null);
 
         var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousManifest);
 
-        store.PruneOldSnapshots(keep: 3);
+        store.PruneOldSnapshots(3);
         return result.NewSnapshotId;
     }
 
@@ -220,6 +234,7 @@ public abstract class IntegrationTestBase : IDisposable
         {
             store.Close();
         }
+
         throw new InvalidOperationException($"No symbol with FQN '{fqn}' found in snapshot {snapshotId}.");
     }
 

@@ -11,20 +11,6 @@ public sealed class TestAdapter : IFrameworkAdapter
     public string Version => "test-v3";
     public string Description => "Production-to-test tested-by edges";
 
-    private sealed record TestEmitContext(
-        string AssemblyIdentity,
-        HashSet<(string source, string target, string kind)> Seen,
-        List<EdgeRecord> Edges,
-        string TestMethodId,
-        string SnapshotId,
-        HashSet<string> ReferencedSymbols,
-        string? TestDocumentPath,
-        int? TestStartLine,
-        int? TestStartColumn,
-        int? TestEndLine,
-        int? TestEndColumn,
-        bool TestIsCrossGenerated);
-
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
@@ -34,12 +20,11 @@ public sealed class TestAdapter : IFrameworkAdapter
         var seen = new HashSet<(string source, string target, string kind)>();
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
-        bool isTestProject = IsTestProject(compilation);
+        var isTestProject = IsTestProject(compilation);
         if (!isTestProject)
             return edges;
 
         foreach (var type in AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
-        {
             foreach (var member in type.GetMembers())
             {
                 if (member is not IMethodSymbol method)
@@ -76,37 +61,25 @@ public sealed class TestAdapter : IFrameworkAdapter
                     CollectTestReferences(bodySyntax, semanticModel, testCtx);
                 }
             }
-        }
 
         return edges;
     }
 
     private static bool IsTestProject(Compilation compilation)
     {
-
         var assemblyName = compilation.Assembly.Name;
         if (assemblyName.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase) ||
             assemblyName.EndsWith(".Test", StringComparison.OrdinalIgnoreCase) ||
             assemblyName.EndsWith(".Specs", StringComparison.OrdinalIgnoreCase) ||
             assemblyName.EndsWith(".IntegrationTests", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
-        foreach (var refAsm in compilation.ReferencedAssemblyNames)
-        {
-            var name = refAsm.Name;
-            if (name.Contains("xunit", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("nunit", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("MSTest", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("Microsoft.VisualStudio.TestPlatform", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return compilation.ReferencedAssemblyNames.Any(refAsm =>
+            refAsm.Name.Contains("xunit", StringComparison.OrdinalIgnoreCase) ||
+            refAsm.Name.Contains("nunit", StringComparison.OrdinalIgnoreCase) ||
+            refAsm.Name.Contains("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase) ||
+            refAsm.Name.Contains("MSTest", StringComparison.OrdinalIgnoreCase) ||
+            refAsm.Name.Contains("Microsoft.VisualStudio.TestPlatform", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsTestMethod(IMethodSymbol method)
@@ -131,7 +104,6 @@ public sealed class TestAdapter : IFrameworkAdapter
 
     private static void AddProductionRef(ISymbol symbol, TestEmitContext context)
     {
-
         var productionSymbol = symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol
             ? symbol.ContainingType
             : symbol;
@@ -152,7 +124,6 @@ public sealed class TestAdapter : IFrameworkAdapter
 
         var key = (productionId, context.TestMethodId, EdgeKind.TestedBy.ToString());
         if (context.Seen.Add(key))
-        {
             context.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = productionId,
@@ -166,9 +137,8 @@ public sealed class TestAdapter : IFrameworkAdapter
                 SourceStartColumn = context.TestStartColumn,
                 SourceEndLine = context.TestEndLine,
                 SourceEndColumn = context.TestEndColumn,
-                IsCrossGenerated = context.TestIsCrossGenerated,
+                IsCrossGenerated = context.TestIsCrossGenerated
             });
-        }
     }
 
     private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, TestEmitContext context)
@@ -194,4 +164,18 @@ public sealed class TestAdapter : IFrameworkAdapter
                 AddProductionRef(symbolInfo.Symbol, context);
         }
     }
+
+    private sealed record TestEmitContext(
+        string AssemblyIdentity,
+        HashSet<(string source, string target, string kind)> Seen,
+        List<EdgeRecord> Edges,
+        string TestMethodId,
+        string SnapshotId,
+        HashSet<string> ReferencedSymbols,
+        string? TestDocumentPath,
+        int? TestStartLine,
+        int? TestStartColumn,
+        int? TestEndLine,
+        int? TestEndColumn,
+        bool TestIsCrossGenerated);
 }

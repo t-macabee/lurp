@@ -7,10 +7,7 @@ internal static class FindSymbolHandler
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        if (string.IsNullOrEmpty(symbolArg))
-        {
-            HandlerBootstrap.Fail("ERROR: --symbol=<name> is required for --mode=find-symbol.");
-        }
+        if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<name> is required for --mode=find-symbol.");
 
         var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
@@ -19,12 +16,10 @@ internal static class FindSymbolHandler
         {
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
             if (info == null)
-            {
                 HandlerBootstrap.Fail(
                     $"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'. " +
                     "Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), " +
                     "or a fully-qualified name (e.g. Some.Namespace.Type).");
-            }
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
@@ -42,7 +37,7 @@ internal static class FindSymbolHandler
                 is_partial = info.IsPartial,
                 snapshot_id = snapshotId,
                 freshness = HandlerBootstrap.FreshnessJson(freshness),
-                locations = locations
+                locations
             };
 
             switch (outputMode)

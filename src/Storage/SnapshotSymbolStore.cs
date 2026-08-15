@@ -30,6 +30,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
                 command.Parameters.AddWithValue("@symbolId", symbolId);
                 command.ExecuteNonQuery();
             }
+
             transaction.Commit();
         }
         catch
@@ -73,7 +74,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
                   AND symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
             ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            int i = 0;
+            var i = 0;
             foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
             command.ExecuteNonQuery();
@@ -99,10 +100,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
 
         var results = new List<string>();
         using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            results.Add(reader.GetString(0));
-        }
+        while (reader.Read()) results.Add(reader.GetString(0));
         return results;
     }
 

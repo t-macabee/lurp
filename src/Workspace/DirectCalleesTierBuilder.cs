@@ -19,7 +19,6 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         };
 
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
                 if (!allowedKinds.Contains(edge.Kind))
@@ -29,20 +28,15 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                 // can never replace a genuine direct call's stronger label.
                 AddItem(edge.TargetSymbolId, edge.Kind, edge.Provenance,
                     "Direct call or construction target of the anchor.",
-                    CapsuleRelationship.DirectCallee, direct: true);
+                    CapsuleRelationship.DirectCallee, true);
             }
-        }
 
         // Dispatch projections run after the direct pass and only for targets
         // not already present as direct callees (the shared seen set skips them).
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
-            {
                 if (edge.Kind == EdgeKind.Calls.ToString())
                     AddMayDispatchTargets(edge);
-            }
-        }
 
         return results;
 
@@ -54,16 +48,13 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 
             var item = context.BuildCapsuleItem(symbolId, edgeKind, provenance, inclusionReason,
                 relationship, direct);
-            if (item != null)
-            {
-                results.Add(item);
-            }
+            if (item != null) results.Add(item);
         }
 
-        void AddMayDispatchTargets(Lurp.Storage.EdgeRecord callEdge)
+        void AddMayDispatchTargets(EdgeRecord callEdge)
         {
             var receiverAlternatives = ReceiverTypeConstraints.Deserialize(callEdge.ReceiverTypeConstraintsJson)
-                .Select(static alternative => (IReadOnlyList<string>)alternative)
+                .Select(static alternative => alternative.AsReadOnly())
                 .ToList();
             if (receiverAlternatives.Count == 0)
                 return;
@@ -73,9 +64,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                 var declaringTypes = context.GetDeclaringTypeIds(edge.TargetSymbolId);
                 if (!declaringTypes.Any(candidateTypeId =>
                         context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))
-                {
                     continue;
-                }
 
                 // The call targets the interface/abstract member, not this
                 // implementation. The candidate is included only because it
@@ -92,7 +81,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                     "The containing type is assignable to the call site's persisted static receiver-type " +
                     "constraints, which narrows but does not establish the runtime target, so this is not " +
                     "a direct callee.",
-                    CapsuleRelationship.IndirectDispatchCandidate, direct: false);
+                    CapsuleRelationship.IndirectDispatchCandidate, false);
             }
         }
     }

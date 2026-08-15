@@ -1,15 +1,16 @@
 using Lurp.Handlers;
 using Lurp.Workspace;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// Audit §9 invariant T4 closes: emitted line numbers are 1-based, matching the
-/// --line= input convention. Storage stays Roslyn-native 0-based (Option A);
-/// conversion happens ONLY at the emit boundary, routed through the single
-/// LineNumbers choke point (src/Storage/LineNumbers.cs). The fixture's physical
-/// line numbers are ground truth, counted 1-based in the literal below.
+///     Audit §9 invariant T4 closes: emitted line numbers are 1-based, matching the
+///     --line= input convention. Storage stays Roslyn-native 0-based (Option A);
+///     conversion happens ONLY at the emit boundary, routed through the single
+///     LineNumbers choke point (src/Storage/LineNumbers.cs). The fixture's physical
+///     line numbers are ground truth, counted 1-based in the literal below.
 /// </summary>
 public sealed class LineNumberBaseTests : IntegrationTestBase
 {
@@ -38,24 +39,24 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
     // 16:     }
     // 17: }                                 <- class closes here (declaration end)
     private static readonly string Source = """
-        namespace Core;
+                                            namespace Core;
 
-        public class Caller
-        {
-            public void Run()
-            {
-                var helper = new Helper();
-                helper.Do();
-            }
-        }
+                                            public class Caller
+                                            {
+                                                public void Run()
+                                                {
+                                                    var helper = new Helper();
+                                                    helper.Do();
+                                                }
+                                            }
 
-        public class Helper
-        {
-            public void Do()
-            {
-            }
-        }
-        """;
+                                            public class Helper
+                                            {
+                                                public void Do()
+                                                {
+                                                }
+                                            }
+                                            """;
 
     private async Task<string> SeedAndIndexAsync()
     {
@@ -63,11 +64,11 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         return await RunFullIndexAsync(DbPath);
     }
 
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
-
-    /// <summary>Runs a handler in-process with stdout captured; a
-    /// <see cref="CliExitException"/> (the only exit mechanism a handler uses) is
-    /// returned in the result rather than thrown.</summary>
+    /// <summary>
+    ///     Runs a handler in-process with stdout captured; a
+    ///     <see cref="CliExitException" /> (the only exit mechanism a handler uses) is
+    ///     returned in the result rather than thrown.
+    /// </summary>
     private static RunResult RunCaptured(Action action)
     {
         var stdout = new StringWriter();
@@ -86,12 +87,15 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         {
             Console.SetOut(originalOut);
         }
+
         return new RunResult(stdout.ToString(), failure);
     }
 
-    /// <summary>Edge output is 1-based while storage stays 0-based. The audit
-    /// confirmed the pre-fix off-by-one empirically (reported L18/26/34/45/53,
-    /// actual 19/27/35/46/54); this test pins both sides of the boundary.</summary>
+    /// <summary>
+    ///     Edge output is 1-based while storage stays 0-based. The audit
+    ///     confirmed the pre-fix off-by-one empirically (reported L18/26/34/45/53,
+    ///     actual 19/27/35/46/54); this test pins both sides of the boundary.
+    /// </summary>
     [Fact]
     public async Task CallsEdge_CallSiteOnPhysicalLine8_IsOneBasedOnOutput_ZeroBasedInStorage()
     {
@@ -116,11 +120,13 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         Assert.Equal(8, hop.SourceEndLine);
     }
 
-    /// <summary>Declaration locations report the fixture's physical 1-based lines.
-    /// An indented method's FullSpan leading trivia is the indent on its own line,
-    /// so its start_line equals the code line (Run -> 5). A class preceded by a
-    /// blank line has leading trivia starting on that blank line (Helper -> 11),
-    /// while its end_line is the line of its closing brace (17).</summary>
+    /// <summary>
+    ///     Declaration locations report the fixture's physical 1-based lines.
+    ///     An indented method's FullSpan leading trivia is the indent on its own line,
+    ///     so its start_line equals the code line (Run -> 5). A class preceded by a
+    ///     blank line has leading trivia starting on that blank line (Helper -> 11),
+    ///     while its end_line is the line of its closing brace (17).
+    /// </summary>
     [Fact]
     public async Task DeclarationLocation_ReportsOneBasedPhysicalLines()
     {
@@ -132,16 +138,18 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
 
         var helperLoc = Assert.Single(store.GetDeclarationLocations(helperId, snapshotId));
         Assert.Equal(11, helperLoc.StartLine); // FullSpan includes leading trivia: the blank line 11
-        Assert.Equal(17, helperLoc.EndLine);   // class closes on physical line 17
+        Assert.Equal(17, helperLoc.EndLine); // class closes on physical line 17
 
         var runLoc = Assert.Single(store.GetDeclarationLocations(runId, snapshotId));
-        Assert.Equal(5, runLoc.StartLine);     // leading trivia is only the indent on line 5
+        Assert.Equal(5, runLoc.StartLine); // leading trivia is only the indent on line 5
     }
 
-    /// <summary>Round-trip: the reported start_line of a declaration feeds
-    /// verbatim into navigate --line= and resolves to the same symbol. This is the
-    /// property that matters to an agent and failed before T4 (navigate converted
-    /// 0-based output back to a 0-based index and landed one line early).</summary>
+    /// <summary>
+    ///     Round-trip: the reported start_line of a declaration feeds
+    ///     verbatim into navigate --line= and resolves to the same symbol. This is the
+    ///     property that matters to an agent and failed before T4 (navigate converted
+    ///     0-based output back to a 0-based index and landed one line early).
+    /// </summary>
     [Fact]
     public async Task ReportedStartLine_RoundTripsThroughNavigate_ResolvesSameSymbol()
     {
@@ -153,7 +161,7 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         {
             var loc = Assert.Single(store.GetDeclarationLocations(doId, snapshotId));
             Assert.Equal(14, loc.StartLine);
-            reportedStartLine = loc.StartLine.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            reportedStartLine = loc.StartLine.ToString(CultureInfo.InvariantCulture);
         }
 
         var result = RunCaptured(() => NavigateHandler.Run(new[]
@@ -161,7 +169,7 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
             "--mode=navigate",
             $"--file={Document}",
             $"--line={reportedStartLine}",
-            $"--output-dir={TestDir}",
+            $"--output-dir={TestDir}"
         }));
 
         Assert.Null(result.Failure);
@@ -170,4 +178,6 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         Assert.Equal(doId, target.GetProperty("symbol_id").GetString());
         Assert.Equal(Document, target.GetProperty("document_path").GetString());
     }
+
+    private sealed record RunResult(string Stdout, CliExitException? Failure);
 }

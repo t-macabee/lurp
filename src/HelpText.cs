@@ -2,18 +2,13 @@
 // Owns: the human-readable mode/option reference printed by --help.
 // Must not contain: dispatch logic or handler calls.
 
+using Lurp.Workspace;
+
 namespace Lurp;
 
 internal static class HelpText
 {
-    internal static void PrintUnknownModeError()
-    {
-        var modes = Program.ModeRegistry.Select(entry => $"--mode={entry.Name}").ToList();
-        var modeList = string.Join(", ", modes.Take(modes.Count - 1)) + ", or " + modes[^1];
-        Console.Error.WriteLine($"ERROR: Unknown mode. Use {modeList}.");
-        Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
-        Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
-    }
+    private const int FlagColumn = 24;
 
     // Single source of the long-form flag prose. The set of flags each mode
     // accepts is NOT declared here : it is read from Program.ModeRegistry[].Flags
@@ -38,7 +33,8 @@ internal static class HelpText
 
         // index
         ["--solution="] = "Path to the .sln/.slnx to index (--mode=index); for --mode=status, the workspace to compare against the latest snapshot for freshness.",
-        ["--strategy="] = "full | incremental. 'full' reindexes every document from scratch and is the DEFINITION OF CORRECTNESS (use it to recover a known-good index); 'incremental' re-indexes only changed documents. Default: 'full' on first run, 'incremental' afterward.",
+        ["--strategy="] =
+            "full | incremental. 'full' reindexes every document from scratch and is the DEFINITION OF CORRECTNESS (use it to recover a known-good index); 'incremental' re-indexes only changed documents. Default: 'full' on first run, 'incremental' afterward.",
         ["--output-json="] = "Also write the snapshot manifest as JSON (a one-way export; never consulted as authority).",
         ["--skip-adapter="] = "Skip a named framework adapter. Valid: ASP.NET Core, Dependency Injection, MediatR, EF Core, Serialization, Test.",
         ["--skip-diff"] = "Skip computing and persisting the semantic diff against the previous snapshot (--mode=diff still recomputes live).",
@@ -63,11 +59,11 @@ internal static class HelpText
         ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",
         ["--kinds="] = "Comma-separated edge kinds to follow.",
         ["--provenance="] = "Comma-separated provenance values to follow (e.g. compiler_proved,framework_derived). "
-            + "Pass compiler_proved to follow only compiler-verified edges. This keeps edges such as Calls, "
-            + "Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
-            + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
-            + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
-            + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible).",
+                            + "Pass compiler_proved to follow only compiler-verified edges. This keeps edges such as Calls, "
+                            + "Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
+                            + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
+                            + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
+                            + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible).",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
         ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
 
@@ -77,12 +73,13 @@ internal static class HelpText
 
         // context
         ["--intent="] = "Assembly-priority hint: inspect | modify | diagnose (default: inspect).",
-        ["--content-budget="] = "Token budget for capsule CONTENT (default: 8000). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
+        ["--content-budget="] =
+            "Token budget for capsule CONTENT (default: 8000). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
         ["--max-hops="] = "Maximum graph hops to expand (default: 3).",
         ["--scope="] = "Logical scope label recorded on the anchor (default: the symbol ID).",
         ["--affected-project="] = "Repeatable. A project affected by the change.",
         ["--tier="] = "Fetch ONE tier on its own instead of a capsule, with no token budget applied. This is how a capsule's omittedTiers 'budget_exhausted' entry is acted on. Valid: "
-            + string.Join(", ", Workspace.ContextAssembler.TierNames) + ".",
+                      + string.Join(", ", ContextAssembler.TierNames) + ".",
         ["--tier-limit="] = "Items per tier page (default: 25).",
         ["--completeness-detail"] = "Emit per-document binding_incompleteness rows (default: a reason/project rollup plus the total).",
 
@@ -91,17 +88,26 @@ internal static class HelpText
 
         // annotate
         ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
-        ["--value="] = "Annotation value text (required for --mode=annotate).",
+        ["--value="] = "Annotation value text (required for --mode=annotate)."
     };
 
     // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag
     // drift). Keyed by mode name; printed after that mode's flag list.
-    private static readonly IReadOnlyDictionary<string, string> ModeNotes = new Dictionary<string, string>(StringComparer.Ordinal)
+    private static readonly Dictionary<string, string> ModeNotes = new(StringComparer.Ordinal)
     {
         ["impact"] = "Every response also carries `groups`: the paths grouped by first hop, computed over ALL paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated. "
-            + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
-        ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace.",
+                     + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
+        ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace."
     };
+
+    internal static void PrintUnknownModeError()
+    {
+        var modes = Program.ModeRegistry.Select(entry => $"--mode={entry.Name}").ToList();
+        var modeList = string.Join(", ", modes.Take(modes.Count - 1)) + ", or " + modes[^1];
+        Console.Error.WriteLine($"ERROR: Unknown mode. Use {modeList}.");
+        Console.Error.WriteLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
+        Console.Error.WriteLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
+    }
 
     internal static void PrintHelp()
     {
@@ -132,6 +138,7 @@ internal static class HelpText
                 foreach (var line in WrapWords(note, 72))
                     Console.WriteLine($"      {line}");
         }
+
         Console.WriteLine();
         Console.WriteLine("SNAPSHOT LIFECYCLE");
         Console.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot,");
@@ -145,8 +152,6 @@ internal static class HelpText
         Console.WriteLine("  LURP_SOLUTION_PATH      Equivalent to --solution=.");
         Console.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
     }
-
-    private const int FlagColumn = 24;
 
     private static void WriteFlag(string flag, string? description)
     {
@@ -174,8 +179,10 @@ internal static class HelpText
                 lines.Add(line);
                 line = "";
             }
+
             line = line.Length == 0 ? word : line + " " + word;
         }
+
         if (line.Length > 0)
             lines.Add(line);
         return lines;

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace Lurp.Storage;
 
@@ -25,7 +26,7 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
             var elapsedMsParam = command.CreateParameter();
             elapsedMsParam.ParameterName = "@elapsedMs";
             command.Parameters.Add(elapsedMsParam);
-            command.Parameters.AddWithValue("@createdAtUtc", DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            command.Parameters.AddWithValue("@createdAtUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
 
             foreach (var timing in timings)
             {
@@ -57,14 +58,11 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             results.Add(new SnapshotTimingRow(
-                stepName: reader.GetString(0),
-                elapsedMs: reader.GetInt64(1),
-                createdAtUtc: DateTime.Parse(reader.GetString(2), System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.RoundtripKind)));
-        }
+                reader.GetString(0),
+                reader.GetInt64(1),
+                DateTime.Parse(reader.GetString(2), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind)));
         return results;
     }
-
 }

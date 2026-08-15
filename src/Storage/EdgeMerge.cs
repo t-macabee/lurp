@@ -14,13 +14,9 @@ public static class EdgeMerge
             if (best.TryGetValue(key, out var existing))
             {
                 if (ProvenanceRank(edge.Provenance) > ProvenanceRank(existing.Provenance))
-                {
                     best[key] = WithMergedTypeArguments(edge, existing.TypeArgumentsJson);
-                }
                 else
-                {
                     best[key] = WithMergedTypeArguments(existing, edge.TypeArgumentsJson);
-                }
             }
             else
             {
@@ -54,7 +50,7 @@ public static class EdgeMerge
             TypeArgumentsJson = merged,
             ReceiverTypeConstraintsJson = edge.ReceiverTypeConstraintsJson,
             SourceNodeKind = edge.SourceNodeKind,
-            TargetNodeKind = edge.TargetNodeKind,
+            TargetNodeKind = edge.TargetNodeKind
         };
     }
 
@@ -62,10 +58,8 @@ public static class EdgeMerge
     {
         var variants = DeserializeTypeArguments(leftJson);
         foreach (var variant in DeserializeTypeArguments(rightJson))
-        {
             if (!variants.Any(existing => existing.SequenceEqual(variant, StringComparer.Ordinal)))
                 variants.Add(variant);
-        }
 
         return variants.Count == 0 ? null : SerializeTypeArguments(variants);
     }
@@ -109,9 +103,10 @@ public static class EdgeMerge
                     if (variant.Count > 0)
                         result.Add(variant);
                 }
+
                 return result;
             }
-            else
+
             {
                 var variant = root.EnumerateArray()
                     .Select(static e => e.GetString())
@@ -139,15 +134,18 @@ public static class EdgeMerge
         return JsonSerializer.Serialize(canonical);
     }
 
-    public static int ProvenanceRank(string provenance) => provenance switch
+    public static int ProvenanceRank(string provenance)
     {
-        Provenance.CompilerProved => 6,
-        Provenance.FrameworkDerived => 5,
-        Provenance.GlobalImplementationRelation => 4,
-        Provenance.Possible => 3,
-        Provenance.Convention => 2,
-        Provenance.NameCandidate => 1,
-        Provenance.RuntimeUnknown => 0,
-        _ => -1,
-    };
+        return provenance switch
+        {
+            Provenance.CompilerProved => 6,
+            Provenance.FrameworkDerived => 5,
+            Provenance.GlobalImplementationRelation => 4,
+            Provenance.Possible => 3,
+            Provenance.Convention => 2,
+            Provenance.NameCandidate => 1,
+            Provenance.RuntimeUnknown => 0,
+            _ => -1
+        };
+    }
 }

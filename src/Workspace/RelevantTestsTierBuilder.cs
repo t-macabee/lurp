@@ -17,10 +17,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             AddTestsFor(symbolId);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddTestsFor(dispatchEdge.SourceSymbolId);
-        }
 
         var allowedKinds = new HashSet<string> { EdgeKind.Calls.ToString() };
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
@@ -29,10 +27,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             AddTestsForUpstreamCallers(symbolId);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddTestsForUpstreamCallers(dispatchEdge.SourceSymbolId);
-        }
 
         return results;
 
@@ -51,10 +47,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
                 maxDepth: context.MaxHops);
 
             foreach (var path in paths)
-            {
                 foreach (var hop in path.Hops)
                     AddTestsFor(hop.SourceSymbolId);
-            }
         }
 
         void QueryTestedBy(string symbolId)
@@ -71,12 +65,8 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
                 var item = context.BuildCapsuleItem(testSymbolId, edge.Kind, edge.Provenance,
                     "Persisted TestedBy evidence connects this test to the change scope.");
-                if (item != null)
-                {
-                    results.Add(item);
-                }
+                if (item != null) results.Add(item);
             }
         }
-
     }
 }

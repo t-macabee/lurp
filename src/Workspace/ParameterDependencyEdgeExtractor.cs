@@ -11,7 +11,6 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
         var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
-        {
             foreach (var member in typeSymbol.GetMembers())
             {
                 if (member is not IMethodSymbol method)
@@ -48,7 +47,6 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                         ExtractorConstants.ParameterDependenciesExtractor, loc));
                 }
             }
-        }
 
         return edges;
     }

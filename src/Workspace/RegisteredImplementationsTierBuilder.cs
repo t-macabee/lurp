@@ -19,13 +19,13 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
         var incomingKinds = new HashSet<string>
         {
             EdgeKind.MayDispatchTo.ToString(),
-            EdgeKind.Registers.ToString(),
+            EdgeKind.Registers.ToString()
         };
         var outgoingKinds = new HashSet<string>
         {
             EdgeKind.MayDispatchTo.ToString(),
             EdgeKind.Handles.ToString(),
-            EdgeKind.Registers.ToString(),
+            EdgeKind.Registers.ToString()
         };
 
         // DI registration is a type-level fact: `AddHostedService<TPublisher>()`
@@ -49,10 +49,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 
                 var item = context.BuildCapsuleItem(sourceId, edge.Kind, edge.Provenance,
                     "Persisted runtime dispatch or registration source for the anchor.");
-                if (item != null)
-                {
-                    results.Add(item);
-                }
+                if (item != null) results.Add(item);
             }
 
             var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
@@ -67,10 +64,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 
                 var item = context.BuildCapsuleItem(targetId, edge.Kind, edge.Provenance,
                     "Persisted runtime dispatch, handler, or registration target of the anchor.");
-                if (item != null)
-                {
-                    results.Add(item);
-                }
+                if (item != null) results.Add(item);
             }
         }
 
@@ -88,10 +82,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
                 ids.Add(symbolId);
 
             foreach (var typeId in context.GetDeclaringTypeIds(symbolId))
-            {
                 if (seen.Add(typeId))
                     ids.Add(typeId);
-            }
         }
 
         return ids;

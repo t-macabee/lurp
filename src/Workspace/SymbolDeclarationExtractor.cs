@@ -1,4 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using SymKind = Lurp.Storage.IndexedSymbolKind;
 
@@ -6,6 +7,16 @@ namespace Lurp.Workspace;
 
 internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext context, Action<string>? logWarning = null)
 {
+    private static readonly SymbolDisplayFormat SignatureFormat = new(
+        SymbolDisplayGlobalNamespaceStyle.Omitted,
+        SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints,
+        SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType |
+        SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeExplicitInterface,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+    );
+
     private readonly Action<string>? _logWarning = logWarning;
 
     [GeneratedRegex(@"\bGeneratedCode\s*\(\s*""([^""]*)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -15,10 +26,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         var results = new List<SymbolDeclaration>();
 
-        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
-        {
-            ExtractTypeDeclarations(typeSymbol, results);
-        }
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace)) ExtractTypeDeclarations(typeSymbol, results);
 
         return results;
     }
@@ -27,10 +35,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         AddSymbolDeclarations(typeSymbol, results);
 
-        foreach (var nestedType in typeSymbol.GetTypeMembers())
-        {
-            ExtractTypeDeclarations(nestedType, results);
-        }
+        foreach (var nestedType in typeSymbol.GetTypeMembers()) ExtractTypeDeclarations(nestedType, results);
 
         foreach (var member in typeSymbol.GetMembers())
         {
@@ -52,7 +57,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         var metadataJson = BuildMetadataJson(symbol);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
-        bool isPartial = symbol is INamedTypeSymbol typeSymbol && typeSymbol.DeclaringSyntaxReferences.Length > 1;
+        var isPartial = symbol is INamedTypeSymbol typeSymbol && typeSymbol.DeclaringSyntaxReferences.Length > 1;
 
         foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
         {
@@ -80,10 +85,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
             var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
             string? generatorIdentity = null;
-            if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent))
-            {
-                generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content, genDocContent.Encoding);
-            }
+            if (isGenerated && context.DocumentContents.TryGetValue(documentId.Value, out var genDocContent)) generatorIdentity = DeriveGeneratorIdentity(genDocContent.Content, genDocContent.Encoding);
 
             results.Add(new SymbolDeclaration
             {
@@ -97,7 +99,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 IsPartial = isPartial,
                 MetadataJson = metadataJson,
                 IsGenerated = isGenerated,
-                GeneratorIdentity = generatorIdentity,
+                GeneratorIdentity = generatorIdentity
             });
         }
     }
@@ -119,31 +121,21 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         return symbol.Kind switch
         {
-            Microsoft.CodeAnalysis.SymbolKind.Namespace => SymKind.Namespace,
-            Microsoft.CodeAnalysis.SymbolKind.NamedType => SymKind.Type,
-            Microsoft.CodeAnalysis.SymbolKind.Method => SymKind.Method,
-            Microsoft.CodeAnalysis.SymbolKind.Property => SymKind.Property,
-            Microsoft.CodeAnalysis.SymbolKind.Field => SymKind.Field,
-            Microsoft.CodeAnalysis.SymbolKind.Event => SymKind.Event,
-            Microsoft.CodeAnalysis.SymbolKind.Parameter => SymKind.Parameter,
-            Microsoft.CodeAnalysis.SymbolKind.Local => SymKind.Local,
-            Microsoft.CodeAnalysis.SymbolKind.RangeVariable => SymKind.RangeVariable,
-            Microsoft.CodeAnalysis.SymbolKind.ArrayType => SymKind.ArrayType,
-            Microsoft.CodeAnalysis.SymbolKind.PointerType => SymKind.PointerType,
-            Microsoft.CodeAnalysis.SymbolKind.TypeParameter => SymKind.TypeParameter,
-            _ => SymKind.Unknown,
+            SymbolKind.Namespace => SymKind.Namespace,
+            SymbolKind.NamedType => SymKind.Type,
+            SymbolKind.Method => SymKind.Method,
+            SymbolKind.Property => SymKind.Property,
+            SymbolKind.Field => SymKind.Field,
+            SymbolKind.Event => SymKind.Event,
+            SymbolKind.Parameter => SymKind.Parameter,
+            SymbolKind.Local => SymKind.Local,
+            SymbolKind.RangeVariable => SymKind.RangeVariable,
+            SymbolKind.ArrayType => SymKind.ArrayType,
+            SymbolKind.PointerType => SymKind.PointerType,
+            SymbolKind.TypeParameter => SymKind.TypeParameter,
+            _ => SymKind.Unknown
         };
     }
-
-    private static readonly SymbolDisplayFormat SignatureFormat = new(
-        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
-        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints,
-        memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType |
-                        SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeExplicitInterface,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
-    );
 
     private static string? BuildMetadataJson(ISymbol symbol)
     {
@@ -218,7 +210,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
             metadata[SymbolMetadataKeys.Attributes] = attrs;
 
         return metadata.Count > 0
-            ? System.Text.Json.JsonSerializer.Serialize(metadata)
+            ? JsonSerializer.Serialize(metadata)
             : null;
     }
 

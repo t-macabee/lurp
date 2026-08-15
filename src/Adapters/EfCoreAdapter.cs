@@ -12,13 +12,13 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     public string Description => "Entity Framework Core edges (DbSets, entity mappings)";
 
     /// <remarks>
-    /// Honors <see cref="AdapterExtractionContext.ScopeDocuments"/> like the other
-    /// five adapters: each walk is guarded by the declaring scope of the type it is
-    /// anchored to (the <c>DbContext</c> or <c>IEntityTypeConfiguration&lt;T&gt;</c>
-    /// class). Annotations carry the evidence document of the walk that produced
-    /// them, and <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> retires
-    /// copied-forward rows over exactly the extraction scope, so extraction and
-    /// deletion narrow in lockstep.
+    ///     Honors <see cref="AdapterExtractionContext.ScopeDocuments" /> like the other
+    ///     five adapters: each walk is guarded by the declaring scope of the type it is
+    ///     anchored to (the <c>DbContext</c> or <c>IEntityTypeConfiguration&lt;T&gt;</c>
+    ///     class). Annotations carry the evidence document of the walk that produced
+    ///     them, and <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> retires
+    ///     copied-forward rows over exactly the extraction scope, so extraction and
+    ///     deletion narrow in lockstep.
     /// </remarks>
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
@@ -88,7 +88,6 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             return;
 
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
-        {
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
                 var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
@@ -96,13 +95,11 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 var (evidencePath, _, _, _, _) = context.LocationResolver.Resolve(type);
                 ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, evidencePath, ctx);
             }
-        }
     }
 
     private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, ExtractionContext ctx, AdapterExtractionContext context)
     {
         foreach (var type in allTypes)
-        {
             foreach (var iface in type.AllInterfaces)
             {
                 if (iface.OriginalDefinition?.Name != "IEntityTypeConfiguration")
@@ -133,17 +130,10 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                     .OfType<IMethodSymbol>()
                     .FirstOrDefault(m => m.Name == "Configure");
                 if (configureMethod != null)
-                {
                     foreach (var syntaxRef in configureMethod.DeclaringSyntaxReferences)
-                    {
                         if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
-                        {
                             ExtractEntityTypeConfigConstraints(methodSyntax, entityType, entityTypeId, evidencePath, ctx);
-                        }
-                    }
-                }
             }
-        }
     }
 
     private static void AddMapsToEdge(string sourceId, string targetId, ExtractionContext ctx, ISymbol evidenceSymbol)
@@ -166,7 +156,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
             });
         }
     }
@@ -191,7 +181,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
             });
         }
     }
@@ -242,15 +232,9 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            if (memberAccess.Name is GenericNameSyntax genericName && genericName.Identifier.Text == "Entity")
-            {
-                ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, ctx);
-            }
+            if (memberAccess.Name is GenericNameSyntax genericName && genericName.Identifier.Text == "Entity") ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, ctx);
 
-            if (memberAccess.Name.Identifier.Text is "HasOne" or "HasMany" or "WithOne" or "WithMany")
-            {
-                ExtractNavigationTypeReference(invocation, semanticModel, dbContextId, ctx);
-            }
+            if (memberAccess.Name.Identifier.Text is "HasOne" or "HasMany" or "WithOne" or "WithMany") ExtractNavigationTypeReference(invocation, semanticModel, dbContextId, ctx);
         }
     }
 
@@ -301,7 +285,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
             });
         }
     }
@@ -316,7 +300,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (memberAccess.Name.Identifier.Text == "HasQueryFilter")
             {
                 string? entityTypeId = null;
-                string entityName = "Unknown";
+                var entityName = "Unknown";
 
                 if (invocation.ArgumentList.Arguments.Count > 0)
                 {
@@ -325,8 +309,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                         && methodSymbol.ContainingType is INamedTypeSymbol containingType
                         && containingType.TypeArguments.Length == 1)
                     {
-                        var entityType = containingType.TypeArguments[0] as INamedTypeSymbol;
-                        entityTypeId = entityType != null
+                        entityTypeId = containingType.TypeArguments[0] is INamedTypeSymbol entityType
                             ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)
                             : null;
                         entityName = containingType.TypeArguments[0].Name;
@@ -396,5 +379,4 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     {
         ctx.Annotations?.Add(new AnnotationRecord(symbolId, kind, value, documentPath));
     }
-
 }

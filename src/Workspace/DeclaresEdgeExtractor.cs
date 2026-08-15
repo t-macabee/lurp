@@ -60,7 +60,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                     SourceStartColumn = loc?.startColumn,
                     SourceEndLine = loc?.endLine,
                     SourceEndColumn = loc?.endColumn,
-                    IsCrossGenerated = context.LocationResolver.IsGenerated(loc?.path),
+                    IsCrossGenerated = context.LocationResolver.IsGenerated(loc?.path)
                 });
             }
         }

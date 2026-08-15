@@ -1,12 +1,11 @@
 namespace Lurp.Storage;
 
 /// <summary>
-/// Canonical evidence-grade vocabulary for edges.
-///
-/// Resolution of roadmap ambiguity #1:
-///   The canonical name for string-based reflection matches is "name_candidate"
-///   (not "string_candidate"). This was chosen because the reflection extractors
-///   match by symbol name, not arbitrary string content.
+///     Canonical evidence-grade vocabulary for edges.
+///     Resolution of roadmap ambiguity #1:
+///     The canonical name for string-based reflection matches is "name_candidate"
+///     (not "string_candidate"). This was chosen because the reflection extractors
+///     match by symbol name, not arbitrary string content.
 /// </summary>
 public static class Provenance
 {
@@ -29,10 +28,10 @@ public static class Provenance
     public const string Convention = "convention";
 
     /// <summary>
-    /// A true global implementation/override relation (proven by the compiler) projected
-    /// into a specific call site without filtering by that call site's static receiver
-    /// type. The relation itself is real; whether it is reachable from this particular
-    /// call is not established.
+    ///     A true global implementation/override relation (proven by the compiler) projected
+    ///     into a specific call site without filtering by that call site's static receiver
+    ///     type. The relation itself is real; whether it is reachable from this particular
+    ///     call is not established.
     /// </summary>
     public const string GlobalImplementationRelation = "global_implementation_relation";
 
@@ -45,12 +44,12 @@ public static class Provenance
         NameCandidate,
         RuntimeUnknown,
         Convention,
-        GlobalImplementationRelation,
+        GlobalImplementationRelation
     };
 
     /// <summary>
-    /// Normalize a provenance string to a canonical value.
-    /// Unknown values are returned as-is (reads are survivable per roadmap §5.6).
+    ///     Normalize a provenance string to a canonical value.
+    ///     Unknown values are returned as-is (reads are survivable per roadmap §5.6).
     /// </summary>
     public static string Normalize(string provenance)
     {
@@ -58,16 +57,13 @@ public static class Provenance
             return string.Empty;
 
         // Strip legacy composite suffix
-        if (provenance.EndsWith(":cross_generated", StringComparison.Ordinal))
-        {
-            provenance = provenance[..^":cross_generated".Length];
-        }
+        if (provenance.EndsWith(":cross_generated", StringComparison.Ordinal)) provenance = provenance[..^":cross_generated".Length];
 
         // Map legacy values to canonical constants
         return provenance switch
         {
             "roslyn" => CompilerProved,
-            _ => provenance,
+            _ => provenance
         };
     }
 }

@@ -5,42 +5,35 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Extraction helpers that carry no per-run state, factored out of the
-/// extraction-context types so the contexts hold only what they own.
+///     Extraction helpers that carry no per-run state, factored out of the
+///     extraction-context types so the contexts hold only what they own.
 /// </summary>
 internal static class ExtractionUtils
 {
     /// <summary>
-    /// Every named type declared under <paramref name="ns"/>, recursing into
-    /// child namespaces. Nested types are reached through their containing
-    /// type's own <c>GetTypeMembers()</c> by callers that need them.
+    ///     Every named type declared under <paramref name="ns" />, recursing into
+    ///     child namespaces. Nested types are reached through their containing
+    ///     type's own <c>GetTypeMembers()</c> by callers that need them.
     /// </summary>
     internal static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
     {
-        foreach (var type in ns.GetTypeMembers())
-        {
-            yield return type;
-        }
+        foreach (var type in ns.GetTypeMembers()) yield return type;
 
         foreach (var childNs in ns.GetNamespaceMembers())
-        {
             foreach (var type in GetNamespaceTypeMembers(childNs))
-            {
                 yield return type;
-            }
-        }
     }
 
     /// <summary>
-    /// True when <paramref name="syntaxTree"/> falls inside the extraction scope.
-    /// A null <paramref name="scopeDocuments"/> means "whole compilation"; a tree
-    /// with no file path has no document to scope by and stays in scope.
+    ///     True when <paramref name="syntaxTree" /> falls inside the extraction scope.
+    ///     A null <paramref name="scopeDocuments" /> means "whole compilation"; a tree
+    ///     with no file path has no document to scope by and stays in scope.
     /// </summary>
     /// <remarks>
-    /// Single definition of the scope predicate shared by
-    /// <see cref="SymbolExtractionContext"/> and
-    /// <c>Lurp.Adapters.AdapterExtractionContext</c>: absolute,
-    /// forward-slash-normalized path compare.
+    ///     Single definition of the scope predicate shared by
+    ///     <see cref="SymbolExtractionContext" /> and
+    ///     <c>Lurp.Adapters.AdapterExtractionContext</c>: absolute,
+    ///     forward-slash-normalized path compare.
     /// </remarks>
     internal static bool IsInScope(IReadOnlySet<string>? scopeDocuments, SyntaxTree? syntaxTree)
     {
@@ -53,21 +46,19 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
-    /// Every method-like declaration (methods, constructors, accessors) owned by
-    /// the given types, paired with its syntax node. When <paramref name="inScope"/>
-    /// is provided, declarations whose declaring syntax tree is out of scope are
-    /// skipped; a null predicate leaves every declaration in.
+    ///     Every method-like declaration (methods, constructors, accessors) owned by
+    ///     the given types, paired with its syntax node. When <paramref name="inScope" />
+    ///     is provided, declarations whose declaring syntax tree is out of scope are
+    ///     skipped; a null predicate leaves every declaration in.
     /// </summary>
     internal static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(
         IEnumerable<INamedTypeSymbol> types,
         Func<SyntaxTree, bool>? inScope = null)
     {
         foreach (var typeSymbol in types)
-        {
             foreach (var member in typeSymbol.GetMembers())
             {
                 if (member is IMethodSymbol method)
-                {
                     foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                     {
                         if (inScope != null && !inScope(syntaxRef.SyntaxTree))
@@ -78,10 +69,8 @@ internal static class ExtractionUtils
                         else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
                             yield return (method, ctorSyntax);
                     }
-                }
 
                 if (member is IPropertySymbol property)
-                {
                     foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
                     {
                         if (accessor == null)
@@ -95,9 +84,7 @@ internal static class ExtractionUtils
                                 yield return (accessor, accessorSyntax);
                         }
                     }
-                }
             }
-        }
     }
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)

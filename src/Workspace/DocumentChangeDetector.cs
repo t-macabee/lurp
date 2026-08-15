@@ -4,11 +4,6 @@ namespace Lurp.Workspace;
 
 public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
 {
-    private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-    private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
-
-    public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
-
     public enum DocumentChangeKind
     {
         Unchanged,
@@ -16,6 +11,9 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         New,
         Deleted
     }
+
+    private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
+    private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
 
     public (List<DocumentChangeInfo> ChangedDocs, HashSet<string> ChangedPaths) DetectAndLogChanges(
         WorkspaceInfo workspaceInfo, SnapshotManifest previousRichManifest)
@@ -27,14 +25,10 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         _output.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
 
         if (changedDocs.Count == 0)
-        {
             _output.WriteLine("No changes detected. Skipping incremental index.");
-        }
         else
-        {
             foreach (var change in changedDocs)
                 _output.WriteLine($"  {change.ChangeKind}: {change.RelativePath}");
-        }
 
         return (changedDocs, changedPaths);
     }
@@ -66,9 +60,7 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
                     Path.GetFullPath(Path.Combine(_gitRoot, path)).StartsWith(
                         Path.GetFullPath(projectDirectory) + Path.DirectorySeparatorChar,
                         StringComparison.OrdinalIgnoreCase)))
-            {
                 affectedIds.Add(project.Id);
-            }
         }
 
         var dependencyGraph = solution.GetProjectDependencyGraph();
@@ -77,10 +69,8 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         {
             var referencedProject = queue.Dequeue();
             foreach (var dependent in dependencyGraph.GetProjectsThatDirectlyDependOnThisProject(referencedProject))
-            {
                 if (affectedIds.Add(dependent))
                     queue.Enqueue(dependent);
-            }
         }
 
         return affectedIds
@@ -102,30 +92,19 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
             processed.Add(docId);
 
             if (!previousDocs.TryGetValue(docId, out var previousHash))
-            {
-
                 results.Add(new DocumentChangeInfo(docId.ToString(), DocumentChangeKind.New));
-            }
             else if (currentHash != previousHash)
-            {
-
                 results.Add(new DocumentChangeInfo(docId.ToString(), DocumentChangeKind.Changed));
-            }
             else
-            {
-
                 results.Add(new DocumentChangeInfo(docId.ToString(), DocumentChangeKind.Unchanged));
-            }
         }
 
         foreach (var (docId, _) in previousDocs)
-        {
             if (!processed.Contains(docId))
-            {
                 results.Add(new DocumentChangeInfo(docId.ToString(), DocumentChangeKind.Deleted));
-            }
-        }
 
         return results;
     }
+
+    public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
 }

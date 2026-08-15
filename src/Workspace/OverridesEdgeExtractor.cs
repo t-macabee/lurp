@@ -11,7 +11,6 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
-        {
             foreach (var member in typeSymbol.GetMembers())
             {
                 if (member.IsImplicitlyDeclared)
@@ -32,13 +31,13 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
                 if (overridden != null)
                     context.RecordFilteredExternal(overridden, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
 
-                (string? sourceId, string? targetId) = member switch
+                var (sourceId, targetId) = member switch
                 {
                     IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
                         => (context.MakeSymbolId(method), context.MakeSymbolId(method.OverriddenMethod)),
                     IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null
                         => (context.MakeSymbolId(prop), context.MakeSymbolId(prop.OverriddenProperty)),
-                    _ => ((string?)null, (string?)null)
+                    _ => (null, null)
                 };
 
                 if (sourceId != null && targetId != null)
@@ -55,7 +54,6 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
                 // -- Hides edges (new member-hiding) --
                 EmitHidesEdges(member, edges, seen);
             }
-        }
 
         return edges;
     }
@@ -64,11 +62,8 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         HashSet<(string source, string target, string kind)> seen)
     {
         var containingType = member.ContainingType;
-        if (containingType == null)
-            return;
-
-        var baseType = containingType.BaseType;
-        if (baseType == null)
+        var baseType = containingType?.BaseType;
+        if (containingType == null || baseType == null)
             return;
 
         // Only consider members that are NOT overrides (overrides already handled above)
@@ -162,13 +157,8 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
         if (method.Parameters.Length != baseMethod.Parameters.Length)
             return false;
 
-        for (int i = 0; i < method.Parameters.Length; i++)
-        {
-            if (!SymbolEqualityComparer.Default.Equals(
-                    method.Parameters[i].Type, baseMethod.Parameters[i].Type))
-                return false;
-        }
-
-        return true;
+        return method.Parameters
+            .Select((p, i) => SymbolEqualityComparer.Default.Equals(p.Type, baseMethod.Parameters[i].Type))
+            .All(static equal => equal);
     }
 }

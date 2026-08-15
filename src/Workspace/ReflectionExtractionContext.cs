@@ -5,7 +5,8 @@ namespace Lurp.Workspace;
 
 internal sealed class ReflectionExtractionContext : ExtractionContextBase
 {
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null,
+        Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
         : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths)
     {
         KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -17,10 +18,14 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
     internal HashSet<string> KnownMemberNames { get; }
 
     internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
-        => Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+    {
+        Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+    }
 
     internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
-        => Incompleteness?.RecordUnresolved(node, semanticModel);
+    {
+        Incompleteness?.RecordUnresolved(node, semanticModel);
+    }
 
     internal string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)
     {
@@ -43,10 +48,7 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
             else if (current is FieldDeclarationSyntax fieldDecl)
             {
                 var firstVariable = fieldDecl.Declaration.Variables.FirstOrDefault();
-                if (firstVariable != null)
-                {
-                    memberSymbol = semanticModel.GetDeclaredSymbol(firstVariable) as IFieldSymbol;
-                }
+                if (firstVariable != null) memberSymbol = semanticModel.GetDeclaredSymbol(firstVariable) as IFieldSymbol;
             }
 
             if (memberSymbol != null)
@@ -61,15 +63,9 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         foreach (var type in ns.GetTypeMembers())
         {
             typeNames.Add(type.Name);
-            foreach (var member in type.GetMembers())
-            {
-                memberNames.Add(member.Name);
-            }
+            foreach (var member in type.GetMembers()) memberNames.Add(member.Name);
         }
 
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            CollectKnownNames(childNs, typeNames, memberNames);
-        }
+        foreach (var childNs in ns.GetNamespaceMembers()) CollectKnownNames(childNs, typeNames, memberNames);
     }
 }

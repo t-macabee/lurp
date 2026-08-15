@@ -31,12 +31,12 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (context.KnownTypeNames.Contains(text))
             {
                 matchedName = text;
-                matchedSymbolId = ResolveSymbolIdByName(text, isType: true);
+                matchedSymbolId = ResolveSymbolIdByName(text, true);
             }
             else if (context.KnownMemberNames.Contains(text))
             {
                 matchedName = text;
-                matchedSymbolId = ResolveSymbolIdByName(text, isType: false);
+                matchedSymbolId = ResolveSymbolIdByName(text, false);
             }
 
             if (matchedSymbolId == null)
@@ -67,7 +67,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
                 SourceStartColumn = loc.startColumn,
                 SourceEndLine = loc.endLine,
                 SourceEndColumn = loc.endColumn,
-                IsCrossGenerated = context.IsGenerated(loc.path),
+                IsCrossGenerated = context.IsGenerated(loc.path)
             });
         }
 
@@ -83,16 +83,19 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return false;
     }
 
-    private static bool IsPascalCase(string text) =>
-        text.Length > 0 && char.IsUpper(text[0]) && text.Any(char.IsLower);
+    private static bool IsPascalCase(string text)
+    {
+        return text.Length > 0 && char.IsUpper(text[0]) && text.Any(char.IsLower);
+    }
 
-    private static bool IsCamelCase(string text) =>
-        text.Length > 0 && char.IsLower(text[0]) && text.Any(char.IsUpper);
+    private static bool IsCamelCase(string text)
+    {
+        return text.Length > 0 && char.IsLower(text[0]) && text.Any(char.IsUpper);
+    }
 
     private string? ResolveSymbolIdByName(string name, bool isType)
     {
         foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
-        {
             if (isType)
             {
                 if (string.Equals(typeSymbol.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -101,12 +104,10 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             else
             {
                 foreach (var member in typeSymbol.GetMembers())
-                {
                     if (string.Equals(member.Name, name, StringComparison.OrdinalIgnoreCase))
                         return context.MakeSymbolId(member);
-                }
             }
-        }
+
         return null;
     }
 }

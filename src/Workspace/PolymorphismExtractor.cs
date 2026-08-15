@@ -3,30 +3,27 @@ using Microsoft.CodeAnalysis;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Extracts polymorphism-related edges:
-///
-///   1. may_dispatch_to  : from an interface member (or virtual root) to its
-///      concrete implementations / overrides.
-///   2. statically_calls : from a calling method to the interface/abstract/virtual
-///      member it invokes (the "dispatch point").
-///
-/// Provenance on may_dispatch_to:
-///   - "compiler_proved"   : the implementing member is directly declared on the
-///                            type (not inherited through a base), or the override
-///                            is reachable through a known virtual-chain root.
-///   - "possible"          : the implementation is inherited from a base type;
-///                            it is a valid dispatch target but a future re-implementation
-///                            in a derived type could shadow it.
-///   - "framework_derived" : (NOT emitted here) emitted by DependencyInjectionAdapter
-///                            as a separate may_dispatch_to edge when DI registration
-///                            evidence narrows the candidate set.  See the adapter
-///                            for details.
-///
-/// Note: MemberEdgeExtractor already emits Calls edges for *all* invocations
-/// (including dispatch-point calls).  The statically_calls edge is an additional
-/// marker that identifies *which* call sites target a polymorphic dispatch point,
-/// enabling graph traversal to follow the call → interface member → implementation
-/// chain.
+///     Extracts polymorphism-related edges:
+///     1. may_dispatch_to  : from an interface member (or virtual root) to its
+///     concrete implementations / overrides.
+///     2. statically_calls : from a calling method to the interface/abstract/virtual
+///     member it invokes (the "dispatch point").
+///     Provenance on may_dispatch_to:
+///     - "compiler_proved"   : the implementing member is directly declared on the
+///     type (not inherited through a base), or the override
+///     is reachable through a known virtual-chain root.
+///     - "possible"          : the implementation is inherited from a base type;
+///     it is a valid dispatch target but a future re-implementation
+///     in a derived type could shadow it.
+///     - "framework_derived" : (NOT emitted here) emitted by DependencyInjectionAdapter
+///     as a separate may_dispatch_to edge when DI registration
+///     evidence narrows the candidate set.  See the adapter
+///     for details.
+///     Note: MemberEdgeExtractor already emits Calls edges for *all* invocations
+///     (including dispatch-point calls).  The statically_calls edge is an additional
+///     marker that identifies *which* call sites target a polymorphic dispatch point,
+///     enabling graph traversal to follow the call → interface member → implementation
+///     chain.
 /// </summary>
 public sealed class PolymorphismExtractor
 {
@@ -37,7 +34,8 @@ public sealed class PolymorphismExtractor
     {
     }
 
-    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
+        IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {
         if (compilation == null) throw new ArgumentNullException(nameof(compilation));
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));

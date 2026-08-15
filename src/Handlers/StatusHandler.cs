@@ -8,12 +8,14 @@ namespace Lurp.Handlers;
 
 internal static class StatusHandler
 {
+    private static readonly JsonSerializerOptions JsonOutputOptions = LurpJsonOptions.IndentedIgnoreNull;
+
     /// <summary>
-    /// Status renders one document, not a sequence, so it accepts the same
-    /// <c>--output=summary|json</c> vocabulary other read commands use (jsonl is rejected,
-    /// same as <c>--mode=context</c> for its non-tier path). <c>--json</c> is kept working
-    /// as a back-compat alias so existing callers are unaffected; the historical default
-    /// (neither flag given) stays the human-readable summary text.
+    ///     Status renders one document, not a sequence, so it accepts the same
+    ///     <c>--output=summary|json</c> vocabulary other read commands use (jsonl is rejected,
+    ///     same as <c>--mode=context</c> for its non-tier path). <c>--json</c> is kept working
+    ///     as a back-compat alias so existing callers are unaffected; the historical default
+    ///     (neither flag given) stays the human-readable summary text.
     /// </summary>
     private static bool ResolveAsJson(string[] args)
     {
@@ -67,7 +69,7 @@ internal static class StatusHandler
             var includeDocuments = WantsDetail(args, "documents");
             var includeCompleteness = WantsDetail(args, "completeness");
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
-                ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
+                                  ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
                 ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeCompleteness);
@@ -85,10 +87,7 @@ internal static class StatusHandler
 
     private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(ISnapshotManifestStore manifests, string solutionPath)
     {
-        if (!MSBuildLocator.IsRegistered)
-        {
-            MSBuildLocator.RegisterDefaults();
-        }
+        if (!MSBuildLocator.IsRegistered) MSBuildLocator.RegisterDefaults();
 
         using var workspace = MSBuildWorkspace.Create();
         var solution = await workspace.OpenSolutionAsync(solutionPath);
@@ -108,7 +107,7 @@ internal static class StatusHandler
                 database_exists = File.Exists(dbPath),
                 schema_version = schemaVersion,
                 indexed = false,
-                latest_failure = latestFailure,
+                latest_failure = latestFailure
             }, HandlerBootstrap.IndentedJson));
             return;
         }
@@ -123,8 +122,13 @@ internal static class StatusHandler
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
-            try { timings = store.GetTimings(latestSnapshotId); }
-            catch { }
+            try
+            {
+                timings = store.GetTimings(latestSnapshotId);
+            }
+            catch
+            {
+            }
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
@@ -136,7 +140,7 @@ internal static class StatusHandler
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
                 manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
-                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
+                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId)
             }, JsonOutputOptions));
             return;
         }
@@ -154,8 +158,13 @@ internal static class StatusHandler
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
-            try { timings = store.GetTimings(latestSnapshotId); }
-            catch { }
+            try
+            {
+                timings = store.GetTimings(latestSnapshotId);
+            }
+            catch
+            {
+            }
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
@@ -168,12 +177,12 @@ internal static class StatusHandler
                     kind = m.Kind.ToString(),
                     description = m.Description,
                     document = m.Document?.ToString(),
-                    detail = m.Detail,
+                    detail = m.Detail
                 }),
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
                 manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
-                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId),
+                latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId)
             }, JsonOutputOptions));
             return;
         }
@@ -183,10 +192,7 @@ internal static class StatusHandler
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
         Console.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
-        foreach (var mismatch in freshness.Mismatches)
-        {
-            Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
-        }
+        foreach (var mismatch in freshness.Mismatches) Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
 
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
@@ -201,18 +207,13 @@ internal static class StatusHandler
 
             var totalMs = timings.Sum(t => t.ElapsedMs);
             Console.WriteLine($"Timing summary ({totalMs} ms total):");
-            foreach (var t in timings)
-            {
-                Console.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
-            }
+            foreach (var t in timings) Console.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
         }
         catch
         {
             // Timings are optional; silently skip on error
         }
     }
-
-    private static readonly JsonSerializerOptions JsonOutputOptions = LurpJsonOptions.IndentedIgnoreNull;
 
     private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot, bool includeDetail)
     {
@@ -223,8 +224,8 @@ internal static class StatusHandler
     }
 
     /// <summary>
-    /// True when <c>--detail=</c> names <paramref name="section"/> (comma-separated, or
-    /// <c>all</c>).
+    ///     True when <c>--detail=</c> names <paramref name="section" /> (comma-separated, or
+    ///     <c>all</c>).
     /// </summary>
     private static bool WantsDetail(string[] args, string section)
     {
@@ -234,19 +235,18 @@ internal static class StatusHandler
 
         return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(part => string.Equals(part, section, StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(part, "all", StringComparison.OrdinalIgnoreCase));
+                         || string.Equals(part, "all", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Renders the manifest for JSON output, replacing the per-document version map with
-    /// its count unless <c>--detail=documents</c> asks for it.
-    ///
-    /// The map is the single largest thing in <c>status --json</c> (196 entries on the
-    /// self-host solution) and is almost never what the caller wanted. It is *summarized*,
-    /// not dropped: <c>documentCount</c> takes its place, so the output never silently
-    /// looks like a snapshot with no documents. Serializing through a node keeps every
-    /// other manifest field bound to the model rather than to a hand-copied field list
-    /// that would drift the first time the manifest gains a property.
+    ///     Renders the manifest for JSON output, replacing the per-document version map with
+    ///     its count unless <c>--detail=documents</c> asks for it.
+    ///     The map is the single largest thing in <c>status --json</c> (196 entries on the
+    ///     self-host solution) and is almost never what the caller wanted. It is *summarized*,
+    ///     not dropped: <c>documentCount</c> takes its place, so the output never silently
+    ///     looks like a snapshot with no documents. Serializing through a node keeps every
+    ///     other manifest field bound to the model rather than to a hand-copied field list
+    ///     that would drift the first time the manifest gains a property.
     /// </summary>
     private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments)
     {

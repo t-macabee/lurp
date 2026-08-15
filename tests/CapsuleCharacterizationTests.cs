@@ -7,52 +7,54 @@ namespace Lurp.Tests;
 public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 {
     private const string AnchorSource = """
-        namespace TestProject;
+                                        namespace TestProject;
 
-        public class Anchor
-        {
-            public int UsedByCaller(int x) => x;
+                                        public class Anchor
+                                        {
+                                            public int UsedByCaller(int x) => x;
 
-            public void Unused() { }
+                                            public void Unused() { }
 
-            public string LargeAnchor(int p1, string p2, bool p3, double p4, long p5)
-            {
-                // Padding to make this method large enough that a low budget
-                // forces the "anchor" budget_exhausted contract for D2 floor.
-                var a = p1 + p5;
-                var b = p2 ?? "default";
-                var c = p3 && p4 > 0;
-                var d = new System.Collections.Generic.List<int> { p1, (int)p5 };
-                var e = d.Count > 0 ? d[0] : -1;
-                return b + ":" + a + "/" + e + "/" + c;
-            }
-        }
+                                            public string LargeAnchor(int p1, string p2, bool p3, double p4, long p5)
+                                            {
+                                                // Padding to make this method large enough that a low budget
+                                                // forces the "anchor" budget_exhausted contract for D2 floor.
+                                                var a = p1 + p5;
+                                                var b = p2 ?? "default";
+                                                var c = p3 && p4 > 0;
+                                                var d = new System.Collections.Generic.List<int> { p1, (int)p5 };
+                                                var e = d.Count > 0 ? d[0] : -1;
+                                                return b + ":" + a + "/" + e + "/" + c;
+                                            }
+                                        }
 
-        public class Caller
-        {
-            public int CallAnchor() => new Anchor().UsedByCaller(42);
+                                        public class Caller
+                                        {
+                                            public int CallAnchor() => new Anchor().UsedByCaller(42);
 
-            public string CallLargeAnchor() => new Anchor().LargeAnchor(1, "x", true, 0.5, 10);
-        }
-        // -- D5 gap-anchor comment target (line 28) --
-        """;
+                                            public string CallLargeAnchor() => new Anchor().LargeAnchor(1, "x", true, 0.5, 10);
+                                        }
+                                        // -- D5 gap-anchor comment target (line 28) --
+                                        """;
 
     private const string StandaloneSource = """
-        namespace TestProject;
+                                            namespace TestProject;
 
-        public class Standalone
-        {
-            public void NoCallers() { }
-        }
-        """;
+                                            public class Standalone
+                                            {
+                                                public void NoCallers() { }
+                                            }
+                                            """;
 
-    private async Task<(string SnapshotId, string UnusedId, string UsedId, string StandaloneId, string LargeAnchorId, string AnchorFile)> IndexFixtureAsync()
+    private async
+        Task<(string SnapshotId, string UnusedId, string UsedId, string StandaloneId, string LargeAnchorId, string
+            AnchorFile)> IndexFixtureAsync()
     {
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
                 ["Anchor.cs"] = AnchorSource,
-                ["Standalone.cs"] = StandaloneSource,
+                ["Standalone.cs"] = StandaloneSource
             });
         var snapshotId = await RunFullIndexAsync(DbPath);
 
@@ -65,8 +67,10 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         return (snapshotId, unusedId, usedId, standaloneId, largeAnchorId, anchorFile);
     }
 
-    private ContextAssemblyOptions DefaultOptions(int budget = 5000, int maxHops = 1)
-        => new(ContextIntent.Inspect, budget, maxHops);
+    private static ContextAssemblyOptions DefaultOptions(int budget = 5000, int maxHops = 1)
+    {
+        return new ContextAssemblyOptions(ContextIntent.Inspect, budget, maxHops);
+    }
 
     // ── D2 ──────────────────────────────────────────────────────────────
 
@@ -80,7 +84,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -105,7 +109,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(budget: 200, maxHops: 1);
+            var options = DefaultOptions(200, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -131,7 +135,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(budget: 120, maxHops: 1);
+            var options = DefaultOptions(120, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -157,7 +161,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, largeAnchorId, null, null);
-            var options = DefaultOptions(budget: 1, maxHops: 1);
+            var options = DefaultOptions(1, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -182,7 +186,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, unusedId, null, null);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -211,7 +215,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, standaloneId, null, null);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -243,15 +247,15 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             store.SaveBindingIncompleteness(snapshotId,
             [
                 new BindingIncompletenessRecord(
-                    ProjectName: "TestProject",
-                    DocumentPath: anchorFile,
-                    Reason: "project_unreadable",
-                    Count: 1,
-                    ExtractorVersion: "0.0.0")
+                    "TestProject",
+                    anchorFile,
+                    "project_unreadable",
+                    1,
+                    "0.0.0")
             ]);
 
             var lookup = new ContextLookup(snapshotId, unusedId, null, null);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -282,7 +286,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             // Pass null for bindingIncompletenessStore — absence of the reader
             // must read as unobservable, not proved-absent.
             var lookup = new ContextLookup(snapshotId, unusedId, null, null);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, null, store);
 
             Assert.NotNull(capsule);
@@ -309,7 +313,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         {
             // Anchor.cs line 28 is a comment
             var lookup = new ContextLookup(snapshotId, null, "src/TestProject/Anchor.cs", 28);
-            var options = DefaultOptions(budget: 5000, maxHops: 1);
+            var options = DefaultOptions(5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
@@ -319,10 +323,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             // Every tier must be marked "unresolved"
             foreach (var tierName in ContextAssembler.TierNames)
-            {
                 Assert.Contains(capsule.OmittedTiers,
                     e => e.Category == tierName && e.Reason == "unresolved");
-            }
 
             Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
             Assert.Contains("unresolved", capsule.InclusionReasons["omittedTiers.unresolved"]);
@@ -349,15 +351,14 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         {
             // Build a budgeted capsule that forces direct_callers to be budget_exhausted
             var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(budget: 50, maxHops: 1);
+            var options = DefaultOptions(50, 1);
             var budgetedCapsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(budgetedCapsule);
 
             // Find an omitted tier with budget_exhausted that is a fetchable tier
-            var omittedEntry = budgetedCapsule.OmittedTiers.FirstOrDefault(
-                e => e.Reason == "budget_exhausted"
-                     && ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
+            var omittedEntry = budgetedCapsule.OmittedTiers.FirstOrDefault(e => e.Reason == "budget_exhausted"
+                && ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
 
             Assert.NotNull(omittedEntry);
 
@@ -373,16 +374,14 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             if (budgetedCapsule.OmittedTiers.Any(e =>
                     e.Reason == "budget_exhausted" &&
                     !ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal)))
-            {
                 Assert.Contains("larger --content-budget", template);
-            }
 
             // Fetch the omitted tier unbudgeted via BuildTierPage
             var symbolId = SymbolId.Parse(usedId);
             var page = ContextAssembler.BuildTierPage(
                 store, store, snapshotId, symbolId,
-                omittedEntry.Category, maxHops: 1, includeGenerated: false,
-                offset: 0, limit: 100);
+                omittedEntry.Category, 1, false,
+                0, 100);
 
             Assert.NotNull(page);
             Assert.Equal(omittedEntry.Category, page.TierName);
@@ -394,46 +393,33 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    // ── T7 ──────────────────────────────────────────────────────────────
-
     /// <summary>
-    /// One tier builder that always emits the exact items it was given, so the
-    /// selection boundary can be exercised without an indexed fixture.
-    /// </summary>
-    private sealed class FixedTierBuilder(string name, params CapsuleItem[] items) : IContextTierBuilder
-    {
-        public string Name => name;
-        public string InclusionReason => $"Synthetic tier for {name}.";
-        public List<CapsuleItem> Build() => [.. items];
-    }
-
-    /// <summary>
-    /// Pins the contract introduced by the T6 framing fix: tier selection must
-    /// not treat a source-less (path-only) item as free, while source-bearing
-    /// items and the anchor pass keep their original estimates.
+    ///     Pins the contract introduced by the T6 framing fix: tier selection must
+    ///     not treat a source-less (path-only) item as free, while source-bearing
+    ///     items and the anchor pass keep their original estimates.
     /// </summary>
     [Fact]
     public void EstimateTokens_ChargesFramingForPathOnlyItems()
     {
         var pathOnly = new CapsuleItem(
-            symbolId: "T:System.IDisposable|System.Runtime, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
-            kind: nameof(IndexedSymbolKind.Type),
-            fullyQualifiedName: "System.IDisposable",
-            provenance: "compiler_proved",
-            edgeKind: "Implements",
-            source: null);
+            "T:System.IDisposable|System.Runtime, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
+            nameof(IndexedSymbolKind.Type),
+            "System.IDisposable",
+            "compiler_proved",
+            "Implements",
+            null);
         Assert.True(ContextAssembler.EstimateTokens(pathOnly) > 0,
             "A source-less (path-only) item must not be estimated as free: tier selection "
-          + "would otherwise let a path-heavy tier leapfrog a source-bearing tier.");
+            + "would otherwise let a path-heavy tier leapfrog a source-bearing tier.");
 
         const string source = "public int UsedByCaller(int x) => x;";
         var withSource = new CapsuleItem(
-            symbolId: "M:TestProject.ExternalContract.UsedByCaller(System.Int32)|TestProject",
-            kind: nameof(IndexedSymbolKind.Method),
-            fullyQualifiedName: "TestProject.ExternalContract.UsedByCaller",
-            provenance: "compiler_proved",
-            edgeKind: "Calls",
-            source: source);
+            "M:TestProject.ExternalContract.UsedByCaller(System.Int32)|TestProject",
+            nameof(IndexedSymbolKind.Method),
+            "TestProject.ExternalContract.UsedByCaller",
+            "compiler_proved",
+            "Calls",
+            source);
         Assert.Equal(source.Length / 4, ContextAssembler.EstimateTokens(withSource));
 
         // The anchor pass keeps the string overload: a null anchor source stays 0
@@ -442,52 +428,50 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// REGRESSION test for the T6 framing fix (commit 286f72a): a path-heavy
-    /// tier must not leapfrog a source-bearing tier at the selection boundary.
-    ///
-    /// The selection boundary is exercised through <see cref="ContextBudgeter.Apply"/>
-    /// directly (the exact code T6 changed at ContextBudgeter.cs:37,50) with a
-    /// source-bearing tier first and a path-only tier second, at a budget that
-    /// admits the source tier plus half the path-only framing charge (40/2). The
-    /// path-only tier fits under the old 0-cost estimate (anchor + source tier + 0)
-    /// but not under the new 40-token-per-item estimate, so pre-T6 it was admitted
-    /// for free and post-T6 it is truncated while the source tier survives.
-    ///
-    /// This deliberately does not run the full <c>ResolveAndAssemble</c> pipeline:
-    /// CapsuleBudgetEnforcer's retained floor (the omittedTiers.* recovery
-    /// instruction, ~110-145 tokens for a capsule with budget_exhausted tiers)
-    /// exceeds the budgeter's path-tier exclusion window (anchor + source tier +
-    /// 40 at most), so at every budget where the path tier is excluded the
-    /// enforcer also clears the source tier — the selection difference T6 makes is
-    /// not observable in the final artifact. The boundary assertion therefore pins
-    /// the selection stage, which is the layer T6 changed.
+    ///     REGRESSION test for the T6 framing fix (commit 286f72a): a path-heavy
+    ///     tier must not leapfrog a source-bearing tier at the selection boundary.
+    ///     The selection boundary is exercised through <see cref="ContextBudgeter.Apply" />
+    ///     directly (the exact code T6 changed at ContextBudgeter.cs:37,50) with a
+    ///     source-bearing tier first and a path-only tier second, at a budget that
+    ///     admits the source tier plus half the path-only framing charge (40/2). The
+    ///     path-only tier fits under the old 0-cost estimate (anchor + source tier + 0)
+    ///     but not under the new 40-token-per-item estimate, so pre-T6 it was admitted
+    ///     for free and post-T6 it is truncated while the source tier survives.
+    ///     This deliberately does not run the full <c>ResolveAndAssemble</c> pipeline:
+    ///     CapsuleBudgetEnforcer's retained floor (the omittedTiers.* recovery
+    ///     instruction, ~110-145 tokens for a capsule with budget_exhausted tiers)
+    ///     exceeds the budgeter's path-tier exclusion window (anchor + source tier +
+    ///     40 at most), so at every budget where the path tier is excluded the
+    ///     enforcer also clears the source tier — the selection difference T6 makes is
+    ///     not observable in the final artifact. The boundary assertion therefore pins
+    ///     the selection stage, which is the layer T6 changed.
     /// </summary>
     [Fact]
     public void PathHeavyTier_DoesNotLeapfrogSourceTier_AtSelectionBoundary()
     {
         var anchor = new CapsuleAnchor(
-            symbolId: "T:TestProject.ExternalContract|TestProject",
-            fullyQualifiedName: "TestProject.ExternalContract",
-            kind: nameof(IndexedSymbolKind.Type),
-            source: new string('a', 100)); // anchor cost = 25 tokens
+            "T:TestProject.ExternalContract|TestProject",
+            "TestProject.ExternalContract",
+            nameof(IndexedSymbolKind.Type),
+            new string('a', 100)); // anchor cost = 25 tokens
 
         var sourceItem = new CapsuleItem(
-            symbolId: "M:TestProject.LeapfrogCaller.CallAnchor()|TestProject",
-            kind: nameof(IndexedSymbolKind.Method),
-            fullyQualifiedName: "TestProject.LeapfrogCaller.CallAnchor",
-            provenance: "compiler_proved",
-            edgeKind: "Calls",
-            source: new string('b', 100)); // source tier cost = 25 tokens
+            "M:TestProject.LeapfrogCaller.CallAnchor()|TestProject",
+            nameof(IndexedSymbolKind.Method),
+            "TestProject.LeapfrogCaller.CallAnchor",
+            "compiler_proved",
+            "Calls",
+            new string('b', 100)); // source tier cost = 25 tokens
 
         // Path-only item: no source. Pre-T6 this estimated at 0 tokens; post-T6
         // it is charged PathOnlyFramingChars / 4 = 40 tokens.
         var pathItem = new CapsuleItem(
-            symbolId: "T:System.IDisposable|System.Runtime",
-            kind: nameof(IndexedSymbolKind.Type),
-            fullyQualifiedName: "System.IDisposable",
-            provenance: "compiler_proved",
-            edgeKind: "Implements",
-            source: null);
+            "T:System.IDisposable|System.Runtime",
+            nameof(IndexedSymbolKind.Type),
+            "System.IDisposable",
+            "compiler_proved",
+            "Implements",
+            null);
 
         var capsule = new ContextCapsule(anchor);
         var anchorCost = ContextAssembler.EstimateTokens(anchor.Source);
@@ -501,10 +485,10 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             capsule,
             [
                 new FixedTierBuilder("direct_callers", sourceItem),
-                new FixedTierBuilder("contracts", pathItem),
+                new FixedTierBuilder("contracts", pathItem)
             ],
             budget,
-            runningTotal: anchorCost);
+            anchorCost);
 
         // The source-bearing tier (higher priority) is admitted at the boundary...
         Assert.NotEmpty(capsule.DirectCallers);
@@ -519,8 +503,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// A capsule assembled over any symbol in a project that contains pipeline
-    /// behaviors includes an uncertainty entry for the skipped MediatR pattern.
+    ///     A capsule assembled over any symbol in a project that contains pipeline
+    ///     behaviors includes an uncertainty entry for the skipped MediatR pattern.
     /// </summary>
     [SkippableFact]
     public async Task Capsule_PipelineBehavior_SurfacesUnmodeledMediatRUncertainty()
@@ -531,23 +515,23 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Ping.cs"] = """
-                    using MediatR;
+                              using MediatR;
 
-                    namespace App;
-                    public class Ping : IRequest<string> { }
-                    public class PingHandler : IRequestHandler<Ping, string>
-                    {
-                        public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult("pong");
-                    }
-                    public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
-                        where TRequest : notnull
-                    {
-                        public Task<TResponse> Handle(TRequest req, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
-                            => next();
-                    }
-                    """,
+                              namespace App;
+                              public class Ping : IRequest<string> { }
+                              public class PingHandler : IRequestHandler<Ping, string>
+                              {
+                                  public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult("pong");
+                              }
+                              public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+                                  where TRequest : notnull
+                              {
+                                  public Task<TResponse> Handle(TRequest req, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+                                      => next();
+                              }
+                              """
             },
-            packageReferences: ["MediatR@12.4.1"]);
+            ["MediatR@12.4.1"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -555,7 +539,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
         // Resolve anchor = PingHandler
         var symbols = store.SearchSymbols(snapshotId, "PingHandler");
-        Skip.If(!symbols.Any(), "PingHandler not found in snapshot.");
+        Skip.If(symbols.Count == 0, "PingHandler not found in snapshot.");
         var anchor = symbols.First();
 
         // Assemble capsule
@@ -564,5 +548,22 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
         Assert.Contains(capsule.Uncertainties, u => u.RelationshipKind == "unmodeled_mediatr_pattern");
+    }
+
+    // ── T7 ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    ///     One tier builder that always emits the exact items it was given, so the
+    ///     selection boundary can be exercised without an indexed fixture.
+    /// </summary>
+    private sealed class FixedTierBuilder(string name, params CapsuleItem[] items) : IContextTierBuilder
+    {
+        public string Name => name;
+        public string InclusionReason => $"Synthetic tier for {name}.";
+
+        public List<CapsuleItem> Build()
+        {
+            return [.. items];
+        }
     }
 }

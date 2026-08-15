@@ -12,13 +12,10 @@ internal static class ImpactHandler
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        if (string.IsNullOrEmpty(symbolArg))
-        {
-            HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
-        }
+        if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
 
         var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
-        ImpactDirection direction = directionArg.ToLowerInvariant() switch
+        var direction = directionArg.ToLowerInvariant() switch
         {
             "downstream" => ImpactDirection.Downstream,
             "upstream" => ImpactDirection.Upstream,
@@ -26,11 +23,8 @@ internal static class ImpactHandler
         };
 
         var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
-        int maxDepth = 3;
-        if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1))
-        {
-            HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
-        }
+        var maxDepth = 3;
+        if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1)) HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
 
         var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");
         HashSet<string>? allowedKinds = !string.IsNullOrEmpty(kindsArg)
@@ -59,7 +53,7 @@ internal static class ImpactHandler
             var offset = cursor?.Offset ?? 0;
 
             var traverser = new ImpactTraverser(store, snapshotId, store);
-            var traced = traverser.TraceImpact(symbolId: resolvedSymbolId, direction: direction, allowedEdgeKinds: allowedKinds, allowedProvenance: allowedProvenance, maxDepth: maxDepth, includeSource: true);
+            var traced = traverser.TraceImpact(resolvedSymbolId, direction, allowedKinds, allowedProvenance, maxDepth);
 
             var paths = traced.OrderBy(PathKey, StringComparer.Ordinal).ToList();
 
@@ -73,7 +67,7 @@ internal static class ImpactHandler
                     edge_kind = group.Key.EdgeKind,
                     provenance = group.First().Hops[0].Provenance,
                     path_count = group.Count(),
-                    max_total_steps = group.Max(static path => path.TotalSteps),
+                    max_total_steps = group.Max(static path => path.TotalSteps)
                 })
                 .OrderByDescending(static group => group.path_count)
                 .ThenBy(static group => group.first_hop_target_symbol_id, StringComparer.Ordinal)
@@ -88,7 +82,7 @@ internal static class ImpactHandler
                     returned = page.Count,
                     total = paths.Count,
                     remaining,
-                    cursor = new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Count).Encode(),
+                    cursor = new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Count).Encode()
                 }
                 : null;
 
@@ -105,7 +99,7 @@ internal static class ImpactHandler
                 path_count_total = paths.Count,
                 offset,
                 groups,
-                truncated,
+                truncated
             };
 
             switch (outputMode)
@@ -138,7 +132,7 @@ internal static class ImpactHandler
                         meta.offset,
                         meta.groups,
                         meta.truncated,
-                        paths = pathJson,
+                        paths = pathJson
                     }, HandlerBootstrap.IndentedJson));
                     break;
             }
@@ -147,25 +141,28 @@ internal static class ImpactHandler
         });
     }
 
-    private static object ToPathJson(ImpactPath path) => new
+    private static object ToPathJson(ImpactPath path)
     {
-        truncated = path.Truncated,
-        truncation_reason = path.TruncationReason,
-        total_steps = path.TotalSteps,
-        hops = path.Hops.Select(static h => new { source_symbol_id = h.SourceSymbolId, target_symbol_id = h.TargetSymbolId, edge_kind = h.EdgeKind, provenance = h.Provenance, source_document = h.SourceDocument, source_line = h.SourceLine }),
-        semantic_causes = path.SemanticCauses.Select(static c => new
+        return new
         {
-            from_snapshot_id = c.FromSnapshotId,
-            to_snapshot_id = c.ToSnapshotId,
-            change_type = c.ChangeType,
-            symbol_id = c.SymbolId,
-            detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null
-        })
-    };
+            truncated = path.Truncated,
+            truncation_reason = path.TruncationReason,
+            total_steps = path.TotalSteps,
+            hops = path.Hops.Select(static h => new { source_symbol_id = h.SourceSymbolId, target_symbol_id = h.TargetSymbolId, edge_kind = h.EdgeKind, provenance = h.Provenance, source_document = h.SourceDocument, source_line = h.SourceLine }),
+            semantic_causes = path.SemanticCauses.Select(static c => new
+            {
+                from_snapshot_id = c.FromSnapshotId,
+                to_snapshot_id = c.ToSnapshotId,
+                change_type = c.ChangeType,
+                symbol_id = c.SymbolId,
+                detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null
+            })
+        };
+    }
 
     /// <summary>
-    /// Total order for cursor stability: first hop, then length, then the full hop chain.
-    /// Paths that share a first hop sort together, so a page never interleaves groups.
+    ///     Total order for cursor stability: first hop, then length, then the full hop chain.
+    ///     Paths that share a first hop sort together, so a page never interleaves groups.
     /// </summary>
     private static string PathKey(ImpactPath path)
     {
@@ -178,10 +175,10 @@ internal static class ImpactHandler
     }
 
     /// <summary>
-    /// Maps a symbol ID to a display name, memoized because a page of paths repeats the
-    /// same first-hop endpoints many times over. Falls back to the doc-comment part of the
-    /// ID when a symbol is not in the snapshot (external targets carry no indexed record),
-    /// so a row never degrades to blank.
+    ///     Maps a symbol ID to a display name, memoized because a page of paths repeats the
+    ///     same first-hop endpoints many times over. Falls back to the doc-comment part of the
+    ///     ID when a symbol is not in the snapshot (external targets carry no indexed record),
+    ///     so a row never degrades to blank.
     /// </summary>
     private static Func<string, string> MakeNameResolver(SqliteIndexStore store, string snapshotId)
     {
@@ -194,7 +191,9 @@ internal static class ImpactHandler
             var fqn = store.GetSymbolInfo(symbolId, snapshotId)?.FullyQualifiedName;
             var name = string.IsNullOrEmpty(fqn)
                 ? DocCommentPart(symbolId)
-                : fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn["global::".Length..] : fqn;
+                : fqn.StartsWith("global::", StringComparison.Ordinal)
+                    ? fqn["global::".Length..]
+                    : fqn;
 
             cache[symbolId] = name;
             return name;

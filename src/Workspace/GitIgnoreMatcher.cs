@@ -42,13 +42,11 @@ internal sealed class GitIgnoreMatcher
     public bool IsIgnored(string relativePath)
     {
         var normalized = PathNormalizer.ToForwardSlash(relativePath);
-        bool ignored = false;
+        var ignored = false;
 
         foreach (var pattern in _patterns)
-        {
             if (Matches(normalized, pattern))
                 ignored = !pattern.Negated;
-        }
 
         return ignored;
     }
@@ -70,9 +68,9 @@ internal sealed class GitIgnoreMatcher
         if (pattern.Contains("**"))
         {
             var parts = pattern.Split("**");
-            string remaining = path;
+            var remaining = path;
 
-            for (int i = 0; i < parts.Length; i++)
+            for (var i = 0; i < parts.Length; i++)
             {
                 var part = parts[i].Trim('/');
 
@@ -100,10 +98,7 @@ internal sealed class GitIgnoreMatcher
             return true;
         }
 
-        if (pattern.Contains('*') || pattern.Contains('?'))
-        {
-            return WildcardMatch(path, pattern);
-        }
+        if (pattern.Contains('*') || pattern.Contains('?')) return WildcardMatch(path, pattern);
 
         if (isDirectoryPattern)
         {
@@ -127,13 +122,9 @@ internal sealed class GitIgnoreMatcher
             if (pathSegments.Length < patternSegments.Length)
                 return false;
 
-            for (int i = 0; i < patternSegments.Length; i++)
-            {
-                if (!string.Equals(pathSegments[i], patternSegments[i], StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-
-            return true;
+            return patternSegments
+                .Select((seg, i) => string.Equals(pathSegments[i], seg, StringComparison.OrdinalIgnoreCase))
+                .All(static equal => equal);
         }
 
         return string.Equals(path, pattern, StringComparison.OrdinalIgnoreCase) ||
@@ -146,9 +137,8 @@ internal sealed class GitIgnoreMatcher
         int starIdx = -1, matchIdx = -1;
 
         while (i < input.Length)
-        {
             if (p < pattern.Length && (pattern[p] == '?' ||
-                char.ToUpperInvariant(input[i]) == char.ToUpperInvariant(pattern[p])))
+                                       char.ToUpperInvariant(input[i]) == char.ToUpperInvariant(pattern[p])))
             {
                 i++;
                 p++;
@@ -169,7 +159,6 @@ internal sealed class GitIgnoreMatcher
             {
                 return false;
             }
-        }
 
         while (p < pattern.Length && pattern[p] == '*')
             p++;

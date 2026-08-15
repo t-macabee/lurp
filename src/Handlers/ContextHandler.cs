@@ -9,25 +9,32 @@ namespace Lurp.Handlers;
 internal static class ContextHandler
 {
     private const string CursorKind = "capsule-tier";
+
     private const int DefaultTierLimit = 25;
+
     // Keep ordinary capsule paths below the legacy Windows MAX_PATH boundary even
     // when the output directory itself is moderately nested.
     private const int MaxCapsuleFileNameLength = 128;
 
     internal const int DefaultBudget = 8000;
+
     // A type anchor's callee/caller tiers scale with member fan-out, so a capsule
     // for a type routinely needs more room than a method anchor's. This default
     // only applies when the caller omits --content-budget=; an explicit budget is always
     // honored as-is.
     internal const int DefaultTypeAnchorBudget = 16000;
 
-    internal static int DefaultBudgetFor(string? symbolArg) =>
-        symbolArg is not null && SymbolId.TryParse(symbolArg, out var id) && id.IsType
+    internal static int DefaultBudgetFor(string? symbolArg)
+    {
+        return symbolArg is not null && SymbolId.TryParse(symbolArg, out var id) && id.IsType
             ? DefaultTypeAnchorBudget
             : DefaultBudget;
+    }
 
-    internal static int DefaultBudgetFor(SymbolId symbolId) =>
-        symbolId.IsType ? DefaultTypeAnchorBudget : DefaultBudget;
+    internal static int DefaultBudgetFor(SymbolId symbolId)
+    {
+        return symbolId.IsType ? DefaultTypeAnchorBudget : DefaultBudget;
+    }
 
     public static void Run(string[] args)
     {
@@ -42,16 +49,13 @@ internal static class ContextHandler
         var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
         var affectedProjects = GetRepeatableArgs(args, "--affected-project=");
         var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
-        var outputMode = HandlerBootstrap.ParseOutputMode(args, allowJsonl: !string.IsNullOrEmpty(tierArg));
+        var outputMode = HandlerBootstrap.ParseOutputMode(args, !string.IsNullOrEmpty(tierArg));
         var quiet = HandlerBootstrap.IsQuiet(args);
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
-        bool hasSymbol = !string.IsNullOrEmpty(symbolArg);
-        bool hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
-        if (!hasSymbol && !hasFile)
-        {
-            HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
-        }
+        var hasSymbol = !string.IsNullOrEmpty(symbolArg);
+        var hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
+        if (!hasSymbol && !hasFile) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
 
         var intent = ParseIntent(intentArg);
         var budget = string.IsNullOrEmpty(budgetArg)
@@ -62,10 +66,7 @@ internal static class ContextHandler
 
         HandlerBootstrap.WithStore<object?>(args, snapshotArg, (store, snapshotId) =>
         {
-            if (hasSymbol)
-            {
-                symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
-            }
+            if (hasSymbol) symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
 
             if (!string.IsNullOrEmpty(tierArg))
             {
@@ -89,20 +90,17 @@ internal static class ContextHandler
     }
 
     /// <summary>
-    /// Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>): one capsule tier,
-    /// rebuilt outside the capsule budget and paged. This is the action a capsule's
-    /// <c>omittedTiers: budget_exhausted</c> entry previously admitted to but offered no
-    /// way to take.
+    ///     Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>): one capsule tier,
+    ///     rebuilt outside the capsule budget and paged. This is the action a capsule's
+    ///     <c>omittedTiers: budget_exhausted</c> entry previously admitted to but offered no
+    ///     way to take.
     /// </summary>
     private static void RunTierContinuation(
         SqliteIndexStore store, string[] args, string snapshotId, string tierArg,
         string? symbolArg, string? fileArg, int? lineNumber, int maxHops, bool includeGenerated,
         OutputMode outputMode)
     {
-        if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal))
-        {
-            HandlerBootstrap.Fail($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
-        }
+        if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal)) HandlerBootstrap.Fail($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
 
         var resolvedSymbol = !string.IsNullOrEmpty(symbolArg)
             ? symbolArg
@@ -162,7 +160,7 @@ internal static class ContextHandler
             next_cursor = nextCursor,
             // The tier is rebuilt in isolation, so no capsule token budget applies here.
             // Saying so keeps this page from being mistaken for a budgeted capsule section.
-            budget_applied = false,
+            budget_applied = false
         };
 
         if (outputMode == OutputMode.Jsonl)
@@ -185,7 +183,7 @@ internal static class ContextHandler
             meta.offset,
             meta.next_cursor,
             meta.budget_applied,
-            items = page.Items,
+            items = page.Items
         }, ContextCapsuleJson.Options));
     }
 
@@ -208,12 +206,10 @@ internal static class ContextHandler
     private static void ValidateSymbolIdFormat(string symbolArg)
     {
         if (!symbolArg.Contains('|'))
-        {
             HandlerBootstrap.Fail(
                 $"ERROR: --symbol value '{symbolArg}' is not a resolvable symbolId " +
                 "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
                 "--symbol=<name> first and pass its exact symbolId, not a bare FQN or search result.");
-        }
     }
 
     private static int? ParseLineNumber(bool hasFile, string? lineArg)
@@ -221,10 +217,7 @@ internal static class ContextHandler
         if (!hasFile)
             return null;
 
-        if (!int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ln) || ln < 1)
-        {
-            HandlerBootstrap.Fail("ERROR: --line must be a positive integer.");
-        }
+        if (!int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ln) || ln < 1) HandlerBootstrap.Fail("ERROR: --line must be a positive integer.");
 
         return ln;
     }
@@ -289,11 +282,9 @@ internal static class ContextHandler
                      ("registered_implementations", capsule.RegisteredImplementations.Count),
                      ("relevant_tests", capsule.RelevantTests.Count),
                      ("second_degree_context", capsule.SecondDegreeContext.Count),
-                     ("surrounding_source", capsule.SurroundingSource.Count),
+                     ("surrounding_source", capsule.SurroundingSource.Count)
                  })
-        {
             Console.WriteLine($"  {name,-28} {count}");
-        }
 
         Console.WriteLine($"  incomingPaths: {capsule.IncomingPaths.Count}  outgoingPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
 
@@ -304,7 +295,7 @@ internal static class ContextHandler
             // content is behind a budget when it is either proved absent or
             // unobservable : refetching returns the same nothing.
             var recoverable = omitted.Reason is "budget_exhausted" or "summarized"
-                && ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal);
+                              && ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal);
             var continuation = recoverable ? $" : fetch with --tier={omitted.Category}" : string.Empty;
             Console.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
         }
@@ -313,8 +304,10 @@ internal static class ContextHandler
     }
 
     private static List<string> GetRepeatableArgs(string[] args, string prefix)
-        => args.Where(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+    {
+        return args.Where(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(arg => arg[prefix.Length..])
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .ToList();
+    }
 }

@@ -3,27 +3,27 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using System.Reflection;
+using System.Text;
 using RoslynDocumentId = Microsoft.CodeAnalysis.DocumentId;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// R2 regression: snapshot identity and freshness must distinguish two metadata
-/// references that share an <see cref="AssemblyName.FullName"/> but differ in
-/// content — the NuGet "patched contents, same version" scenario.
-/// <c>WorkspaceInfo.TryGetAssemblyIdentity</c> folds a content hash into the
-/// identity string, so <see cref="SnapshotIdentity"/> yields a different
-/// <c>SnapshotId</c> and <see cref="WorkspaceFreshness"/> reports a
-/// metadata-reference mismatch.
-///
-/// Before R2 these asserted the opposite (same id / no mismatch): identity was
-/// derived from the full name alone, so a same-version patch was invisible and
-/// Lurp could silently serve a graph built against different bytes.
+///     R2 regression: snapshot identity and freshness must distinguish two metadata
+///     references that share an <see cref="AssemblyName.FullName" /> but differ in
+///     content — the NuGet "patched contents, same version" scenario.
+///     <c>WorkspaceInfo.TryGetAssemblyIdentity</c> folds a content hash into the
+///     identity string, so <see cref="SnapshotIdentity" /> yields a different
+///     <c>SnapshotId</c> and <see cref="WorkspaceFreshness" /> reports a
+///     metadata-reference mismatch.
+///     Before R2 these asserted the opposite (same id / no mismatch): identity was
+///     derived from the full name alone, so a same-version patch was invisible and
+///     Lurp could silently serve a graph built against different bytes.
 /// </summary>
 public sealed class AssemblyIdentityGranularityTests : IDisposable
 {
     private static readonly MetadataReference[] _platformReferences =
-        (((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")) ?? "")
+        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator)
         .Where(p => !string.IsNullOrEmpty(p))
         .Select(p => MetadataReference.CreateFromFile(p!))
@@ -42,7 +42,7 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
         try
         {
             if (Directory.Exists(_tempDir))
-                Directory.Delete(_tempDir, recursive: true);
+                Directory.Delete(_tempDir, true);
         }
         catch
         {
@@ -55,8 +55,8 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
         // Two builds of dependency "Dep" with identical assembly identity
         // (name + version) but different IL — the NuGet "patched contents, same
         // version" scenario.
-        var depV1 = EmitDependency("v1", returnValue: 1);
-        var depV2 = EmitDependency("v2", returnValue: 2);
+        var depV1 = EmitDependency("v1", 1);
+        var depV2 = EmitDependency("v2", 2);
 
         // Sanity: the assembly full names are identical, but the bytes are not.
         Assert.Equal(
@@ -78,8 +78,8 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
     [Fact]
     public void SameAssemblyVersion_DifferentBytes_FreshnessReportsMismatch()
     {
-        var depV1 = EmitDependency("v1", returnValue: 1);
-        var depV2 = EmitDependency("v2", returnValue: 2);
+        var depV1 = EmitDependency("v1", 1);
+        var depV2 = EmitDependency("v2", 2);
 
         var workspaceV1 = BuildConsumerWorkspace(depV1);
         var workspaceV2 = BuildConsumerWorkspace(depV2);
@@ -95,31 +95,31 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
     }
 
     /// <summary>
-    /// Emits a "Dep" assembly (name + version fixed) whose single method returns
-    /// <paramref name="returnValue"/>, guaranteeing different IL between builds
-    /// while keeping the assembly identity constant. Written to a per-build
-    /// subdirectory under a fixed file name, mirroring a package cache whose
-    /// same-named DLL was overwritten by a patch.
+    ///     Emits a "Dep" assembly (name + version fixed) whose single method returns
+    ///     <paramref name="returnValue" />, guaranteeing different IL between builds
+    ///     while keeping the assembly identity constant. Written to a per-build
+    ///     subdirectory under a fixed file name, mirroring a package cache whose
+    ///     same-named DLL was overwritten by a patch.
     /// </summary>
     private string EmitDependency(string buildTag, int returnValue)
     {
         var source = $$"""
-            [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+                       [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
-            namespace Dep
-            {
-                public static class Api
-                {
-                    public static int Value() => {{returnValue}};
-                }
-            }
-            """;
+                       namespace Dep
+                       {
+                           public static class Api
+                           {
+                               public static int Value() => {{returnValue}};
+                           }
+                       }
+                       """;
 
         var compilation = CSharpCompilation.Create(
-            assemblyName: "Dep",
-            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source) },
-            references: _platformReferences,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            "Dep",
+            new[] { CSharpSyntaxTree.ParseText(source) },
+            _platformReferences,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var buildDir = Path.Combine(_tempDir, buildTag);
         Directory.CreateDirectory(buildDir);
@@ -127,18 +127,16 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
 
         var emit = compilation.Emit(outputPath);
         if (!emit.Success)
-        {
             throw new InvalidOperationException(
                 "Failed to emit Dep.dll: " +
                 string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        }
 
         return outputPath;
     }
 
     /// <summary>
-    /// Builds a single-project workspace referencing the given dependency DLL on
-    /// top of the platform references, then wraps it in a <see cref="WorkspaceInfo"/>.
+    ///     Builds a single-project workspace referencing the given dependency DLL on
+    ///     top of the platform references, then wraps it in a <see cref="WorkspaceInfo" />.
     /// </summary>
     private WorkspaceInfo BuildConsumerWorkspace(string dependencyPath)
     {
@@ -147,7 +145,7 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
         var solutionId = SolutionId.CreateNewId();
 
         workspace.AddSolution(SolutionInfo.Create(
-            solutionId, VersionStamp.Create(), filePath: Path.Combine(_tempDir, "Consumer.slnx")));
+            solutionId, VersionStamp.Create(), Path.Combine(_tempDir, "Consumer.slnx")));
 
         var references = _platformReferences
             .Append(MetadataReference.CreateFromFile(dependencyPath))
@@ -157,8 +155,8 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
             .AddProject(ProjectInfo.Create(
                 projectId,
                 VersionStamp.Create(),
-                name: "P",
-                assemblyName: "P",
+                "P",
+                "P",
                 LanguageNames.CSharp,
                 compilationOptions: new CSharpCompilationOptions(
                     OutputKind.DynamicallyLinkedLibrary,
@@ -166,19 +164,19 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
                 metadataReferences: references));
 
         const string consumerSource = """
-            namespace P;
+                                      namespace P;
 
-            public class Svc
-            {
-                public int Value() => Dep.Api.Value();
-            }
-            """;
+                                      public class Svc
+                                      {
+                                          public int Value() => Dep.Api.Value();
+                                      }
+                                      """;
         var docPath = Path.Combine(_tempDir, "Svc.cs");
         File.WriteAllText(docPath, consumerSource);
         solution = solution.AddDocument(
             RoslynDocumentId.CreateNewId(projectId),
             "Svc.cs",
-            SourceText.From(consumerSource, System.Text.Encoding.UTF8),
+            SourceText.From(consumerSource, Encoding.UTF8),
             filePath: docPath);
 
         workspace.TryApplyChanges(solution);

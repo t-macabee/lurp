@@ -22,10 +22,7 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
             if (callerId == null)
                 continue;
 
-            foreach (var (thrownExpression, location) in EnumerateThrownExpressions(bodySyntax))
-            {
-                TryAddThrowEdge(edges, seen, callerId, thrownExpression, location, semanticModel);
-            }
+            foreach (var (thrownExpression, location) in EnumerateThrownExpressions(bodySyntax)) TryAddThrowEdge(edges, seen, callerId, thrownExpression, location, semanticModel);
         }
 
         return edges;
@@ -34,12 +31,10 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
     private static IEnumerable<(ExpressionSyntax Expression, Location Location)> EnumerateThrownExpressions(SyntaxNode bodySyntax)
     {
         foreach (var node in bodySyntax.DescendantNodes())
-        {
             if (node is ThrowStatementSyntax { Expression: not null } throwStatement)
                 yield return (throwStatement.Expression, throwStatement.GetLocation());
             else if (node is ThrowExpressionSyntax { Expression: not null } throwExpression)
                 yield return (throwExpression.Expression, throwExpression.GetLocation());
-        }
     }
 
     private void TryAddThrowEdge(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen,

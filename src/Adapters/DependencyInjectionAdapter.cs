@@ -7,15 +7,15 @@ namespace Lurp.Adapters;
 
 public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 {
-    public string Name => "Dependency Injection";
-    public string Version => "di-v1";
-    public string Description => "Dependency injection container edges";
-
     private static readonly HashSet<string> _conventionMethodNames =
     [
         "Scan", "AddClasses", "AsImplementedInterfaces",
-        "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes",
+        "AsMatchingInterface", "UsingRegistrationStrategy", "AddAssemblyTypes"
     ];
+
+    public string Name => "Dependency Injection";
+    public string Version => "di-v1";
+    public string Description => "Dependency injection container edges";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
@@ -26,14 +26,14 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var seen = new HashSet<(string Source, string Target, string Kind)>();
 
         var ctx = new ExtractionContext(
-            AssemblyIdentity: compilation.Assembly.Identity.GetDisplayName(),
-            SnapshotId: snapshotId,
-            ExtractorVersion: Version,
-            Edges: edges,
-            Seen: seen,
-            LocationResolver: locationResolver,
-            Incompleteness: context.Incompleteness,
-            Annotations: null
+            compilation.Assembly.Identity.GetDisplayName(),
+            snapshotId,
+            Version,
+            edges,
+            seen,
+            locationResolver,
+            context.Incompleteness,
+            null
         );
 
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
@@ -74,10 +74,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     continue;
                 }
 
-                if (serviceCollectionType != null && IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType))
-                {
-                    ProcessRuntimeUnknown(invocation, semanticModel, ctx);
-                }
+                if (serviceCollectionType != null && IsExternalMethodWithServiceCollectionParam(methodSymbol, compilation, serviceCollectionType)) ProcessRuntimeUnknown(invocation, semanticModel, ctx);
             }
         }
 
@@ -119,7 +116,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
             });
         }
 
@@ -127,11 +124,11 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
     /// <summary>
-    /// Emits the service interface → implementation edge for an explicit
-    /// registration such as <c>AddScoped&lt;IService, Service&gt;()</c>.
-    /// Skipped when fewer than two resolvable type arguments exist (e.g.
-    /// self-registration <c>AddScoped&lt;Service&gt;()</c>) or when the source
-    /// and target resolve to the same symbol.
+    ///     Emits the service interface → implementation edge for an explicit
+    ///     registration such as <c>AddScoped&lt;IService, Service&gt;()</c>.
+    ///     Skipped when fewer than two resolvable type arguments exist (e.g.
+    ///     self-registration <c>AddScoped&lt;Service&gt;()</c>) or when the source
+    ///     and target resolve to the same symbol.
     /// </summary>
     private static void EmitInterfaceToImplementationEdge(InvocationExpressionSyntax invocation, List<ITypeSymbol> typeArgs, string implTypeId, ExtractionContext ctx)
     {
@@ -165,7 +162,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             SourceStartColumn = sc,
             SourceEndLine = el,
             SourceEndColumn = ec,
-            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
         });
     }
 
@@ -178,6 +175,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 return true;
             current = current.BaseType;
         }
+
         return false;
     }
 
@@ -186,27 +184,21 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var typeArgs = new List<ITypeSymbol>();
 
         if (invocation.Expression is MemberAccessExpressionSyntax memberAccess && memberAccess.Name is GenericNameSyntax genericName)
-        {
             foreach (var typeArg in genericName.TypeArgumentList.Arguments)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeArg);
                 if (typeInfo.Type != null)
                     typeArgs.Add(typeInfo.Type);
             }
-        }
 
         if (typeArgs.Count == 0)
-        {
             foreach (var arg in invocation.ArgumentList.Arguments)
-            {
                 if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
                 {
                     var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
                     if (typeInfo.Type != null)
                         typeArgs.Add(typeInfo.Type);
                 }
-            }
-        }
 
         return typeArgs;
     }
@@ -241,7 +233,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceEndLine = el,
                 SourceEndColumn = ec,
                 IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
-                TargetNodeKind = GraphNodeKind.RuntimePlaceholder,
+                TargetNodeKind = GraphNodeKind.RuntimePlaceholder
             });
         }
 
@@ -271,15 +263,15 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 SourceStartColumn = sc,
                 SourceEndLine = el,
                 SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
             });
         }
     }
 
     /// <summary>
-    /// Returns true when <paramref name="methodSymbol"/> is defined outside
-    /// the current <paramref name="compilation"/> and has at least one
-    /// parameter whose type is <paramref name="serviceCollectionType"/>.
+    ///     Returns true when <paramref name="methodSymbol" /> is defined outside
+    ///     the current <paramref name="compilation" /> and has at least one
+    ///     parameter whose type is <paramref name="serviceCollectionType" />.
     /// </summary>
     private static bool IsExternalMethodWithServiceCollectionParam(IMethodSymbol methodSymbol, Compilation compilation, INamedTypeSymbol serviceCollectionType)
     {
@@ -287,10 +279,8 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             return false;
 
         foreach (var param in methodSymbol.Parameters)
-        {
             if (SymbolEqualityComparer.Default.Equals(param.Type, serviceCollectionType))
                 return true;
-        }
 
         return false;
     }
@@ -300,16 +290,16 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     // ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Resolves the source symbol ID for an invocation. Prefers the enclosing
-    /// method, falling back to the enclosing type declaration, then to
-    /// whatever symbol the semantic model reports as enclosing the
-    /// invocation's position. The last tier is what makes top-level-statement
-    /// <c>Program.cs</c> (the .NET 6+ default template) resolve at all:
-    /// registration calls there sit directly under the compiler-synthesized
-    /// entry point, which has neither a <see cref="MethodDeclarationSyntax"/>
-    /// nor a <see cref="TypeDeclarationSyntax"/> ancestor, so both earlier
-    /// tiers miss and every DI registration in the file used to be dropped
-    /// silently.
+    ///     Resolves the source symbol ID for an invocation. Prefers the enclosing
+    ///     method, falling back to the enclosing type declaration, then to
+    ///     whatever symbol the semantic model reports as enclosing the
+    ///     invocation's position. The last tier is what makes top-level-statement
+    ///     <c>Program.cs</c> (the .NET 6+ default template) resolve at all:
+    ///     registration calls there sit directly under the compiler-synthesized
+    ///     entry point, which has neither a <see cref="MethodDeclarationSyntax" />
+    ///     nor a <see cref="TypeDeclarationSyntax" /> ancestor, so both earlier
+    ///     tiers miss and every DI registration in the file used to be dropped
+    ///     silently.
     /// </summary>
     internal static string? ResolveSourceId(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string assemblyIdentity)
     {
@@ -353,5 +343,4 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         return null;
     }
-
 }

@@ -1,3 +1,4 @@
+using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -6,13 +7,13 @@ using Microsoft.Data.Sqlite;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Phase-A identity-completeness tests: configuration-only changes that must
-/// force a rebuild but do not on main. Both fail on main because
-/// <see cref="SnapshotIdentityInput"/> hashes only workspace id, document
-/// hashes, target frameworks, project references, SDK/compiler/extractor
-/// versions, and skipped adapters — not metadata references (A3) or
-/// compilation options (A4) — and <see cref="WorkspaceFreshness"/> has no
-/// comparators for either.
+///     Phase-A identity-completeness tests: configuration-only changes that must
+///     force a rebuild but do not on main. Both fail on main because
+///     <see cref="SnapshotIdentityInput" /> hashes only workspace id, document
+///     hashes, target frameworks, project references, SDK/compiler/extractor
+///     versions, and skipped adapters — not metadata references (A3) or
+///     compilation options (A4) — and <see cref="WorkspaceFreshness" /> has no
+///     comparators for either.
 /// </summary>
 public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 {
@@ -24,16 +25,16 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         var source = new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                    public int Value() => 42;
-                }
-                """,
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
         };
 
-        CreateProject("P", source, packageReferences: []);
+        CreateProject("P", source, []);
         await RestoreSolutionAsync();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
@@ -42,28 +43,28 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // Capture the V1 manifest now: after the second index writes V2, the
         // latest-snapshot lookup below would return V2's manifest and the
         // comparison would be current-vs-itself.
-        Storage.SnapshotRow storedV1;
+        SnapshotRow storedV1;
         using (var store = OpenStore(DbPath))
         {
             storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
-                ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+                       ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
         }
 
         // Rewrites the .csproj in place with a package reference. Written
         // directly rather than via CreateProject, whose slnx append would add
         // a duplicate project entry and make dotnet restore fail with MSB4025.
         WriteFile("P", "P.csproj", """
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-              </PropertyGroup>
-              <ItemGroup>
-                <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-              </ItemGroup>
-            </Project>
-            """);
+                                   <Project Sdk="Microsoft.NET.Sdk">
+                                     <PropertyGroup>
+                                       <TargetFramework>net10.0</TargetFramework>
+                                       <ImplicitUsings>enable</ImplicitUsings>
+                                       <Nullable>enable</Nullable>
+                                     </PropertyGroup>
+                                     <ItemGroup>
+                                       <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+                                     </ItemGroup>
+                                   </Project>
+                                   """);
         await RestoreSolutionAsync();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
@@ -101,16 +102,16 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         var source = new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                #if FEATURE
-                    public int Extra() => 1;
-                #endif
-                    public int Base() => 0;
-                }
-                """,
+                         public class Svc
+                         {
+                         #if FEATURE
+                             public int Extra() => 1;
+                         #endif
+                             public int Base() => 0;
+                         }
+                         """
         };
 
         CreateProject("P", source);
@@ -120,26 +121,26 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // Capture the V1 manifest now: after the second index writes V2, the
         // latest-snapshot lookup below would return V2's manifest and the
         // comparison would be current-vs-itself.
-        Storage.SnapshotRow storedV1;
+        SnapshotRow storedV1;
         using (var store = OpenStore(DbPath))
         {
             storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
-                ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+                       ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
         }
 
         // Rewrites the .csproj in place to flip <DefineConstants>. Written
         // directly rather than via CreateProject, whose slnx append would add
         // a duplicate project entry and break solution loading.
         WriteFile("P", "P.csproj", """
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-                <DefineConstants>FEATURE</DefineConstants>
-              </PropertyGroup>
-            </Project>
-            """);
+                                   <Project Sdk="Microsoft.NET.Sdk">
+                                     <PropertyGroup>
+                                       <TargetFramework>net10.0</TargetFramework>
+                                       <ImplicitUsings>enable</ImplicitUsings>
+                                       <Nullable>enable</Nullable>
+                                       <DefineConstants>FEATURE</DefineConstants>
+                                     </PropertyGroup>
+                                   </Project>
+                                   """);
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
 
         // Assertion 1: the identity must change. Fails on main: flipping
@@ -176,24 +177,24 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         CreateProject("Q", new Dictionary<string, string>
         {
             ["Q.cs"] = """
-                namespace Q;
+                       namespace Q;
 
-                public static class QHelper
-                {
-                    public static int Twice(int v) => v * 2;
-                }
-                """,
+                       public static class QHelper
+                       {
+                           public static int Twice(int v) => v * 2;
+                       }
+                       """
         });
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                    public int Value() => 42;
-                }
-                """,
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
         }, projectReferences: ["Q"]);
         await RestoreSolutionAsync();
 
@@ -204,14 +205,14 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // directly rather than via CreateProject, whose slnx append would add
         // a duplicate project entry and break solution loading.
         WriteFile("P", "P.csproj", """
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-              </PropertyGroup>
-            </Project>
-            """);
+                                   <Project Sdk="Microsoft.NET.Sdk">
+                                     <PropertyGroup>
+                                       <TargetFramework>net10.0</TargetFramework>
+                                       <ImplicitUsings>enable</ImplicitUsings>
+                                       <Nullable>enable</Nullable>
+                                     </PropertyGroup>
+                                   </Project>
+                                   """);
         await RestoreSolutionAsync();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
@@ -227,7 +228,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             var storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
-                ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+                           ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
             var mismatches = WorkspaceFreshness.GetFullRebuildMismatches(
                 workspaceInfoV2, SnapshotManifest.FromStorageManifest(storedV1));
             Assert.Contains(mismatches, m => m.Kind == MismatchKind.ProjectReferenceChanged);
@@ -242,13 +243,13 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                    public int Value() => 42;
-                }
-                """,
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
         });
         await RestoreSolutionAsync();
 
@@ -273,7 +274,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             var storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
-                ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+                           ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
             var mismatches = WorkspaceFreshness.GetFullRebuildMismatches(
                 workspaceInfoV1, SnapshotManifest.FromStorageManifest(storedV1));
             Assert.Contains(mismatches, m => m.Kind == MismatchKind.VersionChanged);
@@ -288,13 +289,13 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                    public int Value() => 42;
-                }
-                """,
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
         });
         await RestoreSolutionAsync();
 
@@ -315,7 +316,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // --force must run re-extraction anyway while keeping the same
         // deterministic id (identical workspace => identical id).
         await Task.Delay(100);
-        var snapshotV3 = await RunFullIndexNoDeleteAsync(DbPath, force: true);
+        var snapshotV3 = await RunFullIndexNoDeleteAsync(DbPath, true);
         Assert.Equal(snapshotV1, snapshotV3);
 
         using (var store = OpenStore(DbPath))
@@ -324,7 +325,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
             // id rows, and the row was re-written (built_at advanced).
             Assert.Single(store.GetSnapshotIds(workspaceInfoV1.Id.Value));
             var latest = store.LoadLatestSnapshot()
-                ?? throw new InvalidOperationException("No snapshot after forced rebuild.");
+                         ?? throw new InvalidOperationException("No snapshot after forced rebuild.");
             Assert.True(latest.CreatedAtUtc > builtBeforeForce,
                 $"Expected the forced rebuild to re-write the snapshot row (built_at {builtBeforeForce:o} -> {latest.CreatedAtUtc:o}).");
         }
@@ -338,13 +339,13 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
-                namespace P;
+                         namespace P;
 
-                public class Svc
-                {
-                    public int Value() => 42;
-                }
-                """,
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
         });
         await RestoreSolutionAsync();
 

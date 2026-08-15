@@ -6,9 +6,9 @@ using System.Text.Json;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Phase 2 incremental-parity matrix: each scenario indexes V1 fully, edits to
-/// V2, indexes incrementally (snapshot B), rebuilds V2 in a fresh DB (snapshot
-/// C), and asserts B and C are equivalent across every persisted field.
+///     Phase 2 incremental-parity matrix: each scenario indexes V1 fully, edits to
+///     V2, indexes incrementally (snapshot B), rebuilds V2 in a fresh DB (snapshot
+///     C), and asserts B and C are equivalent across every persisted field.
 /// </summary>
 public sealed class IncrementalParityTests : IntegrationTestBase
 {
@@ -19,7 +19,8 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         _cleanRebuildDbPath = Path.Combine(TestDir, "clean.db");
     }
 
-    private async Task RunParityScenarioAsync(string projectName, IReadOnlyDictionary<string, string> v1Files, Action v2Mutation)
+    private async Task RunParityScenarioAsync(string projectName, IReadOnlyDictionary<string, string> v1Files,
+        Action v2Mutation)
     {
         CreateProject(projectName, v1Files);
         var snapshotA = await RunFullIndexAsync(DbPath);
@@ -42,31 +43,31 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                        public int Subtract(int a, int b) => a - b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                        public int Subtract(int a, int b) => a - b;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Subtract(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Subtract(x, y);
+                                 }
+                                 """
             },
             () => WriteFile("TestProject", "Calculator.cs", """
-                namespace TestProject;
+                                                            namespace TestProject;
 
-                public class Calculator
-                {
-                    public int Add(int a, int b) => a + b;
-                }
-                """));
+                                                            public class Calculator
+                                                            {
+                                                                public int Add(int a, int b) => a + b;
+                                                            }
+                                                            """));
     }
 
     [SkippableFact]
@@ -78,21 +79,21 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Add(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
             },
             () => DeleteFile("TestProject", "Service.cs"));
     }
@@ -106,40 +107,40 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Add(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
             },
             () =>
             {
                 WriteFile("TestProject", "Calculator.cs", """
-                    namespace TestProject;
+                                                          namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Sum(int a, int b) => a + b;
-                    }
-                    """);
+                                                          public class Calculator
+                                                          {
+                                                              public int Sum(int a, int b) => a + b;
+                                                          }
+                                                          """);
                 WriteFile("TestProject", "Service.cs", """
-                    namespace TestProject;
+                                                       namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Sum(x, y);
-                    }
-                    """);
+                                                       public class Service
+                                                       {
+                                                           public int Compute(int x, int y) => new Calculator().Sum(x, y);
+                                                       }
+                                                       """);
             });
     }
 
@@ -152,40 +153,40 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(int x, int y) => new Calculator().Add(x, y);
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
             },
             () =>
             {
                 WriteFile("TestProject", "Calculator.cs", """
-                    namespace TestProject;
+                                                          namespace TestProject;
 
-                    public class Calculator
-                    {
-                        public double Add(double a, double b) => a + b;
-                    }
-                    """);
+                                                          public class Calculator
+                                                          {
+                                                              public double Add(double a, double b) => a + b;
+                                                          }
+                                                          """);
                 WriteFile("TestProject", "Service.cs", """
-                    namespace TestProject;
+                                                       namespace TestProject;
 
-                    public class Service
-                    {
-                        public double Compute(double x, double y) => new Calculator().Add(x, y);
-                    }
-                    """);
+                                                       public class Service
+                                                       {
+                                                           public double Compute(double x, double y) => new Calculator().Add(x, y);
+                                                       }
+                                                       """);
             });
     }
 
@@ -198,30 +199,30 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Types.cs"] = """
-                    namespace TestProject;
+                               namespace TestProject;
 
-                    public class BaseV1
-                    {
-                        public int X => 1;
-                    }
+                               public class BaseV1
+                               {
+                                   public int X => 1;
+                               }
 
-                    public class Derived : BaseV1
-                    {
-                    }
-                    """,
+                               public class Derived : BaseV1
+                               {
+                               }
+                               """
             },
             () => WriteFile("TestProject", "Types.cs", """
-                namespace TestProject;
+                                                       namespace TestProject;
 
-                public class BaseV2
-                {
-                    public int Y => 2;
-                }
+                                                       public class BaseV2
+                                                       {
+                                                           public int Y => 2;
+                                                       }
 
-                public class Derived : BaseV2
-                {
-                }
-                """));
+                                                       public class Derived : BaseV2
+                                                       {
+                                                       }
+                                                       """));
     }
 
     [SkippableFact]
@@ -233,32 +234,32 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public interface IFoo
-                    {
-                        void Do();
-                    }
+                                 public interface IFoo
+                                 {
+                                     void Do();
+                                 }
 
-                    public class Service : IFoo
-                    {
-                        public void Do() { }
-                    }
-                    """,
+                                 public class Service : IFoo
+                                 {
+                                     public void Do() { }
+                                 }
+                                 """
             },
             () => WriteFile("TestProject", "Service.cs", """
-                namespace TestProject;
+                                                         namespace TestProject;
 
-                public interface IBar
-                {
-                    void Run();
-                }
+                                                         public interface IBar
+                                                         {
+                                                             void Run();
+                                                         }
 
-                public class Service : IBar
-                {
-                    public void Run() { }
-                }
-                """));
+                                                         public class Service : IBar
+                                                         {
+                                                             public void Run() { }
+                                                         }
+                                                         """));
     }
 
     [SkippableFact]
@@ -270,40 +271,40 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Lib.cs"] = """
-                    namespace Lib;
+                             namespace Lib;
 
-                    public class Lib
-                    {
-                        public void Foo() { }
-                        public void Bar() { }
-                    }
-                    """,
+                             public class Lib
+                             {
+                                 public void Foo() { }
+                                 public void Bar() { }
+                             }
+                             """
             });
 
         CreateProject("App",
             new Dictionary<string, string>
             {
                 ["Consumer.cs"] = """
-                    namespace App;
+                                  namespace App;
 
-                    public class Consumer
-                    {
-                        public void Use(Lib.Lib lib) => lib.Foo();
-                    }
-                    """,
+                                  public class Consumer
+                                  {
+                                      public void Use(Lib.Lib lib) => lib.Foo();
+                                  }
+                                  """
             },
             projectReferences: ["Lib"]);
 
         await RunFullIndexAsync(DbPath);
 
         WriteFile("App", "Consumer.cs", """
-            namespace App;
+                                        namespace App;
 
-            public class Consumer
-            {
-                public void Use(Lib.Lib lib) => lib.Bar();
-            }
-            """);
+                                        public class Consumer
+                                        {
+                                            public void Use(Lib.Lib lib) => lib.Bar();
+                                        }
+                                        """);
 
         var snapshotB = await RunIncrementalIndexAsync();
         var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
@@ -320,32 +321,32 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calc.cs"] = """
-                    namespace TestProject;
+                              namespace TestProject;
 
-                    public partial class Calc
-                    {
-                        private int X;
-                    }
-                    """,
+                              public partial class Calc
+                              {
+                                  private int X;
+                              }
+                              """,
                 ["CalcExtensions.cs"] = """
-                    namespace TestProject;
+                                        namespace TestProject;
 
-                    public partial class Calc
-                    {
-                        private int Y;
-                    }
-                    """,
+                                        public partial class Calc
+                                        {
+                                            private int Y;
+                                        }
+                                        """
             },
             () => WriteFile("TestProject", "Calc.cs", """
-                namespace TestProject;
+                                                      namespace TestProject;
 
-                public partial class Calc
-                {
-                    private int X;
+                                                      public partial class Calc
+                                                      {
+                                                          private int X;
 
-                    public int Add(int a, int b) => a + b;
-                }
-                """));
+                                                          public int Add(int a, int b) => a + b;
+                                                      }
+                                                      """));
     }
 
     [SkippableFact]
@@ -357,37 +358,37 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace TestProject;
+                                    namespace TestProject;
 
-                    public class Calculator
-                    {
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                    }
+                                    """,
                 ["Service.cs"] = """
-                    namespace TestProject;
+                                 namespace TestProject;
 
-                    public class Service
-                    {
-                        public int Compute(Calculator calc) => 0;
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public int Compute(Calculator calc) => 0;
+                                 }
+                                 """
             },
             () =>
             {
                 WriteFile("TestProject", "Calculator.cs", """
-                    namespace TestProject;
+                                                          namespace TestProject;
 
-                    public class Calculator : ICalc
-                    {
-                    }
-                    """);
+                                                          public class Calculator : ICalc
+                                                          {
+                                                          }
+                                                          """);
                 WriteFile("TestProject", "ICalc.cs", """
-                    namespace TestProject;
+                                                     namespace TestProject;
 
-                    public interface ICalc
-                    {
-                    }
-                    """);
+                                                     public interface ICalc
+                                                     {
+                                                     }
+                                                     """);
             });
     }
 
@@ -405,70 +406,70 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // one variant per implementation; the incremental write path must produce
         // the same merged encoding.
         var baseReadServiceV1 = """
-            namespace Services;
+                                namespace Services;
 
-            public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
-            {
-                public virtual TResponse Find(TSearch search) => default!;
-            }
-            """;
+                                public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                {
+                                    public virtual TResponse Find(TSearch search) => default!;
+                                }
+                                """;
 
         CreateProject("Services",
             new Dictionary<string, string>
             {
                 ["IBaseReadService.cs"] = """
-                    namespace Services;
+                                          namespace Services;
 
-                    public interface IBaseReadService<TResponse, TSearch>
-                    {
-                        TResponse Find(TSearch search);
-                    }
-                    """,
-                ["BaseReadService.cs"] = baseReadServiceV1,
+                                          public interface IBaseReadService<TResponse, TSearch>
+                                          {
+                                              TResponse Find(TSearch search);
+                                          }
+                                          """,
+                ["BaseReadService.cs"] = baseReadServiceV1
             });
 
         CreateProject("Implementations",
             new Dictionary<string, string>
             {
                 ["UserService.cs"] = """
-                    using Services;
+                                     using Services;
 
-                    namespace Implementations;
+                                     namespace Implementations;
 
-                    public class User { }
-                    public class UserDto { }
-                    public class UserSearch { }
+                                     public class User { }
+                                     public class UserDto { }
+                                     public class UserSearch { }
 
-                    public class UserService : BaseReadService<User, UserDto, UserSearch>
-                    {
-                    }
-                    """,
+                                     public class UserService : BaseReadService<User, UserDto, UserSearch>
+                                     {
+                                     }
+                                     """,
                 ["OrderService.cs"] = """
-                    using Services;
+                                      using Services;
 
-                    namespace Implementations;
+                                      namespace Implementations;
 
-                    public class Order { }
-                    public class OrderDto { }
-                    public class OrderSearch { }
+                                      public class Order { }
+                                      public class OrderDto { }
+                                      public class OrderSearch { }
 
-                    public class OrderService : BaseReadService<Order, OrderDto, OrderSearch>
-                    {
-                    }
-                    """,
+                                      public class OrderService : BaseReadService<Order, OrderDto, OrderSearch>
+                                      {
+                                      }
+                                      """,
                 ["ProductService.cs"] = """
-                    using Services;
+                                        using Services;
 
-                    namespace Implementations;
+                                        namespace Implementations;
 
-                    public class Product { }
-                    public class ProductDto { }
-                    public class ProductSearch { }
+                                        public class Product { }
+                                        public class ProductDto { }
+                                        public class ProductSearch { }
 
-                    public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
-                    {
-                    }
-                    """,
+                                        public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
+                                        {
+                                        }
+                                        """
             },
             projectReferences: ["Services"]);
 
@@ -490,15 +491,13 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         var rebuildVariants = EdgeMerge.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
         var rebuildKeys = VariantKeys(rebuildVariants);
         foreach (var expectedKey in new[]
-        {
-            "Implementations.OrderDto, Implementations.OrderSearch",
-            "Implementations.ProductDto, Implementations.ProductSearch",
-            "Implementations.UserDto, Implementations.UserSearch",
-        })
-        {
+                 {
+                     "Implementations.OrderDto, Implementations.OrderSearch",
+                     "Implementations.ProductDto, Implementations.ProductSearch",
+                     "Implementations.UserDto, Implementations.UserSearch"
+                 })
             Assert.True(rebuildKeys.Contains(expectedKey),
                 $"Fixture sanity check failed: clean rebuild is missing dispatch variant [{expectedKey}]. JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
-        }
         AssertNestedVariantArray(rebuildEdge.TypeArgumentsJson, rebuildVariants.Count);
 
         var incrementalVariants = EdgeMerge.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
@@ -537,42 +536,42 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Di.cs"] = """
-                    namespace Microsoft.Extensions.DependencyInjection;
+                            namespace Microsoft.Extensions.DependencyInjection;
 
-                    public interface IServiceCollection
-                    {
-                    }
+                            public interface IServiceCollection
+                            {
+                            }
 
-                    public static class ServiceCollectionServiceExtensions
-                    {
-                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
-                            where TService : class
-                            where TImplementation : class, TService
-                            => services;
-                    }
-                    """,
+                            public static class ServiceCollectionServiceExtensions
+                            {
+                                public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                                    where TService : class
+                                    where TImplementation : class, TService
+                                    => services;
+                            }
+                            """,
                 ["App.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
+                             using Microsoft.Extensions.DependencyInjection;
 
-                    namespace TestProject;
+                             namespace TestProject;
 
-                    public interface ISvc
-                    {
-                    }
+                             public interface ISvc
+                             {
+                             }
 
-                    public class Svc : ISvc
-                    {
-                    }
+                             public class Svc : ISvc
+                             {
+                             }
 
-                    public static class Startup
-                    {
-                        public static void Register(IServiceCollection services)
-                        {
-                            services.AddScoped<ISvc, Svc>();
-                            _ = Type.GetType("Svc");
-                        }
-                    }
-                    """,
+                             public static class Startup
+                             {
+                                 public static void Register(IServiceCollection services)
+                                 {
+                                     services.AddScoped<ISvc, Svc>();
+                                     _ = Type.GetType("Svc");
+                                 }
+                             }
+                             """
             });
 
         var snapshotA = await RunFullIndexAsync(DbPath);
@@ -581,21 +580,21 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // and reflection edges must survive the incremental write path by
         // copy-forward, not by re-extraction.
         WriteFile("TestProject", "Di.cs", """
-            namespace Microsoft.Extensions.DependencyInjection;
+                                          namespace Microsoft.Extensions.DependencyInjection;
 
-            public interface IServiceCollection
-            {
-            }
+                                          public interface IServiceCollection
+                                          {
+                                          }
 
-            public static class ServiceCollectionServiceExtensions
-            {
-                public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
-                    where TService : class
-                    where TImplementation : class, TService
-                    => services;
-            }
-            // comment-only edit
-            """);
+                                          public static class ServiceCollectionServiceExtensions
+                                          {
+                                              public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                                                  where TService : class
+                                                  where TImplementation : class, TService
+                                                  => services;
+                                          }
+                                          // comment-only edit
+                                          """);
 
         var snapshotB = await RunIncrementalIndexAsync();
         var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
@@ -604,22 +603,27 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         var svcId = ResolveSymbolId(snapshotB, "global::TestProject.Svc");
 
-        var registersB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.Registers.ToString(), Provenance.FrameworkDerived);
-        var registersC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.Registers.ToString(), Provenance.FrameworkDerived);
+        var registersB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.Registers.ToString(),
+            Provenance.FrameworkDerived);
+        var registersC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.Registers.ToString(),
+            Provenance.FrameworkDerived);
         Assert.Equal(2, registersB.Count); // registration site -> Svc, and ISvc -> Svc
         Assert.Equal(registersC.Count, registersB.Count);
         Assert.All(registersB, edge => Assert.Equal(svcId, edge.TargetSymbolId));
         Assert.Equal(EdgeFacts(registersC), EdgeFacts(registersB));
 
-        var nameCandidatesB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
-        var nameCandidatesC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+        var nameCandidatesB = GetEdgesByKindAndProvenance(DbPath, snapshotB,
+            EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+        var nameCandidatesC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC,
+            EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
         Assert.Single(nameCandidatesB);
         Assert.Equal(nameCandidatesC.Count, nameCandidatesB.Count);
         Assert.Equal(svcId, Assert.Single(nameCandidatesB).TargetSymbolId);
         Assert.Equal(EdgeFacts(nameCandidatesC), EdgeFacts(nameCandidatesB));
     }
 
-    private List<EdgeRecord> GetEdgesByKindAndProvenance(string dbPath, string snapshotId, string kind, string provenance)
+    private List<EdgeRecord> GetEdgesByKindAndProvenance(string dbPath, string snapshotId, string kind,
+        string provenance)
     {
         using var store = OpenStore(dbPath);
         try
@@ -634,8 +638,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         }
     }
 
-    private static List<string> EdgeFacts(List<EdgeRecord> edges) =>
-        edges
+    private static List<string> EdgeFacts(List<EdgeRecord> edges)
+    {
+        return edges
             .Select(e => string.Join("|",
                 e.SourceSymbolId, e.TargetSymbolId, e.Kind, e.Provenance,
                 e.ExtractorVersion, e.SourceDocumentPath ?? "", e.SourceStartLine, e.SourceStartColumn,
@@ -644,6 +649,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                 e.SourceNodeKind?.ToString() ?? "", e.TargetNodeKind?.ToString() ?? ""))
             .OrderBy(f => f, StringComparer.Ordinal)
             .ToList();
+    }
 
     private List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
     {
@@ -658,11 +664,13 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         }
     }
 
-    private static List<string> VariantKeys(List<List<string>> variants) =>
-        variants
+    private static List<string> VariantKeys(List<List<string>> variants)
+    {
+        return variants
             .Select(variant => string.Join(", ", variant))
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToList();
+    }
 
     private static void AssertNestedVariantArray(string? typeArgumentsJson, int expectedVariantCount)
     {
@@ -677,12 +685,12 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// R6 regression: when an incremental edit lands in a project that also
-    /// contains an OUT-OF-SCOPE document with external-target references, the
-    /// binding-incompleteness carry-forward must preserve that document's full
-    /// count. The bug was that the unscoped SaveBindingIncompleteness
-    /// overwrote the copied-forward count with a partial (zero) re-extraction
-    /// result.
+    ///     R6 regression: when an incremental edit lands in a project that also
+    ///     contains an OUT-OF-SCOPE document with external-target references, the
+    ///     binding-incompleteness carry-forward must preserve that document's full
+    ///     count. The bug was that the unscoped SaveBindingIncompleteness
+    ///     overwrote the copied-forward count with a partial (zero) re-extraction
+    ///     result.
     /// </summary>
     [SkippableFact]
     public async Task ScenarioR6_BindingIncompleteness_IncrementalCarryForward()
@@ -697,28 +705,28 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Helper.cs"] = """
-                    namespace App;
+                                namespace App;
 
-                    public class Helper
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                public class Helper
+                                {
+                                    public int Add(int a, int b) => a + b;
+                                }
+                                """,
                 ["ExternalRef.cs"] = """
-                    using Newtonsoft.Json;
+                                     using Newtonsoft.Json;
 
-                    namespace App;
+                                     namespace App;
 
-                    public class ExternalRef
-                    {
-                        public string Serialize(object obj)
-                        {
-                            return JsonConvert.SerializeObject(obj);
-                        }
-                    }
-                    """,
+                                     public class ExternalRef
+                                     {
+                                         public string Serialize(object obj)
+                                         {
+                                             return JsonConvert.SerializeObject(obj);
+                                         }
+                                     }
+                                     """
             },
-            packageReferences: ["Newtonsoft.Json@13.0.3"]);
+            ["Newtonsoft.Json@13.0.3"]);
 
         await RestoreSolutionAsync();
 
@@ -726,14 +734,14 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         // Semantics-preserving comment edit — only Helper.cs is dirty.
         WriteFile("App", "Helper.cs", """
-            namespace App;
+                                      namespace App;
 
-            public class Helper
-            {
-                public int Add(int a, int b) => a + b;
-            }
-            // comment-only edit
-            """);
+                                      public class Helper
+                                      {
+                                          public int Add(int a, int b) => a + b;
+                                      }
+                                      // comment-only edit
+                                      """);
 
         var snapshotB = await RunIncrementalIndexAsync();
         var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
@@ -749,16 +757,16 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// R6 end-to-end (GAP 2(c)): a null-path (doc-less) <c>extractor_failure</c>
-    /// binding-incompleteness row seeded into a full-rebuild snapshot must carry
-    /// forward byte-identically through an incremental pass over a changed
-    /// in-scope document. The null bucket's stored <c>document_path</c> is
-    /// <c>""</c> — never in the extraction scope, so no document-scoped delete
-    /// can retire it — and the scoped re-extraction save drops null-path rows
-    /// (EXCLUDE-AND-CARRY-FORWARD), so the only way the row lands in the new
-    /// snapshot is the verbatim <c>CopyBindingIncompleteness</c>. This promotes
-    /// the R6 null-bucket guarantee from the predicate-level
-    /// <see cref="BindingIncompletenessScopingTests"/> pin to end-to-end.
+    ///     R6 end-to-end (GAP 2(c)): a null-path (doc-less) <c>extractor_failure</c>
+    ///     binding-incompleteness row seeded into a full-rebuild snapshot must carry
+    ///     forward byte-identically through an incremental pass over a changed
+    ///     in-scope document. The null bucket's stored <c>document_path</c> is
+    ///     <c>""</c> — never in the extraction scope, so no document-scoped delete
+    ///     can retire it — and the scoped re-extraction save drops null-path rows
+    ///     (EXCLUDE-AND-CARRY-FORWARD), so the only way the row lands in the new
+    ///     snapshot is the verbatim <c>CopyBindingIncompleteness</c>. This promotes
+    ///     the R6 null-bucket guarantee from the predicate-level
+    ///     <see cref="BindingIncompletenessScopingTests" /> pin to end-to-end.
     /// </summary>
     [SkippableFact]
     public async Task ScenarioR6_NullPathExtractorFailure_CarriesForwardAcrossIncremental()
@@ -772,28 +780,28 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Helper.cs"] = """
-                    namespace App;
+                                namespace App;
 
-                    public class Helper
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                public class Helper
+                                {
+                                    public int Add(int a, int b) => a + b;
+                                }
+                                """,
                 ["ExternalRef.cs"] = """
-                    using Newtonsoft.Json;
+                                     using Newtonsoft.Json;
 
-                    namespace App;
+                                     namespace App;
 
-                    public class ExternalRef
-                    {
-                        public string Serialize(object obj)
-                        {
-                            return JsonConvert.SerializeObject(obj);
-                        }
-                    }
-                    """,
+                                     public class ExternalRef
+                                     {
+                                         public string Serialize(object obj)
+                                         {
+                                             return JsonConvert.SerializeObject(obj);
+                                         }
+                                     }
+                                     """
             },
-            packageReferences: ["Newtonsoft.Json@13.0.3"]);
+            ["Newtonsoft.Json@13.0.3"]);
 
         await RestoreSolutionAsync();
 
@@ -826,14 +834,14 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         // Semantics-preserving comment edit — only Helper.cs is dirty.
         WriteFile("App", "Helper.cs", """
-            namespace App;
+                                      namespace App;
 
-            public class Helper
-            {
-                public int Add(int a, int b) => a + b;
-            }
-            // comment-only edit
-            """);
+                                      public class Helper
+                                      {
+                                          public int Add(int a, int b) => a + b;
+                                      }
+                                      // comment-only edit
+                                      """);
 
         var snapshotB = await RunIncrementalIndexAsync();
 
@@ -873,39 +881,39 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Provider.cs"] = """
-                    namespace Calc;
+                                  namespace Calc;
 
-                    public partial class Calc
-                    {
-                        public long M(long x) => x;
-                    }
-                    """,
+                                  public partial class Calc
+                                  {
+                                      public long M(long x) => x;
+                                  }
+                                  """
             });
 
         CreateProject("App",
             new Dictionary<string, string>
             {
                 ["Caller.cs"] = """
-                    namespace App;
+                                namespace App;
 
-                    public class Caller
-                    {
-                        public long Use(Calc.Calc c) => c.M(42);
-                    }
-                    """,
+                                public class Caller
+                                {
+                                    public long Use(Calc.Calc c) => c.M(42);
+                                }
+                                """
             },
             projectReferences: ["Calc"]);
 
         var snapshotA = await RunFullIndexAsync(DbPath);
 
         WriteFile("Calc", "Overloads.cs", """
-            namespace Calc;
+                                          namespace Calc;
 
-            public partial class Calc
-            {
-                public int M(int x) => x;
-            }
-            """);
+                                          public partial class Calc
+                                          {
+                                              public int M(int x) => x;
+                                          }
+                                          """);
 
         var snapshotB = await RunIncrementalIndexAsync();
         var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
@@ -918,11 +926,11 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// DI adapter: changing the implementation type in an AddScoped registration
-    /// must delete old Registers edges and re-extract new ones that match a clean
-    /// rebuild. Exercises the incremental delete+re-extract path for
-    /// framework-derived edges (the existing Parity_FrameworkDerivedEdge test only
-    /// covers copy-forward).
+    ///     DI adapter: changing the implementation type in an AddScoped registration
+    ///     must delete old Registers edges and re-extract new ones that match a clean
+    ///     rebuild. Exercises the incremental delete+re-extract path for
+    ///     framework-derived edges (the existing Parity_FrameworkDerivedEdge test only
+    ///     covers copy-forward).
     /// </summary>
     [SkippableFact]
     public async Task ScenarioK_DIRegistrationChange_UpdatesRegistersEdges()
@@ -933,63 +941,63 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Di.cs"] = """
-                    namespace Microsoft.Extensions.DependencyInjection;
+                            namespace Microsoft.Extensions.DependencyInjection;
 
-                    public interface IServiceCollection { }
+                            public interface IServiceCollection { }
 
-                    public static class ServiceCollectionServiceExtensions
-                    {
-                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
-                            where TService : class
-                            where TImplementation : class, TService => services;
-                        public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
-                            where TService : class
-                            where TImplementation : class, TService => services;
-                    }
-                    """,
+                            public static class ServiceCollectionServiceExtensions
+                            {
+                                public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                                    where TService : class
+                                    where TImplementation : class, TService => services;
+                                public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
+                                    where TService : class
+                                    where TImplementation : class, TService => services;
+                            }
+                            """,
                 ["App.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
+                             using Microsoft.Extensions.DependencyInjection;
 
-                    namespace TestProject;
+                             namespace TestProject;
 
-                    public interface ISvc { }
-                    public class Svc : ISvc { }
+                             public interface ISvc { }
+                             public class Svc : ISvc { }
 
-                    public static class Startup
-                    {
-                        public static void Register(IServiceCollection services)
-                        {
-                            services.AddScoped<ISvc, Svc>();
-                        }
-                    }
-                    """,
+                             public static class Startup
+                             {
+                                 public static void Register(IServiceCollection services)
+                                 {
+                                     services.AddScoped<ISvc, Svc>();
+                                 }
+                             }
+                             """
             },
             () =>
             {
                 WriteFile("TestProject", "App.cs", """
-                    using Microsoft.Extensions.DependencyInjection;
+                                                   using Microsoft.Extensions.DependencyInjection;
 
-                    namespace TestProject;
+                                                   namespace TestProject;
 
-                    public interface ISvc { }
-                    public class Svc : ISvc { }
-                    public class SvcV2 : ISvc { }
+                                                   public interface ISvc { }
+                                                   public class Svc : ISvc { }
+                                                   public class SvcV2 : ISvc { }
 
-                    public static class Startup
-                    {
-                        public static void Register(IServiceCollection services)
-                        {
-                            services.AddScoped<ISvc, SvcV2>();
-                        }
-                    }
-                    """);
+                                                   public static class Startup
+                                                   {
+                                                       public static void Register(IServiceCollection services)
+                                                       {
+                                                           services.AddScoped<ISvc, SvcV2>();
+                                                       }
+                                                   }
+                                                   """);
             });
     }
 
     /// <summary>
-    /// DI adapter: adding a new typeof()-form registration to an existing file
-    /// must extract new Registers edges that match a clean rebuild. Exercises
-    /// ResolveRegistrationTypeArgs's TypeOfExpressionSyntax fallback path.
+    ///     DI adapter: adding a new typeof()-form registration to an existing file
+    ///     must extract new Registers edges that match a clean rebuild. Exercises
+    ///     ResolveRegistrationTypeArgs's TypeOfExpressionSyntax fallback path.
     /// </summary>
     [SkippableFact]
     public async Task ScenarioL_DIRegistrationAdd_ExtractsNewEdges()
@@ -1000,67 +1008,67 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Di.cs"] = """
-                    namespace Microsoft.Extensions.DependencyInjection;
+                            namespace Microsoft.Extensions.DependencyInjection;
 
-                    public interface IServiceCollection { }
+                            public interface IServiceCollection { }
 
-                    public static class ServiceCollectionServiceExtensions
-                    {
-                        public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
-                            where TService : class
-                            where TImplementation : class, TService => services;
-                        public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
-                            where TService : class
-                            where TImplementation : class, TService => services;
-                        public static IServiceCollection AddTransient(this IServiceCollection services, Type serviceType, Type implementationType) => services;
-                    }
-                    """,
+                            public static class ServiceCollectionServiceExtensions
+                            {
+                                public static IServiceCollection AddScoped<TService, TImplementation>(this IServiceCollection services)
+                                    where TService : class
+                                    where TImplementation : class, TService => services;
+                                public static IServiceCollection AddTransient<TService, TImplementation>(this IServiceCollection services)
+                                    where TService : class
+                                    where TImplementation : class, TService => services;
+                                public static IServiceCollection AddTransient(this IServiceCollection services, Type serviceType, Type implementationType) => services;
+                            }
+                            """,
                 ["App.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
+                             using Microsoft.Extensions.DependencyInjection;
 
-                    namespace TestProject;
+                             namespace TestProject;
 
-                    public interface ISvc { }
-                    public class Svc : ISvc { }
+                             public interface ISvc { }
+                             public class Svc : ISvc { }
 
-                    public static class Startup
-                    {
-                        public static void Register(IServiceCollection services)
-                        {
-                            services.AddScoped<ISvc, Svc>();
-                        }
-                    }
-                    """,
+                             public static class Startup
+                             {
+                                 public static void Register(IServiceCollection services)
+                                 {
+                                     services.AddScoped<ISvc, Svc>();
+                                 }
+                             }
+                             """
             },
             () =>
             {
                 WriteFile("TestProject", "App.cs", """
-                    using Microsoft.Extensions.DependencyInjection;
+                                                   using Microsoft.Extensions.DependencyInjection;
 
-                    namespace TestProject;
+                                                   namespace TestProject;
 
-                    public interface ISvc { }
-                    public class Svc : ISvc { }
-                    public interface ILog { }
-                    public class ConsoleLog : ILog { }
+                                                   public interface ISvc { }
+                                                   public class Svc : ISvc { }
+                                                   public interface ILog { }
+                                                   public class ConsoleLog : ILog { }
 
-                    public static class Startup
-                    {
-                        public static void Register(IServiceCollection services)
-                        {
-                            services.AddScoped<ISvc, Svc>();
-                            services.AddTransient(typeof(ILog), typeof(ConsoleLog));
-                        }
-                    }
-                    """);
+                                                   public static class Startup
+                                                   {
+                                                       public static void Register(IServiceCollection services)
+                                                       {
+                                                           services.AddScoped<ISvc, Svc>();
+                                                           services.AddTransient(typeof(ILog), typeof(ConsoleLog));
+                                                       }
+                                                   }
+                                                   """);
             });
     }
 
     /// <summary>
-    /// ASP.NET Core adapter: changing a controller route attribute must delete
-    /// the old RoutesTo edge (with its synthetic route:// source node) and
-    /// re-extract a new one matching the updated template. Exercises the
-    /// delete+re-extract path for edges with synthetic source nodes.
+    ///     ASP.NET Core adapter: changing a controller route attribute must delete
+    ///     the old RoutesTo edge (with its synthetic route:// source node) and
+    ///     re-extract a new one matching the updated template. Exercises the
+    ///     delete+re-extract path for edges with synthetic source nodes.
     /// </summary>
     [SkippableFact]
     public async Task ScenarioM_ControllerRouteChange_UpdatesRoutesToEdges()
@@ -1071,19 +1079,19 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["ItemsController.cs"] = """
-                    using Microsoft.AspNetCore.Mvc;
+                                         using Microsoft.AspNetCore.Mvc;
 
-                    namespace App;
+                                         namespace App;
 
-                    [Route("api/[controller]")]
-                    public class ItemsController : ControllerBase
-                    {
-                        [HttpGet("{id}")]
-                        public Item Get(int id) => new Item();
-                    }
+                                         [Route("api/[controller]")]
+                                         public class ItemsController : ControllerBase
+                                         {
+                                             [HttpGet("{id}")]
+                                             public Item Get(int id) => new Item();
+                                         }
 
-                    public class Item { public int Id { get; set; } }
-                    """,
+                                         public class Item { public int Id { get; set; } }
+                                         """
             },
             frameworkReferences: ["Microsoft.AspNetCore.App"]);
 
@@ -1091,19 +1099,19 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         var snapshotA = await RunFullIndexAsync(DbPath);
 
         WriteFile("App", "ItemsController.cs", """
-            using Microsoft.AspNetCore.Mvc;
+                                               using Microsoft.AspNetCore.Mvc;
 
-            namespace App;
+                                               namespace App;
 
-            [Route("api/[controller]")]
-            public class ItemsController : ControllerBase
-            {
-                [HttpGet("{id}/details")]
-                public Item Get(int id) => new Item();
-            }
+                                               [Route("api/[controller]")]
+                                               public class ItemsController : ControllerBase
+                                               {
+                                                   [HttpGet("{id}/details")]
+                                                   public Item Get(int id) => new Item();
+                                               }
 
-            public class Item { public int Id { get; set; } }
-            """);
+                                               public class Item { public int Id { get; set; } }
+                                               """);
 
         var snapshotB = await RunIncrementalIndexAsync();
         var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);

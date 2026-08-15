@@ -51,15 +51,9 @@ internal sealed class EdgeOperationsStore
                 RegisterGraphNode(nodeCmd, nodeIdParam, nodeKindParam, memberCmd, memberNodeParam, edge.TargetSymbolId, edge.TargetNodeKind);
             }
 
-            if (bulkEdges.Count > 0)
-            {
-                WriteBulkEdges(snapshotId, bulkEdges, transaction);
-            }
+            if (bulkEdges.Count > 0) WriteBulkEdges(snapshotId, bulkEdges, transaction);
 
-            if (splitEdges.Count > 0)
-            {
-                WriteSplitEdges(snapshotId, splitEdges, transaction);
-            }
+            if (splitEdges.Count > 0) WriteSplitEdges(snapshotId, splitEdges, transaction);
 
             transaction.Commit();
         }
@@ -72,7 +66,8 @@ internal sealed class EdgeOperationsStore
 
     private void WriteBulkEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)
     {
-        const string persistedRank = "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
+        const string persistedRank =
+            "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
         var winnerWins = $"@incomingRank > {persistedRank}";
 
         using var command = _connection.CreateCommand();
@@ -130,7 +125,8 @@ internal sealed class EdgeOperationsStore
 
     private void WriteSplitEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)
     {
-        const string persistedRank = "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
+        const string persistedRank =
+            "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
         var winnerWins = $"@incomingRank > {persistedRank}";
 
         using var selectCmd = _connection.CreateCommand();
@@ -202,7 +198,7 @@ internal sealed class EdgeOperationsStore
 
             object? existingTypeArgs = null;
             object? existingReceiverConstraints = null;
-            bool hasRow = false;
+            var hasRow = false;
             using (var reader = selectCmd.ExecuteReader())
             {
                 hasRow = reader.Read();
@@ -302,6 +298,7 @@ internal sealed class EdgeOperationsStore
                 ORDER BY edge_id;
             ";
         }
+
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         return ReadEdgeRecords(command);
@@ -389,7 +386,7 @@ internal sealed class EdgeOperationsStore
                   AND source_document_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
             ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            int i = 0;
+            var i = 0;
             foreach (var path in pathList)
                 command.Parameters.AddWithValue($"@p{i++}", path);
             command.ExecuteNonQuery();
@@ -416,12 +413,13 @@ internal sealed class EdgeOperationsStore
               AND (" + string.Join(" OR ", identityList.Select((_, i) => $"source_symbol_id LIKE @p{i} ESCAPE '\\'")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        int i = 0;
+        var i = 0;
         foreach (var identity in identityList)
         {
-            var escaped = identity.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            var escaped = identity.Replace(@"\", @"\\").Replace(@"%", @"\%").Replace(@"_", @"\_");
             command.Parameters.AddWithValue($"@p{i++}", "%|" + escaped);
         }
+
         command.ExecuteNonQuery();
     }
 
@@ -439,7 +437,7 @@ internal sealed class EdgeOperationsStore
               AND source_symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        int i = 0;
+        var i = 0;
         foreach (var id in idList)
             command.Parameters.AddWithValue($"@p{i++}", id);
         command.ExecuteNonQuery();
@@ -546,14 +544,13 @@ internal sealed class EdgeOperationsStore
         int external = 0, compilerSynthesized = 0, other = 0;
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             switch (reader.GetString(0))
             {
                 case "compiler_synthesized": compilerSynthesized++; break;
                 case "external": external++; break;
                 case "other": other++; break;
             }
-        }
+
         var total = external + compilerSynthesized + other;
         return new OrphanEdgeDropSummary(total, external, compilerSynthesized, other);
     }
@@ -581,7 +578,6 @@ internal sealed class EdgeOperationsStore
         var results = new List<EdgeRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             results.Add(new EdgeRecord
             {
                 SourceSymbolId = reader.GetString(0),
@@ -597,9 +593,8 @@ internal sealed class EdgeOperationsStore
                 SourceEndColumn = reader.IsDBNull(10) ? null : reader.GetInt32(10),
                 IsCrossGenerated = reader.GetBoolean(11),
                 TypeArgumentsJson = reader.IsDBNull(12) ? null : reader.GetString(12),
-                ReceiverTypeConstraintsJson = reader.IsDBNull(13) ? null : reader.GetString(13),
+                ReceiverTypeConstraintsJson = reader.IsDBNull(13) ? null : reader.GetString(13)
             });
-        }
         return results;
     }
 }

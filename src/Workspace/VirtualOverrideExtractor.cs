@@ -4,10 +4,10 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// For every override, walk to the root virtual declaration and emit a
-/// may_dispatch_to edge from the root to the override.  Because the
-/// override chain is fully resolved at compile time within a single
-/// compilation, all such edges are "compiler_proved".
+///     For every override, walk to the root virtual declaration and emit a
+///     may_dispatch_to edge from the root to the override.  Because the
+///     override chain is fully resolved at compile time within a single
+///     compilation, all such edges are "compiler_proved".
 /// </summary>
 internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext context)
 {
@@ -17,7 +17,6 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
         var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var type in allTypes)
-        {
             foreach (var member in type.GetMembers())
             {
                 if (member.IsImplicitlyDeclared)
@@ -36,7 +35,6 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
                         break;
                 }
             }
-        }
 
         return edges;
     }

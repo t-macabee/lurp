@@ -2,21 +2,22 @@ using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
+using System.Text;
 using RoslynDocumentId = Microsoft.CodeAnalysis.DocumentId;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// GAP 3 / GAP 1: <see cref="SnapshotCompleteness.GeneratedTreesIncluded"/> is
-/// declared but never asserted. Both <see cref="SnapshotManifest.FromWorkspace"/>
-/// and <see cref="SnapshotManifest.FromStorageManifest"/> hardcode it to false;
-/// this test pins the FromWorkspace branch so the declared completeness seam
-/// cannot silently flip without a failing test.
+///     GAP 3 / GAP 1: <see cref="SnapshotCompleteness.GeneratedTreesIncluded" /> is
+///     declared but never asserted. Both <see cref="SnapshotManifest.FromWorkspace" />
+///     and <see cref="SnapshotManifest.FromStorageManifest" /> hardcode it to false;
+///     this test pins the FromWorkspace branch so the declared completeness seam
+///     cannot silently flip without a failing test.
 /// </summary>
 public sealed class SnapshotManifestCompletenessTests : IDisposable
 {
     private static readonly MetadataReference[] _platformReferences =
-        (((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")) ?? "")
+        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator)
         .Where(p => !string.IsNullOrEmpty(p))
         .Select(p => MetadataReference.CreateFromFile(p!))
@@ -35,7 +36,7 @@ public sealed class SnapshotManifestCompletenessTests : IDisposable
         try
         {
             if (Directory.Exists(_tempDir))
-                Directory.Delete(_tempDir, recursive: true);
+                Directory.Delete(_tempDir, true);
         }
         catch
         {
@@ -55,9 +56,9 @@ public sealed class SnapshotManifestCompletenessTests : IDisposable
     }
 
     /// <summary>
-    /// Builds a one-file adhoc workspace wrapped in a <see cref="WorkspaceInfo"/>.
-    /// No MSBuild and no external dependency — pure Roslyn, CI-runnable on any
-    /// platform.
+    ///     Builds a one-file adhoc workspace wrapped in a <see cref="WorkspaceInfo" />.
+    ///     No MSBuild and no external dependency — pure Roslyn, CI-runnable on any
+    ///     platform.
     /// </summary>
     private WorkspaceInfo BuildSingleFileWorkspace()
     {
@@ -66,14 +67,14 @@ public sealed class SnapshotManifestCompletenessTests : IDisposable
         var solutionId = SolutionId.CreateNewId();
 
         workspace.AddSolution(SolutionInfo.Create(
-            solutionId, VersionStamp.Create(), filePath: Path.Combine(_tempDir, "P.slnx")));
+            solutionId, VersionStamp.Create(), Path.Combine(_tempDir, "P.slnx")));
 
         var solution = workspace.CurrentSolution
             .AddProject(ProjectInfo.Create(
                 projectId,
                 VersionStamp.Create(),
-                name: "P",
-                assemblyName: "P",
+                "P",
+                "P",
                 LanguageNames.CSharp,
                 compilationOptions: new CSharpCompilationOptions(
                     OutputKind.DynamicallyLinkedLibrary,
@@ -81,19 +82,19 @@ public sealed class SnapshotManifestCompletenessTests : IDisposable
                 metadataReferences: _platformReferences));
 
         const string source = """
-            namespace P;
+                              namespace P;
 
-            public class Svc
-            {
-                public int Value() => 42;
-            }
-            """;
+                              public class Svc
+                              {
+                                  public int Value() => 42;
+                              }
+                              """;
         var docPath = Path.Combine(_tempDir, "Svc.cs");
         File.WriteAllText(docPath, source);
         solution = solution.AddDocument(
             RoslynDocumentId.CreateNewId(projectId),
             "Svc.cs",
-            SourceText.From(source, System.Text.Encoding.UTF8),
+            SourceText.From(source, Encoding.UTF8),
             filePath: docPath);
 
         workspace.TryApplyChanges(solution);

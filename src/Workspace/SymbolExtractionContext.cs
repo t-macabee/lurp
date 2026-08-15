@@ -11,6 +11,9 @@ internal sealed class SymbolExtractionContext(
     IReadOnlySet<string>? scopeDocuments = null,
     BindingIncompletenessCollector? incompleteness = null)
 {
+    private readonly Dictionary<string, DocumentId> _docIdByPath =
+        BuildDocIdByPath(documentContents.Keys);
+
     internal Compilation Compilation { get; } = compilation;
     internal IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; } = documentContents;
     internal IReadOnlyDictionary<DocumentId, DocumentVersionId> DocumentVersions { get; } = documentVersions;
@@ -19,9 +22,6 @@ internal sealed class SymbolExtractionContext(
     internal string SnapshotId { get; } = snapshotId;
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
     internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
-
-    private readonly Dictionary<string, DocumentId> _docIdByPath =
-        BuildDocIdByPath(documentContents.Keys);
 
     private static Dictionary<string, DocumentId> BuildDocIdByPath(IEnumerable<DocumentId> documentIds)
     {
@@ -35,8 +35,7 @@ internal sealed class SymbolExtractionContext(
             lookup[path] = docId;
 
             var span = path.AsSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
+            for (var i = 0; i < span.Length; i++)
                 if (span[i] == '/')
                 {
                     var suffix = span[(i + 1)..].ToString();
@@ -57,7 +56,6 @@ internal sealed class SymbolExtractionContext(
                         suffixClaims[suffix] = docId;
                     }
                 }
-            }
         }
 
         foreach (var kv in suffixClaims)
@@ -67,10 +65,14 @@ internal sealed class SymbolExtractionContext(
     }
 
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
-        => Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
+    {
+        Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
+    }
 
     internal bool IsInScope(SyntaxTree? syntaxTree)
-        => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+    {
+        return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+    }
 
     internal DocumentId? ResolveDocumentId(SyntaxTree syntaxTree)
     {
@@ -84,15 +86,13 @@ internal sealed class SymbolExtractionContext(
             return match;
 
         var span = normalized.AsSpan();
-        for (int i = 0; i < span.Length; i++)
-        {
+        for (var i = 0; i < span.Length; i++)
             if (span[i] == '/')
             {
                 var suffix = span[(i + 1)..].ToString();
                 if (_docIdByPath.TryGetValue(suffix, out match))
                     return match;
             }
-        }
 
         return null;
     }

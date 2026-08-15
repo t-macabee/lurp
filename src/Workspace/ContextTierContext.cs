@@ -2,8 +2,8 @@ namespace Lurp.Workspace;
 
 internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated)
 {
-    private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
     private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
+    private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
     private IReadOnlyList<string>? _effectiveSymbolIds;
     private bool? _hasUnmodeledRegistrations;
 
@@ -24,20 +24,26 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     internal IReadOnlyList<string> EffectiveSymbolIds => _effectiveSymbolIds ??= ComputeEffectiveSymbolIds();
 
     internal List<EdgeRecord> GetMayDispatchEdges(string symbolId)
-        => EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
+    {
+        return EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
             .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
             .ToList();
+    }
 
     internal List<string> GetDeclaringTypeIds(string memberSymbolId)
-        => EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
+    {
+        return EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
             .Where(edge => edge.Kind == EdgeKind.Declares.ToString())
             .Select(edge => edge.SourceSymbolId)
             .Distinct(StringComparer.Ordinal)
             .ToList();
+    }
 
     internal bool IsReceiverCompatible(string candidateTypeId, IReadOnlyList<IReadOnlyList<string>> receiverAlternatives)
-        => receiverAlternatives.Any(requiredTypes =>
+    {
+        return receiverAlternatives.Any(requiredTypes =>
             requiredTypes.Count > 0 && requiredTypes.All(receiverTypeId => IsAssignableTo(candidateTypeId, receiverTypeId)));
+    }
 
     private bool IsAssignableTo(string candidateTypeId, string receiverTypeId)
     {
@@ -77,9 +83,11 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     // Tier builders chain this with Calls-upstream traversal to find callers
     // that reach the anchor through interface dispatch.
     internal List<EdgeRecord> GetDispatchSourceEdges(string symbolId)
-        => EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
+    {
+        return EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
             .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
             .ToList();
+    }
 
     internal bool HasUnmodeledRegistrations()
     {
@@ -119,17 +127,14 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         return false;
     }
 
-    private IReadOnlyList<string> ComputeEffectiveSymbolIds()
+    private List<string> ComputeEffectiveSymbolIds()
     {
         var ids = new List<string> { SymbolId.Value };
         if (SymbolId.DocCommentId.Length >= 2 && SymbolId.DocCommentId[0] == 'T' && SymbolId.DocCommentId[1] == ':')
-        {
             foreach (var edge in EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
-            {
                 if (edge.Kind == EdgeKind.Declares.ToString())
                     ids.Add(edge.TargetSymbolId);
-            }
-        }
+
         return ids;
     }
 
@@ -150,15 +155,15 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         }
 
         var location = GetDeclarationLocation(symbolId);
-        return new CapsuleItem(symbolId: symbolId, kind: info.Kind.ToString(),
-            fullyQualifiedName: info.FullyQualifiedName ?? symbolId,
-            provenance: provenance,
-            edgeKind: edgeKind,
-            source: source,
-            location: location,
-            inclusionReason: inclusionReason,
-            relationship: relationship,
-            direct: direct);
+        return new CapsuleItem(symbolId, info.Kind.ToString(),
+            info.FullyQualifiedName ?? symbolId,
+            provenance,
+            edgeKind,
+            source,
+            location,
+            inclusionReason,
+            relationship,
+            direct);
     }
 
     private DeclarationLocation? GetDeclarationLocation(string symbolId)
@@ -172,6 +177,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
             location = DeclarationStore.GetDeclarationLocations(symbolId, SnapshotId, IncludeGenerated).FirstOrDefault();
             _locationCache[key] = location;
         }
+
         return location;
     }
 }

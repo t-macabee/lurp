@@ -28,18 +28,18 @@ public sealed class AdapterExtractionContext
     public EdgeLocationResolver LocationResolver { get; }
 
     /// <summary>
-    /// Collector for unobservable-binding records, shared with the workspace
-    /// extractors so adapter-detected incompleteness lands in the same persisted
-    /// vocabulary. Null in unit-test contexts that bypass
-    /// <see cref="Lurp.Workspace.CompilationFactExtractor.ExtractAll"/>.
+    ///     Collector for unobservable-binding records, shared with the workspace
+    ///     extractors so adapter-detected incompleteness lands in the same persisted
+    ///     vocabulary. Null in unit-test contexts that bypass
+    ///     <see cref="Lurp.Workspace.CompilationFactExtractor.ExtractAll" />.
     /// </summary>
     internal BindingIncompletenessCollector? Incompleteness { get; }
 
     /// <summary>
-    /// Absolute, forward-slash-normalized document paths; null means the whole compilation.
-    /// Honored by every adapter, including <c>EfCoreAdapter</c>, whose annotations carry
-    /// the evidence document and are retired by
-    /// <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> over the same scope.
+    ///     Absolute, forward-slash-normalized document paths; null means the whole compilation.
+    ///     Honored by every adapter, including <c>EfCoreAdapter</c>, whose annotations carry
+    ///     the evidence document and are retired by
+    ///     <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> over the same scope.
     /// </summary>
     public IReadOnlySet<string>? ScopeDocuments { get; }
 
@@ -50,24 +50,27 @@ public sealed class AdapterExtractionContext
             model = Compilation.GetSemanticModel(tree);
             _semanticModelCache[tree] = model;
         }
+
         return model;
     }
 
     public bool IsInScope(SyntaxTree? syntaxTree)
-        => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+    {
+        return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+    }
 
     /// <summary>
-    /// True when any declaring part of <paramref name="symbol"/> is in scope. Used by
-    /// the symbol-driven adapters, which have no syntax tree at the point they decide
-    /// whether to walk a type.
+    ///     True when any declaring part of <paramref name="symbol" /> is in scope. Used by
+    ///     the symbol-driven adapters, which have no syntax tree at the point they decide
+    ///     whether to walk a type.
     /// </summary>
     /// <remarks>
-    /// Any-part rather than all-parts matches the type-level granularity of the
-    /// Workspace guards, and costs nothing in practice: the incremental extraction
-    /// scope is already widened to every document declaring a part of a touched type
-    /// (<c>IncrementalIndexer.ExpandToDeclaringTypeParts</c>), so parts are in scope
-    /// together or not at all. An implicitly-declared symbol has no document to scope
-    /// by and stays in scope.
+    ///     Any-part rather than all-parts matches the type-level granularity of the
+    ///     Workspace guards, and costs nothing in practice: the incremental extraction
+    ///     scope is already widened to every document declaring a part of a touched type
+    ///     (<c>IncrementalIndexer.ExpandToDeclaringTypeParts</c>), so parts are in scope
+    ///     together or not at all. An implicitly-declared symbol has no document to scope
+    ///     by and stays in scope.
     /// </remarks>
     public bool IsSymbolInScope(ISymbol? symbol)
     {
@@ -79,10 +82,8 @@ public sealed class AdapterExtractionContext
             return true;
 
         foreach (var reference in references)
-        {
             if (IsInScope(reference.SyntaxTree))
                 return true;
-        }
         return false;
     }
 }

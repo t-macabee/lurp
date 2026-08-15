@@ -6,8 +6,6 @@ namespace Lurp.Handlers;
 
 internal static class GetSymbolHandler
 {
-    private sealed record ViewSelection(ViewKind ViewKind, bool IsMetadataView, bool IsContainingType, bool IsSurrounding, int ContextLines);
-
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=get-symbol.");
@@ -36,7 +34,7 @@ internal static class GetSymbolHandler
         switch (viewArg.ToLowerInvariant())
         {
             case "metadata":
-                return new ViewSelection(ViewKind.Declaration, IsMetadataView: true, IsContainingType: false, IsSurrounding: false, ContextLines: 3);
+                return new ViewSelection(ViewKind.Declaration, true, false, false, 3);
             case "signature":
                 return new ViewSelection(ViewKind.Signature, false, false, false, 3);
             case "body":
@@ -52,7 +50,7 @@ internal static class GetSymbolHandler
                 return new ViewSelection(ViewKind.Declaration, false, false, true, contextLines);
             default:
                 HandlerBootstrap.Fail($"ERROR: Unknown view kind '{viewArg}'." + Environment.NewLine +
-                    "  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
+                                      "  Valid values: metadata, signature, body, declaration, containing-type, surrounding");
                 return new ViewSelection(ViewKind.Declaration, false, false, false, 3);
         }
     }
@@ -72,12 +70,9 @@ internal static class GetSymbolHandler
     private static void WriteMetadataView(IDeclarationStore store, string symbolArg, string snapshotId, FreshnessStamp freshness)
     {
         var info = store.GetSymbolInfo(symbolArg, snapshotId);
-        if (info == null)
-        {
-            HandlerBootstrap.Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
-        }
+        if (info == null) HandlerBootstrap.Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
 
-        var locations = store.GetDeclarationLocations(symbolArg, snapshotId, includeGenerated: true);
+        var locations = store.GetDeclarationLocations(symbolArg, snapshotId, true);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -91,7 +86,7 @@ internal static class GetSymbolHandler
             is_partial = info.IsPartial,
             snapshot_id = snapshotId,
             freshness = HandlerBootstrap.FreshnessJson(freshness),
-            locations = locations
+            locations
         }, HandlerBootstrap.IndentedJson);
 
         Console.WriteLine(json);
@@ -100,30 +95,23 @@ internal static class GetSymbolHandler
     private static void WriteContainingTypeView(IDeclarationStore store, string symbolArg, string snapshotId)
     {
         var source = store.GetContainingTypeSource(symbolArg, snapshotId);
-        if (source == null)
-        {
-            HandlerBootstrap.Fail($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
-        }
+        if (source == null) HandlerBootstrap.Fail($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
         Console.Write(source);
     }
 
     private static void WriteSurroundingView(IDeclarationStore store, string symbolArg, string snapshotId, int contextLines)
     {
         var source = store.GetSurroundingLines(symbolArg, snapshotId, contextLines);
-        if (source == null)
-        {
-            HandlerBootstrap.Fail($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
-        }
+        if (source == null) HandlerBootstrap.Fail($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
         Console.Write(source);
     }
 
     private static void WriteSourceView(IDeclarationStore store, string symbolArg, string snapshotId, ViewKind viewKind, string viewArg, bool includeGenerated)
     {
         var source = store.GetSymbolSource(symbolArg, snapshotId, viewKind, includeGenerated);
-        if (source == null)
-        {
-            HandlerBootstrap.Fail($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
-        }
+        if (source == null) HandlerBootstrap.Fail($"ERROR: Source not found for symbol '{symbolArg}' with view '{viewArg}'.");
         Console.Write(source);
     }
+
+    private sealed record ViewSelection(ViewKind ViewKind, bool IsMetadataView, bool IsContainingType, bool IsSurrounding, int ContextLines);
 }

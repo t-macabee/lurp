@@ -16,7 +16,7 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         seed();
         var snapshotA = await RunFullIndexAsync(DbPath);
 
-        string snapshotB = snapshotA;
+        var snapshotB = snapshotA;
         foreach (var mutation in mutations)
         {
             mutation();
@@ -35,145 +35,145 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
         // Mutation 1: add a new service.
-        Action addService = () => WriteFile("Services", "ProductService.cs", """
-            using Core;
+        var addService = () => WriteFile("Services", "ProductService.cs", """
+                                                                          using Core;
 
-            namespace Services;
+                                                                          namespace Services;
 
-            public class Product { }
-            public class ProductDto { }
-            public class ProductSearch { }
+                                                                          public class Product { }
+                                                                          public class ProductDto { }
+                                                                          public class ProductSearch { }
 
-            public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
-            {
-            }
-            """);
+                                                                          public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
+                                                                          {
+                                                                          }
+                                                                          """);
 
         // Mutation 2: rename a method (Find → Search across Core).
-        Action renameMethod = () =>
+        var renameMethod = () =>
         {
             WriteFile("Core", "IBaseReadService.cs", """
-                namespace Core;
+                                                     namespace Core;
 
-                public interface IBaseReadService<TResponse, TSearch>
-                {
-                    TResponse Search(TSearch search);
-                }
-                """);
+                                                     public interface IBaseReadService<TResponse, TSearch>
+                                                     {
+                                                         TResponse Search(TSearch search);
+                                                     }
+                                                     """);
             WriteFile("Core", "BaseReadService.cs", """
-                namespace Core;
+                                                    namespace Core;
 
-                public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
-                {
-                    public virtual TResponse Search(TSearch search) => default!;
-                }
-                """);
+                                                    public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                                    {
+                                                        public virtual TResponse Search(TSearch search) => default!;
+                                                    }
+                                                    """);
             WriteFile("App", "Consumer.cs", """
-                using Core;
-                using Services;
+                                            using Core;
+                                            using Services;
 
-                namespace App;
+                                            namespace App;
 
-                public class Consumer
-                {
-                    public void UseServices()
-                    {
-                        var userSvc = new UserService();
-                        userSvc.Search(new UserSearch());
+                                            public class Consumer
+                                            {
+                                                public void UseServices()
+                                                {
+                                                    var userSvc = new UserService();
+                                                    userSvc.Search(new UserSearch());
 
-                        var orderSvc = new OrderService();
-                        orderSvc.Search(new OrderSearch());
+                                                    var orderSvc = new OrderService();
+                                                    orderSvc.Search(new OrderSearch());
 
-                        var reportSvc = new ReportingService();
-                        reportSvc.Search(new ReportSearch());
-                        reportSvc.Echo(42);
-                        reportSvc.Format(new ReportDto());
-                    }
-                }
-                """);
+                                                    var reportSvc = new ReportingService();
+                                                    reportSvc.Search(new ReportSearch());
+                                                    reportSvc.Echo(42);
+                                                    reportSvc.Format(new ReportDto());
+                                                }
+                                            }
+                                            """);
         };
 
         // Mutation 3: change a base class (make it abstract).
-        Action changeBaseClass = () => WriteFile("Core", "BaseReadService.cs", """
-            namespace Core;
+        var changeBaseClass = () => WriteFile("Core", "BaseReadService.cs", """
+                                                                            namespace Core;
 
-            public abstract class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
-            {
-                public virtual TResponse Search(TSearch search) => default!;
-            }
-            """);
+                                                                            public abstract class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                                                            {
+                                                                                public virtual TResponse Search(TSearch search) => default!;
+                                                                            }
+                                                                            """);
 
         // Mutation 4: split UserService into two partial files.
-        Action splitFile = () =>
+        var splitFile = () =>
         {
             DeleteFile("Services", "UserService.cs");
             WriteFile("Services", "UserService.Part1.cs", """
-                using Core;
+                                                          using Core;
 
-                namespace Services;
+                                                          namespace Services;
 
-                public class User { }
-                public class UserDto { }
-                public class UserSearch { }
+                                                          public class User { }
+                                                          public class UserDto { }
+                                                          public class UserSearch { }
 
-                public partial class UserService : BaseReadService<User, UserDto, UserSearch>
-                {
-                }
-                """);
+                                                          public partial class UserService : BaseReadService<User, UserDto, UserSearch>
+                                                          {
+                                                          }
+                                                          """);
             WriteFile("Services", "UserService.Part2.cs", """
-                using Core;
+                                                          using Core;
 
-                namespace Services;
+                                                          namespace Services;
 
-                public partial class UserService
-                {
-                    public string Display(UserDto dto) => dto.ToString() ?? "";
-                }
-                """);
+                                                          public partial class UserService
+                                                          {
+                                                              public string Display(UserDto dto) => dto.ToString() ?? "";
+                                                          }
+                                                          """);
         };
 
         // Mutation 5: revert the rename (Search → Find).
-        Action revertRename = () =>
+        var revertRename = () =>
         {
             WriteFile("Core", "IBaseReadService.cs", """
-                namespace Core;
+                                                     namespace Core;
 
-                public interface IBaseReadService<TResponse, TSearch>
-                {
-                    TResponse Find(TSearch search);
-                }
-                """);
+                                                     public interface IBaseReadService<TResponse, TSearch>
+                                                     {
+                                                         TResponse Find(TSearch search);
+                                                     }
+                                                     """);
             WriteFile("Core", "BaseReadService.cs", """
-                namespace Core;
+                                                    namespace Core;
 
-                public abstract class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
-                {
-                    public virtual TResponse Find(TSearch search) => default!;
-                }
-                """);
+                                                    public abstract class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                                    {
+                                                        public virtual TResponse Find(TSearch search) => default!;
+                                                    }
+                                                    """);
             WriteFile("App", "Consumer.cs", """
-                using Core;
-                using Services;
+                                            using Core;
+                                            using Services;
 
-                namespace App;
+                                            namespace App;
 
-                public class Consumer
-                {
-                    public void UseServices()
-                    {
-                        var userSvc = new UserService();
-                        userSvc.Find(new UserSearch());
+                                            public class Consumer
+                                            {
+                                                public void UseServices()
+                                                {
+                                                    var userSvc = new UserService();
+                                                    userSvc.Find(new UserSearch());
 
-                        var orderSvc = new OrderService();
-                        orderSvc.Find(new OrderSearch());
+                                                    var orderSvc = new OrderService();
+                                                    orderSvc.Find(new OrderSearch());
 
-                        var reportSvc = new ReportingService();
-                        reportSvc.Find(new ReportSearch());
-                        reportSvc.Echo(42);
-                        reportSvc.Format(new ReportDto());
-                    }
-                }
-                """);
+                                                    var reportSvc = new ReportingService();
+                                                    reportSvc.Find(new ReportSearch());
+                                                    reportSvc.Echo(42);
+                                                    reportSvc.Format(new ReportDto());
+                                                }
+                                            }
+                                            """);
         };
 
         await RunMultiCycleParityAsync(
@@ -194,27 +194,27 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Lib.cs"] = """
-                    namespace Lib;
+                             namespace Lib;
 
-                    public class Lib
-                    {
-                        public void Foo() { }
-                        public void Bar() { }
-                    }
-                    """,
+                             public class Lib
+                             {
+                                 public void Foo() { }
+                                 public void Bar() { }
+                             }
+                             """
             });
 
         CreateProject("App",
             new Dictionary<string, string>
             {
                 ["Service.cs"] = """
-                    namespace App;
+                                 namespace App;
 
-                    public class Service
-                    {
-                        public void Use(Lib.Lib lib) => lib.Foo();
-                    }
-                    """,
+                                 public class Service
+                                 {
+                                     public void Use(Lib.Lib lib) => lib.Foo();
+                                 }
+                                 """
             },
             projectReferences: ["Lib"]);
 
@@ -229,18 +229,19 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
             if (info?.FullyQualifiedName?.StartsWith("global::App.Service") == true)
                 serviceFqns.Add(info.FullyQualifiedName);
         }
+
         storeBefore.Close();
         Assert.NotEmpty(serviceFqns);
 
         DeleteFile("App", "Service.cs");
         WriteFile("Lib", "Service.cs", """
-            namespace Lib;
+                                       namespace Lib;
 
-            public class Service
-            {
-                public void Use(Lib lib) => lib.Bar();
-            }
-            """);
+                                       public class Service
+                                       {
+                                           public void Use(Lib lib) => lib.Bar();
+                                       }
+                                       """);
 
         var afterMoveSnapshotId = await RunIncrementalIndexAsync();
 
@@ -254,6 +255,7 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
             if (info?.FullyQualifiedName?.StartsWith("global::Lib.Service") == true)
                 afterServiceFqns.Add(info.FullyQualifiedName);
         }
+
         storeAfter.Close();
 
         foreach (var oldFqn in serviceFqns)

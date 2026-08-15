@@ -5,9 +5,9 @@ namespace Lurp.Tests;
 
 public sealed class EdgeWritePathTests : IDisposable
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-edge-write-{Guid.NewGuid():N}.db");
     private const string WorkspaceId = "w1";
     private const string SnapshotId = "s1";
+    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-edge-write-{Guid.NewGuid():N}.db");
 
     public void Dispose()
     {
@@ -27,7 +27,7 @@ public sealed class EdgeWritePathTests : IDisposable
             WorkspaceId = WorkspaceId,
             GitRoot = "gitroot",
             SolutionPath = "solution.sln",
-            CreatedAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = DateTime.UtcNow
         });
         return store;
     }
@@ -36,7 +36,8 @@ public sealed class EdgeWritePathTests : IDisposable
         string provenance = "compiler_proved", string? typeArgs = null,
         string? receiverConstraints = null,
         int? sourceStartLine = 1, int? sourceEndLine = 2)
-        => new()
+    {
+        return new EdgeRecord
         {
             SourceSymbolId = source,
             TargetSymbolId = target,
@@ -49,12 +50,15 @@ public sealed class EdgeWritePathTests : IDisposable
             SourceStartLine = sourceStartLine,
             SourceStartColumn = 1,
             SourceEndLine = sourceEndLine,
-            SourceEndColumn = 10,
+            SourceEndColumn = 10
         };
+    }
 
-    private EdgeRecord? FindEdge(List<EdgeRecord> edges, string source, string target, string kind)
-        => edges.FirstOrDefault(e =>
+    private static EdgeRecord? FindEdge(List<EdgeRecord> edges, string source, string target, string kind)
+    {
+        return edges.FirstOrDefault(e =>
             e.SourceSymbolId == source && e.TargetSymbolId == target && e.Kind == kind);
+    }
 
     [Fact]
     public void SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank()
@@ -62,7 +66,7 @@ public sealed class EdgeWritePathTests : IDisposable
         using var store = OpenStore();
 
         store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "name_candidate", sourceStartLine: 10)]);
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved", sourceStartLine: 20)]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", sourceStartLine: 20)]);
 
         var persisted = store.GetEdges(SnapshotId);
         var edge = Assert.Single(persisted);
@@ -107,7 +111,7 @@ public sealed class EdgeWritePathTests : IDisposable
     {
         using var store = OpenStore();
 
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls")]);
         store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "unknown_provenance")]);
 
         var persisted = store.GetEdges(SnapshotId);
@@ -176,10 +180,14 @@ public sealed class EdgeWritePathTests : IDisposable
     {
         using var store = OpenStore();
 
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
-            typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""")]);
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
-            typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""")]);
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo",
+                typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""")
+        ]);
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo",
+                typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""")
+        ]);
 
         var persisted = store.GetEdges(SnapshotId);
         var edge = Assert.Single(persisted);
@@ -200,10 +208,14 @@ public sealed class EdgeWritePathTests : IDisposable
     {
         using var store = OpenStore();
 
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
-            provenance: "compiler_proved", typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""")]);
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "MayDispatchTo",
-            provenance: "compiler_proved", typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""")]);
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo",
+                "compiler_proved", """[["TA"]]""", """[["R1"]]""")
+        ]);
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo",
+                "compiler_proved", """[["TB"]]""", """[["R2"]]""")
+        ]);
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));
 
@@ -225,10 +237,8 @@ public sealed class EdgeWritePathTests : IDisposable
     {
         using var store = OpenStore();
 
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls",
-            provenance: "compiler_proved", receiverConstraints: """[["R1"]]""")]);
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls",
-            provenance: "compiler_proved", receiverConstraints: """[["R2"]]""")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", receiverConstraints: """[["R1"]]""")]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", receiverConstraints: """[["R2"]]""")]);
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));
         Assert.Null(edge.TypeArgumentsJson);
@@ -262,7 +272,7 @@ public sealed class EdgeWritePathTests : IDisposable
                 SourceEndLine = 2,
                 SourceEndColumn = 10,
                 SourceNodeKind = GraphNodeKind.Route,
-                TargetNodeKind = GraphNodeKind.ExternalType,
+                TargetNodeKind = GraphNodeKind.ExternalType
             }
         ]);
 
@@ -290,7 +300,8 @@ public sealed class EdgeWritePathTests : IDisposable
             staleCount = Convert.ToInt64(cmd.ExecuteScalar());
 
             using var cmd2 = conn.CreateCommand();
-            cmd2.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id IN ('src','tgt');";
+            cmd2.CommandText =
+                "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id IN ('src','tgt');";
             cmd2.Parameters.AddWithValue("@s", SnapshotId);
             edgeNodeCount = Convert.ToInt64(cmd2.ExecuteScalar());
         }
@@ -312,7 +323,7 @@ public sealed class EdgeWritePathTests : IDisposable
         using var store = OpenStore();
 
         // Seed the "copied-forward" row (MakeEdge defaults SourceDocumentPath = "src/Test.cs").
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved", sourceStartLine: 10, sourceEndLine: 11)]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", sourceStartLine: 10, sourceEndLine: 11)]);
 
         // Re-emit an equal-rank incoming edge with *different* location/path/
         // cross-generated to give the `>` clause something it must NOT take.
@@ -332,7 +343,7 @@ public sealed class EdgeWritePathTests : IDisposable
                 SourceStartColumn = 1,
                 SourceEndLine = 1000,
                 SourceEndColumn = 10,
-                IsCrossGenerated = true,
+                IsCrossGenerated = true
             }
         ]);
 
@@ -356,7 +367,7 @@ public sealed class EdgeWritePathTests : IDisposable
     {
         using var store = OpenStore();
 
-        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "compiler_proved", sourceStartLine: 10)]);
+        store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", sourceStartLine: 10)]);
         store.SaveEdges(SnapshotId, [MakeEdge("src", "tgt", "Calls", "name_candidate", sourceStartLine: 999)]);
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));

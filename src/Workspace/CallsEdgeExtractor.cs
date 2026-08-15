@@ -27,7 +27,6 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                 continue;
 
             foreach (var node in bodySyntax.DescendantNodes())
-            {
                 switch (node)
                 {
                     case InvocationExpressionSyntax invocation:
@@ -43,7 +42,6 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                         AddIndexerEdge(elementAccess, semanticModel, callerId, edges, seen);
                         break;
                 }
-            }
         }
 
         edges.AddRange(callEdges.Values);
@@ -63,9 +61,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             if (symbolInfo.Symbol == null &&
                 (symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0 ||
                  semanticModel.GetDiagnostics(elementAccess.Span).Any(static d => d.Severity == DiagnosticSeverity.Error)))
-            {
                 context.RecordUnresolvedBinding(symbolInfo, elementAccess, semanticModel);
-            }
             return;
         }
 
@@ -132,10 +128,8 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             {
                 var refKind = EdgeKind.References.ToString();
                 if (seen.Add((callerId, containingTypeId, refKind)))
-                {
                     edges.Add(context.MakeEdge(callerId, containingTypeId, refKind,
                         ExtractorConstants.CallsExtractor, location));
-                }
             }
         }
 
@@ -176,10 +170,8 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                     {
                         var extKind = EdgeKind.ExtensionReceiver.ToString();
                         if (seen.Add((receiverTypeId, calleeId, extKind)))
-                        {
                             edges.Add(context.MakeEdge(receiverTypeId, calleeId, extKind,
                                 ExtractorConstants.ExtensionReceiverExtractor, location));
-                        }
                     }
                 }
             }
@@ -194,11 +186,9 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
     {
         if (syntax is not InvocationExpressionSyntax invocation ||
             (callee.IsStatic && callee.ReducedFrom == null))
-        {
             return null;
-        }
 
-        ITypeSymbol? receiverType = invocation.Expression switch
+        var receiverType = invocation.Expression switch
         {
             MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } => null,
             MemberAccessExpressionSyntax memberAccess
@@ -208,7 +198,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                 ? semanticModel.GetTypeInfo(conditional.Expression).Type
                 : null,
             IdentifierNameSyntax or GenericNameSyntax when !caller.IsStatic => caller.ContainingType,
-            _ => null,
+            _ => null
         };
 
         return ReceiverTypeConstraints.FromReceiverType(receiverType, context);

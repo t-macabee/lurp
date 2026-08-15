@@ -440,18 +440,15 @@ FodyWeavers.xsd
 
 .tokensave/
 .mimocode/
+.idea/
+.repograph/
+qodana.yaml
 
 # Lurp index outputs
 index.db
 *.db-wal
 *.db-shm
 capsule-*.json
-
-INCREMENTAL_REMEDIATION_PLAN.md
-INCREMENTAL_TRACE_FINDINGS.md
-SYNTAX_USAGE_MAP.md
-docs/ARCHITECTURE_AUDIT.md
-docs/TEST_SUITE_AUDIT.md
 
 # Local perf-trace scratch fixtures
 .trace-tmp/

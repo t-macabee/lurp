@@ -27,23 +27,13 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
             var semanticModel = context.GetSemanticModel(tree);
 
-            foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
-            {
-                ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel, ctx);
-            }
+            foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>()) ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel, ctx);
 
             foreach (var field in tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>())
-            {
                 foreach (var variable in field.Declaration.Variables)
-                {
                     ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel, ctx);
-                }
-            }
 
-            foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>())
-            {
-                ProcessJsonSerializableType(typeDecl, semanticModel, ctx);
-            }
+            foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()) ProcessJsonSerializableType(typeDecl, semanticModel, ctx);
         }
 
         return edges;
@@ -52,7 +42,6 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     private static void ProcessJsonSerializableType(TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, ExtractionContext ctx)
     {
         foreach (var attrList in typeDecl.AttributeLists)
-        {
             foreach (var attr in attrList.Attributes)
             {
                 var attrName = GetAttributeName(attr);
@@ -82,13 +71,11 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     }
                 }
             }
-        }
     }
 
     private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode, SyntaxList<AttributeListSyntax> attributeLists, SemanticModel semanticModel, ExtractionContext ctx)
     {
-
-        ISymbol? memberSymbol = memberNode switch
+        var memberSymbol = memberNode switch
         {
             PropertyDeclarationSyntax prop => semanticModel.GetDeclaredSymbol(prop),
             VariableDeclaratorSyntax variable => semanticModel.GetDeclaredSymbol(variable) as IFieldSymbol,
@@ -102,7 +89,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberId == null)
             return;
 
-        ITypeSymbol? memberType = memberSymbol switch
+        var memberType = memberSymbol switch
         {
             IPropertySymbol prop => prop.Type,
             IFieldSymbol field => field.Type,
@@ -110,16 +97,12 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         };
 
         string? targetId = null;
-        if (memberType is INamedTypeSymbol namedType)
-        {
-            targetId = SymbolIdFactory.Make(namedType, ctx.AssemblyIdentity);
-        }
+        if (memberType is INamedTypeSymbol namedType) targetId = SymbolIdFactory.Make(namedType, ctx.AssemblyIdentity);
 
         // Resolve location from the syntax node (property/field decl) : the evidence site
         var evidenceLocation = memberNode.GetLocation();
 
         foreach (var attrList in attributeLists)
-        {
             foreach (var attr in attrList.Attributes)
             {
                 var attrName = GetAttributeName(attr);
@@ -129,14 +112,16 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
                 EmitSerializationReferenceEdge(memberId, targetId, ctx, evidenceLocation);
             }
-        }
     }
 
-    private static bool ClassifySerializationAttribute(string attrName) => attrName switch
+    private static bool ClassifySerializationAttribute(string attrName)
     {
-        "JsonPropertyName" or "JsonProperty" or "DataMember" or "JsonIgnore" or "IgnoreDataMember" => true,
-        _ => false
-    };
+        return attrName switch
+        {
+            "JsonPropertyName" or "JsonProperty" or "DataMember" or "JsonIgnore" or "IgnoreDataMember" => true,
+            _ => false
+        };
+    }
 
     private static void EmitSerializationReferenceEdge(string memberId, string? targetId, ExtractionContext ctx, Location evidenceLocation)
     {
@@ -144,10 +129,8 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         {
             var key = (memberId, targetId, EdgeKind.References.ToString());
             if (ctx.Seen.Add(key))
-            {
                 ctx.Edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
                     ctx, evidenceLocation));
-            }
         }
     }
 
@@ -177,7 +160,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             SourceStartColumn = sc,
             SourceEndLine = el,
             SourceEndColumn = ec,
-            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
+            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
         };
     }
 }

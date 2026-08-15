@@ -5,74 +5,33 @@ namespace Lurp.Workspace;
 
 public static class CompilationFactExtractor
 {
-    public sealed record ExtractionFailure(string Stage, string ProjectName, string? AdapterName, string Message, Exception Exception);
-    public sealed record ExtractionMeasurement(string Extractor, long ElapsedMilliseconds, long AllocatedBytes);
-
-    public sealed record ExtractionResult(
-        List<SymbolDeclaration> Declarations,
-        List<EdgeRecord> Edges,
-        List<DiagnosticRecord> Diagnostics,
-        List<BindingIncompletenessRecord> BindingIncompleteness,
-        List<ExtractionMeasurement> Measurements,
-        List<AnnotationRecord> Annotations,
-        IReadOnlyList<ExtractionFailure>? RequiredFailures = null)
-    {
-        public void EnsureRequiredSuccess()
-        {
-            if (RequiredFailures == null || RequiredFailures.Count == 0)
-                return;
-
-            var lines = RequiredFailures.Select(f =>
-                f.AdapterName != null
-                    ? $"  - [{f.Stage}] adapter '{f.AdapterName}' in project '{f.ProjectName}': {f.Message}"
-                    : $"  - [{f.Stage}] project '{f.ProjectName}': {f.Message}");
-            var message = $"Required extraction stages failed for project(s):\n{string.Join("\n", lines)}";
-
-            var innerExceptions = RequiredFailures.Select(f => f.Exception).ToArray();
-            throw new InvalidOperationException(message, new AggregateException(message, innerExceptions));
-        }
-    }
-
-    public sealed record ExtractionOptions(
-        IReadOnlySet<string>? SkipAdapters = null,
-        Action<string>? LogWarning = null,
-        Action<string>? LogError = null,
-        IReadOnlySet<string>? ScopeDocuments = null,
-        Func<IReadOnlySet<string>?, IFrameworkAdapter[]>? AdapterProvider = null
-    );
-
     /// <summary>
-    /// Shared factory for the pipeline options : one WARNING/ERROR console format
-    /// (line-oriented, no padding) used by every indexing pipeline (full,
-    /// incremental, and the cross-document refresh), so the same extractor message
-    /// renders identically regardless of which pipeline emitted it.
+    ///     Shared factory for the pipeline options : one WARNING/ERROR console format
+    ///     (line-oriented, no padding) used by every indexing pipeline (full,
+    ///     incremental, and the cross-document refresh), so the same extractor message
+    ///     renders identically regardless of which pipeline emitted it.
     /// </summary>
     public static ExtractionOptions CreateOptions(
         IReadOnlySet<string>? skipAdapters = null,
         IReadOnlySet<string>? scopeDocuments = null)
-        => new(
-            SkipAdapters: skipAdapters,
+    {
+        return new ExtractionOptions(
+            skipAdapters,
             ScopeDocuments: scopeDocuments,
             LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
             LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+    }
 
     /// <summary>
-    /// Shared state a <see cref="RunStage"/> call records a failure against:
-    /// the project a stage failed for, the accumulated failure list, and the
-    /// binding-incompleteness collector every stage degrades into on error.
-    /// </summary>
-    internal sealed record StageContext(string ProjectName, List<ExtractionFailure> Failures, BindingIncompletenessCollector Incompleteness);
-
-    /// <summary>
-    /// Runs one extraction stage, catching any exception so a single failing
-    /// stage degrades (recorded in <see cref="ExtractionFailure"/> and
-    /// <see cref="BindingIncompletenessCollector"/>) instead of aborting the
-    /// rest of <see cref="ExtractAll"/>. All six extraction stages —
-    /// including Polymorphism, previously unguarded — go through this so a
-    /// thrown exception in any one of them can never escape <c>ExtractAll</c>.
-    /// Internal (not private) so the failure/incompleteness contract can be
-    /// unit-tested directly rather than only through the six ExtractAll call
-    /// sites.
+    ///     Runs one extraction stage, catching any exception so a single failing
+    ///     stage degrades (recorded in <see cref="ExtractionFailure" /> and
+    ///     <see cref="BindingIncompletenessCollector" />) instead of aborting the
+    ///     rest of <see cref="ExtractAll" />. All six extraction stages —
+    ///     including Polymorphism, previously unguarded — go through this so a
+    ///     thrown exception in any one of them can never escape <c>ExtractAll</c>.
+    ///     Internal (not private) so the failure/incompleteness contract can be
+    ///     unit-tested directly rather than only through the six ExtractAll call
+    ///     sites.
     /// </summary>
     internal static void RunStage(
         StageContext ctx,
@@ -94,8 +53,8 @@ public static class CompilationFactExtractor
         }
     }
 
-    /// <inheritdoc cref="RunStage(StageContext, string, string?, Action{string}?, Func{string, string}, Action)"/>
-    /// <remarks>Value-returning overload for stages that produce a result rather than mutating a shared list; <paramref name="onFailure"/> is the result used when the stage throws.</remarks>
+    /// <inheritdoc cref="RunStage(StageContext, string, string?, Action{string}?, Func{string, string}, Action)" />
+    /// <remarks>Value-returning overload for stages that produce a result rather than mutating a shared list; <paramref name="onFailure" /> is the result used when the stage throws.</remarks>
     internal static T RunStage<T>(
         StageContext ctx,
         string stageName,
@@ -198,7 +157,6 @@ public static class CompilationFactExtractor
         var annotations = new List<AnnotationRecord>();
 
         foreach (var adapter in adapters)
-        {
             RunStage(
                 ctx, "Adapter", adapter.Name, logError,
                 msg => $"Adapter '{adapter.Name}' failed: {msg}",
@@ -208,10 +166,53 @@ public static class CompilationFactExtractor
                     edges.AddRange(result.Edges);
                     annotations.AddRange(result.Annotations);
                 });
-        }
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
 
-        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, annotations, RequiredFailures: failures.Count > 0 ? failures : null);
+        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, annotations, failures.Count > 0 ? failures : null);
     }
+
+    public sealed record ExtractionFailure(string Stage, string ProjectName, string? AdapterName, string Message, Exception Exception);
+
+    public sealed record ExtractionMeasurement(string Extractor, long ElapsedMilliseconds, long AllocatedBytes);
+
+    public sealed record ExtractionResult(
+        List<SymbolDeclaration> Declarations,
+        List<EdgeRecord> Edges,
+        List<DiagnosticRecord> Diagnostics,
+        List<BindingIncompletenessRecord> BindingIncompleteness,
+        List<ExtractionMeasurement> Measurements,
+        List<AnnotationRecord> Annotations,
+        IReadOnlyList<ExtractionFailure>? RequiredFailures = null)
+    {
+        public void EnsureRequiredSuccess()
+        {
+            if (RequiredFailures == null || RequiredFailures.Count == 0)
+                return;
+
+            var lines = RequiredFailures.Select(f =>
+                f.AdapterName != null
+                    ? $"  - [{f.Stage}] adapter '{f.AdapterName}' in project '{f.ProjectName}': {f.Message}"
+                    : $"  - [{f.Stage}] project '{f.ProjectName}': {f.Message}");
+            var message = $"Required extraction stages failed for project(s):\n{string.Join("\n", lines)}";
+
+            var innerExceptions = RequiredFailures.Select(f => f.Exception).ToArray();
+            throw new InvalidOperationException(message, new AggregateException(message, innerExceptions));
+        }
+    }
+
+    public sealed record ExtractionOptions(
+        IReadOnlySet<string>? SkipAdapters = null,
+        Action<string>? LogWarning = null,
+        Action<string>? LogError = null,
+        IReadOnlySet<string>? ScopeDocuments = null,
+        Func<IReadOnlySet<string>?, IFrameworkAdapter[]>? AdapterProvider = null
+    );
+
+    /// <summary>
+    ///     Shared state a <see cref="RunStage" /> call records a failure against:
+    ///     the project a stage failed for, the accumulated failure list, and the
+    ///     binding-incompleteness collector every stage degrades into on error.
+    /// </summary>
+    internal sealed record StageContext(string ProjectName, List<ExtractionFailure> Failures, BindingIncompletenessCollector Incompleteness);
 }

@@ -3,10 +3,10 @@ using System.Diagnostics;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Shared semantic-diff-and-persist step used by both the full-rebuild
-/// (<see cref="IndexRunner"/>) and incremental (<see cref="IncrementalIndexer"/>) pipelines.
-/// Only the block itself is shared — each pipeline keeps its own phase order and decides
-/// when to call this.
+///     Shared semantic-diff-and-persist step used by both the full-rebuild
+///     (<see cref="IndexRunner" />) and incremental (<see cref="IncrementalIndexer" />) pipelines.
+///     Only the block itself is shared — each pipeline keeps its own phase order and decides
+///     when to call this.
 /// </summary>
 internal static class SemanticDiffStep
 {

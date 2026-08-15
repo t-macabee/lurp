@@ -65,17 +65,16 @@ internal sealed class AnnotationStore
                 ORDER BY annotation_id;
             ";
         }
+
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var results = new List<AnnotationRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
-            results.Add(new AnnotationRecord(symbolId: reader.GetString(0),
-                kind: reader.GetString(1),
-                value: reader.GetString(2),
-                documentPath: reader.IsDBNull(3) ? null : reader.GetString(3)));
-        }
+            results.Add(new AnnotationRecord(reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
         return results;
     }
 
@@ -94,9 +93,9 @@ internal sealed class AnnotationStore
     }
 
     /// <summary>
-    /// Deletes annotations produced by walks anchored to the given documents.
-    /// Rows with a NULL <c>document_path</c> (user-authored annotations) are
-    /// never matched and survive untouched.
+    ///     Deletes annotations produced by walks anchored to the given documents.
+    ///     Rows with a NULL <c>document_path</c> (user-authored annotations) are
+    ///     never matched and survive untouched.
     /// </summary>
     public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
@@ -115,7 +114,7 @@ internal sealed class AnnotationStore
                   AND document_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
             ";
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            int i = 0;
+            var i = 0;
             foreach (var path in pathList)
                 command.Parameters.AddWithValue($"@p{i++}", path);
             command.ExecuteNonQuery();

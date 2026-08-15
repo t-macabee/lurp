@@ -48,11 +48,10 @@ internal static class CompilationHelper
                 StartLine = startLine,
                 StartColumn = startColumn,
                 EndLine = endLine,
-                EndColumn = endColumn,
+                EndColumn = endColumn
             });
         }
 
         return results;
     }
 }
-

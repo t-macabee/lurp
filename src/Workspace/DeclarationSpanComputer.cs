@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using System.Text;
 
 namespace Lurp.Workspace;
@@ -23,18 +25,6 @@ internal static class DeclarationSpanComputer
 
     private static DeclarationSpan ComputeNameSpan(SyntaxNode node, string sourceText, Encoding encoding, DeclarationSpan full)
     {
-        static SyntaxToken? GetIdentifier(SyntaxNode n) => n switch
-        {
-            BaseTypeDeclarationSyntax t => t.Identifier,
-            MethodDeclarationSyntax m => m.Identifier,
-            ConstructorDeclarationSyntax c => c.Identifier,
-            PropertyDeclarationSyntax p => p.Identifier,
-            EventDeclarationSyntax e => e.Identifier,
-            VariableDeclaratorSyntax v => v.Identifier,
-            EnumMemberDeclarationSyntax em => em.Identifier,
-            _ => null
-        };
-
         var idToken = GetIdentifier(node);
         if (idToken != null)
         {
@@ -43,7 +33,7 @@ internal static class DeclarationSpanComputer
             return new DeclarationSpan(idStart, idEnd);
         }
 
-        var tokens = node.ChildTokens().Where(t => t.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IdentifierToken) || t.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.GlobalKeyword)).ToArray();
+        var tokens = node.ChildTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken) || t.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
         if (tokens.Length > 0)
         {
             var firstId = tokens[0];
@@ -52,9 +42,24 @@ internal static class DeclarationSpanComputer
         }
 
         return full;
+
+        static SyntaxToken? GetIdentifier(SyntaxNode n)
+        {
+            return n switch
+            {
+                BaseTypeDeclarationSyntax t => t.Identifier,
+                MethodDeclarationSyntax m => m.Identifier,
+                ConstructorDeclarationSyntax c => c.Identifier,
+                PropertyDeclarationSyntax p => p.Identifier,
+                EventDeclarationSyntax e => e.Identifier,
+                VariableDeclaratorSyntax v => v.Identifier,
+                EnumMemberDeclarationSyntax em => em.Identifier,
+                _ => null
+            };
+        }
     }
 
-    private static (DeclarationSpan Body, int SignatureCharEnd) ComputeBodyAndSignatureEnd(SyntaxNode node, string sourceText, Encoding encoding, Microsoft.CodeAnalysis.Text.TextSpan fullCharSpan)
+    private static (DeclarationSpan Body, int SignatureCharEnd) ComputeBodyAndSignatureEnd(SyntaxNode node, string sourceText, Encoding encoding, TextSpan fullCharSpan)
     {
         if (node is MethodDeclarationSyntax method && method.Body != null)
             return (SpanFromCharSpan(sourceText, method.Body.Span, encoding), method.Body.SpanStart);
@@ -62,10 +67,8 @@ internal static class DeclarationSpanComputer
         if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
             return (SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding), methodExpr.ExpressionBody.SpanStart);
 
-        if (node is MethodDeclarationSyntax { Body: null, ExpressionBody: null })
-            return (new DeclarationSpan(null, null), fullCharSpan.End);
-
-        if (node is PropertyDeclarationSyntax { AccessorList: not null })
+        if (node is MethodDeclarationSyntax { Body: null, ExpressionBody: null }
+            || node is PropertyDeclarationSyntax { AccessorList: not null })
             return (new DeclarationSpan(null, null), fullCharSpan.End);
 
         if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
@@ -73,7 +76,7 @@ internal static class DeclarationSpanComputer
 
         if (node is BaseTypeDeclarationSyntax typeDecl)
         {
-            if (typeDecl.OpenBraceToken.IsMissing || typeDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+            if (typeDecl.OpenBraceToken.IsMissing || typeDecl.OpenBraceToken.IsKind(SyntaxKind.None))
                 return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, typeDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, typeDecl.CloseBraceToken.Span.End, encoding));
@@ -82,7 +85,7 @@ internal static class DeclarationSpanComputer
 
         if (node is EnumDeclarationSyntax enumDecl)
         {
-            if (enumDecl.OpenBraceToken.IsMissing || enumDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+            if (enumDecl.OpenBraceToken.IsMissing || enumDecl.OpenBraceToken.IsKind(SyntaxKind.None))
                 return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, enumDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, enumDecl.CloseBraceToken.Span.End, encoding));
@@ -91,7 +94,7 @@ internal static class DeclarationSpanComputer
 
         if (node is NamespaceDeclarationSyntax nsDecl)
         {
-            if (nsDecl.OpenBraceToken.IsMissing || nsDecl.OpenBraceToken.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None))
+            if (nsDecl.OpenBraceToken.IsMissing || nsDecl.OpenBraceToken.IsKind(SyntaxKind.None))
                 return (new DeclarationSpan(null, null), fullCharSpan.End);
             var body = new DeclarationSpan(CharOffsetToByteOffset(sourceText, nsDecl.OpenBraceToken.SpanStart, encoding),
                 CharOffsetToByteOffset(sourceText, nsDecl.CloseBraceToken.Span.End, encoding));
@@ -101,7 +104,7 @@ internal static class DeclarationSpanComputer
         return (new DeclarationSpan(null, null), fullCharSpan.End);
     }
 
-    private static DeclarationSpan SpanFromCharSpan(string sourceText, Microsoft.CodeAnalysis.Text.TextSpan charSpan, Encoding encoding)
+    private static DeclarationSpan SpanFromCharSpan(string sourceText, TextSpan charSpan, Encoding encoding)
     {
         return new DeclarationSpan(CharOffsetToByteOffset(sourceText, charSpan.Start, encoding),
             CharOffsetToByteOffset(sourceText, charSpan.End, encoding));
@@ -121,11 +124,9 @@ internal static class DeclarationSpanComputer
     {
         return encodingName?.ToLowerInvariant() switch
         {
-            "utf-8" => Encoding.UTF8,
-            "utf-8-bom" => Encoding.UTF8,
             "utf-16-le" => Encoding.Unicode,
             "utf-16-be" => Encoding.BigEndianUnicode,
-            _ => Encoding.UTF8,
+            _ => Encoding.UTF8
         };
     }
 }

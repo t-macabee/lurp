@@ -34,7 +34,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
             foreach (var member in type.GetMembers())
             {
-                if (member is not IMethodSymbol method || method.MethodKind != MethodKind.Ordinary)
+                if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method)
                     continue;
 
                 ProcessControllerAction(method, controllerId, ctx);
@@ -43,8 +43,6 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
         return edges;
     }
-
-    private readonly record struct EdgeLocation(string? Path, int? StartLine, int? StartColumn, int? EndLine, int? EndColumn, bool IsGenerated);
 
     private void ProcessControllerAction(IMethodSymbol method, string controllerId, ExtractionContext ctx)
     {
@@ -88,11 +86,11 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 SourceEndLine = loc.EndLine,
                 SourceEndColumn = loc.EndColumn,
                 IsCrossGenerated = loc.IsGenerated,
-                SourceNodeKind = GraphNodeKind.Route,
+                SourceNodeKind = GraphNodeKind.Route
             });
     }
 
-    private void EmitReturnTypeEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    private static void EmitReturnTypeEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
     {
         if (method.ReturnsVoid || method.ReturnType == null)
             return;
@@ -106,7 +104,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             ctx.Edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), ctx.SnapshotId, loc));
     }
 
-    private void EmitFromServicesEdges(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    private static void EmitFromServicesEdges(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
     {
         foreach (var param in method.Parameters)
         {
@@ -148,16 +146,15 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
         var classRoute = controller.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route");
 
-        if (classRoute?.ConstructorArguments.Length > 0 && classRoute.ConstructorArguments[0].Value is string classTemplate)
-        {
-            parts.Add(classTemplate.TrimStart('/'));
-        }
+        if (classRoute?.ConstructorArguments.Length > 0 && classRoute.ConstructorArguments[0].Value is string classTemplate) parts.Add(classTemplate.TrimStart('/'));
 
-        var methodRoute = action.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route" or "HttpGetAttribute" or "HttpGet" or "HttpPostAttribute" or "HttpPost" or "HttpPutAttribute" or "HttpPut" or "HttpDeleteAttribute" or "HttpDelete" or "HttpPatchAttribute" or "HttpPatch");
+        var methodRoute = action.GetAttributes().FirstOrDefault(a =>
+            a.AttributeClass?.Name is "RouteAttribute" or "Route" or "HttpGetAttribute" or "HttpGet" or "HttpPostAttribute" or "HttpPost" or "HttpPutAttribute" or "HttpPut" or "HttpDeleteAttribute" or "HttpDelete" or "HttpPatchAttribute"
+                or "HttpPatch");
 
         if (methodRoute?.ConstructorArguments.Length > 0 && methodRoute.ConstructorArguments[0].Value is string methodTemplate)
         {
-            if (methodTemplate.StartsWith("/"))
+            if (methodTemplate.StartsWith('/'))
                 return methodTemplate.TrimStart('/');
 
             parts.Add(methodTemplate);
@@ -181,7 +178,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             SourceStartColumn = loc.StartColumn,
             SourceEndLine = loc.EndLine,
             SourceEndColumn = loc.EndColumn,
-            IsCrossGenerated = loc.IsGenerated,
+            IsCrossGenerated = loc.IsGenerated
         };
     }
+
+    private readonly record struct EdgeLocation(string? Path, int? StartLine, int? StartColumn, int? EndLine, int? EndColumn, bool IsGenerated);
 }

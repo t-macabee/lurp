@@ -25,7 +25,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
                       SELECT DISTINCT document_version_id FROM snapshot_documents
                   );
             ";
-            int i = 0;
+            var i = 0;
             foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
             command.ExecuteNonQuery();
@@ -53,7 +53,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
               AND d.document_version_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        int i = 0;
+        var i = 0;
         foreach (var id in idList)
             command.Parameters.AddWithValue($"@p{i++}", id);
         var results = new List<string>();
@@ -69,11 +69,11 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         if (docVersionId == null || lineStarts == null || lineStarts.Length == 0)
             return null;
 
-        int lineIndex = Math.Max(0, line - 1);
+        var lineIndex = Math.Max(0, line - 1);
         if (lineIndex >= lineStarts.Length)
             return null;
 
-        int byteOffset = lineStarts[lineIndex];
+        var byteOffset = lineStarts[lineIndex];
 
         return FindSymbolAtOffset(docVersionId, byteOffset, includeGenerated);
     }
@@ -130,12 +130,13 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         int lo = 0, hi = lineStarts.Length - 1;
         while (lo < hi)
         {
-            int mid = (lo + hi + 1) / 2;
+            var mid = (lo + hi + 1) / 2;
             if (lineStarts[mid] <= byteOffset)
                 lo = mid;
             else
                 hi = mid - 1;
         }
+
         return lo;
     }
 
@@ -182,10 +183,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
               AND d.full_end > @byteOffset
         ";
 
-        if (!includeGenerated)
-        {
-            findCmd.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
-        }
+        if (!includeGenerated) findCmd.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
 
         findCmd.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
 

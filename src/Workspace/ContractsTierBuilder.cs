@@ -3,27 +3,27 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Surfaces the anchor's contracts: base types, implemented interfaces, and
-/// overridden members. Member-level contract edges (Overrides) are reached
-/// through the effective anchor scope, so a type anchor surfaces the same
-/// contracts its members carry. Targets declared outside the snapshot (e.g.
-/// framework base types from referenced assemblies) are surfaced as items
-/// derived from the persisted edge instead of being dropped, so an external
-/// contract is never reported as absent; the inclusion reason marks them as
-/// external.
+///     Surfaces the anchor's contracts: base types, implemented interfaces, and
+///     overridden members. Member-level contract edges (Overrides) are reached
+///     through the effective anchor scope, so a type anchor surfaces the same
+///     contracts its members carry. Targets declared outside the snapshot (e.g.
+///     framework base types from referenced assemblies) are surfaced as items
+///     derived from the persisted edge instead of being dropped, so an external
+///     contract is never reported as absent; the inclusion reason marks them as
+///     external.
 /// </summary>
 internal sealed class ContractsTierBuilder(ContextTierContext context) : IContextTierBuilder
 {
-    string IContextTierBuilder.Name => "contracts";
-
-    string IContextTierBuilder.InclusionReason => "Compiler-resolved contracts implemented or overridden by the anchor.";
-
     private static readonly HashSet<string> _allowedKinds =
     [
         EdgeKind.Inherits.ToString(),
         EdgeKind.Implements.ToString(),
-        EdgeKind.Overrides.ToString(),
+        EdgeKind.Overrides.ToString()
     ];
+
+    string IContextTierBuilder.Name => "contracts";
+
+    string IContextTierBuilder.InclusionReason => "Compiler-resolved contracts implemented or overridden by the anchor.";
 
     List<CapsuleItem> IContextTierBuilder.Build()
     {
@@ -31,7 +31,6 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
-        {
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
                 if (!_allowedKinds.Contains(edge.Kind))
@@ -56,7 +55,6 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
                 if (external != null)
                     results.Add(external);
             }
-        }
 
         return results;
     }
@@ -69,14 +67,14 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
             return null;
 
         return new CapsuleItem(
-            symbolId: edge.TargetSymbolId,
-            kind: kind,
-            fullyQualifiedName: symbolId.DocCommentId[(symbolId.DocCommentId.IndexOf(':') + 1)..],
-            provenance: edge.Provenance,
-            edgeKind: edge.Kind,
-            source: null,
-            location: null,
-            inclusionReason: "External contract: base type, interface, or overridden member declared outside this snapshot.");
+            edge.TargetSymbolId,
+            kind,
+            symbolId.DocCommentId[(symbolId.DocCommentId.IndexOf(':') + 1)..],
+            edge.Provenance,
+            edge.Kind,
+            null,
+            null,
+            "External contract: base type, interface, or overridden member declared outside this snapshot.");
     }
 
     private static string? ExternalSymbolKind(string docCommentId)
@@ -92,7 +90,7 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
             'F' => nameof(IndexedSymbolKind.Field),
             'E' => nameof(IndexedSymbolKind.Event),
             'N' => nameof(IndexedSymbolKind.Namespace),
-            _ => null,
+            _ => null
         };
     }
 }

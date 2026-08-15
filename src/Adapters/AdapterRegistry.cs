@@ -9,7 +9,7 @@ internal static class AdapterRegistry
         new MediatRAdapter(),
         new EfCoreAdapter(),
         new SerializationAdapter(),
-        new TestAdapter(),
+        new TestAdapter()
     ];
 
     public static IFrameworkAdapter[] GetAdapters(IReadOnlySet<string>? skipAdapters = null)

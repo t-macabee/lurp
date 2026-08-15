@@ -15,7 +15,7 @@ internal sealed class SearchSourceStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    /// <inheritdoc cref="ISearchStore.SearchSource"/>
+    /// <inheritdoc cref="ISearchStore.SearchSource" />
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -40,7 +40,6 @@ internal sealed class SearchSourceStore
         ";
 
         if (!includeGenerated)
-        {
             command.CommandText += @"
                   AND NOT EXISTS (
                       SELECT 1
@@ -48,7 +47,6 @@ internal sealed class SearchSourceStore
                       WHERE dec.document_version_id = source_fts.document_version_id
                         AND dec.is_generated = 1
                   )";
-        }
 
         command.CommandText += @"
             )
@@ -69,10 +67,8 @@ internal sealed class SearchSourceStore
         var results = new List<SourceSearchResult>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
-            results.Add(new SourceSearchResult(documentPath: reader.GetString(0),
-                snippet: reader.IsDBNull(1) ? "" : reader.GetString(1)));
-        }
+            results.Add(new SourceSearchResult(reader.GetString(0),
+                reader.IsDBNull(1) ? "" : reader.GetString(1)));
 
         // Architecture §10 "identifier fragments" contract: FTS5 unicode61 index
         // matches whole tokens only, missing camelCase substrings. When FTS5
@@ -92,14 +88,12 @@ internal sealed class SearchSourceStore
                   AND dv.content IS NOT NULL
                   AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'";
             if (!includeGenerated)
-            {
                 fbCmd.CommandText += @"
                   AND NOT EXISTS (
                       SELECT 1 FROM declarations dec
                       WHERE dec.document_version_id = dv.document_version_id
                         AND dec.is_generated = 1
                   )";
-            }
             fbCmd.CommandText += @"
                 ORDER BY d.relative_path
                 LIMIT @remaining";
@@ -116,7 +110,7 @@ internal sealed class SearchSourceStore
                     continue;
                 var content = fbReader.IsDBNull(1) ? "" : fbReader.GetString(1);
                 var snippet = TruncateSnippet(content, query);
-                results.Add(new SourceSearchResult(documentPath: docPath, snippet: snippet));
+                results.Add(new SourceSearchResult(docPath, snippet));
             }
         }
 

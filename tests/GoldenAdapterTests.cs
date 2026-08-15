@@ -1,14 +1,15 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
 /// <summary>
-/// Phase 1 adapter golden tests. Framework-based edges are asserted against a
-/// persisted snapshot (Pattern A) except the Serialization edge, whose target is
-/// an external type (System.String) and is therefore dropped by the snapshot
-/// orphan filter — that one is asserted at extractor level (Pattern B).
+///     Phase 1 adapter golden tests. Framework-based edges are asserted against a
+///     persisted snapshot (Pattern A) except the Serialization edge, whose target is
+///     an external type (System.String) and is therefore dropped by the snapshot
+///     orphan filter — that one is asserted at extractor level (Pattern B).
 /// </summary>
 public sealed class GoldenAdapterTests : IntegrationTestBase
 {
@@ -23,22 +24,22 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["ItemsController.cs"] = """
-                    using Microsoft.AspNetCore.Mvc;
+                                         using Microsoft.AspNetCore.Mvc;
 
-                    namespace App;
+                                         namespace App;
 
-                    [Route("api/[controller]")]
-                    public class ItemsController : ControllerBase
-                    {
-                        [HttpGet("{id}")]
-                        public Item Get(int id) => new Item();
-                    }
+                                         [Route("api/[controller]")]
+                                         public class ItemsController : ControllerBase
+                                         {
+                                             [HttpGet("{id}")]
+                                             public Item Get(int id) => new Item();
+                                         }
 
-                    public class Item
-                    {
-                        public int Id { get; set; }
-                    }
-                    """,
+                                         public class Item
+                                         {
+                                             public int Id { get; set; }
+                                         }
+                                         """
             },
             frameworkReferences: [AspNetCoreFramework]);
 
@@ -53,7 +54,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
-        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}"))
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
             using var command = connection.CreateCommand();
@@ -89,21 +90,21 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Registration.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
+                                      using Microsoft.Extensions.DependencyInjection;
 
-                    namespace App;
+                                      namespace App;
 
-                    public interface IService { }
-                    public class Service : IService { }
+                                      public interface IService { }
+                                      public class Service : IService { }
 
-                    public static class Registration
-                    {
-                        public static void Configure(IServiceCollection services)
-                        {
-                            services.AddScoped<IService, Service>();
-                        }
-                    }
-                    """,
+                                      public static class Registration
+                                      {
+                                          public static void Configure(IServiceCollection services)
+                                          {
+                                              services.AddScoped<IService, Service>();
+                                          }
+                                      }
+                                      """
             },
             frameworkReferences: [AspNetCoreFramework]);
 
@@ -127,13 +128,13 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// Regression test for a bug where <c>ResolveSourceId</c> only walked up to a
-    /// <c>MethodDeclarationSyntax</c>/<c>TypeDeclarationSyntax</c> ancestor, so any
-    /// registration call sitting directly in top-level statements (the .NET 6+
-    /// default <c>Program.cs</c> template) had neither ancestor and the edge was
-    /// silently dropped. The source symbol here is the compiler-synthesized
-    /// top-level-statements entry point, which is never itself a declared snapshot
-    /// symbol, so it's asserted by document/line rather than via ResolveSymbolId.
+    ///     Regression test for a bug where <c>ResolveSourceId</c> only walked up to a
+    ///     <c>MethodDeclarationSyntax</c>/<c>TypeDeclarationSyntax</c> ancestor, so any
+    ///     registration call sitting directly in top-level statements (the .NET 6+
+    ///     default <c>Program.cs</c> template) had neither ancestor and the edge was
+    ///     silently dropped. The source symbol here is the compiler-synthesized
+    ///     top-level-statements entry point, which is never itself a declared snapshot
+    ///     symbol, so it's asserted by document/line rather than via ResolveSymbolId.
     /// </summary>
     [SkippableFact]
     public async Task DependencyInjectionAdapter_TopLevelStatementAddScopedProducesRegisters()
@@ -144,18 +145,18 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Service.cs"] = """
-                    namespace App;
+                                 namespace App;
 
-                    public interface IService { }
-                    public class Service : IService { }
-                    """,
+                                 public interface IService { }
+                                 public class Service : IService { }
+                                 """,
                 ["Program.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
-                    using App;
+                                 using Microsoft.Extensions.DependencyInjection;
+                                 using App;
 
-                    IServiceCollection services = null!;
-                    services.AddScoped<IService, Service>();
-                    """,
+                                 IServiceCollection services = null!;
+                                 services.AddScoped<IService, Service>();
+                                 """
             },
             frameworkReferences: [AspNetCoreFramework],
             msbuildProperties: new Dictionary<string, string> { ["OutputType"] = "Exe" });
@@ -193,29 +194,29 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Registration.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
-                    using Scrutor;
+                                      using Microsoft.Extensions.DependencyInjection;
+                                      using Scrutor;
 
-                    namespace App;
+                                      namespace App;
 
-                    public class App
-                    {
-                    }
+                                      public class App
+                                      {
+                                      }
 
-                    public static class Registration
-                    {
-                        public static void Configure(IServiceCollection services)
-                        {
-                            services.Scan(scan => scan
-                                .FromAssembliesOf<App>()
-                                .AddClasses()
-                                .AsImplementedInterfaces()
-                                .WithScopedLifetime());
-                        }
-                    }
-                    """,
+                                      public static class Registration
+                                      {
+                                          public static void Configure(IServiceCollection services)
+                                          {
+                                              services.Scan(scan => scan
+                                                  .FromAssembliesOf<App>()
+                                                  .AddClasses()
+                                                  .AsImplementedInterfaces()
+                                                  .WithScopedLifetime());
+                                          }
+                                      }
+                                      """
             },
-            packageReferences: ["Scrutor@4.2.2"]);
+            ["Scrutor@4.2.2"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -228,7 +229,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
-        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}"))
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
             using var command = connection.CreateCommand();
@@ -248,19 +249,19 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Ping.cs"] = """
-                    using MediatR;
+                              using MediatR;
 
-                    namespace App;
+                              namespace App;
 
-                    public class Ping : IRequest<string> { }
+                              public class Ping : IRequest<string> { }
 
-                    public class PingHandler : IRequestHandler<Ping, string>
-                    {
-                        public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult("pong");
-                    }
-                    """,
+                              public class PingHandler : IRequestHandler<Ping, string>
+                              {
+                                  public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult("pong");
+                              }
+                              """
             },
-            packageReferences: ["MediatR@12.4.1"]);
+            ["MediatR@12.4.1"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -281,23 +282,23 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Blogging.cs"] = """
-                    using Microsoft.EntityFrameworkCore;
+                                  using Microsoft.EntityFrameworkCore;
 
-                    namespace App;
+                                  namespace App;
 
-                    public class Blog
-                    {
-                        public int Id { get; set; }
-                        public string? Name { get; set; }
-                    }
+                                  public class Blog
+                                  {
+                                      public int Id { get; set; }
+                                      public string? Name { get; set; }
+                                  }
 
-                    public class AppDbContext : DbContext
-                    {
-                        public DbSet<Blog> Blogs { get; set; } = null!;
-                    }
-                    """,
+                                  public class AppDbContext : DbContext
+                                  {
+                                      public DbSet<Blog> Blogs { get; set; } = null!;
+                                  }
+                                  """
             },
-            packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+            ["Microsoft.EntityFrameworkCore@10.0.1"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -318,28 +319,28 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Blogging.cs"] = """
-                    using Microsoft.EntityFrameworkCore;
+                                  using Microsoft.EntityFrameworkCore;
 
-                    namespace App;
+                                  namespace App;
 
-                    public class Blog
-                    {
-                        public int Id { get; set; }
-                        public bool IsDeleted { get; set; }
-                    }
+                                  public class Blog
+                                  {
+                                      public int Id { get; set; }
+                                      public bool IsDeleted { get; set; }
+                                  }
 
-                    public class AppDbContext : DbContext
-                    {
-                        public DbSet<Blog> Blogs { get; set; } = null!;
+                                  public class AppDbContext : DbContext
+                                  {
+                                      public DbSet<Blog> Blogs { get; set; } = null!;
 
-                        protected override void OnModelCreating(ModelBuilder modelBuilder)
-                        {
-                            modelBuilder.Entity<Blog>().HasQueryFilter(b => !b.IsDeleted);
-                        }
-                    }
-                    """,
+                                      protected override void OnModelCreating(ModelBuilder modelBuilder)
+                                      {
+                                          modelBuilder.Entity<Blog>().HasQueryFilter(b => !b.IsDeleted);
+                                      }
+                                  }
+                                  """
             },
-            packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+            ["Microsoft.EntityFrameworkCore@10.0.1"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -373,16 +374,16 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
                 new Dictionary<string, string>
                 {
                     ["Product.cs"] = """
-                        using System.Text.Json.Serialization;
+                                     using System.Text.Json.Serialization;
 
-                        namespace App;
+                                     namespace App;
 
-                        public class Product
-                        {
-                            [JsonPropertyName("product_name")]
-                            public string Name { get; set; } = "";
-                        }
-                        """,
+                                     public class Product
+                                     {
+                                         [JsonPropertyName("product_name")]
+                                         public string Name { get; set; } = "";
+                                     }
+                                     """
                 },
                 runAdapters: true);
 
@@ -408,30 +409,30 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = """
-                    namespace App;
+                                    namespace App;
 
-                    public class Calculator
-                    {
-                        public int Add(int a, int b) => a + b;
-                    }
-                    """,
+                                    public class Calculator
+                                    {
+                                        public int Add(int a, int b) => a + b;
+                                    }
+                                    """
             });
 
         CreateProject("App.Tests",
             new Dictionary<string, string>
             {
                 ["CalculatorTests.cs"] = """
-                    using Xunit;
+                                         using Xunit;
 
-                    public class CalculatorTests
-                    {
-                        [Fact]
-                        public void Add()
-                        {
-                            new App.Calculator().Add(1, 2);
-                        }
-                    }
-                    """,
+                                         public class CalculatorTests
+                                         {
+                                             [Fact]
+                                             public void Add()
+                                             {
+                                                 new App.Calculator().Add(1, 2);
+                                             }
+                                         }
+                                         """
             },
             projectReferences: ["App"],
             packageReferences: ["xunit@2.9.3"]);
@@ -448,10 +449,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     // ── R5 characterization tests ──────────────────────────────────────
 
     /// <summary>
-    /// Characterization (R5): a non-conventional DI registration
-    /// (<c>AddHostedService&lt;T&gt;</c>) produces <see cref="Provenance.RuntimeUnknown"/>
-    /// edges, NOT <see cref="Provenance.FrameworkDerived"/>. The adapter detects the
-    /// registration but declares the runtime semantics unmodeled.
+    ///     Characterization (R5): a non-conventional DI registration
+    ///     (<c>AddHostedService&lt;T&gt;</c>) produces <see cref="Provenance.RuntimeUnknown" />
+    ///     edges, NOT <see cref="Provenance.FrameworkDerived" />. The adapter detects the
+    ///     registration but declares the runtime semantics unmodeled.
     /// </summary>
     [SkippableFact]
     public async Task DIAdapter_AddHostedService_ProducesRuntimeUnknown()
@@ -462,25 +463,25 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Registration.cs"] = """
-                    using Microsoft.Extensions.DependencyInjection;
-                    using Microsoft.Extensions.Hosting;
+                                      using Microsoft.Extensions.DependencyInjection;
+                                      using Microsoft.Extensions.Hosting;
 
-                    namespace App;
+                                      namespace App;
 
-                    public class MyHostedService : IHostedService
-                    {
-                        public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
-                        public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
-                    }
+                                      public class MyHostedService : IHostedService
+                                      {
+                                          public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+                                          public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+                                      }
 
-                    public static class Registration
-                    {
-                        public static void Configure(IServiceCollection services)
-                        {
-                            services.AddHostedService<MyHostedService>();
-                        }
-                    }
-                    """,
+                                      public static class Registration
+                                      {
+                                          public static void Configure(IServiceCollection services)
+                                          {
+                                              services.AddHostedService<MyHostedService>();
+                                          }
+                                      }
+                                      """
             },
             frameworkReferences: [AspNetCoreFramework]);
 
@@ -498,10 +499,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// Characterization (R5): MediatR adapter only recognizes
-    /// <c>IRequestHandler</c> and <c>INotificationHandler</c>. Other handler
-    /// patterns (stream handlers) are silently skipped — no edge is emitted,
-    /// and no false "proved" claim is made.
+    ///     Characterization (R5): MediatR adapter only recognizes
+    ///     <c>IRequestHandler</c> and <c>INotificationHandler</c>. Other handler
+    ///     patterns (stream handlers) are silently skipped — no edge is emitted,
+    ///     and no false "proved" claim is made.
     /// </summary>
     [SkippableFact]
     public async Task MediatRAdapter_StreamHandler_IsSilentlySkipped()
@@ -512,20 +513,20 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["StreamPing.cs"] = """
-                    using MediatR;
+                                    using MediatR;
 
-                    namespace App;
+                                    namespace App;
 
-                    public class StreamPing : IStreamRequest<string> { }
+                                    public class StreamPing : IStreamRequest<string> { }
 
-                    public class StreamPingHandler : IStreamRequestHandler<StreamPing, string>
-                    {
-                        public IAsyncEnumerable<string> Handle(StreamPing request, CancellationToken ct)
-                            => AsyncEnumerable.Empty<string>();
-                    }
-                    """,
+                                    public class StreamPingHandler : IStreamRequestHandler<StreamPing, string>
+                                    {
+                                        public IAsyncEnumerable<string> Handle(StreamPing request, CancellationToken ct)
+                                            => AsyncEnumerable.Empty<string>();
+                                    }
+                                    """
             },
-            packageReferences: ["MediatR@12.4.1"]);
+            ["MediatR@12.4.1"]);
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -547,10 +548,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// Characterization (R5): <see cref="DeclaredBoundaries.Known"/> registry
-    /// contains exactly the expected entries. This is a lightweight staleness
-    /// check — if a new boundary is added or removed, this test forces a
-    /// conscious update.
+    ///     Characterization (R5): <see cref="DeclaredBoundaries.Known" /> registry
+    ///     contains exactly the expected entries. This is a lightweight staleness
+    ///     check — if a new boundary is added or removed, this test forces a
+    ///     conscious update.
     /// </summary>
     [Fact]
     public void DeclaredBoundaries_RegistryContainsExpectedEntries()
@@ -566,7 +567,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             "mediatr_pipeline_behavior",
             "mediatr_pre_post_processor",
             "mediatr_stream_handler",
-            "shape_similarity",
+            "shape_similarity"
         };
 
         var actualIds = DeclaredBoundaries.Known.Select(e => e.Id).OrderBy(id => id).ToList();

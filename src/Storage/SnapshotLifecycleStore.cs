@@ -5,8 +5,6 @@ namespace Lurp.Storage;
 
 internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 {
-    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-
     private const string WorkspaceUpsertSql = @"
             INSERT INTO workspaces (workspace_id, git_root, solution_path)
             VALUES (@workspaceId, @gitRoot, @solutionPath)
@@ -14,6 +12,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                 git_root = excluded.git_root,
                 solution_path = excluded.solution_path;
         ";
+
+    private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
     {
@@ -69,17 +69,17 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@builtAtUtc", snapshot.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("@sdkVersion", snapshot.SdkVersion ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@compilerVersion", snapshot.CompilerVersion ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@databaseSchemaVersion", (object)snapshot.DatabaseSchemaVersion);
-        command.Parameters.AddWithValue("@outputSchemaVersion", (object)snapshot.OutputSchemaVersion);
-        command.Parameters.AddWithValue("@extractorVersion", (object?)snapshot.ExtractorVersion ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@toolVersion", (object?)snapshot.ToolVersion ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@databaseSchemaVersion", snapshot.DatabaseSchemaVersion);
+        command.Parameters.AddWithValue("@outputSchemaVersion", snapshot.OutputSchemaVersion);
+        command.Parameters.AddWithValue("@extractorVersion", (object?)snapshot.ExtractorVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue("@toolVersion", (object?)snapshot.ToolVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? DBNull.Value);
         command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", snapshot.SkippedAdapters));
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
         command.ExecuteNonQuery();
     }
 
-    private void InsertProjectGraph(string snapshotId, IReadOnlyList<ProjectRow> projects, SqliteTransaction transaction)
+    private void InsertProjectGraph(string snapshotId, List<ProjectRow> projects, SqliteTransaction transaction)
     {
         if (projects.Count == 0)
             return;
@@ -104,13 +104,12 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             projectCommand.Parameters.Clear();
             projectCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
             projectCommand.Parameters.AddWithValue("@name", project.Name);
-            projectCommand.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? (object)DBNull.Value);
-            projectCommand.Parameters.AddWithValue("@metadataReferenceIdentities", (object?)project.MetadataReferenceIdentitiesJson ?? (object)DBNull.Value);
-            projectCommand.Parameters.AddWithValue("@compilationOptionsFingerprint", (object?)project.CompilationOptionsFingerprint ?? (object)DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@metadataReferenceIdentities", (object?)project.MetadataReferenceIdentitiesJson ?? DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@compilationOptionsFingerprint", (object?)project.CompilationOptionsFingerprint ?? DBNull.Value);
             var projectId = projectCommand.ExecuteScalar();
 
             if (project.References.Count > 0 && projectId != null)
-            {
                 foreach (var reference in project.References)
                 {
                     refCommand.Parameters.Clear();
@@ -118,7 +117,6 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                     refCommand.Parameters.AddWithValue("@referencedProjectName", reference);
                     refCommand.ExecuteNonQuery();
                 }
-            }
         }
     }
 
@@ -160,10 +158,10 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             versionCommand.Parameters.AddWithValue("@documentVersionId", documentVersionId);
             versionCommand.Parameters.AddWithValue("@documentId", doc.DocumentId);
             versionCommand.Parameters.AddWithValue("@contentHash", doc.ContentHash);
-            versionCommand.Parameters.AddWithValue("@content", (object?)(doc.Content) ?? (object)DBNull.Value);
-            versionCommand.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? (object)DBNull.Value : (object)doc.Encoding);
-            versionCommand.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? (object)doc.ByteCount : (object)DBNull.Value);
-            versionCommand.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? (object)DBNull.Value : (object)doc.LineStarts);
+            versionCommand.Parameters.AddWithValue("@content", (object?)doc.Content ?? DBNull.Value);
+            versionCommand.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? DBNull.Value : doc.Encoding);
+            versionCommand.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? doc.ByteCount : DBNull.Value);
+            versionCommand.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? DBNull.Value : doc.LineStarts);
             versionCommand.ExecuteNonQuery();
 
             bindingCommand.Parameters.Clear();
@@ -284,15 +282,15 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
-            SkippedAdapters = row.SkippedAdapters,
+            SkippedAdapters = row.SkippedAdapters
         };
     }
 
     /// <summary>
-    /// Loads the completeness-relevant fields of a snapshot (extractor
-    /// version, skipped adapters, project target frameworks) without the
-    /// expensive per-document read that <see cref="LoadLatestSnapshot"/>
-    /// pays for. <see cref="SnapshotRow.Documents"/> is left empty.
+    ///     Loads the completeness-relevant fields of a snapshot (extractor
+    ///     version, skipped adapters, project target frameworks) without the
+    ///     expensive per-document read that <see cref="LoadLatestSnapshot" />
+    ///     pays for. <see cref="SnapshotRow.Documents" /> is left empty.
     /// </summary>
     internal SnapshotRow? LoadSnapshotMetadata(string snapshotId)
     {
@@ -331,7 +329,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
-            SkippedAdapters = row.SkippedAdapters,
+            SkippedAdapters = row.SkippedAdapters
         };
     }
 
@@ -369,7 +367,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             ExtractorVersion = extractorVersion ?? "",
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
-            SkippedAdapters = skippedAdapters,
+            SkippedAdapters = skippedAdapters
         };
     }
 
@@ -397,7 +395,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                 FilePath = reader.GetString(1),
                 ContentHash = reader.GetString(2),
                 Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                CreatedAtUtc = DateTime.MinValue,
+                CreatedAtUtc = DateTime.MinValue
             });
         }
 
@@ -428,6 +426,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                     refs = [];
                     referencesByProjectId[projectId] = refs;
                 }
+
                 refs.Add(referencedName);
             }
         }
@@ -450,7 +449,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
                     TargetFramework = projectReader.IsDBNull(2) ? "" : projectReader.GetString(2),
                     References = referencesByProjectId.TryGetValue(projectId, out var refs) ? refs : [],
                     MetadataReferenceIdentitiesJson = projectReader.IsDBNull(3) ? null : projectReader.GetString(3),
-                    CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4),
+                    CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4)
                 });
             }
         }
@@ -470,6 +469,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         {
             command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;";
         }
+
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
 
         return command.ExecuteScalar() as string;
@@ -517,10 +517,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 
         var results = new List<string>();
         using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            results.Add(reader.GetString(0));
-        }
+        while (reader.Read()) results.Add(reader.GetString(0));
         return results;
     }
 }

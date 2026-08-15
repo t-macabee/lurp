@@ -15,7 +15,7 @@ internal sealed class SearchIndexMaintenance
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string)"/>
+    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string)" />
     public void BuildSearchIndex(string snapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -61,7 +61,7 @@ internal sealed class SearchIndexMaintenance
         }
     }
 
-    /// <inheritdoc cref="ISearchStore.CopySearchIndexToSnapshot"/>
+    /// <inheritdoc cref="ISearchStore.CopySearchIndexToSnapshot" />
     public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -97,7 +97,7 @@ internal sealed class SearchIndexMaintenance
         }
     }
 
-    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string, HashSet{string}, HashSet{string})"/>
+    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string, HashSet{string}, HashSet{string})" />
     public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
     {
         if (changedDocumentPaths.Count == 0 && changedSymbolIds.Count == 0)
@@ -184,7 +184,7 @@ internal sealed class SearchIndexMaintenance
     private static string BuildPlaceholderList(IEnumerable<string> items, SqliteCommand command, string prefix)
     {
         var placeholders = new List<string>();
-        int i = 0;
+        var i = 0;
         foreach (var item in items)
         {
             var paramName = $"@{prefix}{i}";
@@ -192,6 +192,7 @@ internal sealed class SearchIndexMaintenance
             command.Parameters.AddWithValue(paramName, item);
             i++;
         }
+
         return string.Join(", ", placeholders);
     }
 }

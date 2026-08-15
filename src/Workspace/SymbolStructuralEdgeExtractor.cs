@@ -9,10 +9,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     {
         var edges = new List<EdgeRecord>();
 
-        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
-        {
-            CollectTypeEdges(typeSymbol, edges);
-        }
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace)) CollectTypeEdges(typeSymbol, edges);
 
         return edges;
     }
@@ -22,10 +19,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (context.ScopeDocuments == null)
             return true;
         foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
-        {
             if (context.IsInScope(syntaxRef.SyntaxTree))
                 return true;
-        }
         return false;
     }
 
@@ -47,10 +42,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             context.RecordFilteredExternal(typeSymbol.BaseType, sourceSyntax);
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
-            {
                 edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString(), typeSymbol,
-                    targetNodeKind: IsExternalTarget(typeSymbol.BaseType) ? GraphNodeKind.ExternalType : null));
-            }
+                    IsExternalTarget(typeSymbol.BaseType) ? GraphNodeKind.ExternalType : null));
         }
 
         foreach (var iface in typeSymbol.Interfaces)
@@ -58,20 +51,15 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             context.RecordFilteredExternal(iface, sourceSyntax);
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
-            {
                 edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString(), typeSymbol,
-                    targetNodeKind: IsExternalTarget(iface) ? GraphNodeKind.ExternalType : null));
-            }
+                    IsExternalTarget(iface) ? GraphNodeKind.ExternalType : null));
         }
 
         foreach (var nested in typeSymbol.GetTypeMembers())
         {
             CollectTypeEdges(nested, edges);
             var nestedId = MakeSymbolId(nested);
-            if (nestedId != null)
-            {
-                edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString(), typeSymbol));
-            }
+            if (nestedId != null) edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString(), typeSymbol));
         }
 
         foreach (var member in typeSymbol.GetMembers())
@@ -92,7 +80,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (member is IFieldSymbol { IsImplicitlyDeclared: true })
             return;
 
-        ITypeSymbol? referencedType = member switch
+        var referencedType = member switch
         {
             IMethodSymbol method => method.ReturnType,
             IPropertySymbol prop => prop.Type,
@@ -105,10 +93,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         {
             context.RecordFilteredExternal(namedType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
             var targetId = MakeSymbolId(namedType);
-            if (targetId != null && targetId != sourceSymbolId)
-            {
-                edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString(), member));
-            }
+            if (targetId != null && targetId != sourceSymbolId) edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString(), member));
         }
     }
 
@@ -134,13 +119,15 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             SourceEndLine = loc?.endLine,
             SourceEndColumn = loc?.endColumn,
             IsCrossGenerated = IsGeneratedSymbol(sourceSymbol),
-            TargetNodeKind = targetNodeKind,
+            TargetNodeKind = targetNodeKind
         };
     }
 
     private bool IsExternalTarget(ISymbol target)
-        => target.ContainingAssembly != null
-           && !SymbolEqualityComparer.Default.Equals(target.ContainingAssembly, context.Compilation.Assembly);
+    {
+        return target.ContainingAssembly != null
+               && !SymbolEqualityComparer.Default.Equals(target.ContainingAssembly, context.Compilation.Assembly);
+    }
 
     private bool IsGeneratedSymbol(ISymbol symbol)
     {
@@ -159,10 +146,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         GetSymbolSourceLocation(ISymbol symbol)
     {
         var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
-        if (syntaxRef == null)
-            return null;
-        var syntaxTree = syntaxRef.SyntaxTree;
-        if (syntaxTree == null)
+        var syntaxTree = syntaxRef?.SyntaxTree;
+        if (syntaxRef == null || syntaxTree == null)
             return null;
         var documentId = context.ResolveDocumentId(syntaxTree);
         if (documentId == null)
@@ -172,9 +157,9 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             return null;
         var lineSpan = location.GetLineSpan();
         return (documentId.Value.ToString(),
-                lineSpan.StartLinePosition.Line,
-                lineSpan.StartLinePosition.Character,
-                lineSpan.EndLinePosition.Line,
-                lineSpan.EndLinePosition.Character);
+            lineSpan.StartLinePosition.Line,
+            lineSpan.StartLinePosition.Character,
+            lineSpan.EndLinePosition.Line,
+            lineSpan.EndLinePosition.Character);
     }
 }

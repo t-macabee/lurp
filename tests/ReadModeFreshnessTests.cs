@@ -6,12 +6,12 @@ using System.Text.Json.Nodes;
 namespace Lurp.Tests;
 
 /// <summary>
-/// The audit §9 invariant T1 closes: every read mode signals freshness, and
-/// <c>--require-fresh</c> refuses a stale read. The raw-source modes
-/// (<c>get-source</c>, the five source views of <c>get-symbol</c>) have no JSON
-/// envelope, so their freshness travels on stderr plus the exit code only; the
-/// JSON-envelope modes (<c>navigate</c>, <c>get-symbol --view=metadata</c>)
-/// additionally embed the block in the payload.
+///     The audit §9 invariant T1 closes: every read mode signals freshness, and
+///     <c>--require-fresh</c> refuses a stale read. The raw-source modes
+///     (<c>get-source</c>, the five source views of <c>get-symbol</c>) have no JSON
+///     envelope, so their freshness travels on stderr plus the exit code only; the
+///     JSON-envelope modes (<c>navigate</c>, <c>get-symbol --view=metadata</c>)
+///     additionally embed the block in the payload.
 /// </summary>
 public sealed class ReadModeFreshnessTests : IntegrationTestBase
 {
@@ -20,41 +20,43 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     private const string SymbolFqn = "global::Core.Widget";
 
     private static readonly string OriginalSource = """
-        namespace Core;
+                                                    namespace Core;
 
-        public class Widget
-        {
-            public int Value { get; set; }
+                                                    public class Widget
+                                                    {
+                                                        public int Value { get; set; }
 
-            public void DoWork()
-            {
-            }
-        }
-        """;
+                                                        public void DoWork()
+                                                        {
+                                                        }
+                                                    }
+                                                    """;
 
     private static readonly string MutatedSource = """
-        namespace Core;
+                                                   namespace Core;
 
-        public class Widget
-        {
-            public int Value { get; set; }
+                                                   public class Widget
+                                                   {
+                                                       public int Value { get; set; }
 
-            public void DoWork()
-            {
-                System.Console.WriteLine("mutated");
-            }
-        }
-        """;
+                                                       public void DoWork()
+                                                       {
+                                                           System.Console.WriteLine("mutated");
+                                                       }
+                                                   }
+                                                   """;
 
     private void Seed()
     {
         CreateProject(Project, new Dictionary<string, string> { ["Widget.cs"] = OriginalSource });
     }
 
-    /// <summary>Mutates the fixture file on disk without re-indexing, then pins its
-    /// mtime strictly after the snapshot's build time so the stat-only freshness
-    /// check deterministically reports it as changed regardless of filesystem
-    /// timestamp granularity.</summary>
+    /// <summary>
+    ///     Mutates the fixture file on disk without re-indexing, then pins its
+    ///     mtime strictly after the snapshot's build time so the stat-only freshness
+    ///     check deterministically reports it as changed regardless of filesystem
+    ///     timestamp granularity.
+    /// </summary>
     private void MutateWidget()
     {
         WriteFile(Project, "Widget.cs", MutatedSource);
@@ -72,11 +74,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         return list.ToArray();
     }
 
-    private sealed record RunResult(string Stdout, string Stderr, CliExitException? Failure);
-
-    /// <summary>Runs a handler in-process with stdout/stderr captured. A
-    /// <see cref="CliExitException"/> (the only exit mechanism a handler uses) is
-    /// returned in the result rather than thrown, so tests can assert exit code 2.</summary>
+    /// <summary>
+    ///     Runs a handler in-process with stdout/stderr captured. A
+    ///     <see cref="CliExitException" /> (the only exit mechanism a handler uses) is
+    ///     returned in the result rather than thrown, so tests can assert exit code 2.
+    /// </summary>
     private static RunResult RunCaptured(Action action)
     {
         var stdout = new StringWriter();
@@ -99,6 +101,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
             Console.SetOut(originalOut);
             Console.SetError(originalError);
         }
+
         return new RunResult(stdout.ToString(), stderr.ToString(), failure);
     }
 
@@ -108,9 +111,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         return doc.RootElement.GetProperty("freshness").GetProperty("state").GetString()!;
     }
 
-    /// <summary>The payload minus the <c>freshness</c> block. <c>checked_at_utc</c>
-    /// changes on every call by design, so byte comparison only makes sense for the
-    /// non-freshness fields.</summary>
+    /// <summary>
+    ///     The payload minus the <c>freshness</c> block. <c>checked_at_utc</c>
+    ///     changes on every call by design, so byte comparison only makes sense for the
+    ///     non-freshness fields.
+    /// </summary>
     private static string PayloadWithoutFreshness(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -165,8 +170,6 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var baseline = ReadIndexedDocument(snapshotId);
 
-        string[] Args(bool quiet, bool requireFresh) => HandlerArgs("get-source", [$"--document={Document}"], quiet, requireFresh);
-
         var fresh = RunCaptured(() => GetSourceHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
         Assert.Equal(baseline, fresh.Stdout);
@@ -191,6 +194,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
         Assert.Equal(string.Empty, quietRejected.Stdout);
+
+        string[] Args(bool quiet, bool requireFresh)
+        {
+            return HandlerArgs("get-source", [$"--document={Document}"], quiet, requireFresh);
+        }
     }
 
     [Fact]
@@ -199,8 +207,6 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Seed();
         var snapshotId = await RunFullIndexAsync(DbPath);
         var symbolId = ResolveSymbolId(snapshotId, SymbolFqn);
-
-        string[] Args(bool quiet, bool requireFresh, string view) => HandlerArgs("get-symbol", [$"--symbol={symbolId}", $"--view={view}"], quiet, requireFresh);
 
         var freshMeta = RunCaptured(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
         Assert.Contains("freshness: state=fresh", freshMeta.Stderr);
@@ -230,6 +236,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
         Assert.Equal(string.Empty, quietRejected.Stdout);
+
+        string[] Args(bool quiet, bool requireFresh, string view)
+        {
+            return HandlerArgs("get-symbol", [$"--symbol={symbolId}", $"--view={view}"], quiet, requireFresh);
+        }
     }
 
     [Fact]
@@ -237,8 +248,6 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     {
         Seed();
         await RunFullIndexAsync(DbPath); // freshness is checked against the latest snapshot the handler resolves
-
-        string[] Args(bool quiet, bool requireFresh) => HandlerArgs("navigate", [$"--file={Document}", "--line=3"], quiet, requireFresh);
 
         var fresh = RunCaptured(() => NavigateHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
@@ -261,5 +270,12 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
         Assert.Equal(string.Empty, quietRejected.Stdout);
+
+        string[] Args(bool quiet, bool requireFresh)
+        {
+            return HandlerArgs("navigate", [$"--file={Document}", "--line=3"], quiet, requireFresh);
+        }
     }
+
+    private sealed record RunResult(string Stdout, string Stderr, CliExitException? Failure);
 }

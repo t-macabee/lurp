@@ -5,12 +5,12 @@ namespace Lurp.Storage;
 
 public sealed class SemanticDiffStore : ISemanticDiffStore
 {
-    private readonly SqliteConnection _connection;
-
     private const string SemanticChangesSelect = @"
             SELECT change_id, from_snapshot_id, to_snapshot_id,
                    change_type, symbol_id, detail_json, created_at_utc
             FROM semantic_changes";
+
+    private readonly SqliteConnection _connection;
 
     public SemanticDiffStore(SqliteConnection connection)
     {
@@ -88,7 +88,6 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         var results = new List<SemanticChange>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             results.Add(new SemanticChange
             {
                 ChangeId = reader.GetString(0),
@@ -100,7 +99,6 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
                 CreatedAtUtc = DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind)
             });
-        }
         return results;
     }
 }

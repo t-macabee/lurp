@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -35,9 +34,7 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                     if (symbolInfo.Symbol == null &&
                         (symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length > 0 ||
                          semanticModel.GetDiagnostics(access.Span).Any(static d => d.Severity == DiagnosticSeverity.Error)))
-                    {
                         context.RecordUnresolvedBinding(symbolInfo, access, semanticModel);
-                    }
                     continue;
                 }
 
@@ -48,7 +45,7 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                 if (memberId == null)
                     continue;
 
-                bool isWrite = access.IsWriteContext();
+                var isWrite = access.IsWriteContext();
                 var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
                 var seenSet = isWrite ? seenWrites : seenReads;
 
@@ -63,5 +60,4 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
 
         return edges;
     }
-
 }

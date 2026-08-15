@@ -6,6 +6,8 @@ public sealed class SymbolExtractor
 {
     private readonly SymbolExtractionContext _context;
 
+    private readonly Action<string>? _logWarning;
+
     public SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
@@ -34,9 +36,13 @@ public sealed class SymbolExtractor
         _logWarning = logWarning;
     }
 
-    private readonly Action<string>? _logWarning;
+    public List<SymbolDeclaration> ExtractAll()
+    {
+        return new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
+    }
 
-    public List<SymbolDeclaration> ExtractAll() => new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
-
-    public List<EdgeRecord> ExtractEdges() => new SymbolStructuralEdgeExtractor(_context).ExtractEdges();
+    public List<EdgeRecord> ExtractEdges()
+    {
+        return new SymbolStructuralEdgeExtractor(_context).ExtractEdges();
+    }
 }

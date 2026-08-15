@@ -2,113 +2,114 @@
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 
-namespace Lurp.Storage
+namespace Lurp.Storage;
+
+public class MigrationRunner
 {
-    public class MigrationRunner
+    private readonly string _dbPath;
+
+    public MigrationRunner(string dbPath)
     {
-        private readonly string _dbPath;
+        _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
+    }
 
-        public MigrationRunner(string dbPath)
+    public static IReadOnlyList<int> MigrationVersions => GetMigrations().Select(static migration => migration.Version).ToList();
+
+    public void RunMigrations()
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        var currentVersion = GetCurrentSchemaVersion(connection);
+        var migrations = GetMigrations().OrderBy(m => m.Version).ToList();
+
+        foreach (var migration in migrations)
         {
-            _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
-        }
+            if (migration.Version <= currentVersion)
+                continue;
 
-        public void RunMigrations()
-        {
-            using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-            connection.Open();
-
-            var currentVersion = GetCurrentSchemaVersion(connection);
-            var migrations = GetMigrations().OrderBy(m => m.Version).ToList();
-
-            foreach (var migration in migrations)
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                if (migration.Version <= currentVersion)
-                    continue;
-
-                using var transaction = connection.BeginTransaction();
-                try
-                {
-                    migration.Up(connection);
-                    UpdateSchemaVersion(connection, migration.Version, migration.GetType().Name, transaction);
-                    transaction.Commit();
-                    currentVersion = migration.Version;
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                migration.Up(connection);
+                UpdateSchemaVersion(connection, migration.Version, migration.GetType().Name, transaction);
+                transaction.Commit();
+                currentVersion = migration.Version;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
             }
         }
+    }
 
-        public int GetCurrentSchemaVersion()
-        {
-            using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-            connection.Open();
-            return GetCurrentSchemaVersion(connection);
-        }
+    public int GetCurrentSchemaVersion()
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+        return GetCurrentSchemaVersion(connection);
+    }
 
-        private static int GetCurrentSchemaVersion(SqliteConnection connection)
-        {
-            using var command = connection.CreateCommand();
+    private static int GetCurrentSchemaVersion(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
 
-            command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_metadata';";
-            var tableExists = command.ExecuteScalar();
-            if (tableExists == null || tableExists == DBNull.Value)
-                return 0;
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_metadata';";
+        var tableExists = command.ExecuteScalar();
+        if (tableExists == null || tableExists == DBNull.Value)
+            return 0;
 
-            command.CommandText = "SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1;";
-            var result = command.ExecuteScalar();
-            return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result);
-        }
+        command.CommandText = "SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1;";
+        var result = command.ExecuteScalar();
+        return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result);
+    }
 
-        private static void UpdateSchemaVersion(SqliteConnection connection, int version, string migrationId, SqliteTransaction transaction)
-        {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = @"
+    private static void UpdateSchemaVersion(SqliteConnection connection, int version, string migrationId, SqliteTransaction transaction)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = @"
                 INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
                 VALUES (@version, @appliedAtUtc, @migrationId);
             ";
-            command.Parameters.AddWithValue("@version", version);
-            command.Parameters.AddWithValue("@appliedAtUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-            command.Parameters.AddWithValue("@migrationId", migrationId);
-            command.ExecuteNonQuery();
-        }
+        command.Parameters.AddWithValue("@version", version);
+        command.Parameters.AddWithValue("@appliedAtUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@migrationId", migrationId);
+        command.ExecuteNonQuery();
+    }
 
-        public static IReadOnlyList<int> MigrationVersions => GetMigrations().Select(static migration => migration.Version).ToList();
-
-        private static List<IMigration> GetMigrations() =>
-            [
-                new Migration_001_InitialSchema(),
-                new Migration_002_AddLineStarts(),
-                new Migration_003_SymbolTables(),
-                new Migration_004_FtsSearch(),
-                new Migration_005_A5OperationalTables(),
-                new Migration_006_ExpandEdges(),
-                new Migration_007_SemanticChanges(),
-                new Migration_008_GeneratedCodeAwareness(),
-                new Migration_009_PerSnapshotSymbolData(),
-                new Migration_010_AddLastChangedSnapshotId(),
-                new Migration_011_SnapshotStatus(),
-                new Migration_012_SnapshotTimings(),
-                new Migration_013_ClearDefaultProjects(),
-                new Migration_014_AddCrossGeneratedFlag(),
-                new Migration_015_FixSnapshotStatusDefault(),
-                new Migration_016_RecomposeDocumentVersionId(),
-                new Migration_017_UniqueEdgeRelations(),
-                new Migration_018_AddSkippedAdapters(),
-                new Migration_019_SchemaHardening(),
-                new Migration_020_EdgeTypeArguments(),
-                new Migration_021_GraphNodeMembership(),
-                new Migration_022_BindingIncompleteness(),
-                new Migration_023_FailedSnapshotState(),
-                new Migration_024_FailedSnapshotTombstone(),
-                new Migration_025_CallReceiverConstraints(),
-                new Migration_026_AnnotationDocumentPath(),
-                new Migration_027_ProjectCompilationInputs(),
-            ];
+    private static List<IMigration> GetMigrations()
+    {
+        return
+        [
+            new Migration_001_InitialSchema(),
+            new Migration_002_AddLineStarts(),
+            new Migration_003_SymbolTables(),
+            new Migration_004_FtsSearch(),
+            new Migration_005_A5OperationalTables(),
+            new Migration_006_ExpandEdges(),
+            new Migration_007_SemanticChanges(),
+            new Migration_008_GeneratedCodeAwareness(),
+            new Migration_009_PerSnapshotSymbolData(),
+            new Migration_010_AddLastChangedSnapshotId(),
+            new Migration_011_SnapshotStatus(),
+            new Migration_012_SnapshotTimings(),
+            new Migration_013_ClearDefaultProjects(),
+            new Migration_014_AddCrossGeneratedFlag(),
+            new Migration_015_FixSnapshotStatusDefault(),
+            new Migration_016_RecomposeDocumentVersionId(),
+            new Migration_017_UniqueEdgeRelations(),
+            new Migration_018_AddSkippedAdapters(),
+            new Migration_019_SchemaHardening(),
+            new Migration_020_EdgeTypeArguments(),
+            new Migration_021_GraphNodeMembership(),
+            new Migration_022_BindingIncompleteness(),
+            new Migration_023_FailedSnapshotState(),
+            new Migration_024_FailedSnapshotTombstone(),
+            new Migration_025_CallReceiverConstraints(),
+            new Migration_026_AnnotationDocumentPath(),
+            new Migration_027_ProjectCompilationInputs()
+        ];
     }
 }
-

@@ -20,13 +20,13 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
             // A type anchor's surrounding/local source is its own declared
             // members (and the nested types it contains). Namespaces are not
             // graph nodes, so no namespace sibling relationship is invented.
-            AddSiblings(results, parentId: context.SymbolId.Value, includeNestedTypes: true);
+            AddSiblings(results, context.SymbolId.Value, true);
 
             // Nested types retain distinct Contains semantics: a nested type's
             // siblings are the other nested types of its containing type.
             var containingParent = FindContainingParentId();
             if (containingParent != null)
-                AddSiblings(results, containingParent, includeNestedTypes: false);
+                AddSiblings(results, containingParent, false);
 
             return results;
         }
@@ -38,24 +38,21 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
         if (parentId == null)
             return results;
 
-        AddSiblings(results, parentId, includeNestedTypes: true);
+        AddSiblings(results, parentId, true);
         return results;
     }
 
     private string? FindContainingParentId()
     {
         foreach (var edge in context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value))
-        {
             if (edge.Kind == EdgeKind.Declares.ToString() || edge.Kind == EdgeKind.Contains.ToString())
                 return edge.SourceSymbolId;
-        }
         return null;
     }
 
     private void AddSiblings(List<CapsuleItem> results, string parentId, bool includeNestedTypes)
     {
         foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, parentId))
-        {
             if (edge.Kind == EdgeKind.Declares.ToString()
                 || (includeNestedTypes && edge.Kind == EdgeKind.Contains.ToString()))
             {
@@ -67,6 +64,5 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
                 if (item != null)
                     results.Add(item);
             }
-        }
     }
 }

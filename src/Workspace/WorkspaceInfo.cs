@@ -12,34 +12,10 @@ namespace Lurp.Workspace;
 
 public sealed class WorkspaceInfo
 {
-    private static readonly Encoding Utf8NoBom = new UTF8Encoding(false, true);
-    private static readonly Encoding Utf16Le = new UnicodeEncoding(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true);
-    private static readonly Encoding Utf16Be = new UnicodeEncoding(bigEndian: true, byteOrderMark: false, throwOnInvalidBytes: true);
     private const string UnknownValue = "unknown";
-
-    public WorkspaceId Id { get; }
-
-    public IReadOnlyDictionary<DocumentId, DocumentVersionId> Documents { get; }
-
-    public IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; }
-
-    public string SdkVersion { get; }
-
-    public Version CompilerVersion { get; }
-
-    public IReadOnlyDictionary<string, string> TargetFrameworks { get; }
-
-    public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
-
-    public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; }
-
-    public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; }
-
-    public string IndexerVersion { get; }
-
-    public string ExtractorVersion { get; }
-
-    public IReadOnlySet<DocumentId> GeneratedDocuments { get; }
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(false, true);
+    private static readonly Encoding Utf16Le = new UnicodeEncoding(false, false, true);
+    private static readonly Encoding Utf16Be = new UnicodeEncoding(true, false, true);
 
     public WorkspaceInfo(Solution solution, string gitRoot)
     {
@@ -67,8 +43,32 @@ public sealed class WorkspaceInfo
         ExtractorVersion = VersionConstants.ExtractorVersion;
     }
 
+    public WorkspaceId Id { get; }
+
+    public IReadOnlyDictionary<DocumentId, DocumentVersionId> Documents { get; }
+
+    public IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; }
+
+    public string SdkVersion { get; }
+
+    public Version CompilerVersion { get; }
+
+    public IReadOnlyDictionary<string, string> TargetFrameworks { get; }
+
+    public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
+
+    public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; }
+
+    public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; }
+
+    public string IndexerVersion { get; }
+
+    public string ExtractorVersion { get; }
+
+    public IReadOnlySet<DocumentId> GeneratedDocuments { get; }
+
     private static (Dictionary<DocumentId, DocumentVersionId> Hashes, Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
-                    IReadOnlySet<DocumentId> GeneratedDocuments)
+        IReadOnlySet<DocumentId> GeneratedDocuments)
         BuildDocumentMap(Solution solution, string gitRoot)
     {
         var map = new Dictionary<DocumentId, DocumentVersionId>();
@@ -79,7 +79,6 @@ public sealed class WorkspaceInfo
         var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
 
         foreach (var project in solution.Projects)
-        {
             foreach (var document in project.Documents)
             {
                 if (document.FilePath == null) continue;
@@ -100,12 +99,8 @@ public sealed class WorkspaceInfo
                 map[docId] = hash;
                 contentMap[docId] = (normalized, "utf-8", lineStarts);
 
-                if (IsGeneratedDocument(normalized, relPath))
-                {
-                    generatedDocs.Add(docId);
-                }
+                if (IsGeneratedDocument(normalized, relPath)) generatedDocs.Add(docId);
             }
-        }
 
         return (map, contentMap, generatedDocs);
     }
@@ -155,10 +150,14 @@ public sealed class WorkspaceInfo
         return false;
     }
 
-    /// <summary>Exposed for <see cref="WorkspaceFreshness.CheckFreshnessCheap"/>, which re-hashes a
-    /// touched file without loading a full Roslyn workspace and must normalize bytes identically.</summary>
+    /// <summary>
+    ///     Exposed for <see cref="WorkspaceFreshness.CheckFreshnessCheap" />, which re-hashes a
+    ///     touched file without loading a full Roslyn workspace and must normalize bytes identically.
+    /// </summary>
     internal static byte[] NormalizeSourceBytesForFreshnessCheck(string relativePath, byte[] rawBytes)
-        => NormalizeSourceBytes(relativePath, rawBytes);
+    {
+        return NormalizeSourceBytes(relativePath, rawBytes);
+    }
 
     private static byte[] NormalizeSourceBytes(string relativePath, byte[] rawBytes)
     {
@@ -173,7 +172,6 @@ public sealed class WorkspaceInfo
         }
 
         if (rawBytes.Length >= 2 && rawBytes[0] == 0xFF && rawBytes[1] == 0xFE)
-        {
             try
             {
                 var text = Utf16Le.GetString(rawBytes, 2, rawBytes.Length - 2);
@@ -184,10 +182,8 @@ public sealed class WorkspaceInfo
                 throw new InvalidOperationException(
                     $"Invalid UTF-16 LE byte sequence in '{relativePath}'.", ex);
             }
-        }
 
         if (rawBytes.Length >= 2 && rawBytes[0] == 0xFE && rawBytes[1] == 0xFF)
-        {
             try
             {
                 var text = Utf16Be.GetString(rawBytes, 2, rawBytes.Length - 2);
@@ -198,7 +194,6 @@ public sealed class WorkspaceInfo
                 throw new InvalidOperationException(
                     $"Invalid UTF-16 BE byte sequence in '{relativePath}'.", ex);
             }
-        }
 
         try
         {
@@ -215,33 +210,17 @@ public sealed class WorkspaceInfo
     private static string ComputeLineStarts(byte[] bytes)
     {
         var offsets = new List<int> { 0 };
-        for (int i = 0; i < bytes.Length; i++)
-        {
+        for (var i = 0; i < bytes.Length; i++)
             if (bytes[i] == (byte)'\n')
-            {
                 if (i + 1 < bytes.Length)
                     offsets.Add(i + 1);
-            }
-        }
+
         return JsonSerializer.Serialize(offsets);
     }
 
     private static string GetRelativePath(string fullPath, string normalizedRoot)
-        => PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
-
-    private sealed class DocumentIdComparer : IEqualityComparer<DocumentId>
     {
-        public static readonly DocumentIdComparer Instance = new();
-
-        public bool Equals(DocumentId x, DocumentId y)
-        {
-            return x.RelativePath == y.RelativePath;
-        }
-
-        public int GetHashCode(DocumentId obj)
-        {
-            return obj.RelativePath?.GetHashCode() ?? 0;
-        }
+        return PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
     }
 
     private static string QuerySdkVersion()
@@ -251,9 +230,9 @@ public sealed class WorkspaceInfo
             var instances = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions { DiscoveryTypes = DiscoveryType.DotNetSdk });
 
             return instances
-                .OrderByDescending(i => i.Version)
-                .FirstOrDefault()?.Version.ToString()
-                ?? UnknownValue;
+                       .OrderByDescending(i => i.Version)
+                       .FirstOrDefault()?.Version.ToString()
+                   ?? UnknownValue;
         }
         catch (Exception ex)
         {
@@ -268,18 +247,18 @@ public sealed class WorkspaceInfo
         var root = doc.Root;
         if (root == null) return null;
 
-        XNamespace ns = root.GetDefaultNamespace();
+        var ns = root.GetDefaultNamespace();
 
         return root
-            .Elements(ns + "PropertyGroup")
-            .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
-            .Select(e => e.Value.Trim())
-            .FirstOrDefault()
-            ?? root
-                .Elements(ns + "PropertyGroup")
-                .SelectMany(pg => pg.Elements(ns + "TargetFrameworks"))
-                .Select(e => e.Value.Trim())
-                .FirstOrDefault();
+                   .Elements(ns + "PropertyGroup")
+                   .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
+                   .Select(e => e.Value.Trim())
+                   .FirstOrDefault()
+               ?? root
+                   .Elements(ns + "PropertyGroup")
+                   .SelectMany(pg => pg.Elements(ns + "TargetFrameworks"))
+                   .Select(e => e.Value.Trim())
+                   .FirstOrDefault();
     }
 
     private static string? FindTfmInDirectoryBuildProps(string projectFilePath, string repoRoot)
@@ -293,7 +272,6 @@ public sealed class WorkspaceInfo
         {
             var propsPath = Path.Combine(dir, "Directory.Build.props");
             if (File.Exists(propsPath))
-            {
                 try
                 {
                     var tfm = ParseTfmFromProjectFile(propsPath);
@@ -303,7 +281,6 @@ public sealed class WorkspaceInfo
                 catch
                 {
                 }
-            }
 
             if (string.Equals(dir, normalizedRoot, StringComparison.OrdinalIgnoreCase))
                 break;
@@ -357,10 +334,8 @@ public sealed class WorkspaceInfo
         {
             var refs = new HashSet<string>(StringComparer.Ordinal);
             foreach (var pr in project.ProjectReferences)
-            {
                 if (projectIdToName.TryGetValue(pr.ProjectId, out var name))
                     refs.Add(name);
-            }
 
             graph[project.Name] = refs.ToImmutableHashSet(StringComparer.Ordinal);
         }
@@ -369,14 +344,14 @@ public sealed class WorkspaceInfo
     }
 
     /// <summary>
-    /// Per-project identity tokens for metadata references (NuGet packages,
-    /// framework assemblies). For <see cref="PortableExecutableReference"/> the
-    /// token is derived from the assembly metadata itself via
-    /// <see cref="AssemblyName.GetAssemblyName(string)"/> (name + version +
-    /// culture + public key token), so it is machine-independent and stable
-    /// across path moves; when the header cannot be read the token falls back
-    /// to file name + length + last-write time. Duplicates are removed and the
-    /// identities are sorted so the result is canonical per project.
+    ///     Per-project identity tokens for metadata references (NuGet packages,
+    ///     framework assemblies). For <see cref="PortableExecutableReference" /> the
+    ///     token is derived from the assembly metadata itself via
+    ///     <see cref="AssemblyName.GetAssemblyName(string)" /> (name + version +
+    ///     culture + public key token), so it is machine-independent and stable
+    ///     across path moves; when the header cannot be read the token falls back
+    ///     to file name + length + last-write time. Duplicates are removed and the
+    ///     identities are sorted so the result is canonical per project.
     /// </summary>
     private static Dictionary<string, ImmutableArray<string>> BuildMetadataReferenceIdentities(Solution solution)
     {
@@ -386,12 +361,10 @@ public sealed class WorkspaceInfo
         {
             var identities = new List<string>();
             foreach (var reference in project.MetadataReferences)
-            {
                 if (reference is PortableExecutableReference pe)
                     identities.Add(TryGetAssemblyIdentity(pe.FilePath) ?? FallbackReferenceToken(pe.FilePath));
                 else
                     identities.Add(reference.Display ?? "unknown");
-            }
 
             map[project.Name] = identities
                 .Distinct(StringComparer.Ordinal)
@@ -447,11 +420,11 @@ public sealed class WorkspaceInfo
     }
 
     /// <summary>
-    /// Per-project fingerprint of the compilation inputs that shape which code
-    /// is compiled: optimization level, unsafe allowance, nullable context,
-    /// platform, language version, and the sorted preprocessor symbols (which
-    /// drive <c>#if</c>-guarded dead code). Serialized as a deterministic
-    /// string so any change yields a different fingerprint.
+    ///     Per-project fingerprint of the compilation inputs that shape which code
+    ///     is compiled: optimization level, unsafe allowance, nullable context,
+    ///     platform, language version, and the sorted preprocessor symbols (which
+    ///     drive <c>#if</c>-guarded dead code). Serialized as a deterministic
+    ///     string so any change yields a different fingerprint.
     /// </summary>
     private static Dictionary<string, string> BuildCompilationOptionsFingerprints(Solution solution)
     {
@@ -482,5 +455,19 @@ public sealed class WorkspaceInfo
 
         return map;
     }
-}
 
+    private sealed class DocumentIdComparer : IEqualityComparer<DocumentId>
+    {
+        public static readonly DocumentIdComparer Instance = new();
+
+        public bool Equals(DocumentId x, DocumentId y)
+        {
+            return x.RelativePath == y.RelativePath;
+        }
+
+        public int GetHashCode(DocumentId obj)
+        {
+            return obj.RelativePath?.GetHashCode() ?? 0;
+        }
+    }
+}

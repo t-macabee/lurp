@@ -8,13 +8,6 @@ namespace Lurp.Storage;
 
 internal sealed class SearchSymbolStore
 {
-    private readonly SqliteConnection _connection;
-
-    public SearchSymbolStore(SqliteConnection connection)
-    {
-        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-    }
-
     private const string ExcludeGeneratedClause = @"
               AND EXISTS (
                     SELECT 1 FROM declarations d
@@ -24,9 +17,16 @@ internal sealed class SearchSymbolStore
                     WHERE d.symbol_id = s.symbol_id
                       AND (d.is_generated = 0 OR d.is_generated IS NULL)
                   )";
-    private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
 
-    /// <inheritdoc cref="ISearchStore.SearchSymbols"/>
+    private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
+    private readonly SqliteConnection _connection;
+
+    public SearchSymbolStore(SqliteConnection connection)
+    {
+        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+    }
+
+    /// <inheritdoc cref="ISearchStore.SearchSymbols" />
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -55,7 +55,6 @@ internal sealed class SearchSymbolStore
         // by ResolveSymbolByFqn below : that shape requires at least one declaration
         // and would silently drop external symbols here.
         if (!includeGenerated)
-        {
             command.CommandText += @"
               AND (
                     NOT EXISTS (
@@ -74,7 +73,6 @@ internal sealed class SearchSymbolStore
                           AND (d.is_generated = 0 OR d.is_generated IS NULL)
                     )
                   )";
-        }
 
         command.CommandText += @"
             ORDER BY rank
@@ -89,12 +87,10 @@ internal sealed class SearchSymbolStore
         using (var reader = command.ExecuteReader())
         {
             while (reader.Read())
-            {
-                results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
-                    fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    kind: reader.GetString(3),
-                    docCommentId: reader.GetString(2)));
-            }
+                results.Add(new SymbolSearchResult(reader.GetString(0),
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.GetString(3),
+                    reader.GetString(2)));
         }
 
         // Architecture §10 "identifier fragments" contract: the FTS5 unicode61 index
@@ -102,15 +98,12 @@ internal sealed class SearchSymbolStore
         // "Service" misses "CourseService". When FTS5 saturates fewer than the
         // requested limit, fall back to case-insensitive substring matching over
         // fully qualified names to fill the gap.
-        if (results.Count < limit && SearchUtils.IsPlainIdentifierQuery(query))
-        {
-            return SearchSymbolsBySubstring(query, snapshotId, limit, includeGenerated, kind);
-        }
+        if (results.Count < limit && SearchUtils.IsPlainIdentifierQuery(query)) return SearchSymbolsBySubstring(query, snapshotId, limit, includeGenerated, kind);
 
         return results;
     }
 
-    /// <inheritdoc cref="ISearchStore.SearchSymbolsPage"/>
+    /// <inheritdoc cref="ISearchStore.SearchSymbolsPage" />
     public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -151,7 +144,6 @@ internal sealed class SearchSymbolStore
         }
 
         if (!includeGenerated)
-        {
             command.CommandText += @"
               AND (
                     NOT EXISTS (
@@ -170,7 +162,6 @@ internal sealed class SearchSymbolStore
                           AND (d.is_generated = 0 OR d.is_generated IS NULL)
                     )
                   )";
-        }
 
         if (cursor != null)
         {
@@ -196,10 +187,10 @@ internal sealed class SearchSymbolStore
         {
             while (reader.Read())
             {
-                results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
-                    fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    kind: reader.GetString(3),
-                    docCommentId: reader.GetString(2)));
+                results.Add(new SymbolSearchResult(reader.GetString(0),
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.GetString(3),
+                    reader.GetString(2)));
                 ranks.Add(reader.GetDouble(4));
             }
         }
@@ -225,7 +216,6 @@ internal sealed class SearchSymbolStore
         }
 
         if (!includeGenerated)
-        {
             command.CommandText += @"
               AND (
                     NOT EXISTS (
@@ -244,7 +234,6 @@ internal sealed class SearchSymbolStore
                           AND (d.is_generated = 0 OR d.is_generated IS NULL)
                     )
                   )";
-        }
 
         if (cursor != null)
         {
@@ -268,12 +257,10 @@ internal sealed class SearchSymbolStore
         using (var reader = command.ExecuteReader())
         {
             while (reader.Read())
-            {
-                results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
-                    fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    kind: reader.GetString(3),
-                    docCommentId: reader.GetString(2)));
-            }
+                results.Add(new SymbolSearchResult(reader.GetString(0),
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.GetString(3),
+                    reader.GetString(2)));
         }
 
         return BuildPage(results, null, limit, snapshotId, query, kind, includeGenerated, "substring");
@@ -293,12 +280,12 @@ internal sealed class SearchSymbolStore
 
         var last = results[^1];
         var nextCursor = new SearchCursor(
-            SnapshotId: snapshotId,
-            Fingerprint: SearchCursor.ComputeFingerprint(query, kind, includeGenerated),
-            Mode: mode,
-            LastRank: ranks != null ? ranks[^1] : null,
-            LastFqn: last.FullyQualifiedName,
-            LastSymbolId: last.SymbolId);
+            snapshotId,
+            SearchCursor.ComputeFingerprint(query, kind, includeGenerated),
+            mode,
+            ranks != null ? ranks[^1] : null,
+            last.FullyQualifiedName,
+            last.SymbolId);
 
         return new SymbolSearchPage(results, nextCursor.Encode());
     }
@@ -323,7 +310,6 @@ internal sealed class SearchSymbolStore
         // See the identical comment in SearchSymbols above: keep the
         // NOT EXISTS / EXISTS disjunction so declaration-less symbols remain searchable.
         if (!includeGenerated)
-        {
             command.CommandText += @"
               AND (
                     NOT EXISTS (
@@ -342,7 +328,6 @@ internal sealed class SearchSymbolStore
                           AND (d.is_generated = 0 OR d.is_generated IS NULL)
                     )
                   )";
-        }
 
         command.CommandText += @"
             ORDER BY ss.fqn
@@ -357,16 +342,14 @@ internal sealed class SearchSymbolStore
         var results = new List<SymbolSearchResult>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
-            results.Add(new SymbolSearchResult(symbolId: reader.GetString(0),
-                fullyQualifiedName: reader.IsDBNull(1) ? "" : reader.GetString(1),
-                kind: reader.GetString(3),
-                docCommentId: reader.GetString(2)));
-        }
+            results.Add(new SymbolSearchResult(reader.GetString(0),
+                reader.IsDBNull(1) ? "" : reader.GetString(1),
+                reader.GetString(3),
+                reader.GetString(2)));
         return results;
     }
 
-    /// <inheritdoc cref="ISearchStore.ResolveSymbolByFqn"/>
+    /// <inheritdoc cref="ISearchStore.ResolveSymbolByFqn" />
     public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
     {
         // Roslyn's FullyQualifiedFormat persists symbol FQNs with a "global::" prefix
@@ -395,10 +378,7 @@ internal sealed class SearchSymbolStore
                           WHERE d.symbol_id = s.symbol_id)
         ";
 
-        if (!includeGenerated)
-        {
-            command.CommandText += ExcludeGeneratedClause;
-        }
+        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 
         command.CommandText += FqnOrderLimitClause;
 
@@ -431,10 +411,7 @@ internal sealed class SearchSymbolStore
                           WHERE d.symbol_id = s.symbol_id)
         ";
 
-        if (!includeGenerated)
-        {
-            command.CommandText += ExcludeGeneratedClause;
-        }
+        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 
         command.CommandText += FqnOrderLimitClause;
 
@@ -449,7 +426,7 @@ internal sealed class SearchSymbolStore
         return null;
     }
 
-    /// <inheritdoc cref="ISearchStore.ResolveSymbolByDocCommentId"/>
+    /// <inheritdoc cref="ISearchStore.ResolveSymbolByDocCommentId" />
     public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
     {
         if (string.IsNullOrWhiteSpace(docCommentId))
@@ -472,10 +449,7 @@ internal sealed class SearchSymbolStore
             WHERE s.doc_comment_id = @docCommentId AND ss.snapshot_id = @snapshotId
         ";
 
-        if (!includeGenerated)
-        {
-            command.CommandText += ExcludeGeneratedClause;
-        }
+        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 
         command.CommandText += FqnOrderLimitClause;
 

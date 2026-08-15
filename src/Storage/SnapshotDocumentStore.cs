@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Text;
 
 namespace Lurp.Storage;
 
@@ -25,7 +26,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             return null;
 
         var bytes = (byte[])result;
-        return System.Text.Encoding.UTF8.GetString(bytes);
+        return Encoding.UTF8.GetString(bytes);
     }
 
     internal void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)
@@ -46,6 +47,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
                 command.Parameters.AddWithValue("@documentVersionId", versionId);
                 command.ExecuteNonQuery();
             }
+
             transaction.Commit();
         }
         catch
@@ -89,7 +91,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
               AND d.relative_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
         ";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        int i = 0;
+        var i = 0;
         foreach (var path in pathList)
             command.Parameters.AddWithValue($"@p{i++}", path);
         var results = new List<string>();

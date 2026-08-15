@@ -8,10 +8,7 @@ internal static class SearchHandler
     public static void Run(string[] args)
     {
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
-        if (string.IsNullOrEmpty(queryArg))
-        {
-            HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
-        }
+        if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
 
         var typeArg = HandlerBootstrap.GetArgValue(args, "--type=") ?? "all";
         var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
@@ -21,22 +18,13 @@ internal static class SearchHandler
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        int limit = 20;
-        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit))
-        {
-            HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
-        }
+        var limit = 20;
+        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)) HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
 
-        int snippetTokens = 64;
-        if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens))
-        {
-            HandlerBootstrap.Fail("ERROR: --snippet-tokens must be an integer.");
-        }
+        var snippetTokens = 64;
+        if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens)) HandlerBootstrap.Fail("ERROR: --snippet-tokens must be an integer.");
 
-        if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol")
-        {
-            HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
-        }
+        if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol") HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
 
         HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
@@ -44,16 +32,13 @@ internal static class SearchHandler
             if (!string.IsNullOrEmpty(cursorArg))
             {
                 cursor = SearchCursor.TryDecode(cursorArg);
-                if (cursor == null)
-                {
-                    HandlerBootstrap.Fail("ERROR: --cursor is not a valid cursor for this database.");
-                }
+                if (cursor == null) HandlerBootstrap.Fail("ERROR: --cursor is not a valid cursor for this database.");
             }
 
             var results = new List<object>();
             var summaryLines = new List<string>();
             string? nextCursor = null;
-            if (typeArg == "source" || typeArg == "all")
+            if (typeArg is "source" or "all")
             {
                 var sourceResults = store.SearchSource(queryArg, snapshotId, limit, includeGenerated, snippetTokens);
                 foreach (var r in sourceResults)
@@ -63,7 +48,7 @@ internal static class SearchHandler
                 }
             }
 
-            if (typeArg == "symbol" || typeArg == "all")
+            if (typeArg is "symbol" or "all")
             {
                 if (typeArg == "symbol")
                 {
@@ -77,11 +62,13 @@ internal static class SearchHandler
                         HandlerBootstrap.Fail($"ERROR: {ex.Message}");
                         return null;
                     }
+
                     foreach (var r in page.Items)
                     {
                         results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
                         summaryLines.Add($"symbol  {r.SymbolId}  {r.FullyQualifiedName}  ({r.Kind})");
                     }
+
                     nextCursor = page.NextCursor;
                 }
                 else

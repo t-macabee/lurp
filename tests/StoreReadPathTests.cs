@@ -4,35 +4,35 @@ using Microsoft.Build.Locator;
 namespace Lurp.Tests;
 
 /// <summary>
-/// Store read-path characterization tests: declaration source, incoming/outgoing
-/// edges, search, and the "blind project" read-path contract that records
-/// unreadability as incompleteness, never as emptiness.
+///     Store read-path characterization tests: declaration source, incoming/outgoing
+///     edges, search, and the "blind project" read-path contract that records
+///     unreadability as incompleteness, never as emptiness.
 /// </summary>
 public sealed class StoreReadPathTests : IntegrationTestBase
 {
     private const string CalculatorSource = """
-        namespace TestProject;
+                                            namespace TestProject;
 
-        public class Calculator
-        {
-            public int Add(int a, int b)
-            {
-                return a + b;
-            }
-        }
-        """;
+                                            public class Calculator
+                                            {
+                                                public int Add(int a, int b)
+                                                {
+                                                    return a + b;
+                                                }
+                                            }
+                                            """;
 
     private const string ServiceSource = """
-        namespace TestProject;
+                                         namespace TestProject;
 
-        public class Service
-        {
-            public int Compute(int x, int y)
-            {
-                return new Calculator().Add(x, y);
-            }
-        }
-        """;
+                                         public class Service
+                                         {
+                                             public int Compute(int x, int y)
+                                             {
+                                                 return new Calculator().Add(x, y);
+                                             }
+                                         }
+                                         """;
 
     private async Task<string> IndexTwoClassSolutionAsync()
     {
@@ -40,7 +40,7 @@ public sealed class StoreReadPathTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Calculator.cs"] = CalculatorSource,
-                ["Service.cs"] = ServiceSource,
+                ["Service.cs"] = ServiceSource
             });
         return await RunFullIndexAsync(DbPath);
     }
@@ -147,12 +147,12 @@ public sealed class StoreReadPathTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["Marker.cs"] = """
-                    namespace Readable;
+                                namespace Readable;
 
-                    public class Marker
-                    {
-                    }
-                    """,
+                                public class Marker
+                                {
+                                }
+                                """
             });
 
         // No corlib: System.Object cannot bind, so the gate classifies the
@@ -161,16 +161,16 @@ public sealed class StoreReadPathTests : IntegrationTestBase
             new Dictionary<string, string>
             {
                 ["BlindMarker.cs"] = """
-                    namespace Blind;
+                                     namespace Blind;
 
-                    public class BlindMarker
-                    {
-                    }
-                    """,
+                                     public class BlindMarker
+                                     {
+                                     }
+                                     """
             },
             msbuildProperties: new Dictionary<string, string>
             {
-                ["DisableImplicitFrameworkReferences"] = "true",
+                ["DisableImplicitFrameworkReferences"] = "true"
             });
 
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -183,7 +183,8 @@ public sealed class StoreReadPathTests : IntegrationTestBase
                 .Where(r => r.ProjectName == "Blind" && r.Reason == "project_unreadable")
                 .ToList();
             Assert.NotEmpty(blindRecords);
-            Assert.Contains(blindRecords, r => r.DocumentPath != null && r.DocumentPath.EndsWith("BlindMarker.cs", StringComparison.Ordinal));
+            Assert.Contains(blindRecords,
+                r => r.DocumentPath != null && r.DocumentPath.EndsWith("BlindMarker.cs", StringComparison.Ordinal));
 
             // The blind project contributed no symbols to the snapshot.
             foreach (var id in store.GetSymbolIdsInSnapshot(snapshotId))

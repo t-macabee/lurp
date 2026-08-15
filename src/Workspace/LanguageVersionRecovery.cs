@@ -1,39 +1,40 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Lurp.Workspace;
 
 /// <summary>
-/// Restores compiler fidelity when MSBuildWorkspace cannot evaluate a project.
-///
-/// MSBuildWorkspace silently falls back to C# 7.3 parse options whenever its
-/// project evaluation fails (for example, an SDK-style project with no
-/// <c>&lt;TargetFramework&gt;</c> fails evaluation, which also leaves package
-/// and metadata references unresolved). That hard-coded fallback compiles
-/// modern C# source (file-scoped namespaces, records, global usings) as C# 7.3,
-/// producing mass CS8370 diagnostics and suppressing semantic edges that depend
-/// on those features binding.
-///
-/// This recovery derives each affected project's effective language version
-/// from its own inputs instead of the fallback: an explicit
-/// <c>&lt;LangVersion&gt;</c> property is authoritative, and an SDK-style
-/// project with no explicit <c>LangVersion</c> uses the SDK default
-/// (<c>latest</c>, mapped to <see cref="LanguageVersion.LatestMajor"/>).
-/// Non-SDK (legacy) projects are left untouched : C# 7.3 is their correct
-/// default. Projects whose parse options were already resolved to a language
-/// version other than the C# 7.3 fallback are also untouched.
+///     Restores compiler fidelity when MSBuildWorkspace cannot evaluate a project.
+///     MSBuildWorkspace silently falls back to C# 7.3 parse options whenever its
+///     project evaluation fails (for example, an SDK-style project with no
+///     <c>&lt;TargetFramework&gt;</c> fails evaluation, which also leaves package
+///     and metadata references unresolved). That hard-coded fallback compiles
+///     modern C# source (file-scoped namespaces, records, global usings) as C# 7.3,
+///     producing mass CS8370 diagnostics and suppressing semantic edges that depend
+///     on those features binding.
+///     This recovery derives each affected project's effective language version
+///     from its own inputs instead of the fallback: an explicit
+///     <c>&lt;LangVersion&gt;</c> property is authoritative, and an SDK-style
+///     project with no explicit <c>LangVersion</c> uses the SDK default
+///     (<c>latest</c>, mapped to <see cref="LanguageVersion.LatestMajor" />).
+///     Non-SDK (legacy) projects are left untouched : C# 7.3 is their correct
+///     default. Projects whose parse options were already resolved to a language
+///     version other than the C# 7.3 fallback are also untouched.
 /// </summary>
 internal static class LanguageVersionRecovery
 {
-    /// <summary>The language version MSBuildWorkspace assigns when it cannot
-    /// evaluate a project's <c>LangVersion</c>.</summary>
+    /// <summary>
+    ///     The language version MSBuildWorkspace assigns when it cannot
+    ///     evaluate a project's <c>LangVersion</c>.
+    /// </summary>
     private const LanguageVersion FallbackLanguageVersion = LanguageVersion.CSharp7_3;
 
     /// <summary>
-    /// Return a copy of <paramref name="solution"/> whose projects use their
-    /// effective language version instead of the C# 7.3 fallback. Projects
-    /// whose parse options are already correct are returned unchanged.
+    ///     Return a copy of <paramref name="solution" /> whose projects use their
+    ///     effective language version instead of the C# 7.3 fallback. Projects
+    ///     whose parse options are already correct are returned unchanged.
     /// </summary>
     public static Solution Apply(Solution solution)
     {
@@ -62,9 +63,9 @@ internal static class LanguageVersionRecovery
     }
 
     /// <summary>
-    /// Derive the language version a project actually targets. Returns false
-    /// when the fallback is already the correct version (a non-SDK project with
-    /// no explicit <c>LangVersion</c>, or a project whose file cannot be read).
+    ///     Derive the language version a project actually targets. Returns false
+    ///     when the fallback is already the correct version (a non-SDK project with
+    ///     no explicit <c>LangVersion</c>, or a project whose file cannot be read).
     /// </summary>
     private static bool TryDetermineEffectiveLanguageVersion(Project project, out LanguageVersion effective, out string reason)
     {
@@ -79,7 +80,7 @@ internal static class LanguageVersionRecovery
         {
             document = XDocument.Load(project.FilePath);
         }
-        catch (Exception ex) when (ex is System.Xml.XmlException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
         {
             return false;
         }
@@ -98,7 +99,6 @@ internal static class LanguageVersionRecovery
             .FirstOrDefault(v => v.Length > 0);
 
         if (explicitLangVersion != null)
-        {
             if (TryParse(explicitLangVersion, out var parsed))
             {
                 effective = parsed;
@@ -106,10 +106,8 @@ internal static class LanguageVersionRecovery
                 return true;
             }
 
-            // Unparseable explicit value: fall through to the SDK default so we
-            // do not silently keep the C# 7.3 fallback for an SDK-style project.
-        }
-
+        // Unparseable explicit value: fall through to the SDK default so we
+        // do not silently keep the C# 7.3 fallback for an SDK-style project.
         // SDK-style projects (Sdk="Microsoft.NET.Sdk*") default LangVersion to
         // "latest" when unset; that is what dotnet build would evaluate.
         var sdk = root.Attribute("Sdk")?.Value ?? "";
@@ -149,10 +147,10 @@ internal static class LanguageVersionRecovery
             1 => "CSharp" + parts[0],
             2 when parts[1] == "0" => "CSharp" + parts[0],
             2 => "CSharp" + parts[0] + "_" + parts[1],
-            _ => null,
+            _ => null
         };
 
-        if (candidate != null && Enum.TryParse(candidate, ignoreCase: true, out version))
+        if (candidate != null && Enum.TryParse(candidate, true, out version))
             return true;
 
         version = LanguageVersion.Default;

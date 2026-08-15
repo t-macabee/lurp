@@ -48,7 +48,7 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
                 SourceStartColumn = loc.startColumn,
                 SourceEndLine = loc.endLine,
                 SourceEndColumn = loc.endColumn,
-                IsCrossGenerated = context.IsGenerated(loc.path),
+                IsCrossGenerated = context.IsGenerated(loc.path)
             });
         }
 

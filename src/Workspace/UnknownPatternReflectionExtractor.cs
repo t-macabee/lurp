@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Text.Json;
 using EdgeKind = Lurp.Storage.EdgeKind;
@@ -46,7 +47,7 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
                 SourceStartColumn = loc.startColumn,
                 SourceEndLine = loc.endLine,
                 SourceEndColumn = loc.endColumn,
-                IsCrossGenerated = context.IsGenerated(loc.path),
+                IsCrossGenerated = context.IsGenerated(loc.path)
             });
         }
 
@@ -63,18 +64,12 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
                 return "Type.GetType";
             case "GetType":
             case "GetExportedTypes":
-                var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression);
-                if (receiverType.Type != null && receiverType.Type.ToDisplayString() is "System.Reflection.Assembly" or "System.Type")
-                {
-                    return memberName == "GetExportedTypes" ? "Assembly.GetExportedTypes" : "Assembly.GetType";
-                }
+                var receiverType = ModelExtensions.GetTypeInfo(semanticModel, memberAccess.Expression);
+                if (receiverType.Type?.ToDisplayString() is "System.Reflection.Assembly" or "System.Type") return memberName == "GetExportedTypes" ? "Assembly.GetExportedTypes" : "Assembly.GetType";
                 return null;
             case "CreateInstance":
-                var createReceiver = semanticModel.GetSymbolInfo(memberAccess.Expression);
-                if (createReceiver.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Activator")
-                {
-                    return "Activator.CreateInstance";
-                }
+                var createReceiver = ModelExtensions.GetSymbolInfo(semanticModel, memberAccess.Expression);
+                if (createReceiver.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Activator") return "Activator.CreateInstance";
                 return null;
             case "MakeGenericType":
                 return "MakeGenericType";
@@ -91,7 +86,7 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
             return null;
 
         var firstArg = invocation.ArgumentList.Arguments[0].Expression;
-        if (firstArg is LiteralExpressionSyntax lit && lit.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StringLiteralExpression))
+        if (firstArg is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
             return lit.Token.ValueText;
 
         return null;
@@ -102,16 +97,10 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
         if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
             return false;
 
-        var symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression);
-        if (symbolInfo.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Type")
-        {
-            return true;
-        }
+        var symbolInfo = ModelExtensions.GetSymbolInfo(semanticModel, memberAccess.Expression);
+        if (symbolInfo.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Type") return true;
 
-        if (memberAccess.Expression is IdentifierNameSyntax id && id.Identifier.Text == "Type")
-        {
-            return true;
-        }
+        if (memberAccess.Expression is IdentifierNameSyntax id && id.Identifier.Text == "Type") return true;
 
         return false;
     }

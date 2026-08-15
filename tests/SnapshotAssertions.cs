@@ -1,40 +1,11 @@
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Reflection;
 
 namespace Lurp.Tests;
 
 internal static class SnapshotAssertions
 {
-    private sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
-
-    private sealed record DeclarationSnapshot(
-        string SymbolId,
-        string DocumentPath,
-        int? FullStart,
-        int? FullEnd,
-        int? SignatureStart,
-        int? SignatureEnd,
-        int? BodyStart,
-        int? BodyEnd,
-        int? NameStart,
-        int? NameEnd,
-        bool IsPartial,
-        bool IsGenerated,
-        string? GeneratorIdentity);
-
-    private sealed record SourceFtsSnapshot(string DocumentPath, string Content);
-
-    private sealed record SymbolFtsSnapshot(
-        string SymbolId,
-        string Fqn,
-        string DocCommentId,
-        string Kind);
-
-    private sealed record SemanticChangeSnapshot(
-        string ChangeType,
-        string SymbolId,
-        string? DetailJson);
-
     public static void CompareSnapshotsAreEquivalent(
         string dbPathB, string snapshotB, string dbPathC, string snapshotC)
     {
@@ -73,17 +44,17 @@ internal static class SnapshotAssertions
 
             if (edgesC.Count != edgesB.Count)
             {
-                var bSet = edgesB.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-                var cSet = edgesC.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}").ToHashSet();
-                Assert.Fail($"Edge count mismatch: {edgesB.Count} (B:incremental) vs {edgesC.Count} (C:full rebuild).\n" +
+                var bSet = edgesB.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}")
+                    .ToHashSet();
+                var cSet = edgesC.Select(e => $"{e.SourceSymbolId}|{e.TargetSymbolId}|{e.Kind}|{e.Provenance}")
+                    .ToHashSet();
+                Assert.Fail(
+                    $"Edge count mismatch: {edgesB.Count} (B:incremental) vs {edgesC.Count} (C:full rebuild).\n" +
                     $"Only in B: {string.Join(", ", bSet.Except(cSet).Take(10))}\n" +
                     $"Only in C: {string.Join(", ", cSet.Except(bSet).Take(10))}");
             }
 
-            for (int i = 0; i < edgesC.Count && i < edgesB.Count; i++)
-            {
-                AssertEqual(edgesB[i], edgesC[i]);
-            }
+            for (var i = 0; i < edgesC.Count && i < edgesB.Count; i++) AssertEqual(edgesB[i], edgesC[i]);
 
             var diagB = storeB.GetDiagnostics(snapshotB);
             var diagC = storeC.GetDiagnostics(snapshotC);
@@ -91,10 +62,7 @@ internal static class SnapshotAssertions
             NormalizeDiagnostics(diagC);
 
             Assert.Equal(diagC.Count, diagB.Count);
-            for (int i = 0; i < diagC.Count && i < diagB.Count; i++)
-            {
-                AssertEqual(diagB[i], diagC[i]);
-            }
+            for (var i = 0; i < diagC.Count && i < diagB.Count; i++) AssertEqual(diagB[i], diagC[i]);
 
             var incompletenessB = storeB.GetBindingIncompleteness(snapshotB);
             var incompletenessC = storeC.GetBindingIncompleteness(snapshotC);
@@ -106,10 +74,7 @@ internal static class SnapshotAssertions
             NormalizeAnnotations(annC);
 
             Assert.Equal(annC.Count, annB.Count);
-            for (int i = 0; i < annC.Count && i < annB.Count; i++)
-            {
-                AssertEqual(annB[i], annC[i]);
-            }
+            for (var i = 0; i < annC.Count && i < annB.Count; i++) AssertEqual(annB[i], annC[i]);
 
             var ftsCountsB = GetFtsCounts(dbPathB, snapshotB);
             var ftsCountsC = GetFtsCounts(dbPathC, snapshotC);
@@ -154,12 +119,10 @@ internal static class SnapshotAssertions
         var result = new List<SymbolSnapshot>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result.Add(new SymbolSnapshot(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2)));
-        }
 
         return result;
     }
@@ -190,7 +153,6 @@ internal static class SnapshotAssertions
         var result = new List<DeclarationSnapshot>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result.Add(new DeclarationSnapshot(
                 reader.GetString(0),
                 reader.GetString(1),
@@ -205,7 +167,6 @@ internal static class SnapshotAssertions
                 reader.GetInt32(10) != 0,
                 reader.GetInt32(11) != 0,
                 reader.IsDBNull(12) ? null : reader.GetString(12)));
-        }
 
         return result;
     }
@@ -246,32 +207,32 @@ internal static class SnapshotAssertions
         var result = new List<SymbolFtsSnapshot>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-        {
             result.Add(new SymbolFtsSnapshot(
                 reader.GetString(0),
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3)));
-        }
         return result;
     }
 
-    private static int? ReadNullableInt(SqliteDataReader reader, int ordinal) =>
-        reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+    private static int? ReadNullableInt(SqliteDataReader reader, int ordinal)
+    {
+        return reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+    }
 
     private static void NormalizeEdges(List<EdgeRecord> edges)
     {
         foreach (var edge in edges)
         {
             var field = typeof(EdgeRecord).GetField("<SnapshotId>k__BackingField",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                BindingFlags.Instance | BindingFlags.NonPublic);
             if (field != null)
                 field.SetValue(edge, string.Empty);
         }
 
         edges.Sort((a, b) =>
         {
-            int cmp = StringComparer.Ordinal.Compare(a.SourceSymbolId, b.SourceSymbolId);
+            var cmp = StringComparer.Ordinal.Compare(a.SourceSymbolId, b.SourceSymbolId);
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.TargetSymbolId, b.TargetSymbolId);
             if (cmp != 0) return cmp;
@@ -293,7 +254,8 @@ internal static class SnapshotAssertions
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.TypeArgumentsJson ?? "", b.TypeArgumentsJson ?? "");
             if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "", b.ReceiverTypeConstraintsJson ?? "");
+            cmp = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "",
+                b.ReceiverTypeConstraintsJson ?? "");
             if (cmp != 0) return cmp;
             cmp = (a.SourceNodeKind?.ToString() ?? "").CompareTo(b.SourceNodeKind?.ToString() ?? "");
             if (cmp != 0) return cmp;
@@ -305,7 +267,7 @@ internal static class SnapshotAssertions
     {
         diags.Sort((a, b) =>
         {
-            int cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
+            var cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.Id, b.Id);
             if (cmp != 0) return cmp;
@@ -317,7 +279,7 @@ internal static class SnapshotAssertions
     {
         annotations.Sort((a, b) =>
         {
-            int cmp = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
+            var cmp = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
             if (cmp != 0) return cmp;
             return StringComparer.Ordinal.Compare(a.Kind, b.Kind);
         });
@@ -378,4 +340,34 @@ internal static class SnapshotAssertions
 
         return (sourceRows, symbolRows);
     }
+
+    private sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
+
+    private sealed record DeclarationSnapshot(
+        string SymbolId,
+        string DocumentPath,
+        int? FullStart,
+        int? FullEnd,
+        int? SignatureStart,
+        int? SignatureEnd,
+        int? BodyStart,
+        int? BodyEnd,
+        int? NameStart,
+        int? NameEnd,
+        bool IsPartial,
+        bool IsGenerated,
+        string? GeneratorIdentity);
+
+    private sealed record SourceFtsSnapshot(string DocumentPath, string Content);
+
+    private sealed record SymbolFtsSnapshot(
+        string SymbolId,
+        string Fqn,
+        string DocCommentId,
+        string Kind);
+
+    private sealed record SemanticChangeSnapshot(
+        string ChangeType,
+        string SymbolId,
+        string? DetailJson);
 }

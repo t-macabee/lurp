@@ -2,7 +2,6 @@ namespace Lurp.Workspace;
 
 public enum MismatchKind
 {
-
     DocumentAdded,
 
     DocumentRemoved,
@@ -25,8 +24,7 @@ public enum MismatchKind
 
     CompilationOptionsChanged,
 
-    VersionChanged,
+    VersionChanged
 }
 
 public sealed record SnapshotMismatch(MismatchKind Kind, string Description, DocumentId? Document, string? Detail);
-

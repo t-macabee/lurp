@@ -9,6 +9,8 @@ public sealed class FastTravelQueries
         _declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
     }
 
-    public NavigationTarget? Navigate(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
-        _declarations.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
+    public NavigationTarget? Navigate(string relativePath, int line, string snapshotId, bool includeGenerated = false)
+    {
+        return _declarations.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
+    }
 }
