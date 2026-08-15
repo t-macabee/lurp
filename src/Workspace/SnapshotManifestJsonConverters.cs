@@ -4,7 +4,6 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp.Workspace;
 
@@ -114,7 +113,7 @@ public sealed partial class SnapshotManifest
             return result;
         }
 
-        public override void Write(Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value,JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
             foreach (var kvp in value)

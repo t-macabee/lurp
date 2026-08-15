@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
@@ -507,19 +507,19 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Equal("Rename", renameDetail.RootElement.GetProperty("transition_kind").GetString());
     }
 
-        // ── DiffEdges payload classification ────────────────────────────────────
+    // ── DiffEdges payload classification ────────────────────────────────────
 
-        [Fact]
-        public void SemanticDiffer_EdgeAddedAndRemoved()
-        {
-            using var store = OpenStore();
+    [Fact]
+    public void SemanticDiffer_EdgeAddedAndRemoved()
+    {
+        using var store = OpenStore();
 
-            const string fromSnapshotId = "snap-b3-009";
-            const string toSnapshotId = "snap-b3-010";
-            CreateSnapshotWithDocument(store, fromSnapshotId);
-            CreateSnapshotWithDocument(store, toSnapshotId);
+        const string fromSnapshotId = "snap-b3-009";
+        const string toSnapshotId = "snap-b3-010";
+        CreateSnapshotWithDocument(store, fromSnapshotId);
+        CreateSnapshotWithDocument(store, toSnapshotId);
 
-            var fromEdges = new List<EdgeRecord>
+        var fromEdges = new List<EdgeRecord>
             {
                 new()
                 {
@@ -529,7 +529,7 @@ public sealed class SemanticDifferTests : IDisposable
                     Provenance = "compiler_proved",
                 },
             };
-            var toEdges = new List<EdgeRecord>
+        var toEdges = new List<EdgeRecord>
             {
                 new()
                 {
@@ -540,24 +540,24 @@ public sealed class SemanticDifferTests : IDisposable
                 },
             };
 
-            store.SaveEdges(fromSnapshotId, fromEdges);
-            store.SaveEdges(toSnapshotId, toEdges);
+        store.SaveEdges(fromSnapshotId, fromEdges);
+        store.SaveEdges(toSnapshotId, toEdges);
 
-            var differ = new SemanticDiffer(store, store, store, store);
-            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-            var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
-            Assert.NotNull(edgeAdded);
-            Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
-            Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
+        var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
+        Assert.NotNull(edgeAdded);
+        Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
+        Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
 
-            var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
-            Assert.NotNull(edgeRemoved);
-            Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
-            Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
-        }
+        var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
+        Assert.NotNull(edgeRemoved);
+        Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
+        Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
+    }
 
-        // ── SymbolRelocated change type ───────────────────────────────────────────
+    // ── SymbolRelocated change type ───────────────────────────────────────────
 
     [Fact]
     public void SymbolRelocated_WhenDeclarationMovesToNewFile()
@@ -617,19 +617,19 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRemoved);
     }
 
-        [Fact]
-        public void SymbolRelocated_NotEmitted_WhenSymbolAbsentFromOneSnapshot()
-        {
-            using var store = OpenStore();
+    [Fact]
+    public void SymbolRelocated_NotEmitted_WhenSymbolAbsentFromOneSnapshot()
+    {
+        using var store = OpenStore();
 
-            const string fromSnapshotId = "snap-absent-from";
-            const string toSnapshotId = "snap-absent-to";
-            CreateSnapshotWithDocument(store, fromSnapshotId);
-            CreateSnapshotWithDocument(store, toSnapshotId);
+        const string fromSnapshotId = "snap-absent-from";
+        const string toSnapshotId = "snap-absent-to";
+        CreateSnapshotWithDocument(store, fromSnapshotId);
+        CreateSnapshotWithDocument(store, toSnapshotId);
 
-            const string symbolId = "T:Ns.Foo|asm1";
+        const string symbolId = "T:Ns.Foo|asm1";
 
-            store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -641,14 +641,14 @@ public sealed class SemanticDifferTests : IDisposable
                 nameS: 0, nameE: 5,
                 metadataJson: """{"isRecord": false}""")]);
 
-            var differ = new SemanticDiffer(store, store, store, store);
-            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-            Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRelocated);
-            var removed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRemoved);
-            Assert.NotNull(removed);
-            Assert.Equal(symbolId, removed.SymbolId);
-        }
+        Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRelocated);
+        var removed = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRemoved);
+        Assert.NotNull(removed);
+        Assert.Equal(symbolId, removed.SymbolId);
+    }
 
     [Fact]
     public void SymbolRelocated_PartialType_GainingSecondFile()
@@ -747,19 +747,19 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Contains("src/Partial2.cs", after);
     }
 
-        [Fact]
-        public void SymbolRelocated_NamespaceChange_NoFileChange()
-        {
-            using var store = OpenStore();
+    [Fact]
+    public void SymbolRelocated_NamespaceChange_NoFileChange()
+    {
+        using var store = OpenStore();
 
-            const string fromSnapshotId = "snap-ns-from";
-            const string toSnapshotId = "snap-ns-to";
-            CreateSnapshotWithDocument(store, fromSnapshotId);
-            CreateSnapshotWithDocument(store, toSnapshotId);
+        const string fromSnapshotId = "snap-ns-from";
+        const string toSnapshotId = "snap-ns-to";
+        CreateSnapshotWithDocument(store, fromSnapshotId);
+        CreateSnapshotWithDocument(store, toSnapshotId);
 
-            const string symbolId = "T:Ns.Foo|asm1";
+        const string symbolId = "T:Ns.Foo|asm1";
 
-            store.SaveDeclarations(fromSnapshotId, [MakeDecl(
+        store.SaveDeclarations(fromSnapshotId, [MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -772,7 +772,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"isRecord": false}""",
                 fqn: "Ns.Foo")]);
 
-            store.SaveDeclarations(toSnapshotId, [MakeDecl(
+        store.SaveDeclarations(toSnapshotId, [MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Foo",
                 assembly: "asm1",
@@ -785,16 +785,16 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"isRecord": false}""",
                 fqn: "NewNs.Foo")]);
 
-            var differ = new SemanticDiffer(store, store, store, store);
-            var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-            var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
-            Assert.Null(relocated);
+        var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
+        Assert.Null(relocated);
 
-            var moved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolMoved);
-            Assert.NotNull(moved);
-            Assert.Equal(symbolId, moved.SymbolId);
-        }
+        var moved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolMoved);
+        Assert.NotNull(moved);
+        Assert.Equal(symbolId, moved.SymbolId);
+    }
 
     [Theory]
     [InlineData("possible", null, false, null, ChangeType.EdgeEvidenceChanged)]

@@ -1,14 +1,12 @@
+using Microsoft.Build.Locator;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using Lurp.Shared;
-using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using DocumentId = Lurp.Workspace.DocumentId;
 
 namespace Lurp.Workspace;
 
@@ -69,7 +67,7 @@ public sealed class WorkspaceInfo
         ExtractorVersion = VersionConstants.ExtractorVersion;
     }
 
-    private static (Dictionary<DocumentId, DocumentVersionId> Hashes,Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
+    private static (Dictionary<DocumentId, DocumentVersionId> Hashes, Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
                     IReadOnlySet<DocumentId> GeneratedDocuments)
         BuildDocumentMap(Solution solution, string gitRoot)
     {
@@ -250,7 +248,7 @@ public sealed class WorkspaceInfo
     {
         try
         {
-            var instances = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions{DiscoveryTypes = DiscoveryType.DotNetSdk});
+            var instances = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions { DiscoveryTypes = DiscoveryType.DotNetSdk });
 
             return instances
                 .OrderByDescending(i => i.Version)

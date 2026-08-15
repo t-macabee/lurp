@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using System.Diagnostics;
 
 namespace Lurp.Workspace;
 

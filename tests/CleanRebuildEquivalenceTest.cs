@@ -1,7 +1,6 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 
 namespace Lurp.Tests;

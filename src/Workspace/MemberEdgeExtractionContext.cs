@@ -1,8 +1,5 @@
-using Lurp.Shared;
-using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Lurp.Workspace;
 

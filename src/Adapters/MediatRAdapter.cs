@@ -1,6 +1,4 @@
-using Lurp.Shared;
-﻿using Microsoft.CodeAnalysis;
-using Lurp.Storage;
+using Microsoft.CodeAnalysis;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -21,7 +19,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
         var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
 
-        bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a =>a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
+        bool hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a => a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;

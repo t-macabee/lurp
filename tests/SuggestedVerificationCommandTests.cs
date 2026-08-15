@@ -1,9 +1,3 @@
-using System.Diagnostics;
-using System.Text.Json;
-using Lurp.Shared;
-using Lurp.Workspace;
-using Xunit;
-
 namespace Lurp.Tests;
 
 public class SuggestedVerificationCommandTests

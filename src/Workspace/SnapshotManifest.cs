@@ -1,8 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Lurp.Shared;
-using Lurp.Storage;
 
 namespace Lurp.Workspace;
 
@@ -67,7 +65,7 @@ public sealed partial class SnapshotManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SnapshotCompleteness? Completeness { get; set; }
 
-    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace,SnapshotId snapshotId,SnapshotId? previousSnapshotId = null,IReadOnlySet<string>? skipAdapters = null)
+    public static SnapshotManifest FromWorkspace(WorkspaceInfo workspace, SnapshotId snapshotId, SnapshotId? previousSnapshotId = null, IReadOnlySet<string>? skipAdapters = null)
     {
         return new SnapshotManifest
         {
@@ -78,7 +76,7 @@ public sealed partial class SnapshotManifest
             SdkVersion = workspace.SdkVersion,
             CompilerVersion = workspace.CompilerVersion.ToString(),
             TargetFrameworks = new Dictionary<string, string>(workspace.TargetFrameworks),
-            ProjectGraph = workspace.ProjectGraph.ToDictionary(kvp => kvp.Key,kvp => kvp.Value.OrderBy(x => x).ToArray(),
+            ProjectGraph = workspace.ProjectGraph.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.OrderBy(x => x).ToArray(),
                 StringComparer.Ordinal),
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
@@ -125,7 +123,9 @@ public sealed partial class SnapshotManifest
 
     internal Storage.SnapshotRow ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
-        var documents = DocumentVersions.Select(kvp =>{var docId = kvp.Key;var docPath = docId.ToString();
+        var documents = DocumentVersions.Select(kvp =>
+        {
+            var docId = kvp.Key; var docPath = docId.ToString();
             byte[]? content = null;
             string encoding = "";
             string lineStarts = "";

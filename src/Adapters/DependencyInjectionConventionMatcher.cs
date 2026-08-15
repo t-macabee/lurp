@@ -5,8 +5,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Lurp.Storage;
-using Lurp.Shared;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -252,7 +250,7 @@ internal static class DependencyInjectionConventionMatcher
         }
     }
 
-    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation,IMethodSymbol methodSymbol,SemanticModel semanticModel,Compilation compilation,string fallback)
+    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, string fallback)
     {
         var directAssembly = ResolveAssemblyFromGenericTypeArgs(invocation, semanticModel);
         if (directAssembly != null)

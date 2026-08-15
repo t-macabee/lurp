@@ -2,8 +2,6 @@
 // Owns: the human-readable mode/option reference printed by --help.
 // Must not contain: dispatch logic or handler calls.
 
-using System.Linq;
-
 namespace Lurp;
 
 internal static class HelpText
@@ -93,7 +91,7 @@ internal static class HelpText
 
         // annotate
         ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
-        ["--value="]           = "Annotation value text (required for --mode=annotate).",
+        ["--value="] = "Annotation value text (required for --mode=annotate).",
     };
 
     // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag

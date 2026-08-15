@@ -1,6 +1,3 @@
-using Lurp.Shared;
-using Lurp.Storage;
-
 namespace Lurp.Workspace
 {
     internal sealed class UncertaintyDetector
@@ -335,8 +332,8 @@ namespace Lurp.Workspace
                 var boundaryId = ifaceName switch
                 {
                     "IStreamRequestHandler" or "IAsyncStreamHandler" => "mediatr_stream_handler",
-                    "IPipelineBehavior"                              => "mediatr_pipeline_behavior",
-                    "IRequestExceptionHandler"                       => "mediatr_exception_handler",
+                    "IPipelineBehavior" => "mediatr_pipeline_behavior",
+                    "IRequestExceptionHandler" => "mediatr_exception_handler",
                     "IRequestPreProcessor" or "IRequestPostProcessor" => "mediatr_pre_post_processor",
                     _ => null,
                 };

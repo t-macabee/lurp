@@ -1,6 +1,4 @@
 using Lurp.Adapters;
-using Lurp.Shared;
-using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;

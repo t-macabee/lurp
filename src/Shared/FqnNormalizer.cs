@@ -1,5 +1,3 @@
-using System;
-
 namespace Lurp.Shared;
 
 internal static class FqnNormalizer

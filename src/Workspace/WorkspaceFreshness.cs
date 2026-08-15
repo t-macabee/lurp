@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Lurp.Storage;
 namespace Lurp.Workspace;
 
 public enum FreshnessMode { Auto, Hash, Off }
@@ -25,7 +24,7 @@ public sealed record FreshnessStamp(
 public static class WorkspaceFreshness
 {
 
-    public sealed record FreshnessResult(bool IsFresh,IReadOnlyList<SnapshotMismatch> Mismatches,WorkspaceId CurrentWorkspaceId,SnapshotId? StoredSnapshotId,WorkspaceId? StoredWorkspaceId);
+    public sealed record FreshnessResult(bool IsFresh, IReadOnlyList<SnapshotMismatch> Mismatches, WorkspaceId CurrentWorkspaceId, SnapshotId? StoredSnapshotId, WorkspaceId? StoredWorkspaceId);
 
     /// <summary>
     /// Cheap read-path freshness check: no Roslyn workspace load. Compares each
@@ -93,13 +92,13 @@ public static class WorkspaceFreshness
         }
     }
 
-    public static FreshnessResult CheckFreshness(WorkspaceInfo current,ISnapshotManifestStore manifests)
+    public static FreshnessResult CheckFreshness(WorkspaceInfo current, ISnapshotManifestStore manifests)
     {
         var storageManifest = manifests.LoadLatestSnapshot(current.Id.Value);
 
         if (storageManifest == null)
         {
-            return new FreshnessResult(IsFresh: false,Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed : no snapshot manifest found.",Document: null,Detail: null)
+            return new FreshnessResult(IsFresh: false, Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed : no snapshot manifest found.",Document: null,Detail: null)
                 ],
                 CurrentWorkspaceId: current.Id,
                 StoredSnapshotId: null,
@@ -110,11 +109,11 @@ public static class WorkspaceFreshness
         return CheckFreshness(current, richManifest);
     }
 
-    public static FreshnessResult CheckFreshness(WorkspaceInfo current,SnapshotManifest? stored)
+    public static FreshnessResult CheckFreshness(WorkspaceInfo current, SnapshotManifest? stored)
     {
         if (stored == null)
         {
-            return new FreshnessResult(IsFresh: false,Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed : no snapshot manifest found.",Document: null,Detail: null)
+            return new FreshnessResult(IsFresh: false, Mismatches: [new(MismatchKind.VersionChanged,"Workspace has never been indexed : no snapshot manifest found.",Document: null,Detail: null)
                 ],
                 CurrentWorkspaceId: current.Id,
                 StoredSnapshotId: null,
@@ -131,7 +130,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
 
-        return new FreshnessResult(IsFresh: mismatches.Count == 0,Mismatches: mismatches.AsReadOnly(),
+        return new FreshnessResult(IsFresh: mismatches.Count == 0, Mismatches: mismatches.AsReadOnly(),
             CurrentWorkspaceId: current.Id,
             StoredSnapshotId: stored.SnapshotId,
             StoredWorkspaceId: stored.WorkspaceId);
@@ -154,7 +153,7 @@ public static class WorkspaceFreshness
     {
         if (current.Id.Value != stored.WorkspaceId.Value)
         {
-            yield return new SnapshotMismatch(MismatchKind.SdkChanged,$"Workspace identity mismatch: current '{current.Id.Value}' vs stored '{stored.WorkspaceId.Value}'.",Document: null,Detail: $"{current.Id.Value} → {stored.WorkspaceId.Value}");
+            yield return new SnapshotMismatch(MismatchKind.SdkChanged, $"Workspace identity mismatch: current '{current.Id.Value}' vs stored '{stored.WorkspaceId.Value}'.", Document: null, Detail: $"{current.Id.Value} → {stored.WorkspaceId.Value}");
         }
     }
 
@@ -170,7 +169,7 @@ public static class WorkspaceFreshness
                 continue;
             if (!currentDocs.ContainsKey(docId))
             {
-                yield return new SnapshotMismatch(MismatchKind.DocumentRemoved,$"Document removed: '{docId}'.",Document: docId,Detail: null);
+                yield return new SnapshotMismatch(MismatchKind.DocumentRemoved, $"Document removed: '{docId}'.", Document: docId, Detail: null);
             }
         }
 
@@ -180,11 +179,11 @@ public static class WorkspaceFreshness
                 continue;
             if (!storedDocs.TryGetValue(docId, out var storedHash))
             {
-                yield return new SnapshotMismatch(MismatchKind.DocumentAdded,$"Document added: '{docId}'.",Document: docId,Detail: $"hash (new) = {currentHash}");
+                yield return new SnapshotMismatch(MismatchKind.DocumentAdded, $"Document added: '{docId}'.", Document: docId, Detail: $"hash (new) = {currentHash}");
             }
             else if (currentHash != storedHash)
             {
-                yield return new SnapshotMismatch(MismatchKind.DocumentModified,$"Document content changed: '{docId}'.",Document: docId,Detail: $"hash {storedHash} → {currentHash}");
+                yield return new SnapshotMismatch(MismatchKind.DocumentModified, $"Document content changed: '{docId}'.", Document: docId, Detail: $"hash {storedHash} → {currentHash}");
             }
         }
     }
@@ -193,13 +192,13 @@ public static class WorkspaceFreshness
     {
         if (!string.Equals(current.SdkVersion, stored.SdkVersion, StringComparison.Ordinal))
         {
-            yield return new SnapshotMismatch(MismatchKind.SdkChanged,$".NET SDK version changed.",Document: null,Detail: $"{stored.SdkVersion} → {current.SdkVersion}");
+            yield return new SnapshotMismatch(MismatchKind.SdkChanged, $".NET SDK version changed.", Document: null, Detail: $"{stored.SdkVersion} → {current.SdkVersion}");
         }
 
         var currentCompiler = current.CompilerVersion.ToString();
         if (!string.Equals(currentCompiler, stored.CompilerVersion, StringComparison.Ordinal))
         {
-            yield return new SnapshotMismatch(MismatchKind.CompilerChanged,"Roslyn compiler version changed.",Document: null,Detail: $"{stored.CompilerVersion} → {currentCompiler}");
+            yield return new SnapshotMismatch(MismatchKind.CompilerChanged, "Roslyn compiler version changed.", Document: null, Detail: $"{stored.CompilerVersion} → {currentCompiler}");
         }
     }
 
@@ -212,7 +211,7 @@ public static class WorkspaceFreshness
         {
             if (!currentTfms.ContainsKey(projName))
             {
-                yield return new SnapshotMismatch(MismatchKind.ProjectRemoved,$"Project removed: '{projName}'.",Document: null,Detail: projName);
+                yield return new SnapshotMismatch(MismatchKind.ProjectRemoved, $"Project removed: '{projName}'.", Document: null, Detail: projName);
             }
         }
 
@@ -220,11 +219,11 @@ public static class WorkspaceFreshness
         {
             if (!storedTfms.TryGetValue(projName, out var storedTfm))
             {
-                yield return new SnapshotMismatch(MismatchKind.ProjectAdded,$"Project added: '{projName}'.",Document: null,Detail: projName);
+                yield return new SnapshotMismatch(MismatchKind.ProjectAdded, $"Project added: '{projName}'.", Document: null, Detail: projName);
             }
             else if (!string.Equals(currentTfm, storedTfm, StringComparison.Ordinal))
             {
-                yield return new SnapshotMismatch(MismatchKind.TargetFrameworkChanged,$"Target framework changed for project '{projName}'.",Document: null,Detail: $"{storedTfm} → {currentTfm}");
+                yield return new SnapshotMismatch(MismatchKind.TargetFrameworkChanged, $"Target framework changed for project '{projName}'.", Document: null, Detail: $"{storedTfm} → {currentTfm}");
             }
         }
     }
@@ -249,7 +248,7 @@ public static class WorkspaceFreshness
             {
                 var currentSorted = currentRefs.OrderBy(x => x, StringComparer.Ordinal);
                 var storedSorted = storedRefs.OrderBy(x => x, StringComparer.Ordinal);
-                yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged,$"Project references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]");
+                yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged, $"Project references changed for '{projName}'.", Document: null, Detail: $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]");
             }
         }
     }
@@ -272,7 +271,7 @@ public static class WorkspaceFreshness
             var sortedStored = storedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
             if (!sortedCurrent.SequenceEqual(sortedStored))
             {
-                yield return new SnapshotMismatch(MismatchKind.MetadataReferencesChanged,$"Metadata references changed for '{projName}'.",Document: null,Detail: $"stored=[{string.Join(", ", sortedStored)}]  current=[{string.Join(", ", sortedCurrent)}]");
+                yield return new SnapshotMismatch(MismatchKind.MetadataReferencesChanged, $"Metadata references changed for '{projName}'.", Document: null, Detail: $"stored=[{string.Join(", ", sortedStored)}]  current=[{string.Join(", ", sortedCurrent)}]");
             }
         }
     }
@@ -291,7 +290,7 @@ public static class WorkspaceFreshness
 
             if (!string.Equals(currentFingerprint, storedFingerprint, StringComparison.Ordinal))
             {
-                yield return new SnapshotMismatch(MismatchKind.CompilationOptionsChanged,$"Compilation options changed for project '{projName}'.",Document: null,Detail: $"{storedFingerprint} → {currentFingerprint}");
+                yield return new SnapshotMismatch(MismatchKind.CompilationOptionsChanged, $"Compilation options changed for project '{projName}'.", Document: null, Detail: $"{storedFingerprint} → {currentFingerprint}");
             }
         }
     }
@@ -300,7 +299,7 @@ public static class WorkspaceFreshness
     {
         if (!string.Equals(current.ExtractorVersion, stored.ExtractorVersion, StringComparison.Ordinal))
         {
-            yield return new SnapshotMismatch(MismatchKind.VersionChanged,"Extractor version changed.",Document: null,Detail: $"{stored.ExtractorVersion} → {current.ExtractorVersion}");
+            yield return new SnapshotMismatch(MismatchKind.VersionChanged, "Extractor version changed.", Document: null, Detail: $"{stored.ExtractorVersion} → {current.ExtractorVersion}");
         }
     }
 }

@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
@@ -31,7 +30,7 @@ namespace Lurp.Workspace
         public int? SourceEndColumn { get; }
 
         [JsonConstructor]
-        public ImpactHop(string sourceSymbolId,string targetSymbolId,string edgeKind,string provenance,string? sourceDocument = null,int? sourceLine = null,
+        public ImpactHop(string sourceSymbolId, string targetSymbolId, string edgeKind, string provenance, string? sourceDocument = null, int? sourceLine = null,
             int? sourceColumn = null, int? sourceEndLine = null, int? sourceEndColumn = null)
         {
             SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
@@ -60,7 +59,7 @@ namespace Lurp.Workspace
         public List<SemanticChange> SemanticCauses { get; }
 
         [JsonConstructor]
-        public ImpactPath(List<ImpactHop> hops,bool truncated = false,string? truncationReason = null,List<SemanticChange>? semanticCauses = null)
+        public ImpactPath(List<ImpactHop> hops, bool truncated = false, string? truncationReason = null, List<SemanticChange>? semanticCauses = null)
         {
             Hops = hops ?? throw new ArgumentNullException(nameof(hops));
             Truncated = truncated;

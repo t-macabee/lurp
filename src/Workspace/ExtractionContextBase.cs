@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Lurp.Shared;
 
 namespace Lurp.Workspace;
 

@@ -1,6 +1,4 @@
-﻿using Lurp.Storage;
-
-namespace Lurp.Workspace
+﻿namespace Lurp.Workspace
 {
     public sealed class ImpactTraverser
     {
@@ -15,7 +13,7 @@ namespace Lurp.Workspace
             _semanticDiffStore = semanticDiffStore;
         }
 
-        public List<ImpactPath> TraceImpact(string symbolId,ImpactDirection direction,HashSet<string>? allowedEdgeKinds = null,HashSet<string>? allowedProvenance = null,int maxDepth = 10,bool includeSource = true)
+        public List<ImpactPath> TraceImpact(string symbolId, ImpactDirection direction, HashSet<string>? allowedEdgeKinds = null, HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true)
         {
             var results = new List<ImpactPath>();
             var semanticCauses = GetSemanticCauses(symbolId);
@@ -29,7 +27,7 @@ namespace Lurp.Workspace
 
                 if (hopsSoFar.Count >= maxDepth)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar,truncated: true,truncationReason: "max depth reached",semanticCauses: semanticCauses));
+                    results.Add(new ImpactPath(hops: hopsSoFar, truncated: true, truncationReason: "max depth reached", semanticCauses: semanticCauses));
                     continue;
                 }
 
@@ -38,7 +36,7 @@ namespace Lurp.Workspace
 
                 if (edges.Count == 0 && hopsSoFar.Count > 0)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar,semanticCauses: semanticCauses));
+                    results.Add(new ImpactPath(hops: hopsSoFar, semanticCauses: semanticCauses));
                     continue;
                 }
 
@@ -46,7 +44,7 @@ namespace Lurp.Workspace
 
                 if (!anyEdgeFollowed && hopsSoFar.Count > 0)
                 {
-                    results.Add(new ImpactPath(hops: hopsSoFar,semanticCauses: semanticCauses));
+                    results.Add(new ImpactPath(hops: hopsSoFar, semanticCauses: semanticCauses));
                 }
             }
 
@@ -115,7 +113,7 @@ namespace Lurp.Workspace
 
                 anyEdgeFollowed = true;
 
-                var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId,targetSymbolId: edge.TargetSymbolId,edgeKind: edge.Kind,provenance: edge.Provenance,
+                var newHop = new ImpactHop(sourceSymbolId: edge.SourceSymbolId, targetSymbolId: edge.TargetSymbolId, edgeKind: edge.Kind, provenance: edge.Provenance,
                     sourceDocument: includeSource ? edge.SourceDocumentPath : null,
                     // Edges persist Roslyn-native 0-based lines; convert at the emit
                     // boundary through the LineNumbers choke point so the hop a

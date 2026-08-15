@@ -47,7 +47,7 @@
         public int DeclarationCount { get; }
         public bool IsPartial { get; }
 
-        public IndexedSymbolInfo(SymbolId symbolId,IndexedSymbolKind kind,string? fullyQualifiedName,string? metadataJson,int declarationCount,bool isPartial)
+        public IndexedSymbolInfo(SymbolId symbolId, IndexedSymbolKind kind, string? fullyQualifiedName, string? metadataJson, int declarationCount, bool isPartial)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
             Kind = kind;

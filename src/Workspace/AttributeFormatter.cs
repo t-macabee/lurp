@@ -1,5 +1,5 @@
-using System.Text;
 using Microsoft.CodeAnalysis;
+using System.Text;
 
 namespace Lurp.Workspace;
 

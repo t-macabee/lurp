@@ -1,9 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Lurp.Storage;
-using Lurp.Shared;
-using Lurp.Workspace;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -284,7 +281,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     /// the current <paramref name="compilation"/> and has at least one
     /// parameter whose type is <paramref name="serviceCollectionType"/>.
     /// </summary>
-    private static bool IsExternalMethodWithServiceCollectionParam(IMethodSymbol methodSymbol,Compilation compilation,INamedTypeSymbol serviceCollectionType)
+    private static bool IsExternalMethodWithServiceCollectionParam(IMethodSymbol methodSymbol, Compilation compilation, INamedTypeSymbol serviceCollectionType)
     {
         if (SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingAssembly, compilation.Assembly))
             return false;
@@ -314,7 +311,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     /// tiers miss and every DI registration in the file used to be dropped
     /// silently.
     /// </summary>
-    internal static string? ResolveSourceId(InvocationExpressionSyntax invocation,SemanticModel semanticModel,string assemblyIdentity)
+    internal static string? ResolveSourceId(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string assemblyIdentity)
     {
         var containingMethod = invocation.Ancestors()
             .OfType<MethodDeclarationSyntax>()

@@ -28,5 +28,5 @@ public enum MismatchKind
     VersionChanged,
 }
 
-public sealed record SnapshotMismatch(MismatchKind Kind,string Description,DocumentId? Document,string? Detail);
+public sealed record SnapshotMismatch(MismatchKind Kind, string Description, DocumentId? Document, string? Detail);
 

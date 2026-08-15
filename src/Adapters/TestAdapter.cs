@@ -1,9 +1,6 @@
-using Lurp.Shared;
-using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Lurp.Storage;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -125,7 +122,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 return true;
 
             var fullName = attr.AttributeClass.ToDisplayString();
-            if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or"NUnit.Framework.TestAttribute" or"Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute")
+            if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or "NUnit.Framework.TestAttribute" or "Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute")
                 return true;
         }
 

@@ -1,8 +1,7 @@
-using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Lurp.Storage;
+using System.Text.Json;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;

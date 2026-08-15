@@ -2,9 +2,6 @@
 // Owns: the capsule JSON contract only.
 // Must not contain: data model definitions or assembly/budget logic.
 
-using System.Text.Json.Serialization;
-using Lurp.Shared;
-
 namespace Lurp.Workspace
 {
     // Canonical serializer for the emitted capsule representation; the handler

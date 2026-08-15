@@ -1,5 +1,3 @@
-using Lurp.Storage;
-
 namespace Lurp.Queries;
 
 public sealed class FastTravelQueries

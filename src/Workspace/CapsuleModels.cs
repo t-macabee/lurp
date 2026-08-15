@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp.Workspace
 {
@@ -155,7 +154,7 @@ namespace Lurp.Workspace
             EdgeKind = string.Empty;
         }
 
-        public CapsuleItem(string symbolId,string kind,string fullyQualifiedName,string provenance,string edgeKind,string? source = null,
+        public CapsuleItem(string symbolId, string kind, string fullyQualifiedName, string provenance, string edgeKind, string? source = null,
             DeclarationLocation? location = null, string? inclusionReason = null, string? relationship = null, bool? direct = null)
         {
             SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));

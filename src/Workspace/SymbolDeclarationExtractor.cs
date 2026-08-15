@@ -1,7 +1,5 @@
-﻿using System.Text;
+﻿using Microsoft.CodeAnalysis;
 using System.Text.RegularExpressions;
-using Microsoft.CodeAnalysis;
-using Lurp.Storage;
 using SymKind = Lurp.Storage.IndexedSymbolKind;
 
 namespace Lurp.Workspace;

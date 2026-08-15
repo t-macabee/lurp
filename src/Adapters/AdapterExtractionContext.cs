@@ -1,6 +1,5 @@
-using Microsoft.CodeAnalysis;
-using Lurp.Shared;
 using Lurp.Workspace;
+using Microsoft.CodeAnalysis;
 
 namespace Lurp.Adapters;
 

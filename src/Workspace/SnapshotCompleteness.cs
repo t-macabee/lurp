@@ -1,6 +1,4 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp.Workspace;
 
@@ -33,11 +31,11 @@ public sealed record SnapshotCompleteness
     /// </summary>
     public SnapshotCompleteness WithBindingIncompleteness(
         IReadOnlyList<BindingIncompletenessRecord> records, bool includeDetail) => this with
-    {
-        BindingIncompleteness = includeDetail ? records.ToList() : [],
-        BindingIncompletenessSummary = BuildBindingIncompletenessSummary(records),
-        BindingIncompletenessTotal = records.Sum(static record => record.Count),
-    };
+        {
+            BindingIncompleteness = includeDetail ? records.ToList() : [],
+            BindingIncompletenessSummary = BuildBindingIncompletenessSummary(records),
+            BindingIncompletenessTotal = records.Sum(static record => record.Count),
+        };
 
     internal static List<BindingIncompletenessSummary> BuildBindingIncompletenessSummary(IReadOnlyList<BindingIncompletenessRecord> records)
         => records

@@ -1,8 +1,7 @@
-using System.Text.Json;
-using Lurp.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
