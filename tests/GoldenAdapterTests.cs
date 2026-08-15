@@ -127,6 +127,64 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             Assert.Equal("di-v1", edge.ExtractorVersion);
     }
 
+    /// <summary>
+    /// Regression test for a bug where <c>ResolveSourceId</c> only walked up to a
+    /// <c>MethodDeclarationSyntax</c>/<c>TypeDeclarationSyntax</c> ancestor, so any
+    /// registration call sitting directly in top-level statements (the .NET 6+
+    /// default <c>Program.cs</c> template) had neither ancestor and the edge was
+    /// silently dropped. The source symbol here is the compiler-synthesized
+    /// top-level-statements entry point, which is never itself a declared snapshot
+    /// symbol, so it's asserted by document/line rather than via ResolveSymbolId.
+    /// </summary>
+    [SkippableFact]
+    public async Task DependencyInjectionAdapter_TopLevelStatementAddScopedProducesRegisters()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Service.cs"] = """
+                    namespace App;
+
+                    public interface IService { }
+                    public class Service : IService { }
+                    """,
+                ["Program.cs"] = """
+                    using Microsoft.Extensions.DependencyInjection;
+                    using App;
+
+                    IServiceCollection services = null!;
+                    services.AddScoped<IService, Service>();
+                    """,
+            },
+            frameworkReferences: [AspNetCoreFramework],
+            msbuildProperties: new Dictionary<string, string> { ["OutputType"] = "Exe" });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
+        Assert.Equal(2, registers.Count);
+
+        var serviceId = ResolveSymbolId(snapshotId, "global::App.Service");
+        var interfaceId = ResolveSymbolId(snapshotId, "global::App.IService");
+
+        // Registration site anchors to the synthesized top-level-statements entry
+        // point instead of being dropped for lack of a MethodDeclarationSyntax.
+        Assert.Contains(registers, e =>
+            e.TargetSymbolId == serviceId &&
+            e.SourceSymbolId != interfaceId &&
+            e.SourceDocumentPath == "src/App/Program.cs");
+
+        // The interface-to-implementation relation is still emitted as before.
+        Assert.Contains(registers, e =>
+            e.SourceSymbolId == interfaceId &&
+            e.TargetSymbolId == serviceId);
+
+        foreach (var edge in registers)
+            Assert.Equal("di-v1", edge.ExtractorVersion);
+    }
+
     [SkippableFact]
     public async Task DIConventionMatcher_ScanCallProducesConventionRegistersEdge()
     {

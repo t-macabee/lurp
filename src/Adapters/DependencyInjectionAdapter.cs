@@ -304,7 +304,15 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
     /// <summary>
     /// Resolves the source symbol ID for an invocation. Prefers the enclosing
-    /// method, falling back to the enclosing type declaration.
+    /// method, falling back to the enclosing type declaration, then to
+    /// whatever symbol the semantic model reports as enclosing the
+    /// invocation's position. The last tier is what makes top-level-statement
+    /// <c>Program.cs</c> (the .NET 6+ default template) resolve at all:
+    /// registration calls there sit directly under the compiler-synthesized
+    /// entry point, which has neither a <see cref="MethodDeclarationSyntax"/>
+    /// nor a <see cref="TypeDeclarationSyntax"/> ancestor, so both earlier
+    /// tiers miss and every DI registration in the file used to be dropped
+    /// silently.
     /// </summary>
     internal static string? ResolveSourceId(InvocationExpressionSyntax invocation,SemanticModel semanticModel,string assemblyIdentity)
     {
@@ -336,6 +344,14 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                 if (id != null)
                     return id;
             }
+        }
+
+        var enclosingSymbol = semanticModel.GetEnclosingSymbol(invocation.SpanStart);
+        if (enclosingSymbol != null)
+        {
+            var id = SymbolIdFactory.Make(enclosingSymbol, assemblyIdentity);
+            if (id != null)
+                return id;
         }
 
         return null;
