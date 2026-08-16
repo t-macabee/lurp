@@ -9,7 +9,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
             SELECT change_id, from_snapshot_id, to_snapshot_id,
                    change_type, symbol_id, detail_json, created_at_utc
             FROM semantic_changes
-            """;
+            """ + "\n";
 
     private readonly SqliteConnection _connection;
 
