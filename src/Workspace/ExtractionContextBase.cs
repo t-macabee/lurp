@@ -46,12 +46,11 @@ internal abstract class ExtractionContextBase
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {
-        if (!_semanticModelCache.TryGetValue(syntaxTree, out var model))
-        {
-            model = Compilation.GetSemanticModel(syntaxTree);
-            _semanticModelCache[syntaxTree] = model;
-        }
+        if (_semanticModelCache.TryGetValue(syntaxTree, out var model))
+            return model;
 
+        model = Compilation.GetSemanticModel(syntaxTree);
+        _semanticModelCache[syntaxTree] = model;
         return model;
     }
 

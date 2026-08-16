@@ -111,15 +111,12 @@ internal static class LanguageVersionRecovery
         // SDK-style projects (Sdk="Microsoft.NET.Sdk*") default LangVersion to
         // "latest" when unset; that is what dotnet build would evaluate.
         var sdk = root.Attribute("Sdk")?.Value ?? "";
-        if (sdk.StartsWith("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase))
-        {
-            effective = LanguageVersion.LatestMajor;
-            reason = "SDK-style project with unset LangVersion; SDK default is latest";
-            return true;
-        }
+        if (!sdk.StartsWith("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase))
+            return false;
 
-        // Legacy (non-SDK) project: C# 7.3 is the correct default, not a fallback.
-        return false;
+        effective = LanguageVersion.LatestMajor;
+        reason = "SDK-style project with unset LangVersion; SDK default is latest";
+        return true;
     }
 
     private static bool TryParse(string value, out LanguageVersion version)

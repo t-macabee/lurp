@@ -14,14 +14,16 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
     static CleanRebuildEquivalenceTest()
     {
-        if (!MSBuildLocator.IsRegistered)
-            try
-            {
-                MSBuildLocator.RegisterDefaults();
-            }
-            catch
-            {
-            }
+        if (MSBuildLocator.IsRegistered)
+            return;
+
+        try
+        {
+            MSBuildLocator.RegisterDefaults();
+        }
+        catch
+        {
+        }
     }
 
     public CleanRebuildEquivalenceTest()

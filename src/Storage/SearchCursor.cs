@@ -44,14 +44,8 @@ public sealed record SearchCursor(string SnapshotId, string Fingerprint, string 
     }
 }
 
-public sealed class SymbolSearchPage
+public sealed class SymbolSearchPage(List<SymbolSearchResult> items, string? nextCursor)
 {
-    public SymbolSearchPage(List<SymbolSearchResult> items, string? nextCursor)
-    {
-        Items = items;
-        NextCursor = nextCursor;
-    }
-
-    public List<SymbolSearchResult> Items { get; }
-    public string? NextCursor { get; }
+    public List<SymbolSearchResult> Items { get; } = items;
+    public string? NextCursor { get; } = nextCursor;
 }

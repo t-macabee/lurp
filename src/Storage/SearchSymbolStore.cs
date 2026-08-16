@@ -114,17 +114,15 @@ internal sealed class SearchSymbolStore
         cursor?.Validate(snapshotId, fingerprint);
 
         var mode = cursor?.Mode ?? "fts";
-        if (mode == "fts")
-        {
-            var page = SearchSymbolsFtsPage(query, snapshotId, limit, includeGenerated, kind, cursor);
-            // Only fall back to substring on the *first* page of a plain identifier query.
-            // Trigger when FTS5 saturates fewer than the requested limit.
-            if (page.Items.Count < limit && cursor == null && SearchUtils.IsPlainIdentifierQuery(query))
-                return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, null);
-            return page;
-        }
+        if (mode != "fts")
+            return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, cursor);
 
-        return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, cursor);
+        var page = SearchSymbolsFtsPage(query, snapshotId, limit, includeGenerated, kind, cursor);
+        // Only fall back to substring on the *first* page of a plain identifier query.
+        // Trigger when FTS5 saturates fewer than the requested limit.
+        if (page.Items.Count < limit && cursor == null && SearchUtils.IsPlainIdentifierQuery(query))
+            return SearchSymbolsBySubstringPage(query, snapshotId, limit, includeGenerated, kind, null);
+        return page;
     }
 
     private SymbolSearchPage SearchSymbolsFtsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)

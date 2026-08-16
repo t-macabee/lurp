@@ -126,11 +126,12 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     private List<string> ComputeEffectiveSymbolIds()
     {
         var ids = new List<string> { SymbolId.Value };
-        if (SymbolId.DocCommentId is ['T', ':', ..])
-            ids.AddRange(EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value)
-                .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
-                .Select(edge => edge.TargetSymbolId));
+        if (SymbolId.DocCommentId is not ['T', ':', ..])
+            return ids;
 
+        ids.AddRange(EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value)
+            .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
+            .Select(edge => edge.TargetSymbolId));
         return ids;
     }
 
@@ -168,12 +169,11 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         // context, registered implementations, change sites); memoize per
         // symbol so the declaration-location lookup is not repeated per item.
         var key = (symbolId, IncludeGenerated);
-        if (!_locationCache.TryGetValue(key, out var location))
-        {
-            location = DeclarationStore.GetDeclarationLocations(symbolId, SnapshotId, IncludeGenerated).FirstOrDefault();
-            _locationCache[key] = location;
-        }
+        if (_locationCache.TryGetValue(key, out var location))
+            return location;
 
+        location = DeclarationStore.GetDeclarationLocations(symbolId, SnapshotId, IncludeGenerated).FirstOrDefault();
+        _locationCache[key] = location;
         return location;
     }
 }

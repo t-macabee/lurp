@@ -247,14 +247,11 @@ internal static class DependencyInjectionConventionMatcher
         if (directAssembly != null)
             return directAssembly;
 
-        if (methodSymbol.Name == "Scan")
-        {
-            var scannedAssembly = ResolveAssemblyFromScanLambda(invocation, semanticModel);
-            if (scannedAssembly != null)
-                return scannedAssembly;
-        }
+        if (methodSymbol.Name != "Scan")
+            return fallback;
 
-        return fallback;
+        var scannedAssembly = ResolveAssemblyFromScanLambda(invocation, semanticModel);
+        return scannedAssembly ?? fallback;
     }
 
     private static string? ResolveAssemblyFromGenericTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)

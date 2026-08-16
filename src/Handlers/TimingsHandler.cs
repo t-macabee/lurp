@@ -14,10 +14,9 @@ internal static class TimingsHandler
 
         if (!File.Exists(dbPath))
         {
-            if (asJson)
-                Console.WriteLine(JsonSerializer.Serialize(new { error = "Database not found", database_path = dbPath }, HandlerBootstrap.IndentedJson));
-            else
-                Console.WriteLine("Database not found. Run --mode=index first.");
+            Console.WriteLine(asJson
+                ? JsonSerializer.Serialize(new { error = "Database not found", database_path = dbPath }, HandlerBootstrap.IndentedJson)
+                : "Database not found. Run --mode=index first.");
             return;
         }
 
@@ -42,10 +41,9 @@ internal static class TimingsHandler
 
         if (timings.Count == 0)
         {
-            if (asJson)
-                Console.WriteLine(JsonSerializer.Serialize(new { snapshot_id = snapshotId, timings = Array.Empty<object>(), note = "No timing data for this snapshot." }, HandlerBootstrap.IndentedJson));
-            else
-                Console.WriteLine($"No timing data for snapshot {snapshotId}.");
+            Console.WriteLine(asJson
+                ? JsonSerializer.Serialize(new { snapshot_id = snapshotId, timings = Array.Empty<object>(), note = "No timing data for this snapshot." }, HandlerBootstrap.IndentedJson)
+                : $"No timing data for snapshot {snapshotId}.");
             return;
         }
 
@@ -83,10 +81,9 @@ internal static class TimingsHandler
         var latestSnapshotId = store.GetLatestSnapshotId();
         if (latestSnapshotId == null)
         {
-            if (asJson)
-                Console.WriteLine(JsonSerializer.Serialize(new { error = "No snapshots found" }, HandlerBootstrap.IndentedJson));
-            else
-                Console.WriteLine("No snapshots found. Run --mode=index first.");
+            Console.WriteLine(asJson
+                ? JsonSerializer.Serialize(new { error = "No snapshots found" }, HandlerBootstrap.IndentedJson)
+                : "No snapshots found. Run --mode=index first.");
             return;
         }
 

@@ -195,10 +195,7 @@ public sealed class ImpactTraverserTests
         // All hops should flow forward: A→B, B→C
         foreach (var path in paths)
             for (var i = 0; i < path.Hops.Count; i++)
-                if (i == 0)
-                    Assert.Equal("A", path.Hops[i].SourceSymbolId);
-                else
-                    Assert.Equal(path.Hops[i - 1].TargetSymbolId, path.Hops[i].SourceSymbolId);
+                Assert.Equal(i == 0 ? "A" : path.Hops[i - 1].TargetSymbolId, path.Hops[i].SourceSymbolId);
     }
 
     [Fact]
@@ -230,18 +227,11 @@ public sealed class ImpactTraverserTests
 
     // ── In-memory IEdgeStore implementation ─────────────────────────────
 
-    private sealed class InMemoryEdgeStore : IEdgeStore
+    private sealed class InMemoryEdgeStore(List<EdgeRecord> edges) : IEdgeStore
     {
-        private readonly List<EdgeRecord> _edges;
-
-        public InMemoryEdgeStore(List<EdgeRecord> edges)
-        {
-            _edges = edges;
-        }
-
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
         {
-            var filtered = _edges.Where(e => e.SnapshotId == snapshotId);
+            var filtered = edges.Where(e => e.SnapshotId == snapshotId);
             if (symbolId != null)
                 filtered = filtered.Where(e =>
                     e.SourceSymbolId == symbolId || e.TargetSymbolId == symbolId);
@@ -250,12 +240,12 @@ public sealed class ImpactTraverserTests
 
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
         {
-            return [.. _edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId)];
+            return [.. edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId)];
         }
 
         public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
         {
-            return [.. _edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId)];
+            return [.. edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId)];
         }
 
         // Unused members — throw to catch accidental usage

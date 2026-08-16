@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -44,15 +44,8 @@ public readonly record struct WorkspaceId
     }
 }
 
-public readonly record struct SnapshotId
+public readonly record struct SnapshotId(Guid Value)
 {
-    public SnapshotId(Guid value)
-    {
-        Value = value;
-    }
-
-    public Guid Value { get; }
-
     public static SnapshotId Parse(string value)
     {
         return new SnapshotId(Guid.Parse(value, CultureInfo.InvariantCulture));

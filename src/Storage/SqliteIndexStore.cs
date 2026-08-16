@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using System.Data;
 
 namespace Lurp.Storage;
@@ -200,13 +200,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         var existingStatus = _lifecycle!.GetSnapshotStatus(snapshotId, workspaceId);
         if (existingStatus == SnapshotStatusValues.Complete)
             return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Reuse, existingStatus);
-        if (existingStatus != null)
-        {
-            _pruner!.DeleteSnapshotData(snapshotId);
-            return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Retry, existingStatus);
-        }
+        if (existingStatus == null)
+            return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Fresh, null);
 
-        return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Fresh, null);
+        _pruner!.DeleteSnapshotData(snapshotId);
+        return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Retry, existingStatus);
     }
 
     public string? GetSource(string relativePath, string snapshotId)

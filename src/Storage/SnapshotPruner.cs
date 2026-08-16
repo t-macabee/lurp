@@ -91,15 +91,14 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             foreach (var (snapshotId, status) in snapshotRows)
             {
                 DeleteSnapshotPayload(cmd, snapshotId);
-                if (status == SnapshotStatusValues.Failed)
-                    // Tombstone: keep the row : and with it the failure reason
-                    // that P2-9 exists to expose : but mark the payload pruned so
-                    // a later run does not rescan the (now empty) payload.
-                    cmd.CommandText = "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;";
-                else
-                    // Crashed in-progress rows have no failure reason to preserve;
-                    // restore the original cleanup of deleting the whole row.
-                    cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
+                // Tombstone: keep the row : and with it the failure reason
+                // that P2-9 exists to expose : but mark the payload pruned so
+                // a later run does not rescan the (now empty) payload.
+                // Crashed in-progress rows have no failure reason to preserve;
+                // restore the original cleanup of deleting the whole row.
+                cmd.CommandText = status == SnapshotStatusValues.Failed
+                    ? "UPDATE snapshots SET payload_pruned = 1 WHERE snapshot_id = @sid;"
+                    : "DELETE FROM snapshots WHERE snapshot_id = @sid;";
 
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@sid", snapshotId);

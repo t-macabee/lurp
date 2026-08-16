@@ -284,17 +284,17 @@ internal sealed class ContextAssembler
 
         var tiers = order.Select(index => TierBuilders[index].Name).ToArray();
 
-        if (SymbolId.IsType)
+        if (!SymbolId.IsType)
+            return ResolveInOrder(context, tiers);
+
+        // Types favour their surrounding declarations over tests: swap the
+        // two tiers' positions wherever the intent placed them.
+        var rt = Array.IndexOf(tiers, "relevant_tests");
+        var ss = Array.IndexOf(tiers, "surrounding_source");
+        if (rt >= 0 && ss >= 0)
         {
-            // Types favour their surrounding declarations over tests: swap the
-            // two tiers' positions wherever the intent placed them.
-            var rt = Array.IndexOf(tiers, "relevant_tests");
-            var ss = Array.IndexOf(tiers, "surrounding_source");
-            if (rt >= 0 && ss >= 0)
-            {
-                tiers[rt] = "surrounding_source";
-                tiers[ss] = "relevant_tests";
-            }
+            tiers[rt] = "surrounding_source";
+            tiers[ss] = "relevant_tests";
         }
 
         return ResolveInOrder(context, tiers);

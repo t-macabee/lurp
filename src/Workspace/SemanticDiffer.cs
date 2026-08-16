@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace Lurp.Workspace;
 
@@ -84,7 +84,7 @@ public class SemanticDiffer
 
         var common = fromSet.Intersect(toSet);
         if (changedSymbolIds != null)
-            common = common.Where(id => changedSymbolIds.Contains(id));
+            common = common.Where(changedSymbolIds.Contains);
         var commonList = common.ToList();
 
         foreach (var symbolId in commonList)
@@ -151,20 +151,20 @@ public class SemanticDiffer
         var fromLocations = _declarationStore.GetDeclarationLocations(symbolId, fromSnapshotId);
         var toLocations = _declarationStore.GetDeclarationLocations(symbolId, toSnapshotId);
 
-        if (fromLocations != null && toLocations != null)
-        {
-            var fromPaths = fromLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
-            var toPaths = toLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+        if (fromLocations == null || toLocations == null)
+            return (changes, skippedComparisons);
 
-            if (!fromPaths.SetEquals(toPaths))
+        var fromPaths = fromLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+        var toPaths = toLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+
+        if (!fromPaths.SetEquals(toPaths))
+        {
+            var detail = new
             {
-                var detail = new
-                {
-                    before = fromPaths.OrderBy(p => p, StringComparer.Ordinal).ToList(),
-                    after = toPaths.OrderBy(p => p, StringComparer.Ordinal).ToList()
-                };
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRelocated, symbolId, detail));
-            }
+                before = fromPaths.OrderBy(p => p, StringComparer.Ordinal).ToList(),
+                after = toPaths.OrderBy(p => p, StringComparer.Ordinal).ToList()
+            };
+            changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRelocated, symbolId, detail));
         }
 
         return (changes, skippedComparisons);
@@ -390,9 +390,11 @@ public class SemanticDiffer
         var fromBody = _declarationStore.GetSymbolSource(symbolId, fromSnapshotId, ViewKind.Body);
         var toBody = _declarationStore.GetSymbolSource(symbolId, toSnapshotId, ViewKind.Body);
 
-        if (fromSig == toSig)
-            if (fromBody != toBody)
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BodyOnlyChanged, symbolId, new { note = "signature unchanged, body differs" }));
+        if (fromSig != toSig)
+            return (changes, 0);
+
+        if (fromBody != toBody)
+            changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BodyOnlyChanged, symbolId, new { note = "signature unchanged, body differs" }));
 
         return (changes, 0);
     }

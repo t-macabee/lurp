@@ -6,12 +6,8 @@ namespace Lurp.Workspace;
 public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
 {
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
-    private readonly bool _force = force;
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-    private readonly string? _jsonExportPath = jsonExportPath;
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
-    private readonly HashSet<string> _skipAdapters = skipAdapters;
-    private readonly bool _skipDiff = skipDiff;
     private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
 
     // Incremental indexing strategy:
@@ -61,13 +57,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // identical snapshot id, so a complete snapshot with this id must be
         // reused rather than duplicated, and a crashed or failed attempt with
         // the same id must not block a retry.
-        var snapshotId = SnapshotIdentity.Create(workspaceInfo, _skipAdapters);
+        var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var newSnapshotIdStr = snapshotId.ToString();
         var existing = _store.ResolveExistingSnapshot(newSnapshotIdStr, workspaceInfo.Id.Value);
         switch (existing.Disposition)
         {
             case ExistingSnapshotDisposition.Reuse:
-                if (_force)
+                if (force)
                 {
                     _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists; --force given, re-extracting in place.");
                 }
@@ -105,7 +101,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
 
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
-        var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
+        var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters);
         var closureSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         if (newFileProjectPaths != null)
             closureSeed.UnionWith(newFileProjectPaths);
@@ -193,12 +189,12 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         sw3.Stop();
         timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds));
 
-        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), _skipAdapters);
+        var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), skipAdapters);
         // Step 4: Manifest Creation
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
+        newManifest.Save(_store, workspaceInfo.DocumentContents, jsonExportPath);
         _output.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
@@ -411,7 +407,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 continue;
             }
 
-            var options = CompilationFactExtractor.CreateOptions(_skipAdapters, extractionScopeAbsolutePaths);
+            var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
 
@@ -453,7 +449,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var pathToNewVersion = _store.GetDocumentVersionIdsByPath(newSnapshotIdStr);
         var newDocVersionIdSet = new HashSet<string>(
             changedPaths
-                .Where(p => pathToNewVersion.ContainsKey(p))
+                .Where(pathToNewVersion.ContainsKey)
                 .Select(p => pathToNewVersion[p]));
 
         // If no new document versions exist for any changed path (all changed
@@ -490,15 +486,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             removedSymbolIds = [.. candidateIds.Where(id => !survivingSymbolIds.Contains(id))];
         }
 
-        if (removedSymbolIds.Count > 0)
-        {
-            _output.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
-            _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
-            _output.WriteLine("done.");
-            return removedSymbolIds;
-        }
+        if (removedSymbolIds.Count == 0)
+            return [];
 
-        return [];
+        _output.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
+        _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
+        _output.WriteLine("done.");
+        return removedSymbolIds;
     }
 
     private async Task<(int crossDocEdgesProcessed, OrphanEdgeDropSummary orphanEdgesDropped)> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
@@ -528,7 +522,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // semantic-causes annotation (which degrades to an empty list when absent)
         // consume this; a run that needs neither shouldn't pay for it.
         cancellationToken.ThrowIfCancellationRequested();
-        if (!_skipDiff)
+        if (!skipDiff)
             ComputeAndPersistSemanticChanges(context, timings);
 
         // Completion must be last : all preceding phases must succeed.
@@ -541,7 +535,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         var sw = Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
-        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, _skipAdapters);
+        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters);
         // The reverse-edge closure was already computed in step 2 via
         // FindAffectedDocPaths on the genuinely-changed documents plus
         // binding-incompleteness seeding. Union in the documents step 6 already
@@ -604,7 +598,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var pathToVersion = _store.GetDocumentVersionIdsByPath(snapshotId);
         var versionIds = new HashSet<string>(
             changedPaths
-                .Where(p => pathToVersion.ContainsKey(p))
+                .Where(pathToVersion.ContainsKey)
                 .Select(p => pathToVersion[p]));
 
         if (versionIds.Count == 0)

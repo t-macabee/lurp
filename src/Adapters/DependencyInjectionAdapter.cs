@@ -191,14 +191,16 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
                     typeArgs.Add(typeInfo.Type);
             }
 
-        if (typeArgs.Count == 0)
-            foreach (var arg in invocation.ArgumentList.Arguments)
-                if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
-                {
-                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                    if (typeInfo.Type != null)
-                        typeArgs.Add(typeInfo.Type);
-                }
+        if (typeArgs.Count != 0)
+            return typeArgs;
+
+        foreach (var arg in invocation.ArgumentList.Arguments)
+            if (arg.Expression is TypeOfExpressionSyntax typeofExpr)
+            {
+                var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
+                if (typeInfo.Type != null)
+                    typeArgs.Add(typeInfo.Type);
+            }
 
         return typeArgs;
     }

@@ -35,7 +35,7 @@ internal static class ContextBudgeter
                 continue;
             }
 
-            var tierCost = items.Sum(item => ContextAssembler.EstimateTokens(item));
+            var tierCost = items.Sum(ContextAssembler.EstimateTokens);
             if (runningTotal + tierCost <= budget)
             {
                 ContextAssembler.AddTierToCapsule(capsule, tier.Name, items);

@@ -18,13 +18,12 @@ internal static class AttributeFormatter
 
         parts.AddRange(attr.NamedArguments.Select(named => $"{named.Key} = {FormatTypedConstant(named.Value)}"));
 
-        if (parts.Count > 0)
-        {
-            sb.Append('(');
-            sb.Append(string.Join(", ", parts));
-            sb.Append(')');
-        }
+        if (parts.Count == 0)
+            return sb.ToString();
 
+        sb.Append('(');
+        sb.Append(string.Join(", ", parts));
+        sb.Append(')');
         return sb.ToString();
     }
 

@@ -19,14 +19,16 @@ public abstract class IntegrationTestBase : IDisposable
 
     static IntegrationTestBase()
     {
-        if (!MSBuildLocator.IsRegistered)
-            try
-            {
-                MSBuildLocator.RegisterDefaults();
-            }
-            catch
-            {
-            }
+        if (MSBuildLocator.IsRegistered)
+            return;
+
+        try
+        {
+            MSBuildLocator.RegisterDefaults();
+        }
+        catch
+        {
+        }
     }
 
     protected IntegrationTestBase()

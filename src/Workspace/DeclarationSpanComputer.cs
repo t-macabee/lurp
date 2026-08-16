@@ -34,14 +34,12 @@ internal static class DeclarationSpanComputer
         }
 
         var tokens = node.ChildTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken) || t.IsKind(SyntaxKind.GlobalKeyword)).ToArray();
-        if (tokens.Length > 0)
-        {
-            var firstId = tokens[0];
-            return new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
-                CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
-        }
+        if (tokens.Length == 0)
+            return full;
 
-        return full;
+        var firstId = tokens[0];
+        return new DeclarationSpan(CharOffsetToByteOffset(sourceText, firstId.SpanStart, encoding),
+            CharOffsetToByteOffset(sourceText, firstId.Span.End, encoding));
 
         static SyntaxToken? GetIdentifier(SyntaxNode n)
         {

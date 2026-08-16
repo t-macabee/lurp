@@ -12,10 +12,6 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     /// </summary>
     private const double DefaultFallbackRatio = 0.6;
 
-    private readonly string _gitRoot = gitRoot;
-    private readonly HashSet<string> _skipAdapters = skipAdapters;
-    private readonly IIndexStore _store = store;
-
     /// <param name="solution">
     ///     The workspace solution whose projects are examined for the affected closure.
     /// </param>
@@ -108,26 +104,26 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         var (pathToProject, projectDocCount) = BuildProjectDocIndex(solution);
         var fellBack = false;
 
-        foreach (var record in _store.GetBindingIncompleteness(previousSnapshotId))
+        foreach (var record in store.GetBindingIncompleteness(previousSnapshotId))
         {
             if (record.DocumentPath == null)
                 continue;
             if (!BindingIncompletenessReason.UnobservableReasons.Contains(record.Reason))
                 continue;
-            if (visitedPaths.Add(record.DocumentPath))
-            {
-                affectedPaths.Add(record.DocumentPath);
-                frontier.Add(record.DocumentPath);
-            }
+            if (!visitedPaths.Add(record.DocumentPath))
+                continue;
+
+            affectedPaths.Add(record.DocumentPath);
+            frontier.Add(record.DocumentPath);
         }
 
         while (frontier.Count > 0)
         {
-            var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, frontier);
-            var symbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
+            var oldDocVersionIds = store.GetDocumentVersionIdsForDocuments(previousSnapshotId, frontier);
+            var symbolIds = store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
             var next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var symbolId in symbolIds)
-                foreach (var edge in _store.GetIncomingEdges(previousSnapshotId, symbolId))
+                foreach (var edge in store.GetIncomingEdges(previousSnapshotId, symbolId))
                     foreach (var path in ResolveSourceDocumentPaths(previousSnapshotId, edge, visitedPaths))
                     {
                         affectedPaths.Add(path);
@@ -164,7 +160,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
-                pathToProject[GetRelativePath(doc.FilePath, _gitRoot)] = project.Name;
+                pathToProject[GetRelativePath(doc.FilePath, gitRoot)] = project.Name;
                 count++;
             }
 
@@ -212,7 +208,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
-                widened.Add(GetRelativePath(doc.FilePath, _gitRoot));
+                widened.Add(GetRelativePath(doc.FilePath, gitRoot));
             }
         }
 
@@ -231,7 +227,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (string.IsNullOrEmpty(edge.SourceSymbolId))
             yield break;
 
-        var locs = _store.GetDeclarationLocations(edge.SourceSymbolId, previousSnapshotId);
+        var locs = store.GetDeclarationLocations(edge.SourceSymbolId, previousSnapshotId);
         if (locs.Count > 0)
         {
             foreach (var loc in locs.Where(loc => visitedPaths.Add(loc.DocumentPath)))
@@ -243,7 +239,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (containingTypeSymbolId == null)
             yield break;
 
-        var typeLocs = _store.GetDeclarationLocations(containingTypeSymbolId, previousSnapshotId);
+        var typeLocs = store.GetDeclarationLocations(containingTypeSymbolId, previousSnapshotId);
         foreach (var loc in typeLocs.Where(loc => visitedPaths.Add(loc.DocumentPath)))
             yield return loc.DocumentPath;
     }
@@ -257,7 +253,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
-                var relPath = GetRelativePath(doc.FilePath, _gitRoot);
+                var relPath = GetRelativePath(doc.FilePath, gitRoot);
                 if (affectedPaths.Contains(relPath))
                 {
                     affectedProjectNames.Add(project.Name);
@@ -273,7 +269,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     {
         // Compute per-project affected absolute paths for scoped re-extraction
         var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var rootDir = PathNormalizer.NormalizeRoot(_gitRoot) + Path.DirectorySeparatorChar;
+        var rootDir = PathNormalizer.NormalizeRoot(gitRoot) + Path.DirectorySeparatorChar;
         foreach (var relPath in affectedDocPaths)
             affectedAbsPaths.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relPath))));
 
@@ -299,14 +295,14 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         var allAffectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var projectPaths in perProjectAffectedPaths.Values)
             foreach (var path in projectPaths)
-                allAffectedPaths.Add(GetRelativePath(path, _gitRoot));
-        _store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
-        _store.DeleteAnnotationsByDocumentPaths(newSnapshotId, allAffectedPaths);
+                allAffectedPaths.Add(GetRelativePath(path, gitRoot));
+        store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
+        store.DeleteAnnotationsByDocumentPaths(newSnapshotId, allAffectedPaths);
 
         var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames, cancellationToken);
         var crossDocAssemblyIdentities = crossDocCompilations.Values
             .Select(c => c.Assembly.Identity.GetDisplayName()).ToList();
-        _store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
+        store.DeleteEdgesWithNullDocumentPathForAssemblies(newSnapshotId, crossDocAssemblyIdentities);
 
         var totalEdges = 0;
         foreach (var project in solution.Projects)
@@ -323,7 +319,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (perProjectAffectedPaths.TryGetValue(project.Name, out var projectAffected) && projectAffected.Count > 0)
                 scopeDocs = projectAffected;
 
-            var options = CompilationFactExtractor.CreateOptions(_skipAdapters, scopeDocs);
+            var options = CompilationFactExtractor.CreateOptions(skipAdapters, scopeDocs);
             cancellationToken.ThrowIfCancellationRequested();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             result.EnsureRequiredSuccess();
@@ -333,14 +329,14 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             // while scopeDocs carries absolute document paths. Convert once
             // so both the delete and the scoped save share the same set.
             var scopeRelativePaths = scopeDocs?
-                .Select(path => GetRelativePath(path, _gitRoot))
+                .Select(path => GetRelativePath(path, gitRoot))
                 .ToList();
 
             if (scopeRelativePaths != null)
-                _store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths);
+                store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths);
 
-            _store.SaveEdges(newSnapshotId, result.Edges);
-            _store.SaveDeclarations(newSnapshotId, result.Declarations);
+            store.SaveEdges(newSnapshotId, result.Edges);
+            store.SaveDeclarations(newSnapshotId, result.Declarations);
 
             // ARCH-005: Step 6 (IncrementalIndexer.ExtractReplacementFacts) already
             // re-wrote full-compilation diagnostics for every project in
@@ -353,8 +349,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             // stale, so keep the write only for projects Step 6 did NOT cover.
             if (alreadyCoveredProjectNames == null || !alreadyCoveredProjectNames.Contains(project.Name))
             {
-                _store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
-                _store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
+                store.DeleteDiagnosticsByProjectNames(newSnapshotId, [project.Name]);
+                store.SaveDiagnostics(newSnapshotId, result.Diagnostics);
             }
 
             // Lockstep invariant: save binding-incompleteness only for documents
@@ -368,15 +364,15 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 var scopedBi = result.BindingIncompleteness
                     .Where(r => r.DocumentPath is { } path && scopedSet.Contains(path))
                     .ToList();
-                _store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
+                store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
             }
             else
             {
-                _store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
+                store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
             }
 
             if (result.Annotations.Count > 0)
-                _store.SaveAnnotations(newSnapshotId, result.Annotations);
+                store.SaveAnnotations(newSnapshotId, result.Annotations);
             totalEdges += result.Edges.Count;
             Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }

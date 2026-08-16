@@ -45,12 +45,11 @@ public sealed class AdapterExtractionContext
 
     public SemanticModel GetSemanticModel(SyntaxTree tree)
     {
-        if (!_semanticModelCache.TryGetValue(tree, out var model))
-        {
-            model = Compilation.GetSemanticModel(tree);
-            _semanticModelCache[tree] = model;
-        }
+        if (_semanticModelCache.TryGetValue(tree, out var model))
+            return model;
 
+        model = Compilation.GetSemanticModel(tree);
+        _semanticModelCache[tree] = model;
         return model;
     }
 

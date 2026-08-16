@@ -143,23 +143,21 @@ internal sealed class MemberEdgeExtractionContext(
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {
-        if (!_semanticModelCache.TryGetValue(syntaxTree, out var model))
-        {
-            model = Compilation.GetSemanticModel(syntaxTree);
-            _semanticModelCache[syntaxTree] = model;
-        }
+        if (_semanticModelCache.TryGetValue(syntaxTree, out var model))
+            return model;
 
+        model = Compilation.GetSemanticModel(syntaxTree);
+        _semanticModelCache[syntaxTree] = model;
         return model;
     }
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree, Dictionary<SyntaxTree, SemanticModel> cache)
     {
-        if (!cache.TryGetValue(syntaxTree, out var model))
-        {
-            model = Compilation.GetSemanticModel(syntaxTree);
-            cache[syntaxTree] = model;
-        }
+        if (cache.TryGetValue(syntaxTree, out var model))
+            return model;
 
+        model = Compilation.GetSemanticModel(syntaxTree);
+        cache[syntaxTree] = model;
         return model;
     }
 }

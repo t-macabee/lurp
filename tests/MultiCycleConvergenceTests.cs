@@ -35,22 +35,22 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
         // Mutation 1: add a new service.
-        var addService = () => WriteFile("Services", "ProductService.cs", """
-                                                                          using Core;
+        void AddService() => WriteFile("Services", "ProductService.cs", """
+                                                                        using Core;
 
-                                                                          namespace Services;
+                                                                        namespace Services;
 
-                                                                          public class Product { }
-                                                                          public class ProductDto { }
-                                                                          public class ProductSearch { }
+                                                                        public class Product { }
+                                                                        public class ProductDto { }
+                                                                        public class ProductSearch { }
 
-                                                                          public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
-                                                                          {
-                                                                          }
-                                                                          """);
+                                                                        public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
+                                                                        {
+                                                                        }
+                                                                        """);
 
         // Mutation 2: rename a method (Find → Search across Core).
-        var renameMethod = () =>
+        void RenameMethod()
         {
             WriteFile("Core", "IBaseReadService.cs", """
                                                      namespace Core;
@@ -91,10 +91,10 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
                                                 }
                                             }
                                             """);
-        };
+        }
 
         // Mutation 3: change a base class (make it abstract).
-        var changeBaseClass = () => WriteFile("Core", "BaseReadService.cs", """
+        void ChangeBaseClass() => WriteFile("Core", "BaseReadService.cs", """
                                                                             namespace Core;
 
                                                                             public abstract class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
@@ -104,7 +104,7 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
                                                                             """);
 
         // Mutation 4: split UserService into two partial files.
-        var splitFile = () =>
+        void SplitFile()
         {
             DeleteFile("Services", "UserService.cs");
             WriteFile("Services", "UserService.Part1.cs", """
@@ -130,10 +130,10 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
                                                               public string Display(UserDto dto) => dto.ToString() ?? "";
                                                           }
                                                           """);
-        };
+        }
 
         // Mutation 5: revert the rename (Search → Find).
-        var revertRename = () =>
+        void RevertRename()
         {
             WriteFile("Core", "IBaseReadService.cs", """
                                                      namespace Core;
@@ -174,15 +174,15 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
                                                 }
                                             }
                                             """);
-        };
+        }
 
         await RunMultiCycleParityAsync(
             () => MultiProjectFixture.Seed(this),
-            addService,
-            renameMethod,
-            changeBaseClass,
-            splitFile,
-            revertRename);
+            AddService,
+            RenameMethod,
+            ChangeBaseClass,
+            SplitFile,
+            RevertRename);
     }
 
     [SkippableFact]

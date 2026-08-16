@@ -46,11 +46,11 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
 
                 var relPath = PathNormalizer.ToGitRelative(document.FilePath, _gitRoot);
 
-                if (changedPaths.Contains(relPath))
-                {
-                    affectedIds.Add(project.Id);
-                    break;
-                }
+                if (!changedPaths.Contains(relPath))
+                    continue;
+
+                affectedIds.Add(project.Id);
+                break;
             }
 
             if (affectedIds.Contains(project.Id) || string.IsNullOrEmpty(project.FilePath))
