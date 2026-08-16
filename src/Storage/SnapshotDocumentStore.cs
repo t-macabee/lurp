@@ -10,14 +10,14 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
     internal string? GetSource(string relativePath, string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT dv.content
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
             WHERE d.relative_path = @relativePath
               AND sd.snapshot_id = @snapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@relativePath", relativePath);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -38,10 +38,10 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             command.Transaction = transaction;
             foreach (var (_, versionId) in entries)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id)
                     VALUES (@snapshotId, @documentVersionId);
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.Parameters.AddWithValue("@documentVersionId", versionId);
@@ -60,13 +60,13 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
     internal Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT d.relative_path, dv.document_version_id
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
             WHERE sd.snapshot_id = @snapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var result = new Dictionary<string, string>();
         using var reader = command.ExecuteReader();
@@ -82,14 +82,16 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             return [];
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT dv.document_version_id
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
             WHERE sd.snapshot_id = @snapshotId
-              AND d.relative_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
-        ";
+              AND d.relative_path IN (
+            """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
+        );
+        """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var i = 0;
         foreach (var path in pathList)

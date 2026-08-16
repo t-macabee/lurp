@@ -18,13 +18,15 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = @"
+            command.CommandText = """
                 DELETE FROM declarations
-                WHERE document_version_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @")
+                WHERE document_version_id IN (
+                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+            )
                   AND document_version_id NOT IN (
                       SELECT DISTINCT document_version_id FROM snapshot_documents
                   );
-            ";
+            """;
             var i = 0;
             foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
@@ -45,13 +47,15 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             return [];
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT DISTINCT ss.symbol_id
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
             WHERE ss.snapshot_id = @snapshotId
-              AND d.document_version_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
-        ";
+              AND d.document_version_id IN (
+            """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+        );
+        """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var i = 0;
         foreach (var id in idList)
@@ -89,7 +93,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             return null;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT d.symbol_id, d.full_start, d.full_end, d.name_start, d.name_end,
                    doc.relative_path, d.document_version_id
             FROM declarations d
@@ -99,7 +103,8 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             WHERE sd.snapshot_id = @snapshotId
               AND d.document_version_id = @docVersionId
               AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
-              AND d.full_start <= @byteOffset AND d.full_end > @byteOffset";
+              AND d.full_start <= @byteOffset AND d.full_end > @byteOffset
+            """;
         if (!includeGenerated)
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
         command.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
@@ -143,14 +148,14 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
     private (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(string relativePath, string snapshotId)
     {
         using var getDocCmd = _connection.CreateCommand();
-        getDocCmd.CommandText = @"
+        getDocCmd.CommandText = """
             SELECT dv.document_version_id, dv.line_starts
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
             LIMIT 1;
-        ";
+            """;
         getDocCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         getDocCmd.Parameters.AddWithValue("@relativePath", relativePath);
 
@@ -173,7 +178,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
     private string? FindSymbolAtOffset(string docVersionId, int byteOffset, bool includeGenerated)
     {
         using var findCmd = _connection.CreateCommand();
-        findCmd.CommandText = @"
+        findCmd.CommandText = """
             SELECT d.symbol_id
             FROM declarations d
             WHERE d.document_version_id = @docVersionId
@@ -181,7 +186,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
               AND d.full_end IS NOT NULL
               AND d.full_start <= @byteOffset
               AND d.full_end > @byteOffset
-        ";
+            """;
 
         if (!includeGenerated) findCmd.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
 

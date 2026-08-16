@@ -98,7 +98,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (implTypeId == null)
             return;
 
-        var key = (sourceId, implTypeId, EdgeKind.Registers.ToString());
+        var key = (sourceId, implTypeId, nameof(EdgeKind.Registers));
         if (ctx.Seen.Add(key))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
@@ -107,7 +107,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = implTypeId,
-                Kind = EdgeKind.Registers.ToString(),
+                Kind = nameof(EdgeKind.Registers),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
@@ -143,7 +143,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (serviceTypeId == null || serviceTypeId == implTypeId)
             return;
 
-        var key = (serviceTypeId, implTypeId, EdgeKind.Registers.ToString());
+        var key = (serviceTypeId, implTypeId, nameof(EdgeKind.Registers));
         if (!ctx.Seen.Add(key))
             return;
 
@@ -153,7 +153,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         {
             SourceSymbolId = serviceTypeId,
             TargetSymbolId = implTypeId,
-            Kind = EdgeKind.Registers.ToString(),
+            Kind = nameof(EdgeKind.Registers),
             Provenance = Provenance.FrameworkDerived,
             SnapshotId = ctx.SnapshotId,
             ExtractorVersion = ctx.ExtractorVersion,
@@ -213,7 +213,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
 
         const string targetId = GraphNodeIds.RuntimeUnknown;
 
-        var key = (sourceId, targetId, EdgeKind.Registers.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.Registers));
 
         if (ctx.Seen.Add(key))
         {
@@ -223,7 +223,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
-                Kind = EdgeKind.Registers.ToString(),
+                Kind = nameof(EdgeKind.Registers),
                 Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
@@ -245,7 +245,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (implTypeId == null)
             return;
 
-        var concreteKey = (sourceId, implTypeId, EdgeKind.Registers.ToString());
+        var concreteKey = (sourceId, implTypeId, nameof(EdgeKind.Registers));
         if (ctx.Seen.Add(concreteKey))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
@@ -254,7 +254,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = implTypeId,
-                Kind = EdgeKind.Registers.ToString(),
+                Kind = nameof(EdgeKind.Registers),
                 Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,

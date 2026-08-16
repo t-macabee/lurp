@@ -62,7 +62,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         var usedId = ResolveSymbolId(snapshotId, "global::TestProject.Anchor.UsedByCaller");
         var standaloneId = ResolveSymbolId(snapshotId, "global::TestProject.Standalone.NoCallers");
         var largeAnchorId = ResolveSymbolId(snapshotId, "global::TestProject.Anchor.LargeAnchor");
-        var anchorFile = "src/TestProject/Anchor.cs";
+        const string anchorFile = "src/TestProject/Anchor.cs";
 
         return (snapshotId, unusedId, usedId, standaloneId, largeAnchorId, anchorFile);
     }

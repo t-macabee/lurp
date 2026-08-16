@@ -33,7 +33,7 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
         foreach (var node in bodySyntax.DescendantNodes())
             if (node is ThrowStatementSyntax { Expression: not null } throwStatement)
                 yield return (throwStatement.Expression, throwStatement.GetLocation());
-            else if (node is ThrowExpressionSyntax { Expression: not null } throwExpression)
+            else if (node is ThrowExpressionSyntax throwExpression)
                 yield return (throwExpression.Expression, throwExpression.GetLocation());
     }
 
@@ -53,12 +53,12 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
         if (typeId == null)
             return;
 
-        var key = (callerId, typeId, EdgeKind.Throws.ToString());
+        var key = (callerId, typeId, nameof(EdgeKind.Throws));
         if (!seen.Add(key))
             return;
 
         var loc = context.GetLocationInfo(location);
-        edges.Add(context.MakeEdge(callerId, typeId, EdgeKind.Throws.ToString(), ExtractorConstants.ThrowsExtractor, loc));
+        edges.Add(context.MakeEdge(callerId, typeId, nameof(EdgeKind.Throws), ExtractorConstants.ThrowsExtractor, loc));
     }
 
     private static INamedTypeSymbol? ResolveThrownType(ExpressionSyntax expression, SemanticModel semanticModel)

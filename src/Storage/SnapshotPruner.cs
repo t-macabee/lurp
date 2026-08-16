@@ -23,11 +23,11 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     private void PruneWorkspace(string workspaceId, int keep)
     {
         using var snapCmd = _connection.CreateCommand();
-        snapCmd.CommandText = @"
+        snapCmd.CommandText = """
             SELECT snapshot_id FROM snapshots
             WHERE workspace_id = @workspaceId
             ORDER BY built_at_utc DESC;
-        ";
+            """;
         snapCmd.Parameters.AddWithValue("@workspaceId", workspaceId);
 
         var snapshotIds = new List<string>();
@@ -64,12 +64,12 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     internal void DeleteIncompleteSnapshots()
     {
         using var listCmd = _connection.CreateCommand();
-        listCmd.CommandText = @"
+        listCmd.CommandText = """
             SELECT snapshot_id, status
             FROM snapshots
             WHERE status IN (@inProgress, @failed)
               AND payload_pruned = 0;
-        ";
+            """;
         listCmd.Parameters.AddWithValue("@inProgress", SnapshotStatusValues.InProgress);
         listCmd.Parameters.AddWithValue("@failed", SnapshotStatusValues.Failed);
         var snapshotRows = new List<(string SnapshotId, string Status)>();
@@ -153,7 +153,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
         // project_references point at projects by row id, so this snapshot's
         // reference rows must go before the projects rows themselves.
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM project_references
             WHERE project_id IN (
                 SELECT pr.project_id
@@ -161,7 +161,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                 JOIN projects p ON p.project_id = pr.project_id
                 WHERE p.snapshot_id = @sid
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
@@ -178,16 +178,16 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         }
 
         // Clean up orphaned project references
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM project_references
             WHERE project_id NOT IN (SELECT project_id FROM projects);
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
         // Clean up orphaned declarations whose document versions are no longer
         // referenced by any snapshot
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM partial_declarations
             WHERE declaration_id IN (
                 SELECT declaration_id FROM declarations
@@ -195,24 +195,24 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                     SELECT DISTINCT document_version_id FROM snapshot_documents
                 )
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM declarations
             WHERE document_version_id NOT IN (
                 SELECT DISTINCT document_version_id FROM snapshot_documents
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
         // Clean up orphaned symbols no longer referenced by any declaration
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM symbols
             WHERE symbol_id NOT IN (SELECT DISTINCT symbol_id FROM declarations);
-        ";
+            """;
         cmd.ExecuteNonQuery();
 
         cmd.CommandText = "DELETE FROM semantic_changes WHERE from_snapshot_id = @sid OR to_snapshot_id = @sid;";
@@ -222,21 +222,21 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
         // Foreign-key enforcement is not enabled on the store connection, so
         // explicitly reclaim document data that no retained snapshot references.
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM document_versions
             WHERE document_version_id NOT IN (
                 SELECT DISTINCT document_version_id FROM snapshot_documents
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM documents
             WHERE document_id NOT IN (
                 SELECT DISTINCT document_id FROM document_versions
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
@@ -244,7 +244,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         // when that snapshot is pruned. Repair the pointer to the newest retained
         // snapshot that still references the document, or leave it null when none
         // remains.
-        cmd.CommandText = @"
+        cmd.CommandText = """
             UPDATE documents
             SET last_changed_snapshot_id = (
                 SELECT sd.snapshot_id
@@ -263,16 +263,16 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
                   WHERE sd.snapshot_id = documents.last_changed_snapshot_id
                     AND dv.document_id = documents.document_id
               );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
-        cmd.CommandText = @"
+        cmd.CommandText = """
             DELETE FROM graph_nodes
             WHERE node_id NOT IN (
                 SELECT DISTINCT node_id FROM snapshot_graph_nodes
             );
-        ";
+            """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
     }

@@ -72,7 +72,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             return;
 
         var isWrite = elementAccess.IsWriteContext();
-        var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
+        var kind = isWrite ? nameof(EdgeKind.Writes) : nameof(EdgeKind.Reads);
 
         if (!seen.Add((callerId, indexerId, kind)))
             return;
@@ -126,7 +126,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             var containingTypeId = context.MakeSymbolId(containingType);
             if (containingTypeId != null)
             {
-                var refKind = EdgeKind.References.ToString();
+                var refKind = nameof(EdgeKind.References);
                 if (seen.Add((callerId, containingTypeId, refKind)))
                     edges.Add(context.MakeEdge(callerId, containingTypeId, refKind,
                         ExtractorConstants.CallsExtractor, location));
@@ -137,7 +137,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         if (calleeId == null || calleeId == callerId)
             return;
 
-        var kind = EdgeKind.Calls.ToString();
+        var kind = nameof(EdgeKind.Calls);
         var receiverConstraints = GetReceiverTypeConstraints(syntax, callee, caller, semanticModel);
         var key = (callerId, calleeId, kind);
         if (callEdges.TryGetValue(key, out var existingCall))
@@ -168,7 +168,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
                     var receiverTypeId = context.MakeSymbolId(receiverNamedType);
                     if (receiverTypeId != null)
                     {
-                        var extKind = EdgeKind.ExtensionReceiver.ToString();
+                        var extKind = nameof(EdgeKind.ExtensionReceiver);
                         if (seen.Add((receiverTypeId, calleeId, extKind)))
                             edges.Add(context.MakeEdge(receiverTypeId, calleeId, extKind,
                                 ExtractorConstants.ExtensionReceiverExtractor, location));

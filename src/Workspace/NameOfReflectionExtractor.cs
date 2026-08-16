@@ -52,7 +52,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         if (targetId == null)
             return;
 
-        var key = (sourceId, targetId, EdgeKind.ReflectionMemberRef.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.ReflectionMemberRef));
         if (!seen.Add(key))
             return;
 
@@ -61,7 +61,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         {
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
-            Kind = EdgeKind.ReflectionMemberRef.ToString(),
+            Kind = nameof(EdgeKind.ReflectionMemberRef),
             Provenance = Provenance.CompilerProved,
             SnapshotId = context.SnapshotId,
             ExtractorVersion = ExtractorConstants.ReflectionExtractor,

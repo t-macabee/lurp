@@ -18,14 +18,14 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 
         var incomingKinds = new HashSet<string>
         {
-            EdgeKind.MayDispatchTo.ToString(),
-            EdgeKind.Registers.ToString()
+            nameof(EdgeKind.MayDispatchTo),
+            nameof(EdgeKind.Registers)
         };
         var outgoingKinds = new HashSet<string>
         {
-            EdgeKind.MayDispatchTo.ToString(),
-            EdgeKind.Handles.ToString(),
-            EdgeKind.Registers.ToString()
+            nameof(EdgeKind.MayDispatchTo),
+            nameof(EdgeKind.Handles),
+            nameof(EdgeKind.Registers)
         };
 
         // DI registration is a type-level fact: `AddHostedService<TPublisher>()`

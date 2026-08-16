@@ -14,8 +14,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         var seen = new HashSet<string>();
         var allowedKinds = new HashSet<string>
         {
-            EdgeKind.Calls.ToString(),
-            EdgeKind.Constructs.ToString()
+            nameof(EdgeKind.Calls),
+            nameof(EdgeKind.Constructs)
         };
 
         foreach (var symbolId in context.EffectiveSymbolIds)
@@ -35,7 +35,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         // not already present as direct callees (the shared seen set skips them).
         foreach (var symbolId in context.EffectiveSymbolIds)
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
-                if (edge.Kind == EdgeKind.Calls.ToString())
+                if (edge.Kind == nameof(EdgeKind.Calls))
                     AddMayDispatchTargets(edge);
 
         return results;

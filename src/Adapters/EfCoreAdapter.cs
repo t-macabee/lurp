@@ -138,7 +138,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
     private static void AddMapsToEdge(string sourceId, string targetId, ExtractionContext ctx, ISymbol evidenceSymbol)
     {
-        var key = (sourceId, targetId, EdgeKind.MapsTo.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.MapsTo));
         if (ctx.Seen.Add(key))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(evidenceSymbol);
@@ -147,7 +147,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
-                Kind = EdgeKind.MapsTo.ToString(),
+                Kind = nameof(EdgeKind.MapsTo),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = "efcore-v1",
@@ -163,7 +163,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
     private static void AddMapsToEdgeFromLocation(string sourceId, string targetId, ExtractionContext ctx, Location location)
     {
-        var key = (sourceId, targetId, EdgeKind.MapsTo.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.MapsTo));
         if (ctx.Seen.Add(key))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(location);
@@ -172,7 +172,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
-                Kind = EdgeKind.MapsTo.ToString(),
+                Kind = nameof(EdgeKind.MapsTo),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = "efcore-v1",
@@ -267,7 +267,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (navTypeId == null)
             return;
 
-        var key = (dbContextId, navTypeId, EdgeKind.References.ToString());
+        var key = (dbContextId, navTypeId, nameof(EdgeKind.References));
         if (ctx.Seen.Add(key))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
@@ -276,7 +276,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = dbContextId,
                 TargetSymbolId = navTypeId,
-                Kind = EdgeKind.References.ToString(),
+                Kind = nameof(EdgeKind.References),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = "efcore-v1",

@@ -109,11 +109,12 @@ internal static class SnapshotAssertions
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_id, fqn, metadata_json
             FROM snapshot_symbols
             WHERE snapshot_id = @snapshotId
-            ORDER BY symbol_id;";
+            ORDER BY symbol_id;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var result = new List<SymbolSnapshot>();
@@ -133,7 +134,7 @@ internal static class SnapshotAssertions
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT d.symbol_id, docs.relative_path,
                    d.full_start, d.full_end,
                    d.signature_start, d.signature_end,
@@ -147,7 +148,8 @@ internal static class SnapshotAssertions
             WHERE sd.snapshot_id = @snapshotId
             ORDER BY d.symbol_id, docs.relative_path, d.full_start, d.full_end,
                      d.signature_start, d.signature_end, d.body_start, d.body_end,
-                     d.name_start, d.name_end;";
+                     d.name_start, d.name_end;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var result = new List<DeclarationSnapshot>();
@@ -177,11 +179,12 @@ internal static class SnapshotAssertions
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT document_path, content
             FROM source_fts
             WHERE snapshot_id = @snapshotId
-            ORDER BY document_path, content;";
+            ORDER BY document_path, content;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var result = new List<SourceFtsSnapshot>();
@@ -197,11 +200,12 @@ internal static class SnapshotAssertions
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_id, fqn, doc_comment_id, kind
             FROM symbol_fts
             WHERE snapshot_id = @snapshotId
-            ORDER BY symbol_id, fqn, doc_comment_id, kind;";
+            ORDER BY symbol_id, fqn, doc_comment_id, kind;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var result = new List<SymbolFtsSnapshot>();

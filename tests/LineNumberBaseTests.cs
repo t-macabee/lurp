@@ -38,7 +38,7 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
     // 15:     {
     // 16:     }
     // 17: }                                 <- class closes here (declaration end)
-    private static readonly string Source = """
+    private const string Source = """
                                             namespace Core;
 
                                             public class Caller

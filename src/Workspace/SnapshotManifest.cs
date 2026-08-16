@@ -97,8 +97,7 @@ public sealed partial class SnapshotManifest
     public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
-        if (snapshotStore == null)
-            throw new ArgumentNullException(nameof(snapshotStore));
+        ArgumentNullException.ThrowIfNull(snapshotStore);
 
         snapshotStore.SaveSnapshot(ToStorageManifest(contents));
 

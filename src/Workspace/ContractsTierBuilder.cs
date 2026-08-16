@@ -16,9 +16,9 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
 {
     private static readonly HashSet<string> _allowedKinds =
     [
-        EdgeKind.Inherits.ToString(),
-        EdgeKind.Implements.ToString(),
-        EdgeKind.Overrides.ToString()
+        nameof(EdgeKind.Inherits),
+        nameof(EdgeKind.Implements),
+        nameof(EdgeKind.Overrides)
     ];
 
     string IContextTierBuilder.Name => "contracts";

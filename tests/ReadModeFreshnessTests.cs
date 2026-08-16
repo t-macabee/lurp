@@ -19,7 +19,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     private const string Document = "src/Core/Widget.cs";
     private const string SymbolFqn = "global::Core.Widget";
 
-    private static readonly string OriginalSource = """
+    private const string OriginalSource = """
                                                     namespace Core;
 
                                                     public class Widget
@@ -32,7 +32,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
                                                     }
                                                     """;
 
-    private static readonly string MutatedSource = """
+    private const string MutatedSource = """
                                                    namespace Core;
 
                                                    public class Widget

@@ -38,12 +38,12 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                     var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
                     context.RecordFilteredExternal(param.Type, methodSyntax);
 
-                    var key = (methodId, paramTypeId, EdgeKind.References.ToString());
+                    var key = (methodId, paramTypeId, nameof(EdgeKind.References));
                     if (!seen.Add(key))
                         continue;
 
                     var loc = context.GetMemberSourceLocation(method);
-                    edges.Add(context.MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(),
+                    edges.Add(context.MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References),
                         ExtractorConstants.ParameterDependenciesExtractor, loc));
                 }
             }

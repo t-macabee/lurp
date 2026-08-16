@@ -14,10 +14,10 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT INTO snapshot_timings (snapshot_id, step_name, elapsed_ms, created_at_utc)
                 VALUES (@snapshotId, @stepName, @elapsedMs, @createdAtUtc);
-            ";
+                """;
 
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             var stepNameParam = command.CreateParameter();
@@ -48,12 +48,12 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
     {
         var results = new List<SnapshotTimingRow>();
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT step_name, elapsed_ms
             FROM snapshot_timings
             WHERE snapshot_id = @snapshotId
             ORDER BY timing_id;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         using var reader = command.ExecuteReader();

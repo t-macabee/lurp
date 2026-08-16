@@ -35,12 +35,12 @@ internal sealed class SearchSymbolStore
         limit = Math.Max(1, limit);
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind
             FROM symbol_fts
             WHERE symbol_fts MATCH @query
               AND symbol_fts.snapshot_id = @snapshotId
-        ";
+            """;
 
         if (!string.IsNullOrEmpty(kind))
         {
@@ -130,12 +130,12 @@ internal sealed class SearchSymbolStore
     private SymbolSearchPage SearchSymbolsFtsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind, symbol_fts.rank AS match_rank
             FROM symbol_fts
             WHERE symbol_fts MATCH @query
               AND symbol_fts.snapshot_id = @snapshotId
-        ";
+            """;
 
         if (!string.IsNullOrEmpty(kind))
         {
@@ -201,13 +201,13 @@ internal sealed class SearchSymbolStore
     private SymbolSearchPage SearchSymbolsBySubstringPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind
             FROM snapshot_symbols ss
             JOIN symbols s ON s.symbol_id = ss.symbol_id
             WHERE ss.snapshot_id = @snapshotId
               AND ss.fqn LIKE @pattern ESCAPE '\'
-        ";
+            """;
 
         if (!string.IsNullOrEmpty(kind))
         {
@@ -283,7 +283,7 @@ internal sealed class SearchSymbolStore
             snapshotId,
             SearchCursor.ComputeFingerprint(query, kind, includeGenerated),
             mode,
-            ranks != null ? ranks[^1] : null,
+            ranks?[^1],
             last.FullyQualifiedName,
             last.SymbolId);
 
@@ -293,13 +293,13 @@ internal sealed class SearchSymbolStore
     private List<SymbolSearchResult> SearchSymbolsBySubstring(string query, string snapshotId, int limit, bool includeGenerated, string? kind)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind
             FROM snapshot_symbols ss
             JOIN symbols s ON s.symbol_id = ss.symbol_id
             WHERE ss.snapshot_id = @snapshotId
               AND ss.fqn LIKE @pattern ESCAPE '\'
-        ";
+            """;
 
         if (!string.IsNullOrEmpty(kind))
         {
@@ -359,7 +359,7 @@ internal sealed class SearchSymbolStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d2
                       JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
@@ -376,7 +376,7 @@ internal sealed class SearchSymbolStore
                             JOIN snapshot_documents sd ON sd.snapshot_id = @snapshotId
                                                       AND sd.document_version_id = d.document_version_id
                           WHERE d.symbol_id = s.symbol_id)
-        ";
+            """;
 
         if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 
@@ -392,7 +392,7 @@ internal sealed class SearchSymbolStore
 
         reader.Close();
         command.Parameters.Clear();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d2
                       JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
@@ -409,7 +409,7 @@ internal sealed class SearchSymbolStore
                             JOIN snapshot_documents sd ON sd.snapshot_id = @snapshotId
                                                       AND sd.document_version_id = d.document_version_id
                           WHERE d.symbol_id = s.symbol_id)
-        ";
+            """;
 
         if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 
@@ -434,7 +434,7 @@ internal sealed class SearchSymbolStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d2
                       JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
@@ -447,7 +447,7 @@ internal sealed class SearchSymbolStore
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.doc_comment_id = @docCommentId AND ss.snapshot_id = @snapshotId
-        ";
+            """;
 
         if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
 

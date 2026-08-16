@@ -45,7 +45,7 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
     private string? FindContainingParentId()
     {
         foreach (var edge in context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value))
-            if (edge.Kind == EdgeKind.Declares.ToString() || edge.Kind == EdgeKind.Contains.ToString())
+            if (edge.Kind == nameof(EdgeKind.Declares) || edge.Kind == nameof(EdgeKind.Contains))
                 return edge.SourceSymbolId;
         return null;
     }
@@ -53,8 +53,8 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
     private void AddSiblings(List<CapsuleItem> results, string parentId, bool includeNestedTypes)
     {
         foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, parentId))
-            if (edge.Kind == EdgeKind.Declares.ToString()
-                || (includeNestedTypes && edge.Kind == EdgeKind.Contains.ToString()))
+            if (edge.Kind == nameof(EdgeKind.Declares)
+                || (includeNestedTypes && edge.Kind == nameof(EdgeKind.Contains)))
             {
                 if (edge.TargetSymbolId == context.SymbolId.Value)
                     continue;

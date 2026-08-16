@@ -14,7 +14,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
         var seen = new HashSet<string>();
         var allowedKinds = new HashSet<string>
         {
-            EdgeKind.Calls.ToString()
+            nameof(EdgeKind.Calls)
         };
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
 
@@ -36,8 +36,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
             var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
             foreach (var edge in incomingEdges)
             {
-                if (edge.Kind != EdgeKind.RoutesTo.ToString() &&
-                    edge.Kind != EdgeKind.Handles.ToString())
+                if (edge.Kind != nameof(EdgeKind.RoutesTo) &&
+                    edge.Kind != nameof(EdgeKind.Handles))
                     continue;
 
                 var sourceId = edge.SourceSymbolId;

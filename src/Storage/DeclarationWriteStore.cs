@@ -27,7 +27,7 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
 
     private static void SaveOne(SqliteCommand command, string snapshotId, SymbolDeclaration decl)
     {
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
             VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind, @metadataJson, @fqn)
             ON CONFLICT(symbol_id) DO UPDATE SET
@@ -36,7 +36,7 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
                 kind = excluded.kind,
                 metadata_json = excluded.metadata_json,
                 fqn = excluded.fqn;
-        ";
+            """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
         command.Parameters.AddWithValue("@docCommentId", decl.SymbolId.DocCommentId);
@@ -46,13 +46,13 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@fqn", (object?)decl.SymbolId.FullyQualifiedName ?? DBNull.Value);
         command.ExecuteNonQuery();
 
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
             VALUES (@snapshotId, @symbolId, @fqn, @metadataJson)
             ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
                 fqn = excluded.fqn,
                 metadata_json = excluded.metadata_json;
-        ";
+            """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
@@ -60,7 +60,7 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@metadataJson", (object?)decl.MetadataJson ?? DBNull.Value);
         command.ExecuteNonQuery();
 
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO declarations (symbol_id, document_version_id,full_start, full_end,signature_start, signature_end,body_start, body_end,name_start, name_end,is_partial,is_generated,generator_identity) VALUES (@symbolId, @documentVersionId,@fullStart, @fullEnd,@signatureStart, @signatureEnd,@bodyStart, @bodyEnd,@nameStart, @nameEnd,@isPartial,@isGenerated,@generatorIdentity)
             ON CONFLICT(symbol_id, document_version_id)
             DO UPDATE SET
@@ -75,7 +75,7 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
                 is_partial        = excluded.is_partial,
                 is_generated      = excluded.is_generated,
                 generator_identity = excluded.generator_identity;
-        ";
+            """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
         command.Parameters.AddWithValue("@documentVersionId", decl.DocumentVersionId);
@@ -94,12 +94,12 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
 
         if (decl.IsPartial)
         {
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT OR IGNORE INTO partial_declarations (symbol_id, declaration_id)
                 SELECT @symbolId, declaration_id
                 FROM declarations
                 WHERE symbol_id = @symbolId AND document_version_id = @documentVersionId;
-            ";
+                """;
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
             command.Parameters.AddWithValue("@documentVersionId", decl.DocumentVersionId);

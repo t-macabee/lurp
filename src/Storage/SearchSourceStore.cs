@@ -26,7 +26,7 @@ internal sealed class SearchSourceStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = @"
+        command.CommandText = """
             WITH matches AS (
                 SELECT source_fts.rowid,
                        source_fts.rank,
@@ -37,7 +37,7 @@ internal sealed class SearchSourceStore
                 FROM source_fts
                 WHERE source_fts MATCH @query
                   AND source_fts.snapshot_id = @snapshotId
-        ";
+            """;
 
         if (!includeGenerated)
             command.CommandText += @"
@@ -79,14 +79,15 @@ internal sealed class SearchSourceStore
             var remaining = limit - results.Count;
             var seen = new HashSet<string>(results.Select(static r => r.DocumentPath));
             using var fbCmd = _connection.CreateCommand();
-            fbCmd.CommandText = @"
+            fbCmd.CommandText = """
                 SELECT d.relative_path, CAST(dv.content AS TEXT)
                 FROM document_versions dv
                 JOIN documents d ON d.document_id = dv.document_id
                 JOIN snapshot_documents sd ON sd.document_version_id = dv.document_version_id
                 WHERE sd.snapshot_id = @snapshotId
                   AND dv.content IS NOT NULL
-                  AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'";
+                  AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'
+                """;
             if (!includeGenerated)
                 fbCmd.CommandText += @"
                   AND NOT EXISTS (

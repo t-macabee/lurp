@@ -69,10 +69,10 @@ public class MigrationRunner
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = @"
+        command.CommandText = """
                 INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
                 VALUES (@version, @appliedAtUtc, @migrationId);
-            ";
+                """;
         command.Parameters.AddWithValue("@version", version);
         command.Parameters.AddWithValue("@appliedAtUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("@migrationId", migrationId);

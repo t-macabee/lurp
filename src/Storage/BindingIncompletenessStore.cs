@@ -17,14 +17,14 @@ internal sealed class BindingIncompletenessStore(SqliteConnection connection) : 
     public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO binding_incompleteness
                 (snapshot_id, project_name, document_path, reason, occurrence_count, extractor_version)
             VALUES (@snapshotId, @projectName, @documentPath, @reason, @count, @extractorVersion)
             ON CONFLICT(snapshot_id, project_name, document_path, reason)
             DO UPDATE SET occurrence_count = excluded.occurrence_count,
                           extractor_version = excluded.extractor_version;
-        ";
+            """;
 
         foreach (var record in records)
         {
@@ -43,12 +43,16 @@ internal sealed class BindingIncompletenessStore(SqliteConnection connection) : 
     {
         using var command = _connection.CreateCommand();
         command.CommandText = projectName == null
-            ? @"SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extractor_version
+            ? """
+SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extractor_version
                 FROM binding_incompleteness WHERE snapshot_id = @snapshotId
-                ORDER BY project_name, document_path, reason;"
-            : @"SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extractor_version
+                ORDER BY project_name, document_path, reason;
+"""
+            : """
+SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extractor_version
                 FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND project_name = @projectName
-                ORDER BY document_path, reason;";
+                ORDER BY document_path, reason;
+""";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         if (projectName != null)
             command.Parameters.AddWithValue("@projectName", projectName);
@@ -68,12 +72,12 @@ internal sealed class BindingIncompletenessStore(SqliteConnection connection) : 
     public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO binding_incompleteness
                 (snapshot_id, project_name, document_path, reason, occurrence_count, extractor_version)
             SELECT @toSnapshotId, project_name, document_path, reason, occurrence_count, extractor_version
             FROM binding_incompleteness WHERE snapshot_id = @fromSnapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();

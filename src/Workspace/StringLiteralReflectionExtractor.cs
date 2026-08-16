@@ -45,7 +45,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (sourceId == null)
                 continue;
 
-            var key = (sourceId, matchedSymbolId, EdgeKind.ReflectionNameCandidate.ToString());
+            var key = (sourceId, matchedSymbolId, nameof(EdgeKind.ReflectionNameCandidate));
             if (!seen.Add(key))
                 continue;
 
@@ -55,7 +55,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = matchedSymbolId,
-                Kind = EdgeKind.ReflectionNameCandidate.ToString(),
+                Kind = nameof(EdgeKind.ReflectionNameCandidate),
                 Provenance = Provenance.NameCandidate,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = ExtractorConstants.ReflectionExtractor,

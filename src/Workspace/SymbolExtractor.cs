@@ -22,11 +22,11 @@ public sealed class SymbolExtractor
         IReadOnlySet<string>? scopeDocuments,
         BindingIncompletenessCollector? incompleteness)
     {
-        if (compilation == null) throw new ArgumentNullException(nameof(compilation));
-        if (documentContents == null) throw new ArgumentNullException(nameof(documentContents));
-        if (documentVersions == null) throw new ArgumentNullException(nameof(documentVersions));
-        if (generatedDocuments == null) throw new ArgumentNullException(nameof(generatedDocuments));
-        if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
+        ArgumentNullException.ThrowIfNull(compilation);
+        ArgumentNullException.ThrowIfNull(documentContents);
+        ArgumentNullException.ThrowIfNull(documentVersions);
+        ArgumentNullException.ThrowIfNull(generatedDocuments);
+        ArgumentNullException.ThrowIfNull(snapshotId);
 
         _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, incompleteness);
     }

@@ -21,10 +21,10 @@ internal sealed class AnnotationStore
 
             foreach (var ann in annotations)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
                     VALUES (@snapshotId, @symbolId, @kind, @value, @documentPath);
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.Parameters.AddWithValue("@symbolId", ann.SymbolId);
@@ -48,22 +48,22 @@ internal sealed class AnnotationStore
         using var command = _connection.CreateCommand();
         if (symbolId != null)
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT symbol_id, kind, value, document_path
                 FROM annotations
                 WHERE snapshot_id = @snapshotId AND symbol_id = @symbolId
                 ORDER BY annotation_id;
-            ";
+                """;
             command.Parameters.AddWithValue("@symbolId", symbolId);
         }
         else
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT symbol_id, kind, value, document_path
                 FROM annotations
                 WHERE snapshot_id = @snapshotId
                 ORDER BY annotation_id;
-            ";
+                """;
         }
 
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -81,12 +81,12 @@ internal sealed class AnnotationStore
     public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
             SELECT @toSnapshotId, symbol_id, kind, value, document_path
             FROM annotations
             WHERE snapshot_id = @fromSnapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();
@@ -108,11 +108,13 @@ internal sealed class AnnotationStore
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = @"
+            command.CommandText = """
                 DELETE FROM annotations
                 WHERE snapshot_id = @snapshotId
-                  AND document_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
-            ";
+                  AND document_path IN (
+                """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
+            );
+            """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             var i = 0;
             foreach (var path in pathList)

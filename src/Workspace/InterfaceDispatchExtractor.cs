@@ -63,7 +63,7 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         if (implMemberId == null || implMemberId == ifaceMemberId)
             return;
 
-        var key = (ifaceMemberId, implMemberId, EdgeKind.MayDispatchTo.ToString(), typeArgumentsJson ?? "");
+        var key = (ifaceMemberId, implMemberId, nameof(EdgeKind.MayDispatchTo), typeArgumentsJson ?? "");
         if (!seen.Add(key))
             return;
 

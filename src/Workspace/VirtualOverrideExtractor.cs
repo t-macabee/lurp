@@ -48,7 +48,7 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
 
         context.RecordFilteredExternal(root, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(overrideMember));
 
-        var key = (rootId, overrideId, EdgeKind.MayDispatchTo.ToString());
+        var key = (rootId, overrideId, nameof(EdgeKind.MayDispatchTo));
         if (!seen.Add(key))
             return;
 

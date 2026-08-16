@@ -67,13 +67,15 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         var projDir = Path.Combine(_testDir, "src", "TestProject");
         Directory.CreateDirectory(projDir);
 
-        File.WriteAllText(Path.Combine(projDir, "TestProject.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+        File.WriteAllText(Path.Combine(projDir, "TestProject.csproj"), """
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-</Project>");
+</Project>
+""");
 
         File.WriteAllText(
             Path.Combine(projDir, "Calculator.cs"),

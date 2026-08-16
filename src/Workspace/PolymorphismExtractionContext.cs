@@ -34,7 +34,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
         {
             SourceSymbolId = sourceId,
             TargetSymbolId = targetId,
-            Kind = EdgeKind.MayDispatchTo.ToString(),
+            Kind = nameof(EdgeKind.MayDispatchTo),
             Provenance = provenance,
             SnapshotId = SnapshotId,
             ExtractorVersion = ExtractorConstants.PolymorphismExtractor,

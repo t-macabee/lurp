@@ -46,7 +46,7 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                     continue;
 
                 var isWrite = access.IsWriteContext();
-                var kind = isWrite ? EdgeKind.Writes.ToString() : EdgeKind.Reads.ToString();
+                var kind = isWrite ? nameof(EdgeKind.Writes) : nameof(EdgeKind.Reads);
                 var seenSet = isWrite ? seenWrites : seenReads;
 
                 var key = (callerId, memberId, kind);

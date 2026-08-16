@@ -7,13 +7,13 @@ namespace Lurp.Storage;
 
 internal sealed class DeclarationReadStore(SqliteConnection connection)
 {
-    private static readonly byte[] DeclaredNamePlaceholder = Encoding.UTF8.GetBytes("<DECLARED_NAME>");
+    private static readonly byte[] DeclaredNamePlaceholder = "<DECLARED_NAME>"u8.ToArray();
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
     internal IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d
                     JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
@@ -24,7 +24,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.symbol_id = @symbolId AND ss.snapshot_id = @snapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@symbolId", symbolId);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -74,12 +74,12 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     internal string? GetContainingTypeSource(string symbolId, string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.doc_comment_id, s.assembly_identity
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.symbol_id = @symbolId AND ss.snapshot_id = @snapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@symbolId", symbolId);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -129,7 +129,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     internal List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT doc.relative_path, d.full_start, d.full_end, dv.line_starts, dv.content,
                    COALESCE(d.is_generated, 0)
             FROM declarations d
@@ -137,7 +137,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE sd.snapshot_id = @snapshotId AND d.symbol_id = @symbolId
-        ";
+            """;
         if (!includeGenerated)
             command.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
         command.CommandText += " ORDER BY doc.relative_path, d.full_start;";
@@ -185,7 +185,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     private List<SymbolSpanContent> GetSymbolSpanContents(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = $@"
+        command.CommandText = $"""
             SELECT dv.content, d.{startCol}, d.{endCol}, dv.line_starts
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
@@ -195,7 +195,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             WHERE ss.snapshot_id = @snapshotId
               AND sd.snapshot_id = @snapshotId
               AND ss.symbol_id = @symbolId
-        ";
+            """;
 
         if (!includeGenerated) command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
 
@@ -270,7 +270,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             return [];
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.kind, s.assembly_identity, ss.fqn,
                    d.signature_start, d.signature_end,
                    d.name_start, d.name_end,
@@ -287,7 +287,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
               AND s.symbol_id IN (@symbolIds)
               AND (d.is_generated = 0 OR d.is_generated IS NULL)
             ORDER BY s.symbol_id, doc.relative_path, d.signature_start;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var paramNames = new List<string>();

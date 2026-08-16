@@ -15,8 +15,8 @@ public sealed class ReflectionExtractor
     internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
         IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {
-        if (compilation == null) throw new ArgumentNullException(nameof(compilation));
-        if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
+        ArgumentNullException.ThrowIfNull(compilation);
+        ArgumentNullException.ThrowIfNull(snapshotId);
         _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths);
     }
 

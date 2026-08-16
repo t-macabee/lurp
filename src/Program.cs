@@ -3,7 +3,7 @@ using Lurp.Workspace;
 
 namespace Lurp;
 
-public class Program
+public static class Program
 {
     /// <summary>
     ///     Single source of truth for the CLI mode registry : mode name, one-line help

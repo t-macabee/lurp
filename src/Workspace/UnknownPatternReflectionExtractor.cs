@@ -36,7 +36,7 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = sourceId,
-                Kind = EdgeKind.ReflectionTargetUnknown.ToString(),
+                Kind = nameof(EdgeKind.ReflectionTargetUnknown),
                 Provenance = Provenance.RuntimeUnknown,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = ExtractorConstants.ReflectionExtractor,

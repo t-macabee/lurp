@@ -65,7 +65,7 @@ public abstract class IntegrationTestBase : IDisposable
         Directory.CreateDirectory(projDir);
 
         var sb = new StringBuilder();
-        sb.AppendLine(@"<Project Sdk=""Microsoft.NET.Sdk"">");
+        sb.AppendLine("""<Project Sdk="Microsoft.NET.Sdk">""");
         sb.AppendLine("  <PropertyGroup>");
         sb.AppendLine($"    <TargetFramework>{targetFramework}</TargetFramework>");
         sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");

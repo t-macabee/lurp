@@ -187,7 +187,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         if (touchedProjects.Count == 0)
             return false;
 
-        var denominator = touchedProjects.Sum(p => projectDocCount.TryGetValue(p, out var c) ? c : 0);
+        var denominator = touchedProjects.Sum(p => projectDocCount.GetValueOrDefault(p));
         if (denominator == 0)
             return false;
 

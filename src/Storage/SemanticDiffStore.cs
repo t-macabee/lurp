@@ -5,10 +5,11 @@ namespace Lurp.Storage;
 
 public sealed class SemanticDiffStore : ISemanticDiffStore
 {
-    private const string SemanticChangesSelect = @"
+    private const string SemanticChangesSelect = """
             SELECT change_id, from_snapshot_id, to_snapshot_id,
                    change_type, symbol_id, detail_json, created_at_utc
-            FROM semantic_changes";
+            FROM semantic_changes
+            """;
 
     private readonly SqliteConnection _connection;
 
@@ -27,7 +28,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
 
             foreach (var change in changes)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO semantic_changes (change_id, from_snapshot_id, to_snapshot_id, change_type, symbol_id, detail_json, created_at_utc)
                     VALUES (@changeId, @fromSnapshotId, @toSnapshotId, @changeType, @symbolId, @detailJson, @createdAtUtc)
                     ON CONFLICT(change_id) DO UPDATE SET
@@ -37,7 +38,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
                         symbol_id = excluded.symbol_id,
                         detail_json = excluded.detail_json,
                         created_at_utc = excluded.created_at_utc;
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@changeId", change.ChangeId);
                 command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
@@ -61,10 +62,10 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
     public List<SemanticChange> GetSemanticChanges(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = SemanticChangesSelect + @"
+        command.CommandText = SemanticChangesSelect + """
             WHERE from_snapshot_id = @fromSnapshotId AND to_snapshot_id = @toSnapshotId
             ORDER BY created_at_utc;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
 
@@ -74,10 +75,10 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
     public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = SemanticChangesSelect + @"
+        command.CommandText = SemanticChangesSelect + """
             WHERE to_snapshot_id = @toSnapshotId
             ORDER BY created_at_utc;
-        ";
+            """;
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
 
         return ReadChanges(command);

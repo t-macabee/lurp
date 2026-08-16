@@ -28,20 +28,20 @@ internal sealed class EdgeOperationsStore
         {
             using var nodeCmd = _connection.CreateCommand();
             nodeCmd.Transaction = transaction;
-            nodeCmd.CommandText = @"
+            nodeCmd.CommandText = """
                 INSERT INTO graph_nodes (node_id, node_kind)
                 VALUES (@nodeId, @nodeKind)
                 ON CONFLICT(node_id) DO UPDATE SET node_kind = excluded.node_kind;
-            ";
+                """;
             var nodeIdParam = nodeCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
             var nodeKindParam = nodeCmd.Parameters.Add(new SqliteParameter("@nodeKind", null));
 
             using var memberCmd = _connection.CreateCommand();
             memberCmd.Transaction = transaction;
-            memberCmd.CommandText = @"
+            memberCmd.CommandText = """
                 INSERT OR IGNORE INTO snapshot_graph_nodes (snapshot_id, node_id)
                 VALUES (@snapshotId, @nodeId);
-            ";
+                """;
             var memberSnapshotParam = memberCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
             var memberNodeParam = memberCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
 
@@ -68,11 +68,11 @@ internal sealed class EdgeOperationsStore
     {
         const string persistedRank =
             "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
-        var winnerWins = $"@incomingRank > {persistedRank}";
+        const string winnerWins = $"@incomingRank > {persistedRank}";
 
         using var command = _connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = $@"
+        command.CommandText = $"""
             INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
             VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson)
             ON CONFLICT(snapshot_id, source_symbol_id, target_symbol_id, kind) DO UPDATE SET
@@ -85,7 +85,7 @@ internal sealed class EdgeOperationsStore
                 source_end_column = CASE WHEN {winnerWins} THEN excluded.source_end_column ELSE edges.source_end_column END,
                 is_cross_generated = CASE WHEN {winnerWins} THEN excluded.is_cross_generated ELSE edges.is_cross_generated END,
                 receiver_type_constraints_json = CASE WHEN {winnerWins} THEN excluded.receiver_type_constraints_json ELSE edges.receiver_type_constraints_json END;
-        ";
+            """;
 
         var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
         var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
@@ -127,7 +127,7 @@ internal sealed class EdgeOperationsStore
     {
         const string persistedRank =
             "(CASE edges.provenance WHEN 'compiler_proved' THEN 6 WHEN 'framework_derived' THEN 5 WHEN 'global_implementation_relation' THEN 4 WHEN 'possible' THEN 3 WHEN 'convention' THEN 2 WHEN 'name_candidate' THEN 1 WHEN 'runtime_unknown' THEN 0 ELSE -1 END)";
-        var winnerWins = $"@incomingRank > {persistedRank}";
+        const string winnerWins = $"@incomingRank > {persistedRank}";
 
         using var selectCmd = _connection.CreateCommand();
         selectCmd.Transaction = transaction;
@@ -139,10 +139,10 @@ internal sealed class EdgeOperationsStore
 
         using var splitInsertCmd = _connection.CreateCommand();
         splitInsertCmd.Transaction = transaction;
-        splitInsertCmd.CommandText = @"
+        splitInsertCmd.CommandText = """
             INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
             VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson);
-        ";
+            """;
         var splitInsSid = splitInsertCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
         var splitInsSrc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
         var splitInsTgt = splitInsertCmd.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
@@ -160,7 +160,7 @@ internal sealed class EdgeOperationsStore
 
         using var splitUpdateCmd = _connection.CreateCommand();
         splitUpdateCmd.Transaction = transaction;
-        splitUpdateCmd.CommandText = $@"
+        splitUpdateCmd.CommandText = $"""
             UPDATE edges SET
                 type_arguments_json = @mergedTypeArguments,
                 provenance = CASE WHEN {winnerWins} THEN @provenance ELSE edges.provenance END,
@@ -173,7 +173,7 @@ internal sealed class EdgeOperationsStore
                 is_cross_generated = CASE WHEN {winnerWins} THEN @isCrossGenerated ELSE edges.is_cross_generated END,
                 receiver_type_constraints_json = @receiverTypeConstraintsJson
             WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k;
-        ";
+            """;
         var upSid = splitUpdateCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
         var upSrc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@src", null));
         var upTgt = splitUpdateCmd.Parameters.Add(new SqliteParameter("@tgt", null));
@@ -272,7 +272,7 @@ internal sealed class EdgeOperationsStore
         using var command = _connection.CreateCommand();
         if (symbolId != null)
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT source_symbol_id, target_symbol_id, kind, provenance,
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
@@ -282,12 +282,12 @@ internal sealed class EdgeOperationsStore
                 WHERE snapshot_id = @snapshotId
                   AND (source_symbol_id = @symbolId OR target_symbol_id = @symbolId)
                 ORDER BY edge_id;
-            ";
+                """;
             command.Parameters.AddWithValue("@symbolId", symbolId);
         }
         else
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT source_symbol_id, target_symbol_id, kind, provenance,
                        snapshot_id, extractor_version,
                        source_document_path, source_start_line, source_start_column,
@@ -296,7 +296,7 @@ internal sealed class EdgeOperationsStore
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                 ORDER BY edge_id;
-            ";
+                """;
         }
 
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -315,7 +315,7 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
@@ -324,7 +324,7 @@ internal sealed class EdgeOperationsStore
             FROM edges
             WHERE snapshot_id = @snapshotId AND kind = @kind
             ORDER BY edge_id;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@kind", kind);
 
@@ -334,7 +334,7 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
@@ -343,7 +343,7 @@ internal sealed class EdgeOperationsStore
             FROM edges
             WHERE snapshot_id = @snapshotId AND target_symbol_id = @symbolId
             ORDER BY edge_id;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", symbolId);
 
@@ -353,7 +353,7 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT source_symbol_id, target_symbol_id, kind, provenance,
                    snapshot_id, extractor_version,
                    source_document_path, source_start_line, source_start_column,
@@ -362,7 +362,7 @@ internal sealed class EdgeOperationsStore
             FROM edges
             WHERE snapshot_id = @snapshotId AND source_symbol_id = @symbolId
             ORDER BY edge_id;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", symbolId);
 
@@ -380,11 +380,13 @@ internal sealed class EdgeOperationsStore
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = @"
+            command.CommandText = """
                 DELETE FROM edges
                 WHERE snapshot_id = @snapshotId
-                  AND source_document_path IN (" + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + @");
-            ";
+                  AND source_document_path IN (
+                """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
+            );
+            """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             var i = 0;
             foreach (var path in pathList)
@@ -406,12 +408,14 @@ internal sealed class EdgeOperationsStore
             return;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND source_document_path IS NULL
-              AND (" + string.Join(" OR ", identityList.Select((_, i) => $"source_symbol_id LIKE @p{i} ESCAPE '\\'")) + @");
-        ";
+              AND (
+            """ + string.Join(" OR ", identityList.Select((_, i) => $"source_symbol_id LIKE @p{i} ESCAPE '\\'")) + """
+        );
+        """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var i = 0;
         foreach (var identity in identityList)
@@ -430,12 +434,14 @@ internal sealed class EdgeOperationsStore
             return;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND source_document_path IS NULL
-              AND source_symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
-        ";
+              AND source_symbol_id IN (
+            """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+        );
+        """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var i = 0;
         foreach (var id in idList)
@@ -446,7 +452,7 @@ internal sealed class EdgeOperationsStore
     public void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
             SELECT @toSnapshotId, source_symbol_id, target_symbol_id, kind, provenance,
                    extractor_version, source_document_path,
@@ -455,18 +461,18 @@ internal sealed class EdgeOperationsStore
                    is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @fromSnapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();
 
         using var memberCmd = _connection.CreateCommand();
-        memberCmd.CommandText = @"
+        memberCmd.CommandText = """
             INSERT OR IGNORE INTO snapshot_graph_nodes (snapshot_id, node_id)
             SELECT @toSnapshotId, node_id
             FROM snapshot_graph_nodes
             WHERE snapshot_id = @fromSnapshotId;
-        ";
+            """;
         memberCmd.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         memberCmd.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         memberCmd.ExecuteNonQuery();
@@ -475,7 +481,7 @@ internal sealed class EdgeOperationsStore
     public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             WITH valid_ids(id) AS (
                 SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
                 UNION
@@ -538,7 +544,7 @@ internal sealed class EdgeOperationsStore
                     THEN 'external'
                     ELSE 'other'
                 END;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         int external = 0, compilerSynthesized = 0, other = 0;
@@ -558,7 +564,7 @@ internal sealed class EdgeOperationsStore
     public void PruneSnapshotGraphNodes(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             DELETE FROM snapshot_graph_nodes
             WHERE snapshot_id = @snapshotId
               AND node_id NOT IN (
@@ -568,7 +574,7 @@ internal sealed class EdgeOperationsStore
                   UNION
                   SELECT symbol_id FROM snapshot_symbols WHERE snapshot_id = @snapshotId
               );
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.ExecuteNonQuery();
     }

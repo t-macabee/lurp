@@ -122,7 +122,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
                 new Migration_001_InitialSchema().Up(connection);
 
                 using var command = connection.CreateCommand();
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
                     VALUES (1, '2025-01-01T00:00:00.0000000Z', 'Migration_001_InitialSchema');
 
@@ -136,7 +136,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
                     VALUES ('doc-e4', 'src/E4Project/E4.cs');
 
                     INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count)
-                    VALUES ('dv-e4', 'doc-e4', 'abc123', X'010203', 'utf-8', 3);";
+                    VALUES ('dv-e4', 'doc-e4', 'abc123', X'010203', 'utf-8', 3);
+                    """;
                 command.ExecuteNonQuery();
             }
 

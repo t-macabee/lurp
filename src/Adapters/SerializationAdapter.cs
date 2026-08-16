@@ -65,9 +65,9 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                     var targetId = SymbolIdFactory.Make(serializableType, ctx.AssemblyIdentity);
                     if (sourceId != null && targetId != null)
                     {
-                        var key = (sourceId, targetId, EdgeKind.References.ToString());
+                        var key = (sourceId, targetId, nameof(EdgeKind.References));
                         if (ctx.Seen.Add(key))
-                            ctx.Edges.Add(MakeEdge(sourceId, targetId, EdgeKind.References.ToString(), ctx, typeDecl.GetLocation()));
+                            ctx.Edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.References), ctx, typeDecl.GetLocation()));
                     }
                 }
             }
@@ -127,9 +127,9 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     {
         if (targetId != null)
         {
-            var key = (memberId, targetId, EdgeKind.References.ToString());
+            var key = (memberId, targetId, nameof(EdgeKind.References));
             if (ctx.Seen.Add(key))
-                ctx.Edges.Add(MakeEdge(memberId, targetId, EdgeKind.References.ToString(),
+                ctx.Edges.Add(MakeEdge(memberId, targetId, nameof(EdgeKind.References),
                     ctx, evidenceLocation));
         }
     }

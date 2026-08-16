@@ -20,7 +20,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddTestsFor(dispatchEdge.SourceSymbolId);
 
-        var allowedKinds = new HashSet<string> { EdgeKind.Calls.ToString() };
+        var allowedKinds = new HashSet<string> { nameof(EdgeKind.Calls) };
         var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
@@ -56,7 +56,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
             foreach (var edge in outgoingEdges)
             {
-                if (edge.Kind != EdgeKind.TestedBy.ToString())
+                if (edge.Kind != nameof(EdgeKind.TestedBy))
                     continue;
 
                 var testSymbolId = edge.TargetSymbolId;

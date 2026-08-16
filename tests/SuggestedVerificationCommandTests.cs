@@ -5,7 +5,7 @@ public class SuggestedVerificationCommandTests
     [Fact]
     public void TestName_Normalization_StripsGlobalPrefix_FromCommandOnly()
     {
-        var testName = "global::A.B.C";
+        const string testName = "global::A.B.C";
         var command = FqnNormalizer.NormalizeForCommand(testName);
 
         Assert.Equal("A.B.C", command);
@@ -15,7 +15,7 @@ public class SuggestedVerificationCommandTests
     [Fact]
     public void TestName_Normalization_PreservesGlobalPrefix_InDisplayFields()
     {
-        var testName = "global::A.B.C";
+        const string testName = "global::A.B.C";
         var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
 
         Assert.Equal("global::A.B.C", testName);
@@ -43,7 +43,7 @@ public class SuggestedVerificationCommandTests
     [Fact]
     public void TestName_Normalization_HandlesTheoryTests()
     {
-        var theoryName = "global::N.TestClass.TheoryMethod(x: 1)";
+        const string theoryName = "global::N.TestClass.TheoryMethod(x: 1)";
         var normalizedName = FqnNormalizer.NormalizeForCommand(theoryName);
 
         Assert.Equal("N.TestClass.TheoryMethod(x: 1)", normalizedName);

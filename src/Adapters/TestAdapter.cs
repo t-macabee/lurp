@@ -122,13 +122,13 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (!context.ReferencedSymbols.Add(productionId))
             return;
 
-        var key = (productionId, context.TestMethodId, EdgeKind.TestedBy.ToString());
+        var key = (productionId, context.TestMethodId, nameof(EdgeKind.TestedBy));
         if (context.Seen.Add(key))
             context.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = productionId,
                 TargetSymbolId = context.TestMethodId,
-                Kind = EdgeKind.TestedBy.ToString(),
+                Kind = nameof(EdgeKind.TestedBy),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = context.SnapshotId,
                 ExtractorVersion = "test-v3",

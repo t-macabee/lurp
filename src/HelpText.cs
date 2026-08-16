@@ -122,7 +122,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("MODES");
         foreach (var entry in Program.ModeRegistry)
-            Console.WriteLine($"  --mode={entry.Name.PadRight(20)}{entry.HelpText}");
+            Console.WriteLine($"  --mode={entry.Name,-20}{entry.HelpText}");
         Console.WriteLine();
         Console.WriteLine("OPTIONS BY MODE");
         Console.WriteLine("  (flags below are exactly the ones each mode accepts, from the mode registry)");
@@ -162,7 +162,7 @@ internal static class HelpText
         }
 
         var lines = WrapWords(description, 52);
-        Console.WriteLine($"    {flag.PadRight(FlagColumn)}{lines[0]}");
+        Console.WriteLine($"    {flag,-FlagColumn}{lines[0]}");
         var continuationIndent = new string(' ', 4 + FlagColumn);
         for (var i = 1; i < lines.Count; i++)
             Console.WriteLine($"{continuationIndent}{lines[i]}");

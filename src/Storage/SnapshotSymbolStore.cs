@@ -15,7 +15,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
             command.Transaction = transaction;
             foreach (var symbolId in symbolIds)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
                     SELECT @snapshotId, @symbolId, fqn, metadata_json
                     FROM snapshot_symbols
@@ -24,7 +24,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
                     ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
                         fqn = excluded.fqn,
                         metadata_json = excluded.metadata_json;
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.Parameters.AddWithValue("@symbolId", symbolId);
@@ -43,7 +43,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
     internal void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
             SELECT @toSnapshotId, symbol_id, fqn, metadata_json
             FROM snapshot_symbols
@@ -51,7 +51,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
             ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
                 fqn = excluded.fqn,
                 metadata_json = excluded.metadata_json;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();
@@ -68,11 +68,13 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = @"
+            command.CommandText = """
                 DELETE FROM snapshot_symbols
                 WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (" + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + @");
-            ";
+                  AND symbol_id IN (
+                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+            );
+            """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             var i = 0;
             foreach (var id in idList)
@@ -90,12 +92,12 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
     internal List<string> GetSymbolIdsInSnapshot(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_id
             FROM snapshot_symbols
             WHERE snapshot_id = @snapshotId
             ORDER BY symbol_id;
-        ";
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var results = new List<string>();

@@ -405,7 +405,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // triples into one edge whose type_arguments_json is a nested array with
         // one variant per implementation; the incremental write path must produce
         // the same merged encoding.
-        var baseReadServiceV1 = """
+        const string baseReadServiceV1 = """
                                 namespace Services;
 
                                 public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
@@ -603,9 +603,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         var svcId = ResolveSymbolId(snapshotB, "global::TestProject.Svc");
 
-        var registersB = GetEdgesByKindAndProvenance(DbPath, snapshotB, EdgeKind.Registers.ToString(),
+        var registersB = GetEdgesByKindAndProvenance(DbPath, snapshotB, nameof(EdgeKind.Registers),
             Provenance.FrameworkDerived);
-        var registersC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, EdgeKind.Registers.ToString(),
+        var registersC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC, nameof(EdgeKind.Registers),
             Provenance.FrameworkDerived);
         Assert.Equal(2, registersB.Count); // registration site -> Svc, and ISvc -> Svc
         Assert.Equal(registersC.Count, registersB.Count);
@@ -613,16 +613,16 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         Assert.Equal(EdgeFacts(registersC), EdgeFacts(registersB));
 
         var nameCandidatesB = GetEdgesByKindAndProvenance(DbPath, snapshotB,
-            EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+            nameof(EdgeKind.ReflectionNameCandidate), Provenance.NameCandidate);
         var nameCandidatesC = GetEdgesByKindAndProvenance(_cleanRebuildDbPath, snapshotC,
-            EdgeKind.ReflectionNameCandidate.ToString(), Provenance.NameCandidate);
+            nameof(EdgeKind.ReflectionNameCandidate), Provenance.NameCandidate);
         Assert.Single(nameCandidatesB);
         Assert.Equal(nameCandidatesC.Count, nameCandidatesB.Count);
         Assert.Equal(svcId, Assert.Single(nameCandidatesB).TargetSymbolId);
         Assert.Equal(EdgeFacts(nameCandidatesC), EdgeFacts(nameCandidatesB));
     }
 
-    private List<EdgeRecord> GetEdgesByKindAndProvenance(string dbPath, string snapshotId, string kind,
+    private static List<EdgeRecord> GetEdgesByKindAndProvenance(string dbPath, string snapshotId, string kind,
         string provenance)
     {
         using var store = OpenStore(dbPath);
@@ -651,12 +651,12 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             .ToList();
     }
 
-    private List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
+    private static List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
     {
         using var store = OpenStore(dbPath);
         try
         {
-            return store.GetEdgesByKind(snapshotId, EdgeKind.MayDispatchTo.ToString());
+            return store.GetEdgesByKind(snapshotId, nameof(EdgeKind.MayDispatchTo));
         }
         finally
         {

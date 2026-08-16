@@ -42,11 +42,11 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
 
                 if (sourceId != null && targetId != null)
                 {
-                    var key = (sourceId, targetId, EdgeKind.Overrides.ToString());
+                    var key = (sourceId, targetId, nameof(EdgeKind.Overrides));
                     if (seen.Add(key))
                     {
                         var loc = context.GetMemberSourceLocation(member);
-                        edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Overrides.ToString(),
+                        edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.Overrides),
                             ExtractorConstants.OverridesExtractor, loc));
                     }
                 }
@@ -128,12 +128,12 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
 
         context.RecordFilteredExternal(targetSymbol, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol));
 
-        var key = (sourceId, targetId, EdgeKind.Hides.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.Hides));
         if (!seen.Add(key))
             return;
 
         var loc = context.GetMemberSourceLocation(sourceSymbol);
-        edges.Add(context.MakeEdge(sourceId, targetId, EdgeKind.Hides.ToString(),
+        edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.Hides),
             ExtractorConstants.HidesExtractor, loc));
     }
 

@@ -92,10 +92,10 @@ internal sealed class UncertaintyDetector
                 .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
 
             foreach (var edge in edges)
-                if (edge.Kind == EdgeKind.ReflectionNameCandidate.ToString())
+                if (edge.Kind == nameof(EdgeKind.ReflectionNameCandidate))
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
                         $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
-                else if (edge.Kind == EdgeKind.ReflectionTargetUnknown.ToString())
+                else if (edge.Kind == nameof(EdgeKind.ReflectionTargetUnknown))
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, "Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
         }
     }
@@ -107,7 +107,7 @@ internal sealed class UncertaintyDetector
             var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
             foreach (var edge in outgoing)
             {
-                if (edge.Kind != EdgeKind.MayDispatchTo.ToString())
+                if (edge.Kind != nameof(EdgeKind.MayDispatchTo))
                     continue;
                 if (edge.Provenance is Provenance.CompilerProved or Provenance.FrameworkDerived)
                     continue;
@@ -124,13 +124,13 @@ internal sealed class UncertaintyDetector
         foreach (var symbolId in neighborhood)
             foreach (var call in _edgeStore.GetOutgoingEdges(_snapshotId, symbolId))
             {
-                if (call.Kind != EdgeKind.Calls.ToString() ||
+                if (call.Kind != nameof(EdgeKind.Calls) ||
                     ReceiverTypeConstraints.Deserialize(call.ReceiverTypeConstraintsJson).Count > 0 ||
                     !seen.Add((call.SourceSymbolId, call.TargetSymbolId)))
                     continue;
 
                 var hasDispatchRelation = _edgeStore.GetOutgoingEdges(_snapshotId, call.TargetSymbolId)
-                    .Any(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString());
+                    .Any(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo));
                 if (!hasDispatchRelation)
                     continue;
 
@@ -148,9 +148,9 @@ internal sealed class UncertaintyDetector
     {
         var frameworkKinds = new HashSet<string>
         {
-            EdgeKind.RoutesTo.ToString(),
-            EdgeKind.Handles.ToString(),
-            EdgeKind.Registers.ToString()
+            nameof(EdgeKind.RoutesTo),
+            nameof(EdgeKind.Handles),
+            nameof(EdgeKind.Registers)
         };
 
         foreach (var symbolId in neighborhood)
@@ -180,7 +180,7 @@ internal sealed class UncertaintyDetector
 
             foreach (var edge in edges)
             {
-                if (edge.Kind != EdgeKind.Registers.ToString())
+                if (edge.Kind != nameof(EdgeKind.Registers))
                     continue;
                 if (edge.Provenance != Provenance.RuntimeUnknown)
                     continue;
@@ -342,7 +342,7 @@ internal sealed class UncertaintyDetector
             var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, productionId);
             foreach (var edge in outgoingEdges)
             {
-                if (edge.Kind != EdgeKind.TestedBy.ToString() || !seen.Add(edge.TargetSymbolId))
+                if (edge.Kind != nameof(EdgeKind.TestedBy) || !seen.Add(edge.TargetSymbolId))
                     continue;
 
                 var testId = edge.TargetSymbolId;

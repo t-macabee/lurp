@@ -42,12 +42,12 @@ internal sealed class ConstructsEdgeExtractor(MemberEdgeExtractionContext contex
                     if (targetId == null)
                         continue;
 
-                    var key = (callerId, targetId, EdgeKind.Constructs.ToString());
+                    var key = (callerId, targetId, nameof(EdgeKind.Constructs));
                     if (!seen.Add(key))
                         continue;
 
                     var loc = context.GetLocationInfo(creation.GetLocation());
-                    edges.Add(context.MakeEdge(callerId, targetId, EdgeKind.Constructs.ToString(),
+                    edges.Add(context.MakeEdge(callerId, targetId, nameof(EdgeKind.Constructs),
                         ExtractorConstants.ConstructsExtractor, loc));
                 }
             }

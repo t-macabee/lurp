@@ -36,7 +36,7 @@ internal static class TimingsHandler
         }
     }
 
-    private static void ShowTimingsForSnapshot(IIndexStore store, string snapshotId, bool asJson)
+    private static void ShowTimingsForSnapshot(SqliteIndexStore store, string snapshotId, bool asJson)
     {
         var timings = store.GetTimings(snapshotId);
 

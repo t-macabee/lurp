@@ -5,6 +5,12 @@ version: "1.0"
 #-------------------------------------------------------------------------------#
 linter: jetbrains/qodana-dotnet:latest
 bootstrap: dotnet restore Lurp.slnx
+# Without an explicit profile, Qodana falls back to the project's own
+# .idea/inspectionProfiles/Project_Default.xml (a ~400-rule IDE profile with
+# no path-scoping), which made every include/exclude entry below inert.
+# "empty" makes this file's include/exclude list the actual source of truth.
+profile:
+  name: empty
 include:
   - name: csharp_injection_rule-CommandInjection
   - name: csharp_injection_rule-SQLInjection

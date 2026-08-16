@@ -21,10 +21,10 @@ internal sealed class DiagnosticStore
 
             foreach (var diag in diagnostics)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,start_line, start_column, end_line, end_column)
                     VALUES (@snapshotId, @projectName, @documentPath, @severity, @id, @message,@startLine, @startColumn, @endLine, @endColumn);
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.Parameters.AddWithValue("@projectName", diag.ProjectName);
@@ -53,24 +53,24 @@ internal sealed class DiagnosticStore
         using var command = _connection.CreateCommand();
         if (projectName != null)
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT project_name, document_path, severity, id, message,
                        start_line, start_column, end_line, end_column
                 FROM diagnostics
                 WHERE snapshot_id = @snapshotId AND project_name = @projectName
                 ORDER BY diagnostic_id;
-            ";
+                """;
             command.Parameters.AddWithValue("@projectName", projectName);
         }
         else
         {
-            command.CommandText = @"
+            command.CommandText = """
                 SELECT project_name, document_path, severity, id, message,
                        start_line, start_column, end_line, end_column
                 FROM diagnostics
                 WHERE snapshot_id = @snapshotId
                 ORDER BY diagnostic_id;
-            ";
+                """;
         }
 
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -104,13 +104,13 @@ internal sealed class DiagnosticStore
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             INSERT INTO diagnostics (snapshot_id, project_name, document_path, severity, id, message,start_line, start_column, end_line, end_column)
             SELECT @toSnapshotId, project_name, document_path, severity, id, message,
                    start_line, start_column, end_line, end_column
             FROM diagnostics
             WHERE snapshot_id = @fromSnapshotId;
-        ";
+            """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
         command.ExecuteNonQuery();
@@ -123,11 +123,13 @@ internal sealed class DiagnosticStore
             return;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             DELETE FROM diagnostics
             WHERE snapshot_id = @snapshotId
-              AND project_name IN (" + string.Join(", ", nameList.Select((_, i) => $"@p{i}")) + @");
-        ";
+              AND project_name IN (
+            """ + string.Join(", ", nameList.Select((_, i) => $"@p{i}")) + """
+        );
+        """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         var i = 0;
         foreach (var name in nameList)

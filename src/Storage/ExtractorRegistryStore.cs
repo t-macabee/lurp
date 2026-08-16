@@ -21,23 +21,23 @@ internal sealed class ExtractorRegistryStore
 
             foreach (var (name, version, description) in extractors)
             {
-                command.CommandText = @"
+                command.CommandText = """
                     DELETE FROM extractors
                     WHERE name = @name AND version != @version;
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@name", name);
                 command.Parameters.AddWithValue("@version", version);
                 command.ExecuteNonQuery();
 
-                command.CommandText = @"
+                command.CommandText = """
                     INSERT INTO extractors (name, version, description)
                     SELECT @name, @version, @description
                     WHERE NOT EXISTS (
                         SELECT 1 FROM extractors
                         WHERE name = @name AND version = @version
                     );
-                ";
+                    """;
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue("@name", name);
                 command.Parameters.AddWithValue("@version", version);
@@ -57,11 +57,11 @@ internal sealed class ExtractorRegistryStore
     public bool HasStaleExtractorVersions(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT COUNT(*) FROM edges
             WHERE snapshot_id = @sid
             AND extractor_version NOT IN (SELECT version FROM extractors);
-        ";
+            """;
         command.Parameters.AddWithValue("@sid", snapshotId);
         return (long)command.ExecuteScalar()! > 0;
     }

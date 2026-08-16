@@ -33,7 +33,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (memberId == null)
                     continue;
 
-                var key = (typeId, memberId, EdgeKind.Declares.ToString());
+                var key = (typeId, memberId, nameof(EdgeKind.Declares));
 
                 if (!seen.Add(key))
                     continue;
@@ -51,7 +51,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 {
                     SourceSymbolId = typeId,
                     TargetSymbolId = memberId,
-                    Kind = EdgeKind.Declares.ToString(),
+                    Kind = nameof(EdgeKind.Declares),
                     Provenance = Provenance.CompilerProved,
                     SnapshotId = context.SnapshotId,
                     ExtractorVersion = ExtractorConstants.DeclaresExtractor,

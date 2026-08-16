@@ -13,7 +13,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
         var results = new List<CapsuleItem>();
         var allowedKinds = new HashSet<string>
         {
-            EdgeKind.Calls.ToString()
+            nameof(EdgeKind.Calls)
         };
 
         if (context.MaxHops <= 1)

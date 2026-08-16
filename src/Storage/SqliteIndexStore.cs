@@ -634,11 +634,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
             using (var deleteEdgesCmd = _connection.CreateCommand())
             {
                 deleteEdgesCmd.Transaction = transaction;
-                deleteEdgesCmd.CommandText = @"
+                deleteEdgesCmd.CommandText = """
                         DELETE FROM edges
                         WHERE snapshot_id = @snapshotId
                           AND source_document_path IN (SELECT path FROM lurp_stale_doc_paths);
-                    ";
+                        """;
                 deleteEdgesCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
                 deleteEdgesCmd.ExecuteNonQuery();
             }
@@ -646,11 +646,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
             using (var deleteBindingCmd = _connection.CreateCommand())
             {
                 deleteBindingCmd.Transaction = transaction;
-                deleteBindingCmd.CommandText = @"
+                deleteBindingCmd.CommandText = """
                         DELETE FROM binding_incompleteness
                         WHERE snapshot_id = @snapshotId
                           AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
-                    ";
+                        """;
                 deleteBindingCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
                 deleteBindingCmd.ExecuteNonQuery();
             }
@@ -658,11 +658,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
             using (var deleteAnnotationsCmd = _connection.CreateCommand())
             {
                 deleteAnnotationsCmd.Transaction = transaction;
-                deleteAnnotationsCmd.CommandText = @"
+                deleteAnnotationsCmd.CommandText = """
                         DELETE FROM annotations
                         WHERE snapshot_id = @snapshotId
                           AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
-                    ";
+                        """;
                 deleteAnnotationsCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
                 deleteAnnotationsCmd.ExecuteNonQuery();
             }

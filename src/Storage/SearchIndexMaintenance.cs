@@ -31,7 +31,7 @@ internal sealed class SearchIndexMaintenance
             command.CommandText = "DELETE FROM symbol_fts WHERE snapshot_id = @snapshotId;";
             command.ExecuteNonQuery();
 
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
                 SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
                 FROM snapshot_documents sd
@@ -39,17 +39,17 @@ internal sealed class SearchIndexMaintenance
                 JOIN documents d ON d.document_id = dv.document_id
                 WHERE sd.snapshot_id = @snapshotId
                   AND dv.content IS NOT NULL;
-            ";
+                """;
             command.ExecuteNonQuery();
 
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
                 SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
                 FROM snapshot_symbols ss
                 JOIN symbols s ON s.symbol_id = ss.symbol_id
                 WHERE ss.snapshot_id = @snapshotId
                   AND ss.fqn IS NOT NULL;
-            ";
+                """;
             command.ExecuteNonQuery();
 
             transaction.Commit();
@@ -70,22 +70,22 @@ internal sealed class SearchIndexMaintenance
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
 
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
                 SELECT document_path, content, @toSnapshotId, document_version_id
                 FROM source_fts
                 WHERE snapshot_id = @fromSnapshotId;
-            ";
+                """;
             command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
             command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
             command.ExecuteNonQuery();
 
-            command.CommandText = @"
+            command.CommandText = """
                 INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
                 SELECT symbol_id, fqn, doc_comment_id, kind, @toSnapshotId
                 FROM symbol_fts
                 WHERE snapshot_id = @fromSnapshotId;
-            ";
+                """;
             command.ExecuteNonQuery();
 
             transaction.Commit();
@@ -113,11 +113,11 @@ internal sealed class SearchIndexMaintenance
             if (changedDocumentPaths.Count > 0)
             {
                 var pathPlaceholders = BuildPlaceholderList(changedDocumentPaths, command, "path");
-                command.CommandText = $@"
+                command.CommandText = $"""
                     DELETE FROM source_fts
                     WHERE snapshot_id = @snapshotId
                       AND document_path IN ({pathPlaceholders});
-                ";
+                    """;
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
                 command.Parameters.Clear();
@@ -126,11 +126,11 @@ internal sealed class SearchIndexMaintenance
             if (changedSymbolIds.Count > 0)
             {
                 var symPlaceholders = BuildPlaceholderList(changedSymbolIds, command, "sym");
-                command.CommandText = $@"
+                command.CommandText = $"""
                     DELETE FROM symbol_fts
                     WHERE snapshot_id = @snapshotId
                       AND symbol_id IN ({symPlaceholders});
-                ";
+                    """;
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
                 command.Parameters.Clear();
@@ -140,7 +140,7 @@ internal sealed class SearchIndexMaintenance
             if (changedDocumentPaths.Count > 0)
             {
                 var pathPlaceholders = BuildPlaceholderList(changedDocumentPaths, command, "path2");
-                command.CommandText = $@"
+                command.CommandText = $"""
                     INSERT INTO source_fts (document_path, content, snapshot_id, document_version_id)
                     SELECT d.relative_path, CAST(dv.content AS TEXT), sd.snapshot_id, dv.document_version_id
                     FROM snapshot_documents sd
@@ -149,7 +149,7 @@ internal sealed class SearchIndexMaintenance
                     WHERE sd.snapshot_id = @snapshotId
                       AND dv.content IS NOT NULL
                       AND d.relative_path IN ({pathPlaceholders});
-                ";
+                    """;
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
                 command.Parameters.Clear();
@@ -159,7 +159,7 @@ internal sealed class SearchIndexMaintenance
             if (changedSymbolIds.Count > 0)
             {
                 var symPlaceholders = BuildPlaceholderList(changedSymbolIds, command, "sym2");
-                command.CommandText = $@"
+                command.CommandText = $"""
                     INSERT INTO symbol_fts (symbol_id, fqn, doc_comment_id, kind, snapshot_id)
                     SELECT s.symbol_id, ss.fqn, s.doc_comment_id, s.kind, ss.snapshot_id
                     FROM snapshot_symbols ss
@@ -167,7 +167,7 @@ internal sealed class SearchIndexMaintenance
                     WHERE ss.snapshot_id = @snapshotId
                       AND ss.fqn IS NOT NULL
                       AND ss.symbol_id IN ({symPlaceholders});
-                ";
+                    """;
                 command.Parameters.AddWithValue("@snapshotId", snapshotId);
                 command.ExecuteNonQuery();
             }

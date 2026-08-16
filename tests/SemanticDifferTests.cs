@@ -699,7 +699,7 @@ public sealed class SemanticDifferTests : IDisposable
             "        public void Bar() { Console.WriteLine(); }\n" +
             "    }\n" +
             "}\n");
-        var partialLineStarts = "[0,14,33,56,107,113]";
+        const string partialLineStarts = "[0,14,33,56,107,113]";
         var toManifest = new SnapshotRow
         {
             SnapshotId = toSnapshotId,

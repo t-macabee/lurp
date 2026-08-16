@@ -22,11 +22,12 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT symbol_id, fqn, metadata_json
             FROM snapshot_symbols
             WHERE snapshot_id = @snapshotId
-            ORDER BY symbol_id;";
+            ORDER BY symbol_id;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
         var result = new List<SymbolRow>();
@@ -46,7 +47,7 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = @"
+        command.CommandText = """
             SELECT s.symbol_id, s.fqn, s.metadata_json
             FROM snapshot_symbols s
             JOIN declarations d ON d.symbol_id = s.symbol_id
@@ -55,7 +56,8 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE s.snapshot_id = @snapshotId
               AND doc.relative_path = @path
-            ORDER BY s.symbol_id;";
+            ORDER BY s.symbol_id;
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@path", relativePath);
 

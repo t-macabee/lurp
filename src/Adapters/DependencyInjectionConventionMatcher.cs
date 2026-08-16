@@ -21,7 +21,7 @@ internal static class DependencyInjectionConventionMatcher
 
         var targetId = $"{GraphNodeIds.AssemblyScanConventionPrefix}{assemblyName}";
 
-        var key = (sourceId, targetId, EdgeKind.Registers.ToString());
+        var key = (sourceId, targetId, nameof(EdgeKind.Registers));
         if (ctx.Seen.Add(key))
         {
             var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
@@ -30,7 +30,7 @@ internal static class DependencyInjectionConventionMatcher
             {
                 SourceSymbolId = sourceId,
                 TargetSymbolId = targetId,
-                Kind = EdgeKind.Registers.ToString(),
+                Kind = nameof(EdgeKind.Registers),
                 Provenance = Provenance.Convention,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = ctx.ExtractorVersion,
@@ -103,7 +103,7 @@ internal static class DependencyInjectionConventionMatcher
                 if (ifaceTypeId == null)
                     continue;
 
-                var key = (ifaceTypeId, implTypeId, EdgeKind.Registers.ToString());
+                var key = (ifaceTypeId, implTypeId, nameof(EdgeKind.Registers));
                 if (!ctx.Seen.Add(key))
                     continue;
 
@@ -111,7 +111,7 @@ internal static class DependencyInjectionConventionMatcher
                 {
                     SourceSymbolId = ifaceTypeId,
                     TargetSymbolId = implTypeId,
-                    Kind = EdgeKind.Registers.ToString(),
+                    Kind = nameof(EdgeKind.Registers),
                     Provenance = Provenance.Convention,
                     SnapshotId = ctx.SnapshotId,
                     ExtractorVersion = ctx.ExtractorVersion,

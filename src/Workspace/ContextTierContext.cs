@@ -4,7 +4,6 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
 {
     private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
     private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
-    private IReadOnlyList<string>? _effectiveSymbolIds;
     private bool? _hasUnmodeledRegistrations;
 
     internal IEdgeStore EdgeStore { get; } = edgeStore;
@@ -21,19 +20,19 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     // persisted Declares edges. Each id is queried independently and results
     // keep the originating edge's kind and provenance, so no type-level edges
     // are synthesized and member multiplicity is preserved.
-    internal IReadOnlyList<string> EffectiveSymbolIds => _effectiveSymbolIds ??= ComputeEffectiveSymbolIds();
+    internal IReadOnlyList<string> EffectiveSymbolIds => field ??= ComputeEffectiveSymbolIds();
 
     internal List<EdgeRecord> GetMayDispatchEdges(string symbolId)
     {
         return EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
-            .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
+            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))
             .ToList();
     }
 
     internal List<string> GetDeclaringTypeIds(string memberSymbolId)
     {
         return EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
-            .Where(edge => edge.Kind == EdgeKind.Declares.ToString())
+            .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
             .Select(edge => edge.SourceSymbolId)
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -85,7 +84,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     internal List<EdgeRecord> GetDispatchSourceEdges(string symbolId)
     {
         return EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
-            .Where(edge => edge.Kind == EdgeKind.MayDispatchTo.ToString())
+            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))
             .ToList();
     }
 
@@ -108,7 +107,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
             foreach (var edge in incoming)
             {
                 var sourceOutgoing = EdgeStore.GetOutgoingEdges(SnapshotId, edge.SourceSymbolId);
-                if (sourceOutgoing.Any(e => e.Kind == EdgeKind.Registers.ToString() && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
+                if (sourceOutgoing.Any(e => e.Kind == nameof(EdgeKind.Registers) && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
                 {
                     _hasUnmodeledRegistrations = true;
                     return true;
@@ -116,7 +115,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
             }
 
             var outgoing = EdgeStore.GetOutgoingEdges(SnapshotId, symbolId);
-            if (outgoing.Any(e => e.Kind == EdgeKind.Registers.ToString() && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
+            if (outgoing.Any(e => e.Kind == nameof(EdgeKind.Registers) && e.TargetSymbolId == GraphNodeIds.RuntimeUnknown))
             {
                 _hasUnmodeledRegistrations = true;
                 return true;
@@ -132,7 +131,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
         var ids = new List<string> { SymbolId.Value };
         if (SymbolId.DocCommentId.Length >= 2 && SymbolId.DocCommentId[0] == 'T' && SymbolId.DocCommentId[1] == ':')
             foreach (var edge in EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
-                if (edge.Kind == EdgeKind.Declares.ToString())
+                if (edge.Kind == nameof(EdgeKind.Declares))
                     ids.Add(edge.TargetSymbolId);
 
         return ids;

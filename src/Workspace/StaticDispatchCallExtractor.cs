@@ -63,7 +63,7 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         if (calleeId == null || calleeId == callerId)
             return;
 
-        var key = (callerId, calleeId, EdgeKind.StaticallyCalls.ToString());
+        var key = (callerId, calleeId, nameof(EdgeKind.StaticallyCalls));
         if (!seen.Add(key))
             return;
 
@@ -72,7 +72,7 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         {
             SourceSymbolId = callerId,
             TargetSymbolId = calleeId,
-            Kind = EdgeKind.StaticallyCalls.ToString(),
+            Kind = nameof(EdgeKind.StaticallyCalls),
             Provenance = Provenance.CompilerProved,
             SnapshotId = context.SnapshotId,
             ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,

@@ -42,7 +42,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             context.RecordFilteredExternal(typeSymbol.BaseType, sourceSyntax);
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Inherits.ToString(), typeSymbol,
+                edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Inherits), typeSymbol,
                     IsExternalTarget(typeSymbol.BaseType) ? GraphNodeKind.ExternalType : null));
         }
 
@@ -51,7 +51,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             context.RecordFilteredExternal(iface, sourceSyntax);
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
-                edges.Add(MakeEdge(sourceId, targetId, EdgeKind.Implements.ToString(), typeSymbol,
+                edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Implements), typeSymbol,
                     IsExternalTarget(iface) ? GraphNodeKind.ExternalType : null));
         }
 
@@ -59,7 +59,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         {
             CollectTypeEdges(nested, edges);
             var nestedId = MakeSymbolId(nested);
-            if (nestedId != null) edges.Add(MakeEdge(sourceId, nestedId, EdgeKind.Contains.ToString(), typeSymbol));
+            if (nestedId != null) edges.Add(MakeEdge(sourceId, nestedId, nameof(EdgeKind.Contains), typeSymbol));
         }
 
         foreach (var member in typeSymbol.GetMembers())
@@ -93,7 +93,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         {
             context.RecordFilteredExternal(namedType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
             var targetId = MakeSymbolId(namedType);
-            if (targetId != null && targetId != sourceSymbolId) edges.Add(MakeEdge(sourceSymbolId, targetId, EdgeKind.References.ToString(), member));
+            if (targetId != null && targetId != sourceSymbolId) edges.Add(MakeEdge(sourceSymbolId, targetId, nameof(EdgeKind.References), member));
         }
     }
 

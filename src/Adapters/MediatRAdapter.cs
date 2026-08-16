@@ -118,7 +118,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         if (handleMethodId == null)
             return;
 
-        var key = (requestId, handleMethodId, EdgeKind.Handles.ToString());
+        var key = (requestId, handleMethodId, nameof(EdgeKind.Handles));
         if (seen.Add(key))
         {
             var (path, sl, sc, el, ec) = locationResolver.Resolve(handleMethod);
@@ -127,7 +127,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             {
                 SourceSymbolId = requestId,
                 TargetSymbolId = handleMethodId,
-                Kind = EdgeKind.Handles.ToString(),
+                Kind = nameof(EdgeKind.Handles),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
                 ExtractorVersion = "mediatr-v1",

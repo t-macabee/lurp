@@ -33,12 +33,12 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
                 var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
                 context.RecordFilteredExternal(method.ReturnType, methodSyntax);
 
-                var key = (methodId, returnTypeId, EdgeKind.Returns.ToString());
+                var key = (methodId, returnTypeId, nameof(EdgeKind.Returns));
                 if (!seen.Add(key))
                     continue;
 
                 var loc = context.GetMemberSourceLocation(method);
-                edges.Add(context.MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(),
+                edges.Add(context.MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns),
                     ExtractorConstants.ReturnsExtractor, loc));
             }
 

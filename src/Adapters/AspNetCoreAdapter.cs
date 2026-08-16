@@ -54,9 +54,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(method);
         var loc = new EdgeLocation(path, sl, sc, el, ec, ctx.LocationResolver.IsGenerated(path));
 
-        var declaresKey = (controllerId, methodId, EdgeKind.Declares.ToString());
+        var declaresKey = (controllerId, methodId, nameof(EdgeKind.Declares));
         if (ctx.Seen.Add(declaresKey))
-            ctx.Edges.Add(MakeEdge(controllerId, methodId, EdgeKind.Declares.ToString(), ctx.SnapshotId, loc));
+            ctx.Edges.Add(MakeEdge(controllerId, methodId, nameof(EdgeKind.Declares), ctx.SnapshotId, loc));
 
         EmitRouteEdge(method, methodId, ctx, loc);
         EmitReturnTypeEdge(method, methodId, ctx, loc);
@@ -70,13 +70,13 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             return;
 
         var routeSourceId = $"{GraphNodeIds.RoutePrefix}{routeTemplate}";
-        var routeKey = (routeSourceId, methodId, EdgeKind.RoutesTo.ToString());
+        var routeKey = (routeSourceId, methodId, nameof(EdgeKind.RoutesTo));
         if (ctx.Seen.Add(routeKey))
             ctx.Edges.Add(new EdgeRecord
             {
                 SourceSymbolId = routeSourceId,
                 TargetSymbolId = methodId,
-                Kind = EdgeKind.RoutesTo.ToString(),
+                Kind = nameof(EdgeKind.RoutesTo),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
                 ExtractorVersion = Version,
@@ -99,9 +99,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         if (returnTypeId == null)
             return;
 
-        var retKey = (methodId, returnTypeId, EdgeKind.Returns.ToString());
+        var retKey = (methodId, returnTypeId, nameof(EdgeKind.Returns));
         if (ctx.Seen.Add(retKey))
-            ctx.Edges.Add(MakeEdge(methodId, returnTypeId, EdgeKind.Returns.ToString(), ctx.SnapshotId, loc));
+            ctx.Edges.Add(MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns), ctx.SnapshotId, loc));
     }
 
     private static void EmitFromServicesEdges(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
@@ -116,9 +116,9 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (paramTypeId == null)
                 continue;
 
-            var refKey = (methodId, paramTypeId, EdgeKind.References.ToString());
+            var refKey = (methodId, paramTypeId, nameof(EdgeKind.References));
             if (ctx.Seen.Add(refKey))
-                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, EdgeKind.References.ToString(), ctx.SnapshotId, loc));
+                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References), ctx.SnapshotId, loc));
         }
     }
 
