@@ -40,8 +40,6 @@ public class SqliteIndexStore : IIndexStore, IDisposable
 
     // ── Connection lifecycle ────────────────────────────────────────────
 
-    public bool IsOpen => _connection != null;
-
     public void Open()
     {
         if (_connection != null)
@@ -122,10 +120,10 @@ public class SqliteIndexStore : IIndexStore, IDisposable
 
     // ── ISnapshotStore ──────────────────────────────────────────────────
 
-    public void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
+    public void SaveWorkspace(string id, string gitRoot, string solutionPath)
     {
         EnsureOpen();
-        _lifecycle!.SaveWorkspace(id, gitRoot, solutionPath, createdAtUtc);
+        _lifecycle!.SaveWorkspace(id, gitRoot, solutionPath);
     }
 
     public void SaveSnapshot(SnapshotRow manifest)

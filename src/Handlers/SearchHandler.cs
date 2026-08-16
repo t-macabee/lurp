@@ -26,7 +26,7 @@ internal static class SearchHandler
 
         if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol") HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             SearchCursor? cursor = null;
             if (!string.IsNullOrEmpty(cursorArg))
@@ -60,7 +60,7 @@ internal static class SearchHandler
                     catch (ArgumentException ex)
                     {
                         HandlerBootstrap.Fail($"ERROR: {ex.Message}");
-                        return null;
+                        return;
                     }
 
                     foreach (var r in page.Items)
@@ -108,7 +108,6 @@ internal static class SearchHandler
                     break;
             }
 
-            return null;
         });
     }
 }

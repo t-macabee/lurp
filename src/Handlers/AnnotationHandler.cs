@@ -10,7 +10,7 @@ internal static class AnnotationHandler
         var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
         var valueArg = HandlerBootstrap.RequireArg(args, "--value=", "ERROR: --value=<text> is required for --mode=annotate.");
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
             store.SaveAnnotations(snapshotId, [annotation]);
@@ -23,7 +23,6 @@ internal static class AnnotationHandler
                 kind = kindArg,
                 value = valueArg
             }, HandlerBootstrap.IndentedJson));
-            return null;
         });
     }
 
@@ -31,7 +30,7 @@ internal static class AnnotationHandler
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var annotations = store.GetAnnotations(snapshotId, string.IsNullOrEmpty(symbolArg) ? null : symbolArg);
 
@@ -48,7 +47,6 @@ internal static class AnnotationHandler
             };
 
             Console.WriteLine(JsonSerializer.Serialize(result, HandlerBootstrap.IndentedJson));
-            return null;
         });
     }
 }

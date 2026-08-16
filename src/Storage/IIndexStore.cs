@@ -33,9 +33,7 @@ public enum ViewKind
     Declaration,
     Signature,
     Body,
-    Name,
-    ContainingType,
-    Surrounding
+    Name
 }
 
 public sealed class IndexedSymbolInfo

@@ -39,7 +39,7 @@ internal static class ImpactHandler
         var maxPaths = HandlerBootstrap.ParsePositiveIntArg(args, "--max-paths=", DefaultMaxPaths);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
@@ -138,7 +138,6 @@ internal static class ImpactHandler
                     break;
             }
 
-            return null;
         });
     }
 

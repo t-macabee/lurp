@@ -15,7 +15,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
-    internal void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc)
+    internal void SaveWorkspace(string id, string gitRoot, string solutionPath)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = WorkspaceUpsertSql;

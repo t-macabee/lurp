@@ -12,7 +12,7 @@ internal static class FindSymbolHandler
         var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
             if (info == null)
@@ -61,7 +61,6 @@ internal static class FindSymbolHandler
                     break;
             }
 
-            return null;
         });
     }
 }

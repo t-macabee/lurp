@@ -6,15 +6,6 @@ public sealed class SymbolExtractor
 {
     private readonly SymbolExtractionContext _context;
 
-    public SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
-        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
-        IReadOnlySet<DocumentId> generatedDocuments,
-        string snapshotId,
-        IReadOnlySet<string>? scopeDocuments = null)
-        : this(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, null)
-    {
-    }
-
     internal SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,

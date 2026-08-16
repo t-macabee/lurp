@@ -22,7 +22,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         var repositoryRoot = LocateRepositoryRoot();
         var solutionPath = Path.Combine(repositoryRoot, "Lurp.slnx");
         var dbPath = Path.Combine(_outputDir, "index.db");
-        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath, _outputDir);
+        var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
         var anchor = store.ResolveSymbolByFqn("Lurp.Shared.EdgeLocationResolver", snapshotId)

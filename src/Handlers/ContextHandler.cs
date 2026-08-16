@@ -59,7 +59,7 @@ internal static class ContextHandler
         var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
-        HandlerBootstrap.WithStore<object?>(args, snapshotArg, (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, snapshotArg, (store, snapshotId) =>
         {
             if (hasSymbol) symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
 
@@ -67,7 +67,7 @@ internal static class ContextHandler
             {
                 RunTierContinuation(store, args, snapshotId, tierArg, symbolArg, fileArg, lineNumber,
                     maxHops, includeGenerated, outputMode);
-                return null;
+                return;
             }
 
             var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
@@ -80,7 +80,6 @@ internal static class ContextHandler
             HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
             WriteCapsuleOutput(capsule, outputDirArg, outputMode, quiet);
-            return null;
         });
     }
 

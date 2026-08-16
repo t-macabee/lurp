@@ -119,8 +119,6 @@ public abstract class InMemoryTestBase : IDisposable
         public required CompilationFactExtractor.ExtractionResult Result { get; init; }
         public required IReadOnlyDictionary<string, string> FqnToSymbolId { get; init; }
 
-        public List<EdgeRecord> Edges => Result.Edges;
-
         public List<EdgeRecord> EdgesOf(string kind, string provenance = Provenance.CompilerProved)
         {
             return [.. Result.Edges.Where(e => e.Kind == kind && e.Provenance == provenance)];
@@ -144,12 +142,5 @@ public abstract class InMemoryTestBase : IDisposable
             return Assert.Single(matches);
         }
 
-        public void AssertNoEdge(string kind, string sourceFqn, string targetFqn)
-        {
-            var sourceId = ResolveId(sourceFqn);
-            var targetId = ResolveId(targetFqn);
-            Assert.DoesNotContain(Result.Edges, e =>
-                e.Kind == kind && e.SourceSymbolId == sourceId && e.TargetSymbolId == targetId);
-        }
     }
 }

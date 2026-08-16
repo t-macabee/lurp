@@ -29,7 +29,7 @@ internal static class IntegrationHarness
         }
     }
 
-    public static async Task<string> RunFullIndexAsync(string dbPath, string solutionPath, string outputDir)
+    public static async Task<string> RunFullIndexAsync(string dbPath, string solutionPath)
     {
         if (File.Exists(dbPath))
             File.Delete(dbPath);

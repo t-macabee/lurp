@@ -3,7 +3,6 @@ namespace Lurp.Storage;
 /// <summary>Connection and schema lifecycle for the backing database.</summary>
 public interface IStoreConnection
 {
-    bool IsOpen { get; }
     void Open();
     void Close();
     void RunMigrations();
@@ -34,7 +33,7 @@ public sealed record ExistingSnapshotResolution(ExistingSnapshotDisposition Disp
 /// <summary>Workspace/snapshot manifest rows and their lifecycle status.</summary>
 public interface ISnapshotManifestStore
 {
-    void SaveWorkspace(string id, string gitRoot, string solutionPath, DateTime createdAtUtc);
+    void SaveWorkspace(string id, string gitRoot, string solutionPath);
     void SaveSnapshot(SnapshotRow manifest);
     void MarkSnapshotInProgress(string snapshotId);
     void MarkSnapshotComplete(string snapshotId);

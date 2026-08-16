@@ -29,11 +29,6 @@ public sealed class PolymorphismExtractor
 {
     private readonly PolymorphismExtractionContext _context;
 
-    public PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
-        : this(compilation, snapshotId, gitRoot, scopeDocuments, null, semanticModelCache)
-    {
-    }
-
     internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
         IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
     {

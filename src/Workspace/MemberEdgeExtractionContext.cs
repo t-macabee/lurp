@@ -151,15 +151,6 @@ internal sealed class MemberEdgeExtractionContext(
         return model;
     }
 
-    internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree, Dictionary<SyntaxTree, SemanticModel> cache)
-    {
-        if (cache.TryGetValue(syntaxTree, out var model))
-            return model;
-
-        model = Compilation.GetSemanticModel(syntaxTree);
-        cache[syntaxTree] = model;
-        return model;
-    }
 }
 
 internal interface IMemberEdgeExtractor

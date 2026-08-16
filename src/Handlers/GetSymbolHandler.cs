@@ -15,7 +15,7 @@ internal static class GetSymbolHandler
         var contextLinesArg = HandlerBootstrap.GetArgValue(args, "--context-lines=");
         var includeGenerated = args.Contains("--include-generated");
 
-        HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var view = ResolveViewSelection(viewArg!, contextLinesArg);
             symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
@@ -25,7 +25,6 @@ internal static class GetSymbolHandler
             // embeds the block in its JSON payload.
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
             WriteRequestedView(store, view, symbolArg!, snapshotId, viewArg!, includeGenerated, freshness);
-            return null;
         });
     }
 

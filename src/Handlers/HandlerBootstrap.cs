@@ -249,7 +249,7 @@ internal static class HandlerBootstrap
     ///     <paramref name="snapshotArg" /> (or the latest snapshot when null), calls
     ///     <paramref name="body" />, and closes the store in a <c>finally</c>.
     /// </summary>
-    public static T WithStore<T>(string[] args, string? snapshotArg, Func<SqliteIndexStore, string, T> body)
+    public static void WithStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body)
     {
         var outputDir = ResolveOutputDir(args);
         var dbPath = ResolveDbPath(outputDir);
@@ -257,7 +257,7 @@ internal static class HandlerBootstrap
         try
         {
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
-            return body(store, snapshotId);
+            body(store, snapshotId);
         }
         finally
         {

@@ -26,7 +26,7 @@ public sealed class CliExitSmokeTests : IDisposable
         var store = new SqliteIndexStore(_dbPath);
         store.Open();
         store.RunMigrations();
-        store.SaveWorkspace("w1", "gitroot", "solution.sln", DateTime.UtcNow);
+        store.SaveWorkspace("w1", "gitroot", "solution.sln");
         return store;
     }
 

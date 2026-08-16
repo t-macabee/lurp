@@ -20,7 +20,7 @@ public sealed class EdgeWritePathTests : IDisposable
         var store = new SqliteIndexStore(_dbPath);
         store.Open();
         store.RunMigrations();
-        store.SaveWorkspace(WorkspaceId, "gitroot", "solution.sln", DateTime.UtcNow);
+        store.SaveWorkspace(WorkspaceId, "gitroot", "solution.sln");
         store.SaveSnapshot(new SnapshotRow
         {
             SnapshotId = SnapshotId,
