@@ -24,7 +24,7 @@ public static class EdgeMerge
             }
         }
 
-        return new List<EdgeRecord>(best.Values);
+        return [.. best.Values];
     }
 
     public static EdgeRecord WithMergedTypeArguments(EdgeRecord edge, string? additionalTypeArgumentsJson)

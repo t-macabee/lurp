@@ -52,7 +52,7 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         // and virtual (non-sealed) methods.
         var isDispatchPoint = callee.ContainingType?.TypeKind == TypeKind.Interface
                               || callee.IsAbstract
-                              || (callee.IsVirtual && !callee.IsSealed);
+                              || callee is { IsVirtual: true, IsSealed: false };
 
         if (!isDispatchPoint)
             return;

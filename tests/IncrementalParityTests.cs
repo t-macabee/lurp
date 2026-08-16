@@ -628,9 +628,8 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         using var store = OpenStore(dbPath);
         try
         {
-            return store.GetEdges(snapshotId)
-                .Where(e => e.Kind == kind && e.Provenance == provenance)
-                .ToList();
+            return [.. store.GetEdges(snapshotId)
+                .Where(e => e.Kind == kind && e.Provenance == provenance)];
         }
         finally
         {
@@ -640,15 +639,14 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
     private static List<string> EdgeFacts(List<EdgeRecord> edges)
     {
-        return edges
+        return [.. edges
             .Select(e => string.Join("|",
                 e.SourceSymbolId, e.TargetSymbolId, e.Kind, e.Provenance,
                 e.ExtractorVersion, e.SourceDocumentPath ?? "", e.SourceStartLine, e.SourceStartColumn,
                 e.SourceEndLine, e.SourceEndColumn, e.IsCrossGenerated,
                 e.TypeArgumentsJson ?? "", e.ReceiverTypeConstraintsJson ?? "",
                 e.SourceNodeKind?.ToString() ?? "", e.TargetNodeKind?.ToString() ?? ""))
-            .OrderBy(f => f, StringComparer.Ordinal)
-            .ToList();
+            .OrderBy(f => f, StringComparer.Ordinal)];
     }
 
     private static List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
@@ -666,10 +664,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
     private static List<string> VariantKeys(List<List<string>> variants)
     {
-        return variants
+        return [.. variants
             .Select(variant => string.Join(", ", variant))
-            .OrderBy(key => key, StringComparer.Ordinal)
-            .ToList();
+            .OrderBy(key => key, StringComparer.Ordinal)];
     }
 
     private static void AssertNestedVariantArray(string? typeArgumentsJson, int expectedVariantCount)
@@ -813,7 +810,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // record into the persisted snapshot A.
         var ctx = new CompilationFactExtractor.StageContext(
             "App",
-            new List<CompilationFactExtractor.ExtractionFailure>(),
+            [],
             new BindingIncompletenessCollector("App", TestDir));
 
         CompilationFactExtractor.RunStage(
@@ -829,7 +826,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         using (var store = OpenStore(DbPath))
         {
-            store.SaveBindingIncompleteness(snapshotA, new[] { injectedRow });
+            store.SaveBindingIncompleteness(snapshotA, [injectedRow]);
         }
 
         // Semantics-preserving comment edit — only Helper.cs is dirty.
@@ -856,10 +853,10 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
         {
             var rowsA = store.GetBindingIncompleteness(snapshotA, "App")
-                .Where(r => r.Reason == "extractor_failure" && r.DocumentPath == null)
+                .Where(r => r is { Reason: "extractor_failure", DocumentPath: null })
                 .ToList();
             var rowsB = store.GetBindingIncompleteness(snapshotB, "App")
-                .Where(r => r.Reason == "extractor_failure" && r.DocumentPath == null)
+                .Where(r => r is { Reason: "extractor_failure", DocumentPath: null })
                 .ToList();
 
             var rowA = Assert.Single(rowsA);

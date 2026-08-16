@@ -158,17 +158,14 @@ public sealed class WorkspaceInfo
 
     private static byte[] NormalizeSourceBytes(string relativePath, byte[] rawBytes)
     {
-        if (rawBytes.Length >= 3
-            && rawBytes[0] == 0xEF
-            && rawBytes[1] == 0xBB
-            && rawBytes[2] == 0xBF)
+        if (rawBytes is [0xEF, 0xBB, 0xBF, ..])
         {
             var stripped = rawBytes.AsSpan(3);
             var text = Utf8NoBom.GetString(stripped);
             return Utf8NoBom.GetBytes(text);
         }
 
-        if (rawBytes.Length >= 2 && rawBytes[0] == 0xFF && rawBytes[1] == 0xFE)
+        if (rawBytes is [0xFF, 0xFE, ..])
             try
             {
                 var text = Utf16Le.GetString(rawBytes, 2, rawBytes.Length - 2);
@@ -180,7 +177,7 @@ public sealed class WorkspaceInfo
                     $"Invalid UTF-16 LE byte sequence in '{relativePath}'.", ex);
             }
 
-        if (rawBytes.Length >= 2 && rawBytes[0] == 0xFE && rawBytes[1] == 0xFF)
+        if (rawBytes is [0xFE, 0xFF, ..])
             try
             {
                 var text = Utf16Be.GetString(rawBytes, 2, rawBytes.Length - 2);
@@ -363,10 +360,9 @@ public sealed class WorkspaceInfo
                 else
                     identities.Add(reference.Display ?? "unknown");
 
-            map[project.Name] = identities
+            map[project.Name] = [.. identities
                 .Distinct(StringComparer.Ordinal)
-                .OrderBy(x => x, StringComparer.Ordinal)
-                .ToImmutableArray();
+                .OrderBy(x => x, StringComparer.Ordinal)];
         }
 
         return map;

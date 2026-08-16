@@ -48,7 +48,7 @@ public sealed class PolymorphismExtractor
 
         // Filter to types declared in scope documents when the scope is set
         if (_context.ScopeDocuments != null)
-            allTypes = allTypes.Where(t => _context.IsTypeInScope(t)).ToList();
+            allTypes = [.. allTypes.Where(t => _context.IsTypeInScope(t))];
 
         var edges = new List<EdgeRecord>();
         edges.AddRange(new InterfaceDispatchExtractor(_context).Extract(allTypes));

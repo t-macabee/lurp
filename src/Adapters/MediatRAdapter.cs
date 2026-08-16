@@ -81,18 +81,22 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             {
                 var ifaceName = iface.OriginalDefinition?.Name;
 
-                if (ifaceName == "IRequestHandler")
+                switch (ifaceName)
                 {
-                    var requestTypeArg = iface.TypeArguments.FirstOrDefault();
-                    if (requestTypeArg is INamedTypeSymbol namedRequest)
-                        handlerTypes.Add((type, namedRequest));
-                }
-
-                if (ifaceName == "INotificationHandler")
-                {
-                    var notificationTypeArg = iface.TypeArguments.FirstOrDefault();
-                    if (notificationTypeArg is INamedTypeSymbol namedNotification)
-                        handlerTypes.Add((type, namedNotification));
+                    case "IRequestHandler":
+                    {
+                        var requestTypeArg = iface.TypeArguments.FirstOrDefault();
+                        if (requestTypeArg is INamedTypeSymbol namedRequest)
+                            handlerTypes.Add((type, namedRequest));
+                        break;
+                    }
+                    case "INotificationHandler":
+                    {
+                        var notificationTypeArg = iface.TypeArguments.FirstOrDefault();
+                        if (notificationTypeArg is INamedTypeSymbol namedNotification)
+                            handlerTypes.Add((type, namedNotification));
+                        break;
+                    }
                 }
             }
         }

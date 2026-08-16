@@ -64,20 +64,23 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, _skipAdapters);
         var newSnapshotIdStr = snapshotId.ToString();
         var existing = _store.ResolveExistingSnapshot(newSnapshotIdStr, workspaceInfo.Id.Value);
-        if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
+        switch (existing.Disposition)
         {
-            if (_force)
-            {
-                _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists; --force given, re-extracting in place.");
-            }
-            else
-            {
-                _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-                return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty);
-            }
+            case ExistingSnapshotDisposition.Reuse:
+                if (_force)
+                {
+                    _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists; --force given, re-extracting in place.");
+                }
+                else
+                {
+                    _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
+                    return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty);
+                }
+                break;
+            case ExistingSnapshotDisposition.Retry:
+                _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
+                break;
         }
-
-        if (existing.Disposition == ExistingSnapshotDisposition.Retry) _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
 
         // Step 2: Affected Project Resolution
         cancellationToken.ThrowIfCancellationRequested();
@@ -466,7 +469,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         {
             var newSymbolIds = new HashSet<string>(
                 _store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, newDocVersionIdSet));
-            candidateIds = oldSymbolIds.Where(id => !newSymbolIds.Contains(id)).ToList();
+            candidateIds = [.. oldSymbolIds.Where(id => !newSymbolIds.Contains(id))];
         }
 
         // A candidate may still be declared elsewhere in the new snapshot — a
@@ -485,7 +488,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             var survivingSymbolIds = otherVersionIds.Count == 0
                 ? []
                 : new HashSet<string>(_store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, otherVersionIds));
-            removedSymbolIds = candidateIds.Where(id => !survivingSymbolIds.Contains(id)).ToList();
+            removedSymbolIds = [.. candidateIds.Where(id => !survivingSymbolIds.Contains(id))];
         }
 
         if (removedSymbolIds.Count > 0)
@@ -597,7 +600,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     private HashSet<string> ComputeChangedSymbolIds(string snapshotId, HashSet<string> changedPaths)
     {
         if (changedPaths.Count == 0)
-            return new HashSet<string>();
+            return [];
 
         var pathToVersion = _store.GetDocumentVersionIdsByPath(snapshotId);
         var versionIds = new HashSet<string>(
@@ -606,9 +609,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 .Select(p => pathToVersion[p]));
 
         if (versionIds.Count == 0)
-            return new HashSet<string>();
+            return [];
 
-        return new HashSet<string>(_store.GetSymbolIdsByDocumentVersionIds(snapshotId, versionIds));
+        return [.. _store.GetSymbolIdsByDocumentVersionIds(snapshotId, versionIds)];
     }
 
     private HashSet<string> GetProjectDocumentPaths(Solution solution, HashSet<string> projectNames)
@@ -715,9 +718,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         IReadOnlyList<BindingIncompletenessRecord> records,
         IReadOnlySet<string> scopeRelativePaths)
     {
-        return records
-            .Where(r => r.DocumentPath is { } path && scopeRelativePaths.Contains(path))
-            .ToList();
+        return [.. records
+            .Where(r => r.DocumentPath is { } path && scopeRelativePaths.Contains(path))];
     }
 
     private sealed record IncrementalChangeScope(

@@ -42,7 +42,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 
     internal List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
     {
-        var idList = documentVersionIds as IReadOnlyCollection<string> ?? documentVersionIds.ToList();
+        var idList = documentVersionIds as IReadOnlyCollection<string> ?? [.. documentVersionIds];
         if (idList.Count == 0)
             return [];
 

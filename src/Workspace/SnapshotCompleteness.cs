@@ -32,7 +32,7 @@ public sealed record SnapshotCompleteness
     {
         return this with
         {
-            BindingIncompleteness = includeDetail ? records.ToList() : [],
+            BindingIncompleteness = includeDetail ? [.. records] : [],
             BindingIncompletenessSummary = BuildBindingIncompletenessSummary(records),
             BindingIncompletenessTotal = records.Sum(static record => record.Count)
         };
@@ -40,12 +40,11 @@ public sealed record SnapshotCompleteness
 
     internal static List<BindingIncompletenessSummary> BuildBindingIncompletenessSummary(IReadOnlyList<BindingIncompletenessRecord> records)
     {
-        return records
+        return [.. records
             .GroupBy(static record => (record.ProjectName, record.Reason))
             .Select(static group => new BindingIncompletenessSummary(
                 group.Key.ProjectName, group.Key.Reason, group.Sum(static record => record.Count)))
             .OrderBy(static summary => summary.ProjectName, StringComparer.Ordinal)
-            .ThenBy(static summary => summary.Reason, StringComparer.Ordinal)
-            .ToList();
+            .ThenBy(static summary => summary.Reason, StringComparer.Ordinal)];
     }
 }

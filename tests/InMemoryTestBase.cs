@@ -17,11 +17,10 @@ namespace Lurp.Tests;
 public abstract class InMemoryTestBase : IDisposable
 {
     private static readonly MetadataReference[] _defaultReferences =
-        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
+        [.. ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator)
         .Where(p => !string.IsNullOrEmpty(p))
-        .Select(p => MetadataReference.CreateFromFile(p!))
-        .ToArray();
+        .Select(p => MetadataReference.CreateFromFile(p!))];
 
     /// <summary>All adapter names, for tests that must exclude adapter output.</summary>
     protected static readonly HashSet<string> AllAdapterNames =
@@ -124,7 +123,7 @@ public abstract class InMemoryTestBase : IDisposable
 
         public List<EdgeRecord> EdgesOf(string kind, string provenance = Provenance.CompilerProved)
         {
-            return Result.Edges.Where(e => e.Kind == kind && e.Provenance == provenance).ToList();
+            return [.. Result.Edges.Where(e => e.Kind == kind && e.Provenance == provenance)];
         }
 
         public string ResolveId(string fqn)

@@ -22,9 +22,9 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
                 // -- Override edges --
                 ISymbol? overridden = member switch
                 {
-                    IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
+                    IMethodSymbol { IsOverride: true, OverriddenMethod: not null } method
                         => method.OverriddenMethod,
-                    IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null
+                    IPropertySymbol { IsOverride: true, OverriddenProperty: not null } prop
                         => prop.OverriddenProperty,
                     _ => null
                 };
@@ -33,9 +33,9 @@ internal sealed class OverridesEdgeExtractor(MemberEdgeExtractionContext context
 
                 var (sourceId, targetId) = member switch
                 {
-                    IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null
+                    IMethodSymbol { IsOverride: true, OverriddenMethod: not null } method
                         => (context.MakeSymbolId(method), context.MakeSymbolId(method.OverriddenMethod)),
-                    IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null
+                    IPropertySymbol { IsOverride: true, OverriddenProperty: not null } prop
                         => (context.MakeSymbolId(prop), context.MakeSymbolId(prop.OverriddenProperty)),
                     _ => (null, null)
                 };

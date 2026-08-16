@@ -59,14 +59,14 @@ public sealed class SemanticDifferTests : IDisposable
             SdkVersion = "10.0.301",
             CompilerVersion = "4.12.0.0",
             CreatedAtUtc = DateTime.UtcNow,
-            Documents = new List<DocumentVersion>
-            {
+            Documents =
+            [
                 new(sourceBytes)
                 {
                     DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8",
                     LineStarts = lineStarts
                 }
-            }
+            ]
         };
         store.SaveSnapshot(manifest);
     }
@@ -709,8 +709,8 @@ public sealed class SemanticDifferTests : IDisposable
             SdkVersion = "10.0.301",
             CompilerVersion = "4.12.0.0",
             CreatedAtUtc = DateTime.UtcNow,
-            Documents = new List<DocumentVersion>
-            {
+            Documents =
+            [
                 new(partialSource)
                 {
                     DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1",
@@ -721,7 +721,7 @@ public sealed class SemanticDifferTests : IDisposable
                     DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1",
                     Encoding = "utf-8", LineStarts = partialLineStarts
                 }
-            }
+            ]
         };
         store.SaveSnapshot(toManifest);
 
@@ -742,8 +742,7 @@ public sealed class SemanticDifferTests : IDisposable
                 isPartial: true)
         ]);
 
-        store.SaveDeclarations(toSnapshotId, new[]
-        {
+        store.SaveDeclarations(toSnapshotId, [
             MakeDecl(
                 symbolId: symbolId,
                 docCommentId: "T:Ns.Partial",
@@ -768,7 +767,7 @@ public sealed class SemanticDifferTests : IDisposable
                 nameS: 20, nameE: 25,
                 metadataJson: """{"isPartial": true}""",
                 isPartial: true)
-        });
+        ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);

@@ -305,9 +305,8 @@ internal static class ContextHandler
 
     private static List<string> GetRepeatableArgs(string[] args, string prefix)
     {
-        return args.Where(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        return [.. args.Where(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(arg => arg[prefix.Length..])
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .ToList();
+            .Where(static value => !string.IsNullOrWhiteSpace(value))];
     }
 }

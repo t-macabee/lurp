@@ -217,10 +217,15 @@ public sealed class ImpactTraverserTests
         // Upstream: traces edges backwards — A gets incoming from B, B gets incoming from C
         foreach (var path in paths)
             for (var i = 0; i < path.Hops.Count; i++)
-                if (i == 0)
-                    Assert.Equal("B", path.Hops[i].SourceSymbolId);
-                else if (i == 1)
-                    Assert.Equal("C", path.Hops[i].SourceSymbolId);
+                switch (i)
+                {
+                    case 0:
+                        Assert.Equal("B", path.Hops[i].SourceSymbolId);
+                        break;
+                    case 1:
+                        Assert.Equal("C", path.Hops[i].SourceSymbolId);
+                        break;
+                }
     }
 
     // ── In-memory IEdgeStore implementation ─────────────────────────────
@@ -240,17 +245,17 @@ public sealed class ImpactTraverserTests
             if (symbolId != null)
                 filtered = filtered.Where(e =>
                     e.SourceSymbolId == symbolId || e.TargetSymbolId == symbolId);
-            return filtered.ToList();
+            return [.. filtered];
         }
 
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
         {
-            return _edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId).ToList();
+            return [.. _edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId)];
         }
 
         public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
         {
-            return _edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId).ToList();
+            return [.. _edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId)];
         }
 
         // Unused members — throw to catch accidental usage

@@ -216,7 +216,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (originalDef.Name != "DbSet")
             return false;
 
-        if (namedType.TypeArguments.Length == 1 && namedType.TypeArguments[0] is INamedTypeSymbol entity)
+        if (namedType.TypeArguments is [INamedTypeSymbol entity])
         {
             entityType = entity;
             return true;
@@ -232,7 +232,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            if (memberAccess.Name is GenericNameSyntax genericName && genericName.Identifier.Text == "Entity") ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, ctx);
+            if (memberAccess.Name is GenericNameSyntax { Identifier.Text: "Entity" } genericName) ExtractEntityMethodMapping(genericName, semanticModel, dbContextId, ctx);
 
             if (memberAccess.Name.Identifier.Text is "HasOne" or "HasMany" or "WithOne" or "WithMany") ExtractNavigationTypeReference(invocation, semanticModel, dbContextId, ctx);
         }
@@ -297,47 +297,51 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            if (memberAccess.Name.Identifier.Text == "HasQueryFilter")
+            switch (memberAccess.Name.Identifier.Text)
             {
-                string? entityTypeId = null;
-                var entityName = "Unknown";
-
-                if (invocation.ArgumentList.Arguments.Count > 0)
+                case "HasQueryFilter":
                 {
-                    var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-                    if (symbolInfo.Symbol is IMethodSymbol methodSymbol
-                        && methodSymbol.ContainingType is INamedTypeSymbol containingType
-                        && containingType.TypeArguments.Length == 1)
+                    string? entityTypeId = null;
+                    var entityName = "Unknown";
+
+                    if (invocation.ArgumentList.Arguments.Count > 0)
                     {
-                        entityTypeId = containingType.TypeArguments[0] is INamedTypeSymbol entityType
-                            ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)
-                            : null;
-                        entityName = containingType.TypeArguments[0].Name;
+                        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                        if (symbolInfo.Symbol is IMethodSymbol
+                            {
+                                ContainingType: INamedTypeSymbol { TypeArguments.Length: 1 } containingType
+                            } methodSymbol)
+                        {
+                            entityTypeId = containingType.TypeArguments[0] is INamedTypeSymbol entityType
+                                ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)
+                                : null;
+                            entityName = containingType.TypeArguments[0].Name;
+                        }
                     }
+
+                    var lambdaText = invocation.ArgumentList.Arguments.Count > 0
+                        ? invocation.ArgumentList.Arguments[0].Expression.ToString()
+                        : "";
+
+                    AddConstraintAnnotation(
+                        entityTypeId ?? dbContextId,
+                        "ef_query_filter_constraint",
+                        $"{entityName}: HasQueryFilter: {lambdaText}",
+                        evidencePath,
+                        ctx);
+                    break;
                 }
-
-                var lambdaText = invocation.ArgumentList.Arguments.Count > 0
-                    ? invocation.ArgumentList.Arguments[0].Expression.ToString()
-                    : "";
-
-                AddConstraintAnnotation(
-                    entityTypeId ?? dbContextId,
-                    "ef_query_filter_constraint",
-                    $"{entityName}: HasQueryFilter: {lambdaText}",
-                    evidencePath,
-                    ctx);
-            }
-
-            if (memberAccess.Name.Identifier.Text == "HasDatabaseName"
-                && invocation.ArgumentList.Arguments.Count > 0)
-            {
-                var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
-                AddConstraintAnnotation(
-                    dbContextId,
-                    "ef_unique_index_constraint",
-                    nameArg.Trim('"'),
-                    evidencePath,
-                    ctx);
+                case "HasDatabaseName" when invocation.ArgumentList.Arguments.Count > 0:
+                {
+                    var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                    AddConstraintAnnotation(
+                        dbContextId,
+                        "ef_unique_index_constraint",
+                        nameArg.Trim('"'),
+                        evidencePath,
+                        ctx);
+                    break;
+                }
             }
         }
     }
@@ -349,28 +353,30 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
                 continue;
 
-            if (memberAccess.Name.Identifier.Text == "HasQueryFilter"
-                && invocation.ArgumentList.Arguments.Count > 0)
+            switch (memberAccess.Name.Identifier.Text)
             {
-                var lambdaText = invocation.ArgumentList.Arguments[0].Expression.ToString();
-                AddConstraintAnnotation(
-                    entityTypeId,
-                    "ef_query_filter_constraint",
-                    $"{entityType.Name}: HasQueryFilter: {lambdaText}",
-                    evidencePath,
-                    ctx);
-            }
-
-            if (memberAccess.Name.Identifier.Text == "HasDatabaseName"
-                && invocation.ArgumentList.Arguments.Count > 0)
-            {
-                var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
-                AddConstraintAnnotation(
-                    entityTypeId,
-                    "ef_unique_index_constraint",
-                    nameArg.Trim('"'),
-                    evidencePath,
-                    ctx);
+                case "HasQueryFilter" when invocation.ArgumentList.Arguments.Count > 0:
+                {
+                    var lambdaText = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                    AddConstraintAnnotation(
+                        entityTypeId,
+                        "ef_query_filter_constraint",
+                        $"{entityType.Name}: HasQueryFilter: {lambdaText}",
+                        evidencePath,
+                        ctx);
+                    break;
+                }
+                case "HasDatabaseName" when invocation.ArgumentList.Arguments.Count > 0:
+                {
+                    var nameArg = invocation.ArgumentList.Arguments[0].Expression.ToString();
+                    AddConstraintAnnotation(
+                        entityTypeId,
+                        "ef_unique_index_constraint",
+                        nameArg.Trim('"'),
+                        evidencePath,
+                        ctx);
+                    break;
+                }
             }
         }
     }

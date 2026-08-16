@@ -51,7 +51,7 @@ internal sealed class ContextAssembler
     ///     the assembly priority is intent-dependent and lives in <c>GetTierBuilders</c>.
     /// </summary>
     internal static readonly string[] TierNames =
-        TierBuilders.Select(static entry => entry.Name).ToArray();
+        [.. TierBuilders.Select(static entry => entry.Name)];
 
     private readonly HashSet<string> _changeSiteKeys = new(StringComparer.Ordinal);
 
@@ -125,7 +125,7 @@ internal sealed class ContextAssembler
         // verification, ...) against the same estimator. Run enforcement before
         // uncertainty detection so tier sections get their full budget allocation
         // before untiered metadata (uncertainties) is appended.
-        CapsuleBudgetEnforcer.Enforce(capsule, Budget, tiers.Select(static tier => tier.Name).ToList());
+        CapsuleBudgetEnforcer.Enforce(capsule, Budget, [.. tiers.Select(static tier => tier.Name)]);
 
         new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
             .Detect(capsule);
@@ -301,7 +301,7 @@ internal sealed class ContextAssembler
 
     private static List<IContextTierBuilder> ResolveInOrder(ContextTierContext context, params string[] tierNames)
     {
-        return tierNames.Select(name => ResolveTierBuilder(context, name)!).ToList();
+        return [.. tierNames.Select(name => ResolveTierBuilder(context, name)!)];
     }
 
     internal static IContextTierBuilder? ResolveTierBuilder(ContextTierContext context, string tierName)
@@ -372,7 +372,7 @@ internal sealed class ContextAssembler
             Intent = Intent.ToString().ToLowerInvariant(),
             MaxHops = MaxHops,
             SnapshotId = SnapshotId,
-            AffectedProjects = AffectedProjects.Distinct(StringComparer.Ordinal).OrderBy(static value => value, StringComparer.Ordinal).ToList(),
+            AffectedProjects = [.. AffectedProjects.Distinct(StringComparer.Ordinal).OrderBy(static value => value, StringComparer.Ordinal)],
             Provenance = Provenance.CompilerProved,
             ExtractorIdentity = VersionConstants.ExtractorVersion,
             Locations = DeclarationStore.GetDeclarationLocations(SymbolId.Value, SnapshotId, IncludeGenerated)

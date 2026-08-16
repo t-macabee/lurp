@@ -30,7 +30,7 @@ internal static class CompilationHelper
             int? startLine = null, startColumn = null, endLine = null, endColumn = null;
             string? documentPath = null;
 
-            if (loc.IsInSource && loc.SourceTree != null)
+            if (loc is { IsInSource: true, SourceTree: not null })
             {
                 var span = loc.GetLineSpan();
                 documentPath = loc.SourceTree.FilePath;

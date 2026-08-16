@@ -66,7 +66,7 @@ public sealed class SymbolId : IEquatable<SymbolId>
     public string? FullyQualifiedName { get; }
 
     public bool IsType =>
-        DocCommentId.Length >= 2 && DocCommentId[0] == 'T' && DocCommentId[1] == ':';
+        DocCommentId is ['T', ':', ..];
 
     public bool Equals(SymbolId? other)
     {

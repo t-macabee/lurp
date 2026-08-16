@@ -33,22 +33,21 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         {
             ISymbol? memberSymbol = null;
 
-            if (current is MethodDeclarationSyntax)
+            switch (current)
             {
-                memberSymbol = semanticModel.GetDeclaredSymbol(current) as IMethodSymbol;
-            }
-            else if (current is PropertyDeclarationSyntax)
-            {
-                memberSymbol = semanticModel.GetDeclaredSymbol(current) as IPropertySymbol;
-            }
-            else if (current is ConstructorDeclarationSyntax)
-            {
-                memberSymbol = semanticModel.GetDeclaredSymbol(current) as IMethodSymbol;
-            }
-            else if (current is FieldDeclarationSyntax fieldDecl)
-            {
-                var firstVariable = fieldDecl.Declaration.Variables.FirstOrDefault();
-                if (firstVariable != null) memberSymbol = semanticModel.GetDeclaredSymbol(firstVariable) as IFieldSymbol;
+                case MethodDeclarationSyntax:
+                    memberSymbol = semanticModel.GetDeclaredSymbol(current) as IMethodSymbol;
+                    break;
+                case PropertyDeclarationSyntax:
+                    memberSymbol = semanticModel.GetDeclaredSymbol(current) as IPropertySymbol;
+                    break;
+                case ConstructorDeclarationSyntax:
+                    memberSymbol = semanticModel.GetDeclaredSymbol(current) as IMethodSymbol;
+                    break;
+                case FieldDeclarationSyntax fieldDecl:
+                    var firstVariable = fieldDecl.Declaration.Variables.FirstOrDefault();
+                    if (firstVariable != null) memberSymbol = semanticModel.GetDeclaredSymbol(firstVariable) as IFieldSymbol;
+                    break;
             }
 
             if (memberSymbol != null)

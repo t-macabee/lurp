@@ -77,7 +77,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
 
     internal List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths)
     {
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
         if (pathList.Count == 0)
             return [];
 

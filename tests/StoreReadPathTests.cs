@@ -180,7 +180,7 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         {
             var incompleteness = store.GetBindingIncompleteness(snapshotId);
             var blindRecords = incompleteness
-                .Where(r => r.ProjectName == "Blind" && r.Reason == "project_unreadable")
+                .Where(r => r is { ProjectName: "Blind", Reason: "project_unreadable" })
                 .ToList();
             Assert.NotEmpty(blindRecords);
             Assert.Contains(blindRecords,

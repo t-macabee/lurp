@@ -62,7 +62,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         }
 
         var views = GetSymbolSpanContents(symbolId, snapshotId, startCol, endCol, includeGenerated)
-            .Where(static span => span.Content != null && span.Start != null && span.End != null)
+            .Where(static span => span is { Content: not null, Start: not null, End: not null })
             .Select(span => SliceToString(span.Content!, span.Start!.Value, span.End!.Value))
             .Where(static source => source != null)
             .Distinct(StringComparer.Ordinal)

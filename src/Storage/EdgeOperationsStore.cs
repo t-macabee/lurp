@@ -371,7 +371,7 @@ internal sealed class EdgeOperationsStore
 
     public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
         if (pathList.Count == 0)
             return;
 
@@ -403,7 +403,7 @@ internal sealed class EdgeOperationsStore
 
     public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
     {
-        var identityList = assemblyIdentities as IReadOnlyCollection<string> ?? assemblyIdentities.ToList();
+        var identityList = assemblyIdentities as IReadOnlyCollection<string> ?? [.. assemblyIdentities];
         if (identityList.Count == 0)
             return;
 
@@ -429,7 +429,7 @@ internal sealed class EdgeOperationsStore
 
     public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
     {
-        var idList = symbolIds as IReadOnlyCollection<string> ?? symbolIds.ToList();
+        var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];
         if (idList.Count == 0)
             return;
 

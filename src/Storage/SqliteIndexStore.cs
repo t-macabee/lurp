@@ -605,7 +605,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     public void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
         EnsureOpen();
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
         if (pathList.Count == 0)
             return;
 

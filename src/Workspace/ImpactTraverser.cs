@@ -19,7 +19,7 @@ public sealed class ImpactTraverser
         var semanticCauses = GetSemanticCauses(symbolId);
 
         var queue = new Queue<(string currentId, List<ImpactHop> hops, HashSet<string> visited)>();
-        queue.Enqueue((symbolId, new List<ImpactHop>(), new HashSet<string> { symbolId }));
+        queue.Enqueue((symbolId, [], [symbolId]));
 
         while (queue.Count > 0)
         {
@@ -55,9 +55,8 @@ public sealed class ImpactTraverser
 
         try
         {
-            return _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
-                .Where(change => change.SymbolId == symbolId)
-                .ToList();
+            return [.. _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
+                .Where(change => change.SymbolId == symbolId)];
         }
         catch (Exception ex)
         {

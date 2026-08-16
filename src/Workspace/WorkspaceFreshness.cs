@@ -87,7 +87,7 @@ public static class WorkspaceFreshness
 
             var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
             var state = changed.Count == 0 ? "fresh" : "stale";
-            return new FreshnessStamp(state, method, changed.Count, changed.Take(10).ToList(), checkedAt, snapshotId, "documents_only");
+            return new FreshnessStamp(state, method, changed.Count, [.. changed.Take(10)], checkedAt, snapshotId, "documents_only");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {

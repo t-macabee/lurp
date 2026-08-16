@@ -24,18 +24,16 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
 
     internal List<EdgeRecord> GetMayDispatchEdges(string symbolId)
     {
-        return EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
-            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))
-            .ToList();
+        return [.. EdgeStore.GetOutgoingEdges(SnapshotId, symbolId)
+            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))];
     }
 
     internal List<string> GetDeclaringTypeIds(string memberSymbolId)
     {
-        return EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
+        return [.. EdgeStore.GetIncomingEdges(SnapshotId, memberSymbolId)
             .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
             .Select(edge => edge.SourceSymbolId)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+            .Distinct(StringComparer.Ordinal)];
     }
 
     internal bool IsReceiverCompatible(string candidateTypeId, IReadOnlyList<IReadOnlyList<string>> receiverAlternatives)
@@ -83,9 +81,8 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     // that reach the anchor through interface dispatch.
     internal List<EdgeRecord> GetDispatchSourceEdges(string symbolId)
     {
-        return EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
-            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))
-            .ToList();
+        return [.. EdgeStore.GetIncomingEdges(SnapshotId, symbolId)
+            .Where(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo))];
     }
 
     internal bool HasUnmodeledRegistrations()
@@ -129,7 +126,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     private List<string> ComputeEffectiveSymbolIds()
     {
         var ids = new List<string> { SymbolId.Value };
-        if (SymbolId.DocCommentId.Length >= 2 && SymbolId.DocCommentId[0] == 'T' && SymbolId.DocCommentId[1] == ':')
+        if (SymbolId.DocCommentId is ['T', ':', ..])
             foreach (var edge in EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
                 if (edge.Kind == nameof(EdgeKind.Declares))
                     ids.Add(edge.TargetSymbolId);

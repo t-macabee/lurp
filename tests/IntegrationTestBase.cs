@@ -247,9 +247,8 @@ public abstract class IntegrationTestBase : IDisposable
         using var store = OpenStore(DbPath);
         try
         {
-            return store.GetEdges(snapshotId)
-                .Where(e => e.Kind == kind && e.Provenance == provenance)
-                .ToList();
+            return [.. store.GetEdges(snapshotId)
+                .Where(e => e.Kind == kind && e.Provenance == provenance)];
         }
         finally
         {

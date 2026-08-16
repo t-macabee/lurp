@@ -61,17 +61,17 @@ internal static class DeclarationSpanComputer
 
     private static (DeclarationSpan Body, int SignatureCharEnd) ComputeBodyAndSignatureEnd(SyntaxNode node, string sourceText, Encoding encoding, TextSpan fullCharSpan)
     {
-        if (node is MethodDeclarationSyntax method && method.Body != null)
+        if (node is MethodDeclarationSyntax { Body: not null } method)
             return (SpanFromCharSpan(sourceText, method.Body.Span, encoding), method.Body.SpanStart);
 
-        if (node is MethodDeclarationSyntax methodExpr && methodExpr.ExpressionBody != null)
+        if (node is MethodDeclarationSyntax { ExpressionBody: not null } methodExpr)
             return (SpanFromCharSpan(sourceText, methodExpr.ExpressionBody.Span, encoding), methodExpr.ExpressionBody.SpanStart);
 
         if (node is MethodDeclarationSyntax { Body: null, ExpressionBody: null }
             || node is PropertyDeclarationSyntax { AccessorList: not null })
             return (new DeclarationSpan(null, null), fullCharSpan.End);
 
-        if (node is PropertyDeclarationSyntax propExpr && propExpr.ExpressionBody != null)
+        if (node is PropertyDeclarationSyntax { ExpressionBody: not null } propExpr)
             return (SpanFromCharSpan(sourceText, propExpr.ExpressionBody.Span, encoding), propExpr.ExpressionBody.SpanStart);
 
         if (node is BaseTypeDeclarationSyntax typeDecl)

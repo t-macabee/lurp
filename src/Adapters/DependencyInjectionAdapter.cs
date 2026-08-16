@@ -183,7 +183,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     {
         var typeArgs = new List<ITypeSymbol>();
 
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess && memberAccess.Name is GenericNameSyntax genericName)
+        if (invocation.Expression is MemberAccessExpressionSyntax { Name: GenericNameSyntax genericName } memberAccess)
             foreach (var typeArg in genericName.TypeArgumentList.Arguments)
             {
                 var typeInfo = semanticModel.GetTypeInfo(typeArg);

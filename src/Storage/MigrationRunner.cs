@@ -13,7 +13,7 @@ public class MigrationRunner
         _dbPath = dbPath ?? throw new ArgumentNullException(nameof(dbPath));
     }
 
-    public static IReadOnlyList<int> MigrationVersions => GetMigrations().Select(static migration => migration.Version).ToList();
+    public static IReadOnlyList<int> MigrationVersions => [.. GetMigrations().Select(static migration => migration.Version)];
 
     public void RunMigrations()
     {

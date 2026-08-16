@@ -31,10 +31,15 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
     private static IEnumerable<(ExpressionSyntax Expression, Location Location)> EnumerateThrownExpressions(SyntaxNode bodySyntax)
     {
         foreach (var node in bodySyntax.DescendantNodes())
-            if (node is ThrowStatementSyntax { Expression: not null } throwStatement)
-                yield return (throwStatement.Expression, throwStatement.GetLocation());
-            else if (node is ThrowExpressionSyntax throwExpression)
-                yield return (throwExpression.Expression, throwExpression.GetLocation());
+            switch (node)
+            {
+                case ThrowStatementSyntax { Expression: not null } throwStatement:
+                    yield return (throwStatement.Expression, throwStatement.GetLocation());
+                    break;
+                case ThrowExpressionSyntax throwExpression:
+                    yield return (throwExpression.Expression, throwExpression.GetLocation());
+                    break;
+            }
     }
 
     private void TryAddThrowEdge(List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen,

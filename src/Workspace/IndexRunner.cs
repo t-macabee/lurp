@@ -129,21 +129,24 @@ public static class IndexRunner
         // workspace must not be duplicated. A non-complete row with the same
         // identity (a crashed or failed attempt) must not block a retry.
         var existing = store.ResolveExistingSnapshot(snapshotIdStr, workspaceInfo.Id.Value);
-        if (existing.Disposition == ExistingSnapshotDisposition.Reuse)
+        switch (existing.Disposition)
         {
-            if (force)
-            {
-                sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists; --force given, deleting it and re-extracting.");
-                store.DeleteSnapshotData(snapshotIdStr);
-            }
-            else
-            {
-                sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
-                return;
-            }
+            case ExistingSnapshotDisposition.Reuse:
+                if (force)
+                {
+                    sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists; --force given, deleting it and re-extracting.");
+                    store.DeleteSnapshotData(snapshotIdStr);
+                }
+                else
+                {
+                    sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
+                    return;
+                }
+                break;
+            case ExistingSnapshotDisposition.Retry:
+                sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
+                break;
         }
-
-        if (existing.Disposition == ExistingSnapshotDisposition.Retry) sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
 
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();

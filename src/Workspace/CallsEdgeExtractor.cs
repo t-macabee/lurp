@@ -106,15 +106,17 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
             return;
         }
 
-        if (callee.MethodKind == MethodKind.AnonymousFunction)
-            return;
-
-        // Local functions cannot be invoked outside their lexical method, so a
-        // Calls edge to one carries no inter-symbol graph information. They are
-        // also never declared (SymbolDeclarationExtractor walks GetMembers only),
-        // so the edge would orphan out and be deleted by DeleteOrphanEdges.
-        if (callee.MethodKind == MethodKind.LocalFunction)
-            return;
+        switch (callee.MethodKind)
+        {
+            case MethodKind.AnonymousFunction:
+                return;
+            // Local functions cannot be invoked outside their lexical method, so a
+            // Calls edge to one carries no inter-symbol graph information. They are
+            // also never declared (SymbolDeclarationExtractor walks GetMembers only),
+            // so the edge would orphan out and be deleted by DeleteOrphanEdges.
+            case MethodKind.LocalFunction:
+                return;
+        }
 
         context.RecordFilteredExternal(callee, syntax);
 
@@ -185,7 +187,7 @@ internal sealed class CallsEdgeExtractor(MemberEdgeExtractionContext context) : 
         SemanticModel semanticModel)
     {
         if (syntax is not InvocationExpressionSyntax invocation ||
-            (callee.IsStatic && callee.ReducedFrom == null))
+            callee is { IsStatic: true, ReducedFrom: null })
             return null;
 
         var receiverType = invocation.Expression switch

@@ -23,11 +23,10 @@ namespace Lurp.Tests;
 public sealed class AssemblyIdentityGranularityTests : IDisposable
 {
     private static readonly MetadataReference[] _platformReferences =
-        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
+        [.. ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator)
         .Where(p => !string.IsNullOrEmpty(p))
-        .Select(p => MetadataReference.CreateFromFile(p!))
-        .ToArray();
+        .Select(p => MetadataReference.CreateFromFile(p!))];
 
     private readonly string _tempDir;
 
@@ -117,7 +116,7 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
 
         var compilation = CSharpCompilation.Create(
             "Dep",
-            new[] { CSharpSyntaxTree.ParseText(source) },
+            [CSharpSyntaxTree.ParseText(source)],
             _platformReferences,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 

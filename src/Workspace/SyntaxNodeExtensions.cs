@@ -8,24 +8,19 @@ internal static class SyntaxNodeExtensions
 {
     internal static bool IsWriteContext(this SyntaxNode node)
     {
-        if (node.Parent is AssignmentExpressionSyntax assign)
-            return assign.Left == node;
-
-        if (node.Parent is PrefixUnaryExpressionSyntax preUnary &&
-            (preUnary.IsKind(SyntaxKind.PreIncrementExpression) ||
-             preUnary.IsKind(SyntaxKind.PreDecrementExpression)))
-            return preUnary.Operand == node;
-
-        if (node.Parent is PostfixUnaryExpressionSyntax postUnary &&
-            (postUnary.IsKind(SyntaxKind.PostIncrementExpression) ||
-             postUnary.IsKind(SyntaxKind.PostDecrementExpression)))
-            return postUnary.Operand == node;
-
-        if (node.Parent is ArgumentSyntax arg &&
-            (arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) ||
-             arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)))
-            return true;
-
-        return false;
+        return node.Parent switch
+        {
+            AssignmentExpressionSyntax assign => assign.Left == node,
+            PrefixUnaryExpressionSyntax preUnary
+                when preUnary.IsKind(SyntaxKind.PreIncrementExpression) || preUnary.IsKind(SyntaxKind.PreDecrementExpression)
+                => preUnary.Operand == node,
+            PostfixUnaryExpressionSyntax postUnary
+                when postUnary.IsKind(SyntaxKind.PostIncrementExpression) || postUnary.IsKind(SyntaxKind.PostDecrementExpression)
+                => postUnary.Operand == node,
+            ArgumentSyntax arg
+                when arg.RefOrOutKeyword.IsKind(SyntaxKind.RefKeyword) || arg.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword)
+                => true,
+            _ => false
+        };
     }
 }

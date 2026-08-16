@@ -7,37 +7,38 @@ internal static class ReceiverTypeConstraints
 {
     internal static string? FromReceiverType(ITypeSymbol? receiverType, MemberEdgeExtractionContext context)
     {
-        if (receiverType is null or IDynamicTypeSymbol)
-            return null;
-
-        if (receiverType is ITypeParameterSymbol typeParameter)
+        switch (receiverType)
         {
-            // Persist only constraints whose complete assignability test can be
-            // replayed from the stored type graph. Special constraints need facts
-            // that the graph does not currently retain, so omitting candidates is
-            // safer than admitting an incompatible implementation.
-            if (typeParameter.HasReferenceTypeConstraint ||
-                typeParameter.HasValueTypeConstraint ||
-                typeParameter.HasUnmanagedTypeConstraint ||
-                typeParameter.HasConstructorConstraint ||
-                typeParameter.HasNotNullConstraint ||
-                typeParameter.ConstraintTypes.IsEmpty)
+            case null:
+            case IDynamicTypeSymbol:
                 return null;
-
-            var constraintIds = new List<string>();
-            foreach (var constraint in typeParameter.ConstraintTypes)
-            {
-                var constraintId = context.MakeSymbolId(constraint);
-                if (constraintId == null)
+            case ITypeParameterSymbol typeParameter:
+                // Persist only constraints whose complete assignability test can be
+                // replayed from the stored type graph. Special constraints need facts
+                // that the graph does not currently retain, so omitting candidates is
+                // safer than admitting an incompatible implementation.
+                if (typeParameter.HasReferenceTypeConstraint ||
+                    typeParameter.HasValueTypeConstraint ||
+                    typeParameter.HasUnmanagedTypeConstraint ||
+                    typeParameter.HasConstructorConstraint ||
+                    typeParameter.HasNotNullConstraint ||
+                    typeParameter.ConstraintTypes.IsEmpty)
                     return null;
-                constraintIds.Add(constraintId);
-            }
 
-            return Serialize([constraintIds]);
+                var constraintIds = new List<string>();
+                foreach (var constraint in typeParameter.ConstraintTypes)
+                {
+                    var constraintId = context.MakeSymbolId(constraint);
+                    if (constraintId == null)
+                        return null;
+                    constraintIds.Add(constraintId);
+                }
+
+                return Serialize([constraintIds]);
+            default:
+                var receiverTypeId = context.MakeSymbolId(receiverType);
+                return receiverTypeId == null ? null : Serialize([[receiverTypeId]]);
         }
-
-        var receiverTypeId = context.MakeSymbolId(receiverType);
-        return receiverTypeId == null ? null : Serialize([[receiverTypeId]]);
     }
 
     internal static string? Merge(string? leftJson, string? rightJson)
@@ -70,7 +71,7 @@ internal static class ReceiverTypeConstraints
 
     internal static string SerializeForTests(params string[] requiredTypeIds)
     {
-        return Serialize([requiredTypeIds.ToList()]);
+        return Serialize([[.. requiredTypeIds]]);
     }
 
     private static string Serialize(IEnumerable<IEnumerable<string>> alternatives)

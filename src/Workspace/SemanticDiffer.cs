@@ -101,8 +101,8 @@ public class SemanticDiffer
 
         if (changedSymbolIds != null)
         {
-            fromEdges = fromEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId)).ToList();
-            toEdges = toEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId)).ToList();
+            fromEdges = [.. fromEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
+            toEdges = [.. toEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
         }
 
         DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);
@@ -421,10 +421,9 @@ public class SemanticDiffer
     private static List<string>? GetMetaArray(Dictionary<string, JsonElement> meta, string key)
     {
         if (meta.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array)
-            return el.EnumerateArray()
+            return [.. el.EnumerateArray()
                 .Where(e => e.ValueKind == JsonValueKind.String)
-                .Select(e => e.GetString()!)
-                .ToList();
+                .Select(e => e.GetString()!)];
         return null;
     }
 

@@ -543,8 +543,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         var store = OpenStore(DbPath);
         var annotations = store.GetAnnotations(snapshotId);
         Assert.Contains(annotations, a =>
-            a.Kind == "unmodeled_mediatr_pattern" &&
-            a.Value == "IStreamRequestHandler");
+            a is { Kind: "unmodeled_mediatr_pattern", Value: "IStreamRequestHandler" });
     }
 
     /// <summary>

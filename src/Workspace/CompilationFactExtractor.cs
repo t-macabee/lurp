@@ -97,13 +97,13 @@ public static class CompilationFactExtractor
             ctx, "SymbolDeclaration", null, logError,
             msg => $"Symbol extraction failed for project '{projectName}': {msg}",
             symbolExtractor.ExtractAll,
-            new List<SymbolDeclaration>());
+            []);
 
         var edges = RunStage(
             ctx, "StructuralEdge", null, logError,
             msg => $"Edge extraction failed for project '{projectName}': {msg}",
             symbolExtractor.ExtractEdges,
-            new List<EdgeRecord>());
+            []);
 
         var gitRoot = workspaceInfo.Id.GitRoot;
 
@@ -170,7 +170,7 @@ public static class CompilationFactExtractor
 
         var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
 
-        return new ExtractionResult(declarations, edges, diagnostics, incompleteness.ToRecords().ToList(), measurements, annotations, failures.Count > 0 ? failures : null);
+        return new ExtractionResult(declarations, edges, diagnostics, [.. incompleteness.ToRecords()], measurements, annotations, failures.Count > 0 ? failures : null);
     }
 
     public sealed record ExtractionFailure(string Stage, string ProjectName, string? AdapterName, string Message, Exception Exception);

@@ -99,7 +99,7 @@ internal sealed class AnnotationStore
     /// </summary>
     public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? documentPaths.ToList();
+        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
         if (pathList.Count == 0)
             return;
 

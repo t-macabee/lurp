@@ -118,7 +118,7 @@ internal sealed class DiagnosticStore
 
     public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
     {
-        var nameList = projectNames as IReadOnlyCollection<string> ?? projectNames.ToList();
+        var nameList = projectNames as IReadOnlyCollection<string> ?? [.. projectNames];
         if (nameList.Count == 0)
             return;
 

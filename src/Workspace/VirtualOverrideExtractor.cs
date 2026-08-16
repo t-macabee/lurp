@@ -24,13 +24,13 @@ internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext con
 
                 switch (member)
                 {
-                    case IMethodSymbol method when method.IsOverride && method.OverriddenMethod != null:
+                    case IMethodSymbol { IsOverride: true, OverriddenMethod: not null } method:
                         EmitOverrideEdge(WalkToRootOverride(method), method, edges, seen);
                         break;
-                    case IPropertySymbol prop when prop.IsOverride && prop.OverriddenProperty != null:
+                    case IPropertySymbol { IsOverride: true, OverriddenProperty: not null } prop:
                         EmitOverrideEdge(WalkToRootOverride(prop), prop, edges, seen);
                         break;
-                    case IEventSymbol evt when evt.IsOverride && evt.OverriddenEvent != null:
+                    case IEventSymbol { IsOverride: true, OverriddenEvent: not null } evt:
                         EmitOverrideEdge(WalkToRootOverride(evt), evt, edges, seen);
                         break;
                 }

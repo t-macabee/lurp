@@ -59,7 +59,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
 
     internal void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
     {
-        var idList = symbolIds as IReadOnlyCollection<string> ?? symbolIds.ToList();
+        var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];
         if (idList.Count == 0)
             return;
 

@@ -7,7 +7,7 @@ public sealed class CompilationFactExtractorRunStageTests
     private static CompilationFactExtractor.StageContext NewContext(string projectName = "TestProject")
     {
         return new CompilationFactExtractor.StageContext(projectName,
-            new List<CompilationFactExtractor.ExtractionFailure>(),
+            [],
             new BindingIncompletenessCollector(projectName, "/repo"));
     }
 
@@ -72,7 +72,7 @@ public sealed class CompilationFactExtractorRunStageTests
             ctx, "SymbolDeclaration", null, null,
             msg => $"Symbol extraction failed for project 'TestProject': {msg}",
             () => throw new InvalidOperationException("symbol boom"),
-            new List<string>());
+            []);
 
         Assert.Empty(result);
         var failure = Assert.Single(ctx.Failures);
@@ -89,9 +89,9 @@ public sealed class CompilationFactExtractorRunStageTests
         var result = CompilationFactExtractor.RunStage(
             ctx, "StructuralEdge", null, null, msg => msg,
             () => new List<int> { 1, 2, 3 },
-            new List<int>());
+            []);
 
-        Assert.Equal(new List<int> { 1, 2, 3 }, result);
+        Assert.Equal([1, 2, 3], result);
         Assert.Empty(ctx.Failures);
         Assert.Empty(ctx.Incompleteness.ToRecords());
     }

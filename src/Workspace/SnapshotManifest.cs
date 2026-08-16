@@ -86,7 +86,7 @@ public sealed partial class SnapshotManifest
             {
                 GeneratedTreesIncluded = false,
                 SkippedAdapters = skipAdapters != null
-                    ? skipAdapters.OrderBy(x => x, StringComparer.Ordinal).ToList()
+                    ? [.. skipAdapters.OrderBy(x => x, StringComparer.Ordinal)]
                     : [],
                 ActiveTfms = new Dictionary<string, string>(workspace.TargetFrameworks),
                 ExtractorVersion = VersionConstants.ExtractorVersion
@@ -132,7 +132,7 @@ public sealed partial class SnapshotManifest
                 lineStarts = entry.LineStarts;
             }
 
-            return new DocumentVersion(content ?? Array.Empty<byte>())
+            return new DocumentVersion(content ?? [])
             {
                 DocumentId = docPath,
                 FilePath = docPath,
@@ -147,7 +147,7 @@ public sealed partial class SnapshotManifest
             Name = kvp.Key,
             TargetFramework = kvp.Value,
             References = ProjectGraph.TryGetValue(kvp.Key, out var refs)
-                ? refs.OrderBy(x => x, StringComparer.Ordinal).ToList()
+                ? [.. refs.OrderBy(x => x, StringComparer.Ordinal)]
                 : [],
             MetadataReferenceIdentitiesJson = MetadataReferenceIdentities.TryGetValue(kvp.Key, out var ids)
                 ? JsonSerializer.Serialize(ids)
@@ -194,11 +194,10 @@ public sealed partial class SnapshotManifest
         foreach (var project in storage.Projects)
         {
             targetFrameworks[project.Name] = project.TargetFramework;
-            projectGraph[project.Name] = project.References.ToArray();
+            projectGraph[project.Name] = [.. project.References];
             if (project.MetadataReferenceIdentitiesJson != null)
-                metadataReferenceIdentities[project.Name] = JsonSerializer
-                    .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!
-                    .ToImmutableArray();
+                metadataReferenceIdentities[project.Name] = [.. JsonSerializer
+                    .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!];
             if (project.CompilationOptionsFingerprint != null)
                 compilationOptionsFingerprints[project.Name] = project.CompilationOptionsFingerprint;
         }

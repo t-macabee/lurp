@@ -58,32 +58,41 @@ internal static class ExtractionUtils
         foreach (var typeSymbol in types)
             foreach (var member in typeSymbol.GetMembers())
             {
-                if (member is IMethodSymbol method)
-                    foreach (var syntaxRef in method.DeclaringSyntaxReferences)
-                    {
-                        if (inScope != null && !inScope(syntaxRef.SyntaxTree))
-                            continue;
-                        var syntax = syntaxRef.GetSyntax();
-                        if (syntax is MethodDeclarationSyntax methodSyntax)
-                            yield return (method, methodSyntax);
-                        else if (syntax is ConstructorDeclarationSyntax ctorSyntax)
-                            yield return (method, ctorSyntax);
-                    }
-
-                if (member is IPropertySymbol property)
-                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
-                    {
-                        if (accessor == null)
-                            continue;
-
-                        foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                switch (member)
+                {
+                    case IMethodSymbol method:
+                        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                         {
                             if (inScope != null && !inScope(syntaxRef.SyntaxTree))
                                 continue;
-                            if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
-                                yield return (accessor, accessorSyntax);
+                            var syntax = syntaxRef.GetSyntax();
+                            switch (syntax)
+                            {
+                                case MethodDeclarationSyntax methodSyntax:
+                                    yield return (method, methodSyntax);
+                                    break;
+                                case ConstructorDeclarationSyntax ctorSyntax:
+                                    yield return (method, ctorSyntax);
+                                    break;
+                            }
                         }
-                    }
+                        break;
+                    case IPropertySymbol property:
+                        foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                        {
+                            if (accessor == null)
+                                continue;
+
+                            foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+                            {
+                                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                                    continue;
+                                if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
+                                    yield return (accessor, accessorSyntax);
+                            }
+                        }
+                        break;
+                }
             }
     }
 

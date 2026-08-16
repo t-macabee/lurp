@@ -71,7 +71,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
             list.Add("--quiet");
         if (requireFresh)
             list.Add("--require-fresh");
-        return list.ToArray();
+        return [.. list];
     }
 
     /// <summary>

@@ -121,17 +121,16 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
 
     internal IReadOnlyList<BindingIncompletenessRecord> ToRecords()
     {
-        return _counts
+        return [.. _counts
             .OrderBy(static pair => pair.Key.documentPath, StringComparer.Ordinal)
             .ThenBy(static pair => pair.Key.reason, StringComparer.Ordinal)
-            .Select(pair => new BindingIncompletenessRecord(projectName, pair.Key.documentPath, pair.Key.reason, pair.Value, VersionConstants.ExtractorVersion))
-            .ToList();
+            .Select(pair => new BindingIncompletenessRecord(projectName, pair.Key.documentPath, pair.Key.reason, pair.Value, VersionConstants.ExtractorVersion))];
     }
 
     private static string Classify(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
     {
         if (symbolInfo.CandidateReason == CandidateReason.Ambiguous ||
-            (symbolInfo.CandidateReason == CandidateReason.OverloadResolutionFailure && symbolInfo.CandidateSymbols.Length > 1))
+            symbolInfo is { CandidateReason: CandidateReason.OverloadResolutionFailure, CandidateSymbols.Length: > 1 })
             return BindingIncompletenessReason.AmbiguousOverload;
 
         var diagnostics = semanticModel.GetDiagnostics(node.Span)

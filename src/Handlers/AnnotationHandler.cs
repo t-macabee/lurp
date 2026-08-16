@@ -13,7 +13,7 @@ internal static class AnnotationHandler
         HandlerBootstrap.WithStore<object?>(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
-            store.SaveAnnotations(snapshotId, new[] { annotation });
+            store.SaveAnnotations(snapshotId, [annotation]);
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {

@@ -17,11 +17,10 @@ namespace Lurp.Tests;
 public sealed class SnapshotManifestCompletenessTests : IDisposable
 {
     private static readonly MetadataReference[] _platformReferences =
-        ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
+        [.. ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator)
         .Where(p => !string.IsNullOrEmpty(p))
-        .Select(p => MetadataReference.CreateFromFile(p!))
-        .ToArray();
+        .Select(p => MetadataReference.CreateFromFile(p!))];
 
     private readonly string _tempDir;
 

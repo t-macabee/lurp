@@ -113,10 +113,16 @@ internal static class CapsuleBudgetEnforcer
         var fetchableOmitted = false;
         var nonFetchableOmitted = new List<string>();
         foreach (var entry in capsule.OmittedTiers)
-            if (entry.Reason is "budget_exhausted" or "summarized"
-                && tierPriority.Contains(entry.Category, StringComparer.Ordinal))
-                fetchableOmitted = true;
-            else if (entry.Reason == "budget_exhausted") nonFetchableOmitted.Add(entry.Category);
+            switch (entry.Reason)
+            {
+                case "budget_exhausted" or "summarized"
+                    when tierPriority.Contains(entry.Category, StringComparer.Ordinal):
+                    fetchableOmitted = true;
+                    break;
+                case "budget_exhausted":
+                    nonFetchableOmitted.Add(entry.Category);
+                    break;
+            }
 
         if (!fetchableOmitted && nonFetchableOmitted.Count == 0)
             return;

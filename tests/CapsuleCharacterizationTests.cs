@@ -143,7 +143,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 $"EstimatedTokens ({capsule.EstimatedTokens}) exceeded small budget (120).");
             Assert.True(capsule.Truncated, "Capsule should be truncated at small budget.");
             Assert.DoesNotContain(capsule.OmittedTiers,
-                e => e.Category == "anchor" && e.Reason == "budget_exhausted");
+                e => e is { Category: "anchor", Reason: "budget_exhausted" });
         }
         finally
         {
@@ -166,7 +166,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             Assert.NotNull(capsule);
             Assert.Contains(capsule.OmittedTiers,
-                e => e.Category == "anchor" && e.Reason == "budget_exhausted");
+                e => e is { Category: "anchor", Reason: "budget_exhausted" });
         }
         finally
         {
@@ -194,7 +194,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.Empty(capsule.DirectCallers);
             // omitted_tiers records the proved absence
             Assert.Contains(capsule.OmittedTiers,
-                e => e.Category == "direct_callers" && e.Reason == "empty");
+                e => e is { Category: "direct_callers", Reason: "empty" });
             // InclusionReasons must NOT contain omittedTiers.unresolved
             Assert.False(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"),
                 "Proved-absence capsule must not carry the 'unresolved' inclusion reason.");
@@ -221,7 +221,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.NotNull(capsule);
             Assert.Empty(capsule.DirectCallers);
             Assert.Contains(capsule.OmittedTiers,
-                e => e.Category == "direct_callers" && e.Reason == "empty");
+                e => e is { Category: "direct_callers", Reason: "empty" });
             Assert.False(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
         }
         finally
@@ -261,9 +261,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.NotNull(capsule);
             // The empty direct_callers tier must have reason "unresolved" (not "empty")
             Assert.Contains(capsule.OmittedTiers,
-                e => e.Category == "direct_callers" && e.Reason == "unresolved");
+                e => e is { Category: "direct_callers", Reason: "unresolved" });
             Assert.DoesNotContain(capsule.OmittedTiers,
-                e => e.Category == "direct_callers" && e.Reason == "empty");
+                e => e is { Category: "direct_callers", Reason: "empty" });
             // InclusionReasons must contain omittedTiers.unresolved
             Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
             Assert.Contains("unresolved", capsule.InclusionReasons["omittedTiers.unresolved"]);
@@ -291,7 +291,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             Assert.NotNull(capsule);
             Assert.Contains(capsule.OmittedTiers,
-                e => e.Category == "direct_callers" && e.Reason == "unresolved");
+                e => e is { Category: "direct_callers", Reason: "unresolved" });
             Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
         }
         finally
@@ -499,7 +499,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         Assert.Empty(capsule.Contracts);
         Assert.Contains(capsule.TruncatedCategories, category => category == "contracts");
         Assert.Contains(capsule.OmittedTiers,
-            entry => entry.Category == "contracts" && entry.Reason == "budget_exhausted");
+            entry => entry is { Category: "contracts", Reason: "budget_exhausted" });
     }
 
     /// <summary>
