@@ -35,35 +35,4 @@ public static class Provenance
     /// </summary>
     public const string GlobalImplementationRelation = "global_implementation_relation";
 
-    /// <summary>All canonical provenance values.</summary>
-    public static readonly IReadOnlySet<string> CanonicalValues = new HashSet<string>(StringComparer.Ordinal)
-    {
-        CompilerProved,
-        FrameworkDerived,
-        Possible,
-        NameCandidate,
-        RuntimeUnknown,
-        Convention,
-        GlobalImplementationRelation
-    };
-
-    /// <summary>
-    ///     Normalize a provenance string to a canonical value.
-    ///     Unknown values are returned as-is (reads are survivable per roadmap §5.6).
-    /// </summary>
-    public static string Normalize(string provenance)
-    {
-        if (string.IsNullOrEmpty(provenance))
-            return string.Empty;
-
-        // Strip legacy composite suffix
-        if (provenance.EndsWith(":cross_generated", StringComparison.Ordinal)) provenance = provenance[..^":cross_generated".Length];
-
-        // Map legacy values to canonical constants
-        return provenance switch
-        {
-            "roslyn" => CompilerProved,
-            _ => provenance
-        };
-    }
 }

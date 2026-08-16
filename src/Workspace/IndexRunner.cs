@@ -9,7 +9,7 @@ public static class IndexRunner
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
 
-    public static async Task RunAsync(IIndexStore store, string solutionPath, string outputDir, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+    public static async Task RunAsync(IIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -193,7 +193,7 @@ public abstract class IntegrationTestBase : IDisposable
         using var store = OpenStore(dbPath);
 
         await IndexRunner.RunAsync(
-            store, SolutionPath, TestDir,
+            store, SolutionPath,
             [], null, "full",
             false, null, false, force, CancellationToken.None);
 

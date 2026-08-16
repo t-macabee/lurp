@@ -41,7 +41,7 @@ internal static class IntegrationHarness
         try
         {
             await IndexRunner.RunAsync(
-                store, solutionPath, outputDir,
+                store, solutionPath,
                 [], null, "full",
                 false, null, false, false, CancellationToken.None);
 

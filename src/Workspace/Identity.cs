@@ -51,11 +51,6 @@ public readonly record struct SnapshotId(Guid Value)
         return new SnapshotId(Guid.Parse(value, CultureInfo.InvariantCulture));
     }
 
-    public static SnapshotId New()
-    {
-        return new SnapshotId(Guid.NewGuid());
-    }
-
     /// <summary>
     ///     Derives a snapshot id deterministically from a canonical identity
     ///     payload: SHA-256 the payload and take a stable 16-byte portion as the

@@ -167,7 +167,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         store.RunMigrations();
 
         await IndexRunner.RunAsync(
-            store, _solutionPath, _testDir,
+            store, _solutionPath,
             [], null, "full",
             false, null, false, cancellationToken: CancellationToken.None);
 
@@ -189,7 +189,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         store.RunMigrations();
 
         await IndexRunner.RunAsync(
-            store, _solutionPath, _testDir,
+            store, _solutionPath,
             [], null, "full",
             false, null, false, cancellationToken: CancellationToken.None);
 

@@ -31,11 +31,6 @@ internal static class ContextHandler
             : DefaultBudget;
     }
 
-    internal static int DefaultBudgetFor(SymbolId symbolId)
-    {
-        return symbolId.IsType ? DefaultTypeAnchorBudget : DefaultBudget;
-    }
-
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");

@@ -55,7 +55,7 @@ internal static class IndexHandler
 
         try
         {
-            await IndexRunner.RunAsync(store, solutionPathArg, outputDir, skipAdapters, jsonExportPath, strategyArg, verbose, null, skipDiff, force, cancellationToken);
+            await IndexRunner.RunAsync(store, solutionPathArg, skipAdapters, jsonExportPath, strategyArg, verbose, null, skipDiff, force, cancellationToken);
         }
         finally
         {

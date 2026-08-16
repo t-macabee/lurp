@@ -68,11 +68,6 @@ internal static class ReceiverTypeConstraints
         }
     }
 
-    internal static string SerializeForTests(params string[] requiredTypeIds)
-    {
-        return Serialize([[.. requiredTypeIds]]);
-    }
-
     private static string Serialize(IEnumerable<IEnumerable<string>> alternatives)
     {
         var canonical = alternatives
