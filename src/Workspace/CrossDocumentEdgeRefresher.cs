@@ -16,6 +16,18 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     private readonly HashSet<string> _skipAdapters = skipAdapters;
     private readonly IIndexStore _store = store;
 
+    /// <param name="solution">
+    ///     The workspace solution whose projects are examined for the affected closure.
+    /// </param>
+    /// <param name="workspaceInfo">
+    ///     Workspace metadata passed through to compilation fact extraction.
+    /// </param>
+    /// <param name="newSnapshotId">
+    ///     Snapshot ID being populated by this refresh run.
+    /// </param>
+    /// <param name="previousSnapshotId">
+    ///     Snapshot ID whose persisted edges and binding-incompleteness rows seed the BFS.
+    /// </param>
     /// <param name="changedPaths">
     ///     Git-root-relative paths of the genuinely-changed documents — the BFS seed.
     ///     Passing a set that already absorbed the closure makes this a no-op, because
@@ -25,6 +37,9 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
     ///     Git-root-relative paths the caller has already re-extracted this run.
     ///     Subtracted from the closure so this refresh handles exactly the residue,
     ///     never re-deleting and re-extracting a document twice in one snapshot.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///     Cancellation token for the refresh work.
     /// </param>
     internal async Task<int> RefreshAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, string previousSnapshotId, HashSet<string> changedPaths, IReadOnlySet<string>? alreadyExtractedPaths, CancellationToken cancellationToken)
     {
@@ -41,11 +56,27 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         return await ProcessCompilationsAsync(solution, workspaceInfo, newSnapshotId, affectedProjectNames, affectedPaths, cancellationToken);
     }
 
+    /// <param name="solution">
+    ///     The workspace solution whose projects are examined for the affected closure.
+    /// </param>
+    /// <param name="workspaceInfo">
+    ///     Workspace metadata passed through to compilation fact extraction.
+    /// </param>
+    /// <param name="newSnapshotId">
+    ///     Snapshot ID being populated by this refresh run.
+    /// </param>
     /// <param name="affectedPaths">
     ///     Pre-computed document closure (e.g. from a prior BFS pass), already
     ///     scoped to the documents that need cross-document edge re-extraction.
     ///     The caller is responsible for subtracting any paths that were already
     ///     re-extracted this snapshot.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///     Cancellation token for the refresh work.
+    /// </param>
+    /// <param name="alreadyCoveredProjectNames">
+    ///     Project names whose full-compilation diagnostics were already re-written
+    ///     this run; their diagnostics write is skipped as redundant.
     /// </param>
     internal async Task<int> RefreshWithAffectedPathsAsync(Solution solution, WorkspaceInfo workspaceInfo, string newSnapshotId, HashSet<string> affectedPaths, CancellationToken cancellationToken,
         IReadOnlySet<string>? alreadyCoveredProjectNames = null)

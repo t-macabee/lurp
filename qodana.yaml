@@ -55,3 +55,15 @@ include:
   - name: SimplifyStringInterpolation
   - name: UseRawString
   - name: UseUtf8StringLiteral
+
+# Reviewed 2026-08-16: interpolated CommandText/ArgumentList values at these sites are
+# compile-time literals or internally-generated paths, never external input, so the
+# scanner's taint model produces false positives here. See inline comments at each site.
+exclude:
+  - name: csharp_injection_rule-CommandInjection
+    paths:
+      - tests/IntegrationTestBase.cs
+  - name: csharp_injection_rule-SQLInjection
+    paths:
+      - src/Storage/Migrations/Migration_008_GeneratedCodeAwareness.cs
+      - src/Storage/SnapshotPruner.cs

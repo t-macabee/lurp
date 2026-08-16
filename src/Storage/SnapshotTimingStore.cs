@@ -49,7 +49,7 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
         var results = new List<SnapshotTimingRow>();
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            SELECT step_name, elapsed_ms, created_at_utc
+            SELECT step_name, elapsed_ms
             FROM snapshot_timings
             WHERE snapshot_id = @snapshotId
             ORDER BY timing_id;
@@ -60,9 +60,7 @@ internal sealed class SnapshotTimingStore(SqliteConnection connection)
         while (reader.Read())
             results.Add(new SnapshotTimingRow(
                 reader.GetString(0),
-                reader.GetInt64(1),
-                DateTime.Parse(reader.GetString(2), CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind)));
+                reader.GetInt64(1)));
         return results;
     }
 }

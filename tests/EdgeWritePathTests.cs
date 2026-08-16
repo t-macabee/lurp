@@ -54,12 +54,6 @@ public sealed class EdgeWritePathTests : IDisposable
         };
     }
 
-    private static EdgeRecord? FindEdge(List<EdgeRecord> edges, string source, string target, string kind)
-    {
-        return edges.FirstOrDefault(e =>
-            e.SourceSymbolId == source && e.TargetSymbolId == target && e.Kind == kind);
-    }
-
     [Fact]
     public void SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank()
     {

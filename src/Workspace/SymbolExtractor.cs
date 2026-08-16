@@ -6,15 +6,12 @@ public sealed class SymbolExtractor
 {
     private readonly SymbolExtractionContext _context;
 
-    private readonly Action<string>? _logWarning;
-
     public SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId,
-        Action<string>? logWarning = null,
         IReadOnlySet<string>? scopeDocuments = null)
-        : this(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, logWarning, scopeDocuments, null)
+        : this(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, null)
     {
     }
 
@@ -22,7 +19,6 @@ public sealed class SymbolExtractor
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId,
-        Action<string>? logWarning,
         IReadOnlySet<string>? scopeDocuments,
         BindingIncompletenessCollector? incompleteness)
     {
@@ -33,12 +29,11 @@ public sealed class SymbolExtractor
         if (snapshotId == null) throw new ArgumentNullException(nameof(snapshotId));
 
         _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, incompleteness);
-        _logWarning = logWarning;
     }
 
     public List<SymbolDeclaration> ExtractAll()
     {
-        return new SymbolDeclarationExtractor(_context, _logWarning).ExtractAll();
+        return new SymbolDeclarationExtractor(_context).ExtractAll();
     }
 
     public List<EdgeRecord> ExtractEdges()

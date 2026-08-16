@@ -199,7 +199,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         await RestoreSolutionAsync();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
-        var snapshotV1 = await RunFullIndexAsync(DbPath);
+        _ = await RunFullIndexAsync(DbPath);
 
         // Rewrites P.csproj in place to drop the project reference. Written
         // directly rather than via CreateProject, whose slnx append would add

@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Text.Json;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
@@ -49,8 +48,6 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             var key = (sourceId, matchedSymbolId, EdgeKind.ReflectionNameCandidate.ToString());
             if (!seen.Add(key))
                 continue;
-
-            var detailJson = JsonSerializer.Serialize(new { literal_value = text, matched_name = matchedName });
 
             var loc = context.GetLocationInfo(literal.GetLocation());
 

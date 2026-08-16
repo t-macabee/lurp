@@ -1,6 +1,8 @@
 ﻿using Microsoft.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
+namespace Lurp.Helpers;
+
 internal static class CompilationHelper
 {
     public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(Solution solution, [EnumeratorCancellation] CancellationToken cancellationToken = default)

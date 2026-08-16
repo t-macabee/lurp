@@ -52,7 +52,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var sw1 = Stopwatch.StartNew();
         var (changedDocs, changedPaths) = _changeDetector.DetectAndLogChanges(workspaceInfo, previousRichManifest);
         sw1.Stop();
-        timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds));
 
         if (changedDocs.Count == 0)
             return new IncrementalResult(previousSnapshotId, previousSnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty);
@@ -121,7 +121,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         invalidationPaths.UnionWith(affectedDocumentPaths);
         timings.Add(new SnapshotTimingRow(
             fellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
-            0, DateTime.UtcNow));
+            0));
 
         // Extraction scope: the set of documents that will be re-extracted, and
         // whose copied-forward facts must therefore be deleted before re-extraction.
@@ -181,14 +181,14 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
         var oldDocVersionIdSet = new HashSet<string>(oldDocVersionIds);
         sw2.Stop();
-        timings.Add(new SnapshotTimingRow("affected_project_resolution", sw2.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("affected_project_resolution", sw2.ElapsedMilliseconds));
 
         // Step 3: Compilation Load
         cancellationToken.ThrowIfCancellationRequested();
         var sw3 = Stopwatch.StartNew();
         var affectedCompilations = await LoadAffectedCompilationsAsync(solution, affectedProjects, cancellationToken);
         sw3.Stop();
-        timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("compilation_load", sw3.ElapsedMilliseconds));
 
         var newManifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, SnapshotId.Parse(previousSnapshotId), _skipAdapters);
         // Step 4: Manifest Creation
@@ -198,7 +198,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         newManifest.Save(_store, workspaceInfo.DocumentContents, _jsonExportPath);
         _output.WriteLine("done.");
         sw4.Stop();
-        timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
 
         var totalDeclarations = 0;
         var totalEdges = 0;
@@ -229,9 +229,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 }
             }
 
-            PrepareSnapshotData(solution, previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, extractionScopePaths);
+            PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, extractionScopePaths);
             sw5.Stop();
-            timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds, DateTime.UtcNow));
+            timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds));
 
             // Step 6: Re-extraction
             cancellationToken.ThrowIfCancellationRequested();
@@ -239,7 +239,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             (totalDeclarations, totalEdges, totalDiagnostics) =
                 ExtractReplacementFacts(workspaceInfo, newSnapshotIdStr, affectedCompilations, extractionScopeAbsolutePaths, extractionScopePaths);
             sw6.Stop();
-            timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds, DateTime.UtcNow));
+            timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds));
 
             // Step 6b: Prune symbols that were in changed documents' old versions
             // but are no longer present after re-extraction
@@ -254,12 +254,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 changedSymbolIds.Add(id);
 
             // Build the change scope once so downstream phases share the same sets.
-            var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, invalidationPaths);
-            var previousChangedSymbolIds = new HashSet<string>(invalidatedOldVersionIds.SelectMany(vid => _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, [vid])));
             var diffAndSearchSymbolIds = new HashSet<string>(changedSymbolIds);
             var changeScope = new IncrementalChangeScope(
                 invalidationPaths,
-                previousChangedSymbolIds,
                 diffAndSearchSymbolIds,
                 new HashSet<string>(affectedProjects),
                 closurePaths,
@@ -342,7 +339,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return result;
     }
 
-    private void PrepareSnapshotData(Solution solution, string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> extractionScopePaths)
+    private void PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> extractionScopePaths)
     {
         _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
@@ -571,7 +568,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             context.Changes.AffectedProjects);
         _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
         sw.Stop();
-        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds));
         return crossDocEdgesProcessed;
     }
 
@@ -586,7 +583,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             (HashSet<string>)context.Changes.DiffAndSearchSymbolIds);
         _output.WriteLine("done.");
         sw.Stop();
-        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, sw.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, sw.ElapsedMilliseconds));
     }
 
     private void ComputeAndPersistSemanticChanges(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
@@ -725,7 +722,6 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
     private sealed record IncrementalChangeScope(
         IReadOnlySet<string> ChangedPaths,
-        IReadOnlySet<string> PreviousChangedSymbolIds,
         IReadOnlySet<string> DiffAndSearchSymbolIds,
         IReadOnlySet<string> AffectedProjects,
         IReadOnlySet<string> CrossDocumentClosurePaths,

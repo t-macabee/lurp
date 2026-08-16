@@ -44,8 +44,6 @@ public sealed class GeneratedCodeProvenanceTests : InMemoryTestBase
         Assert.False(handWrittenDecl.IsGenerated, "Hand-written declarations should have IsGenerated == false");
         Assert.True(widgetDecl.IsGenerated, "Generated file declarations should have IsGenerated == true");
 
-        var allEdges = extraction.Result.Edges;
-
         var inheritsEdge = extraction.SingleEdge("Inherits", "global::N.Widget", "global::N.HandWritten");
         Assert.True(inheritsEdge.IsCrossGenerated,
             "Inherits edge from generated file should have IsCrossGenerated == true");

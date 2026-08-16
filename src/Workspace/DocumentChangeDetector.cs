@@ -106,5 +106,5 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         return results;
     }
 
-    public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind, string? OldDocumentVersionId = null);
+    public sealed record DocumentChangeInfo(string RelativePath, DocumentChangeKind ChangeKind);
 }

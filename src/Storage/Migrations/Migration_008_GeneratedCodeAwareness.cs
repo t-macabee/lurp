@@ -30,6 +30,9 @@ namespace Lurp.Storage.Migrations
 
         private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
         {
+            // Not SQL injection: tableName is always a hardcoded literal from this
+            // file's own callers, and PRAGMA table_info() cannot bind identifiers via
+            // parameters in SQLite, so interpolation is the only way to express this.
             command.CommandText = $"PRAGMA table_info({tableName});";
             var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             using var reader = command.ExecuteReader();

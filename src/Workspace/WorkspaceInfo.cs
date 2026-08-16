@@ -39,7 +39,6 @@ public sealed class WorkspaceInfo
 
         CompilationOptionsFingerprints = BuildCompilationOptionsFingerprints(solution);
 
-        IndexerVersion = VersionConstants.ToolVersion;
         ExtractorVersion = VersionConstants.ExtractorVersion;
     }
 
@@ -60,8 +59,6 @@ public sealed class WorkspaceInfo
     public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; }
 
     public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; }
-
-    public string IndexerVersion { get; }
 
     public string ExtractorVersion { get; }
 

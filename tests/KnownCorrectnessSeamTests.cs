@@ -66,54 +66,48 @@ public sealed class KnownCorrectnessSeamTests : InMemoryTestBase
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
         using var test = new IntegrationHost();
-        try
-        {
-            // V1: Calculator.Add is a typo'd member ("pubic") that does not
-            // exist, so the call site in Service.cs fails to bind and records
-            // compiler_error incompleteness in the previous snapshot.
-            test.CreateProject("TestProject",
-                new Dictionary<string, string>
-                {
-                    ["Calculator.cs"] = """
-                                        namespace TestProject;
 
-                                        public class Calculator
-                                        {
-                                            pubic int Add(int a, int b) => a + b;
-                                        }
-                                        """,
-                    ["Service.cs"] = """
-                                     namespace TestProject;
+        // V1: Calculator.Add is a typo'd member ("pubic") that does not
+        // exist, so the call site in Service.cs fails to bind and records
+        // compiler_error incompleteness in the previous snapshot.
+        test.CreateProject("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Calculator.cs"] = """
+                                    namespace TestProject;
 
-                                     public class Service
-                                     {
-                                         public int Compute(int x, int y) => new Calculator().Add(x, y);
-                                     }
-                                     """
-                });
+                                    public class Calculator
+                                    {
+                                        pubic int Add(int a, int b) => a + b;
+                                    }
+                                    """,
+                ["Service.cs"] = """
+                                 namespace TestProject;
 
-            await test.RunFullIndexAsync(test.DbPath);
+                                 public class Service
+                                 {
+                                     public int Compute(int x, int y) => new Calculator().Add(x, y);
+                                 }
+                                 """
+            });
 
-            // V2: typo fixed — Add now binds.
-            test.WriteFile("TestProject", "Calculator.cs", """
-                                                           namespace TestProject;
+        await test.RunFullIndexAsync(test.DbPath);
 
-                                                           public class Calculator
-                                                           {
-                                                               public int Add(int a, int b) => a + b;
-                                                           }
-                                                           """);
+        // V2: typo fixed — Add now binds.
+        test.WriteFile("TestProject", "Calculator.cs", """
+                                                       namespace TestProject;
 
-            var snapshotB = await test.RunIncrementalIndexAsync();
-            var snapshotC = await test.RunFullIndexAsync(test.CleanDbPath);
+                                                       public class Calculator
+                                                       {
+                                                           public int Add(int a, int b) => a + b;
+                                                       }
+                                                       """);
 
-            SnapshotAssertions.CompareSnapshotsAreEquivalent(
-                test.DbPath, snapshotB, test.CleanDbPath, snapshotC);
-        }
-        finally
-        {
-            test.Dispose();
-        }
+        var snapshotB = await test.RunIncrementalIndexAsync();
+        var snapshotC = await test.RunFullIndexAsync(test.CleanDbPath);
+
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(
+            test.DbPath, snapshotB, test.CleanDbPath, snapshotC);
     }
 
     private sealed class IntegrationHost : IntegrationTestBase

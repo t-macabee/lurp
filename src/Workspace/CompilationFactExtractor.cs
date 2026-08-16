@@ -1,4 +1,5 @@
 using Lurp.Adapters;
+using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
@@ -90,7 +91,7 @@ public static class CompilationFactExtractor
         var incompleteness = new BindingIncompletenessCollector(projectName, workspaceInfo.Id.GitRoot);
         var ctx = new StageContext(projectName, failures, incompleteness);
 
-        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, logWarning, scopeDocuments, incompleteness);
+        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, scopeDocuments, incompleteness);
 
         var declarations = RunStage(
             ctx, "SymbolDeclaration", null, logError,

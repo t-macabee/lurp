@@ -17,7 +17,7 @@ internal static class DependencyInjectionConventionMatcher
         if (sourceId == null)
             return;
 
-        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, compilation, ctx.AssemblyIdentity);
+        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, ctx.AssemblyIdentity);
 
         var targetId = $"{GraphNodeIds.AssemblyScanConventionPrefix}{assemblyName}";
 
@@ -241,7 +241,7 @@ internal static class DependencyInjectionConventionMatcher
         }
     }
 
-    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, string fallback)
+    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, string fallback)
     {
         var directAssembly = ResolveAssemblyFromGenericTypeArgs(invocation, semanticModel);
         if (directAssembly != null)
@@ -259,7 +259,7 @@ internal static class DependencyInjectionConventionMatcher
 
     private static string? ResolveAssemblyFromGenericTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
     {
-        if (invocation.Expression is not MemberAccessExpressionSyntax { Name: GenericNameSyntax genericName } memberAccess)
+        if (invocation.Expression is not MemberAccessExpressionSyntax { Name: GenericNameSyntax genericName } _)
             return null;
 
         foreach (var typeArg in genericName.TypeArgumentList.Arguments)

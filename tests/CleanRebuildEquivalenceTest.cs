@@ -151,7 +151,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
             """);
     }
 
-    private async Task<string> RunFullIndexAsync(string label)
+    private async Task RunFullIndexAsync(string label)
     {
         Console.WriteLine($"--- {label} ---");
 
@@ -171,7 +171,6 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
                        ?? throw new InvalidOperationException($"No snapshot found in {_dbPath} after full index.");
 
         Console.WriteLine($"    Snapshot: {snapshot.SnapshotId}");
-        return snapshot.SnapshotId;
     }
 
     private async Task<string> RunIndependentFullIndexAsync(string label)

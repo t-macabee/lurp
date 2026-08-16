@@ -139,7 +139,6 @@ public sealed partial class SnapshotManifest
                 FilePath = docPath,
                 ContentHash = kvp.Value.Hash,
                 Encoding = encoding,
-                CreatedAtUtc = DateTime.MinValue,
                 LineStarts = lineStarts
             };
         }).ToList();

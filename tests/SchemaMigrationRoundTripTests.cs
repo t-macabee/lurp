@@ -7,7 +7,6 @@ namespace Lurp.Tests;
 
 public sealed class SchemaMigrationRoundTripTests : IDisposable
 {
-    private const int E4PinnedStartVersion = 1;
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"lurp-schema-{Guid.NewGuid():N}.db");
 
     public void Dispose()

@@ -168,6 +168,9 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
         foreach (var table in tables)
         {
+            // Not SQL injection: table is drawn only from the hardcoded literal array
+            // above (never external input), and DELETE cannot bind a table name via a
+            // parameter in SQL - only values (snapshot_id, bound as @sid) can be.
             cmd.CommandText = $"DELETE FROM {table} WHERE snapshot_id = @sid;";
             cmd.Parameters.Clear();
             cmd.Parameters.AddWithValue("@sid", snapshotId);

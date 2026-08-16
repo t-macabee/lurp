@@ -257,9 +257,9 @@ internal static class SnapshotAssertions
             cmp = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "",
                 b.ReceiverTypeConstraintsJson ?? "");
             if (cmp != 0) return cmp;
-            cmp = (a.SourceNodeKind?.ToString() ?? "").CompareTo(b.SourceNodeKind?.ToString() ?? "");
+            cmp = StringComparer.Ordinal.Compare(a.SourceNodeKind?.ToString() ?? "", b.SourceNodeKind?.ToString() ?? "");
             if (cmp != 0) return cmp;
-            return (a.TargetNodeKind?.ToString() ?? "").CompareTo(b.TargetNodeKind?.ToString() ?? "");
+            return StringComparer.Ordinal.Compare(a.TargetNodeKind?.ToString() ?? "", b.TargetNodeKind?.ToString() ?? "");
         });
     }
 
@@ -365,9 +365,4 @@ internal static class SnapshotAssertions
         string Fqn,
         string DocCommentId,
         string Kind);
-
-    private sealed record SemanticChangeSnapshot(
-        string ChangeType,
-        string SymbolId,
-        string? DetailJson);
 }

@@ -5,7 +5,7 @@ using SymKind = Lurp.Storage.IndexedSymbolKind;
 
 namespace Lurp.Workspace;
 
-internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext context, Action<string>? logWarning = null)
+internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext context)
 {
     private static readonly SymbolDisplayFormat SignatureFormat = new(
         SymbolDisplayGlobalNamespaceStyle.Omitted,
@@ -16,8 +16,6 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
     );
-
-    private readonly Action<string>? _logWarning = logWarning;
 
     [GeneratedRegex(@"\bGeneratedCode\s*\(\s*""([^""]*)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex GeneratedCodeToolPattern();

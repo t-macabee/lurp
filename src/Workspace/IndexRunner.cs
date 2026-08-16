@@ -1,3 +1,4 @@
+using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 
@@ -100,8 +101,8 @@ public static class IndexRunner
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
-                new("solution_load", loadElapsed, DateTime.UtcNow),
-                new("workspace_info", swWorkspaceInfo.ElapsedMilliseconds, DateTime.UtcNow)
+                new("solution_load", loadElapsed),
+                new("workspace_info", swWorkspaceInfo.ElapsedMilliseconds)
             };
             await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
         }
@@ -155,7 +156,7 @@ public static class IndexRunner
 
         sink.WriteLine("done.");
         swManifest.Stop();
-        timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow("manifest_save", swManifest.ElapsedMilliseconds));
 
         // Populate extractor registry (idempotent : no-op on re-runs)
         store.UpsertExtractors(ExtractorRegistry.All);
@@ -276,7 +277,7 @@ public static class IndexRunner
             }
 
             swExtract.Stop();
-            timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds, DateTime.UtcNow));
+            timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds));
 
             var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
 
@@ -323,7 +324,7 @@ public static class IndexRunner
             store.BuildSearchIndex(snapshotIdStr);
             sink.WriteLine("done.");
             swFts.Stop();
-            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds, DateTime.UtcNow));
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.FtsBuild, swFts.ElapsedMilliseconds));
 
             cancellationToken.ThrowIfCancellationRequested();
             store.MarkSnapshotComplete(snapshotIdStr);

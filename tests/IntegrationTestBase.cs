@@ -150,6 +150,9 @@ public abstract class IntegrationTestBase : IDisposable
     /// </summary>
     public async Task RestoreSolutionAsync()
     {
+        // Not shell injection: ArgumentList passes each element straight to the OS
+        // process API with UseShellExecute = false, so nothing here is parsed by a
+        // shell; SolutionPath is also an internally-generated temp path, not input.
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = "dotnet",

@@ -30,6 +30,6 @@ internal static class SemanticDiffStep
 
         output.WriteLine($"done ({diffChanges.Count} changes, {skippedComparisons} comparisons skipped).");
         sw.Stop();
-        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, sw.ElapsedMilliseconds, DateTime.UtcNow));
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.SemanticDiff, sw.ElapsedMilliseconds));
     }
 }

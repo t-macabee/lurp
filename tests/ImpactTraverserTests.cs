@@ -45,8 +45,6 @@ public sealed class ImpactTraverserTests
         // Must terminate — no infinite loop despite A→B→A cycle
         foreach (var path in paths)
         {
-            var ids = path.Hops.Select(h => h.SourceSymbolId).Append(
-                path.Hops.Count > 0 ? path.Hops[^1].TargetSymbolId : "A").ToList();
             // A→B→A should terminate after B (one hop to B, then B→A visited)
             Assert.True(path.Hops.Count <= 2,
                 $"Cycle path should terminate, got {path.Hops.Count} hops.");

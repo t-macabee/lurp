@@ -36,7 +36,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            foreach (var (docId, versionId) in entries)
+            foreach (var (_, versionId) in entries)
             {
                 command.CommandText = @"
                     INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id)

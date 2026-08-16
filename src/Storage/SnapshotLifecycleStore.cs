@@ -388,14 +388,12 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var lineStarts = reader.IsDBNull(4) ? "" : reader.GetString(4);
             documents.Add(new DocumentVersion
             {
                 DocumentId = reader.GetString(0),
                 FilePath = reader.GetString(1),
                 ContentHash = reader.GetString(2),
-                Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3),
-                CreatedAtUtc = DateTime.MinValue
+                Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3)
             });
         }
 

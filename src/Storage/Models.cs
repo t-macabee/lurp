@@ -184,16 +184,14 @@ public sealed class SemanticChange
 
 public sealed class SnapshotTimingRow
 {
-    public SnapshotTimingRow(string stepName, long elapsedMs, DateTime createdAtUtc)
+    public SnapshotTimingRow(string stepName, long elapsedMs)
     {
         StepName = stepName ?? throw new ArgumentNullException(nameof(stepName));
         ElapsedMs = elapsedMs;
-        CreatedAtUtc = createdAtUtc;
     }
 
     public string StepName { get; }
     public long ElapsedMs { get; }
-    public DateTime CreatedAtUtc { get; }
 }
 
 public sealed record SnapshotFailureRow(string SnapshotId, string ReasonCode, string? Message, DateTime CreatedAtUtc);
@@ -213,7 +211,6 @@ public class DocumentVersion
     public string FilePath { get; init; } = string.Empty;
     public string ContentHash { get; init; } = string.Empty;
     public string Encoding { get; init; } = string.Empty;
-    public DateTime CreatedAtUtc { get; init; }
 
     public byte[]? Content { get; }
     public int ByteCount => Content?.Length ?? 0;

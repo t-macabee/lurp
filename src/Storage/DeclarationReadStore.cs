@@ -221,7 +221,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return results;
     }
 
-    internal static IndexedSymbolInfo? ReadSymbolInfo(SqliteDataReader reader)
+    internal static IndexedSymbolInfo ReadSymbolInfo(SqliteDataReader reader)
     {
         var sid = new SymbolId(reader.GetString(1),
             reader.GetString(2),

@@ -64,7 +64,7 @@ public sealed class SemanticDifferTests : IDisposable
                 new(sourceBytes)
                 {
                     DocumentId = "doc-" + snapshotId, FilePath = filePath, ContentHash = "hash1", Encoding = "utf-8",
-                    CreatedAtUtc = DateTime.MinValue, LineStarts = lineStarts
+                    LineStarts = lineStarts
                 }
             }
         };
@@ -714,12 +714,12 @@ public sealed class SemanticDifferTests : IDisposable
                 new(partialSource)
                 {
                     DocumentId = "doc-to-partial", FilePath = "src/Partial.cs", ContentHash = "hash1",
-                    Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts
+                    Encoding = "utf-8", LineStarts = partialLineStarts
                 },
                 new(partialSource)
                 {
                     DocumentId = "doc-to-partial2", FilePath = "src/Partial2.cs", ContentHash = "hash1",
-                    Encoding = "utf-8", CreatedAtUtc = DateTime.MinValue, LineStarts = partialLineStarts
+                    Encoding = "utf-8", LineStarts = partialLineStarts
                 }
             }
         };

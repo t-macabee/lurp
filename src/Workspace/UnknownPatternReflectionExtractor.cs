@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Text.Json;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
@@ -27,7 +26,6 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
                 continue;
 
             var argumentString = GetFirstStringLiteralArgument(invocation);
-            var detailJson = JsonSerializer.Serialize(new { pattern, argument = argumentString ?? "" });
 
             var key = (sourceId, pattern, argumentString ?? "");
             if (!seen.Add(key))

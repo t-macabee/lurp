@@ -7,10 +7,7 @@ internal sealed class FullRebuildRequiredException : InvalidOperationException
     {
         if (mismatches == null || mismatches.Count == 0)
             throw new ArgumentException("At least one mismatch is required.", nameof(mismatches));
-        Mismatches = mismatches;
     }
-
-    public IReadOnlyList<SnapshotMismatch> Mismatches { get; }
 
     private static string BuildMessage(IReadOnlyList<SnapshotMismatch> mismatches)
     {

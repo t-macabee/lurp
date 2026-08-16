@@ -102,10 +102,7 @@ public static class WorkspaceFreshness
         if (storageManifest == null)
             return new FreshnessResult(false, [
                     new SnapshotMismatch(MismatchKind.VersionChanged, "Workspace has never been indexed : no snapshot manifest found.", null, null)
-                ],
-                current.Id,
-                null,
-                null);
+                ]);
 
         var richManifest = SnapshotManifest.FromStorageManifest(storageManifest);
         return CheckFreshness(current, richManifest);
@@ -116,10 +113,7 @@ public static class WorkspaceFreshness
         if (stored == null)
             return new FreshnessResult(false, [
                     new SnapshotMismatch(MismatchKind.VersionChanged, "Workspace has never been indexed : no snapshot manifest found.", null, null)
-                ],
-                current.Id,
-                null,
-                null);
+                ]);
 
         var mismatches = new List<SnapshotMismatch>();
         mismatches.AddRange(CheckWorkspaceIdentity(current, stored));
@@ -131,10 +125,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckCompilationOptions(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
 
-        return new FreshnessResult(mismatches.Count == 0, mismatches.AsReadOnly(),
-            current.Id,
-            stored.SnapshotId,
-            stored.WorkspaceId);
+        return new FreshnessResult(mismatches.Count == 0, mismatches.AsReadOnly());
     }
 
     public static IReadOnlyList<SnapshotMismatch> GetFullRebuildMismatches(WorkspaceInfo current, SnapshotManifest stored)
@@ -273,5 +264,5 @@ public static class WorkspaceFreshness
             yield return new SnapshotMismatch(MismatchKind.VersionChanged, "Extractor version changed.", null, $"{stored.ExtractorVersion} → {current.ExtractorVersion}");
     }
 
-    public sealed record FreshnessResult(bool IsFresh, IReadOnlyList<SnapshotMismatch> Mismatches, WorkspaceId CurrentWorkspaceId, SnapshotId? StoredSnapshotId, WorkspaceId? StoredWorkspaceId);
+    public sealed record FreshnessResult(bool IsFresh, IReadOnlyList<SnapshotMismatch> Mismatches);
 }
