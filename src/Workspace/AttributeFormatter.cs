@@ -14,11 +14,9 @@ internal static class AttributeFormatter
 
         var parts = new List<string>();
 
-        foreach (var arg in attr.ConstructorArguments)
-            parts.Add(FormatTypedConstant(arg));
+        parts.AddRange(attr.ConstructorArguments.Select(FormatTypedConstant));
 
-        foreach (var named in attr.NamedArguments)
-            parts.Add($"{named.Key} = {FormatTypedConstant(named.Value)}");
+        parts.AddRange(attr.NamedArguments.Select(named => $"{named.Key} = {FormatTypedConstant(named.Value)}"));
 
         if (parts.Count > 0)
         {

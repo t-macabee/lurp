@@ -127,9 +127,9 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     {
         var ids = new List<string> { SymbolId.Value };
         if (SymbolId.DocCommentId is ['T', ':', ..])
-            foreach (var edge in EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value))
-                if (edge.Kind == nameof(EdgeKind.Declares))
-                    ids.Add(edge.TargetSymbolId);
+            ids.AddRange(EdgeStore.GetOutgoingEdges(SnapshotId, SymbolId.Value)
+                .Where(edge => edge.Kind == nameof(EdgeKind.Declares))
+                .Select(edge => edge.TargetSymbolId));
 
         return ids;
     }

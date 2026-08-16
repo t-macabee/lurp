@@ -85,16 +85,7 @@ internal static class CliFlagValidation
     private static string? NearestMatch(string token, HashSet<string> allowed)
     {
         var bare = token.TrimEnd('=');
-        string? best = null;
-
-        foreach (var candidate in allowed)
-            if (EditDistanceWithin1(bare, candidate.TrimEnd('=')))
-            {
-                best = candidate;
-                break;
-            }
-
-        return best;
+        return allowed.FirstOrDefault(candidate => EditDistanceWithin1(bare, candidate.TrimEnd('=')));
     }
 
     /// <summary>

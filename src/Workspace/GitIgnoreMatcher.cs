@@ -44,9 +44,8 @@ internal sealed class GitIgnoreMatcher
         var normalized = PathNormalizer.ToForwardSlash(relativePath);
         var ignored = false;
 
-        foreach (var pattern in _patterns)
-            if (Matches(normalized, pattern))
-                ignored = !pattern.Negated;
+        foreach (var pattern in _patterns.Where(pattern => Matches(normalized, pattern)))
+            ignored = !pattern.Negated;
 
         return ignored;
     }

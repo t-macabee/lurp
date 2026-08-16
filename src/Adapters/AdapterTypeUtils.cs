@@ -16,8 +16,7 @@ internal static class AdapterTypeUtils
         foreach (var type in ns.GetTypeMembers())
         {
             types.Add(type);
-            foreach (var nested in type.GetTypeMembers())
-                types.Add(nested);
+            types.AddRange(type.GetTypeMembers());
         }
 
         foreach (var childNs in ns.GetNamespaceMembers())

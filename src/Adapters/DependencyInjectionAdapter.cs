@@ -278,11 +278,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingAssembly, compilation.Assembly))
             return false;
 
-        foreach (var param in methodSymbol.Parameters)
-            if (SymbolEqualityComparer.Default.Equals(param.Type, serviceCollectionType))
-                return true;
-
-        return false;
+        return methodSymbol.Parameters.Any(param => SymbolEqualityComparer.Default.Equals(param.Type, serviceCollectionType));
     }
 
     // ────────────────────────────────────────────────────────────────

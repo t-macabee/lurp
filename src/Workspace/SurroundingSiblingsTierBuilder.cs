@@ -44,10 +44,10 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
 
     private string? FindContainingParentId()
     {
-        foreach (var edge in context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value))
-            if (edge.Kind == nameof(EdgeKind.Declares) || edge.Kind == nameof(EdgeKind.Contains))
-                return edge.SourceSymbolId;
-        return null;
+        return context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value)
+            .Where(edge => edge.Kind == nameof(EdgeKind.Declares) || edge.Kind == nameof(EdgeKind.Contains))
+            .Select(edge => edge.SourceSymbolId)
+            .FirstOrDefault();
     }
 
     private void AddSiblings(List<CapsuleItem> results, string parentId, bool includeNestedTypes)

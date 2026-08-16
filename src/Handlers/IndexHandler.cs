@@ -27,9 +27,8 @@ internal static class IndexHandler
             {
                 "ASP.NET Core", "Dependency Injection", "MediatR", "EF Core", "Serialization", "Test"
             };
-            foreach (var name in skipAdapters)
-                if (!knownNames.Contains(name))
-                    Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+            foreach (var name in skipAdapters.Where(name => !knownNames.Contains(name)))
+                Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
             Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
         }
 

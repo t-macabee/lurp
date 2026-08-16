@@ -259,9 +259,9 @@ public class SemanticDiffer
                 }));
         }
 
-        foreach (var edge in fromEdges)
-            if (!toByKey.ContainsKey(EdgeKey(edge)))
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeRemoved, edge.SourceSymbolId, new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind }));
+        changes.AddRange(fromEdges
+            .Where(edge => !toByKey.ContainsKey(EdgeKey(edge)))
+            .Select(edge => MakeChange(fromSnapshotId, toSnapshotId, ChangeType.EdgeRemoved, edge.SourceSymbolId, new { source = edge.SourceSymbolId, target = edge.TargetSymbolId, kind = edge.Kind })));
 
         static (string source, string target, string kind) EdgeKey(EdgeRecord edge)
         {

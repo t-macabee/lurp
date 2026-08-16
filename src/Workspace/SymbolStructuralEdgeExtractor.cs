@@ -18,10 +18,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     {
         if (context.ScopeDocuments == null)
             return true;
-        foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
-            if (context.IsInScope(syntaxRef.SyntaxTree))
-                return true;
-        return false;
+        return typeSymbol.DeclaringSyntaxReferences.Any(syntaxRef => context.IsInScope(syntaxRef.SyntaxTree));
     }
 
     private void CollectTypeEdges(INamedTypeSymbol typeSymbol, List<EdgeRecord> edges)

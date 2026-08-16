@@ -34,9 +34,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         // Dispatch projections run after the direct pass and only for targets
         // not already present as direct callees (the shared seen set skips them).
         foreach (var symbolId in context.EffectiveSymbolIds)
-            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
-                if (edge.Kind == nameof(EdgeKind.Calls))
-                    AddMayDispatchTargets(edge);
+            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId).Where(edge => edge.Kind == nameof(EdgeKind.Calls)))
+                AddMayDispatchTargets(edge);
 
         return results;
 

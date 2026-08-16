@@ -321,12 +321,11 @@ internal static class CapsuleBudgetEnforcer
             if (paths.Count == 0)
                 return false;
             var changed = false;
-            foreach (var path in paths)
-                if (path.Hops.Count > MaxBoundHopsPerPath)
-                {
-                    path.Hops.RemoveRange(MaxBoundHopsPerPath, path.Hops.Count - MaxBoundHopsPerPath);
-                    changed = true;
-                }
+            foreach (var path in paths.Where(path => path.Hops.Count > MaxBoundHopsPerPath))
+            {
+                path.Hops.RemoveRange(MaxBoundHopsPerPath, path.Hops.Count - MaxBoundHopsPerPath);
+                changed = true;
+            }
 
             if (paths.Count > MaxBoundPaths)
             {

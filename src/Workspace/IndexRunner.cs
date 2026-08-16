@@ -224,9 +224,8 @@ public static class IndexRunner
                     totalDiagnostics += result.Diagnostics.Count;
                     store.SaveBindingIncompleteness(snapshotIdStr, result.BindingIncompleteness);
                     allAnnotations.AddRange(result.Annotations);
-                    foreach (var measurement in result.Measurements)
-                        if (verbose)
-                            sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+                    foreach (var measurement in result.Measurements.Where(_ => verbose))
+                        sink.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
 
                     extractedProjects++;
 

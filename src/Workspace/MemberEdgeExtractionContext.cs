@@ -67,16 +67,10 @@ internal sealed class MemberEdgeExtractionContext(
             var containingType = member.ContainingType;
             if (containingType == null)
                 return true;
-            foreach (var syntaxRef in containingType.DeclaringSyntaxReferences)
-                if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
-                    return true;
-            return false;
+            return containingType.DeclaringSyntaxReferences.Any(syntaxRef => IsSyntaxTreeInScope(syntaxRef.SyntaxTree));
         }
 
-        foreach (var syntaxRef in syntaxRefs)
-            if (IsSyntaxTreeInScope(syntaxRef.SyntaxTree))
-                return true;
-        return false;
+        return syntaxRefs.Any(syntaxRef => IsSyntaxTreeInScope(syntaxRef.SyntaxTree));
     }
 
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()

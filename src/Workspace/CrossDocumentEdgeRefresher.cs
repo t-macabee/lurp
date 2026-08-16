@@ -234,9 +234,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
         var locs = _store.GetDeclarationLocations(edge.SourceSymbolId, previousSnapshotId);
         if (locs.Count > 0)
         {
-            foreach (var loc in locs)
-                if (visitedPaths.Add(loc.DocumentPath))
-                    yield return loc.DocumentPath;
+            foreach (var loc in locs.Where(loc => visitedPaths.Add(loc.DocumentPath)))
+                yield return loc.DocumentPath;
             yield break;
         }
 
@@ -245,9 +244,8 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             yield break;
 
         var typeLocs = _store.GetDeclarationLocations(containingTypeSymbolId, previousSnapshotId);
-        foreach (var loc in typeLocs)
-            if (visitedPaths.Add(loc.DocumentPath))
-                yield return loc.DocumentPath;
+        foreach (var loc in typeLocs.Where(loc => visitedPaths.Add(loc.DocumentPath)))
+            yield return loc.DocumentPath;
     }
 
     private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)

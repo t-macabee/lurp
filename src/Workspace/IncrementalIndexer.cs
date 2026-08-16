@@ -430,9 +430,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _store.SaveBindingIncompleteness(newSnapshotIdStr, scopedBi);
             if (result.Annotations.Count > 0)
                 _store.SaveAnnotations(newSnapshotIdStr, result.Annotations);
-            foreach (var measurement in result.Measurements)
-                if (verbose)
-                    _output.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
+            foreach (var measurement in result.Measurements.Where(_ => verbose))
+                _output.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
 
             _output.WriteLine($"{result.Declarations.Count} symbols, {result.Edges.Count} edges, {result.Diagnostics.Count} diagnostics.");
         }

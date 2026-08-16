@@ -166,10 +166,11 @@ internal sealed class ContextAssembler
         capsule.IncomingPaths.AddRange(traverser.TraceImpact(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops));
         capsule.OutgoingPaths.AddRange(traverser.TraceImpact(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops));
 
-        foreach (var annotation in EdgeStore.GetAnnotations(SnapshotId))
-            if (annotation.Kind.Contains("constraint", StringComparison.OrdinalIgnoreCase) ||
-                annotation.Kind.Contains("invariant", StringComparison.OrdinalIgnoreCase))
-                capsule.Constraints.Add(new CapsuleConstraint(annotation.Value, "annotation", annotation.Kind, annotation.SymbolId));
+        foreach (var annotation in EdgeStore.GetAnnotations(SnapshotId)
+                     .Where(annotation =>
+                         annotation.Kind.Contains("constraint", StringComparison.OrdinalIgnoreCase) ||
+                         annotation.Kind.Contains("invariant", StringComparison.OrdinalIgnoreCase)))
+            capsule.Constraints.Add(new CapsuleConstraint(annotation.Value, "annotation", annotation.Kind, annotation.SymbolId));
 
         // The current topology is the union of incomingPaths and outgoingPaths.
         // Those collections are serialized once above; the reference summary

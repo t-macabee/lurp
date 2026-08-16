@@ -57,9 +57,8 @@ public static class EdgeMerge
     public static string? MergeTypeArguments(string? leftJson, string? rightJson)
     {
         var variants = DeserializeTypeArguments(leftJson);
-        foreach (var variant in DeserializeTypeArguments(rightJson))
-            if (!variants.Any(existing => existing.SequenceEqual(variant, StringComparer.Ordinal)))
-                variants.Add(variant);
+        foreach (var variant in DeserializeTypeArguments(rightJson).Where(variant => !variants.Any(existing => existing.SequenceEqual(variant, StringComparer.Ordinal))))
+            variants.Add(variant);
 
         return variants.Count == 0 ? null : SerializeTypeArguments(variants);
     }

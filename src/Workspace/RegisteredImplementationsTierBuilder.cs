@@ -81,9 +81,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             if (seen.Add(symbolId))
                 ids.Add(symbolId);
 
-            foreach (var typeId in context.GetDeclaringTypeIds(symbolId))
-                if (seen.Add(typeId))
-                    ids.Add(typeId);
+            ids.AddRange(context.GetDeclaringTypeIds(symbolId).Where(seen.Add));
         }
 
         return ids;

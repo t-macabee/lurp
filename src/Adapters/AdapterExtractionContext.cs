@@ -81,9 +81,6 @@ public sealed class AdapterExtractionContext
         if (references.Length == 0)
             return true;
 
-        foreach (var reference in references)
-            if (IsInScope(reference.SyntaxTree))
-                return true;
-        return false;
+        return references.Any(reference => IsInScope(reference.SyntaxTree));
     }
 }

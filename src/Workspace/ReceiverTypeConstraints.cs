@@ -44,9 +44,8 @@ internal static class ReceiverTypeConstraints
     internal static string? Merge(string? leftJson, string? rightJson)
     {
         var alternatives = Deserialize(leftJson);
-        foreach (var alternative in Deserialize(rightJson))
-            if (!alternatives.Any(existing => existing.SequenceEqual(alternative, StringComparer.Ordinal)))
-                alternatives.Add(alternative);
+        foreach (var alternative in Deserialize(rightJson).Where(alternative => !alternatives.Any(existing => existing.SequenceEqual(alternative, StringComparer.Ordinal))))
+            alternatives.Add(alternative);
 
         return alternatives.Count == 0 ? null : Serialize(alternatives);
     }
