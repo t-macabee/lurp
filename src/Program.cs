@@ -107,6 +107,12 @@ public static class Program
                 // A diagnosed CLI failure (e.g. bad flags, missing database).
                 // HandlerBootstrap.Fail throws this instead of exiting, so every
                 // failure path is testable and process control lives here.
+                // Sync flush is intentional: Environment.Exit terminates the process
+                // immediately; a blocking WriteLine guarantees delivery to stderr
+                // (console or redirected pipe) before exit. An async write would
+                // require awaiting and risks fire-and-forget loss if a future edit
+                // drops the await. Qodana MethodHasAsyncOverload intentionally suppressed.
+                // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine(ex.Message);
                 Environment.Exit(ex.ExitCode);
             }
@@ -114,7 +120,11 @@ public static class Program
             {
                 // A diagnosed refusal, not a crash. The operator needs the remediation
                 // and an exit code, not a stack trace into Lurp's internals.
+                // Sync flush is intentional: see comment above. Both writes must
+                // complete before the unconditional Environment.Exit(2) below.
+                // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine();
+                // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine($"ERROR: {ex.Message}");
                 Environment.Exit(2);
             }

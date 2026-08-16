@@ -40,11 +40,10 @@ internal static class CapsuleBudgetEnforcer
 
     private static readonly JsonSerializerOptions SectionOptions = LurpJsonOptions.CompactIgnoreNull;
 
-    internal static int Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
+    internal static void Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
     {
-        var estimate = EnforceContentBudget(capsule, budget, tierPriority);
+        EnforceContentBudget(capsule, budget, tierPriority);
         StampArtifactEstimate(capsule);
-        return estimate;
     }
 
     private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
