@@ -56,6 +56,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 startCol = "name_start";
                 endCol = "name_end";
                 break;
+            // default: ContainingType/Surrounding intentionally routed to GetContainingTypeSource/GetSurroundingLines — throw is intentional
             default:
                 throw new ArgumentOutOfRangeException(nameof(viewKind), viewKind,
                     "Use GetContainingTypeSource or GetSurroundingLines for this view kind.");

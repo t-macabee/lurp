@@ -169,7 +169,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         await IndexRunner.RunAsync(
             store, _solutionPath, _testDir,
             [], null, "full",
-            false, null, false, cancellationToken: default);
+            false, null, false, cancellationToken: CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
                        ?? throw new InvalidOperationException($"No snapshot found in {_dbPath} after full index.");
@@ -191,7 +191,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         await IndexRunner.RunAsync(
             store, _solutionPath, _testDir,
             [], null, "full",
-            false, null, false, cancellationToken: default);
+            false, null, false, cancellationToken: CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
                        ?? throw new InvalidOperationException(

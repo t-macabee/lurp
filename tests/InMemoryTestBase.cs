@@ -81,7 +81,7 @@ public abstract class InMemoryTestBase : IDisposable
         foreach (var (fileName, content) in files)
         {
             var fullPath = Path.Combine(_tempDir, fileName);
-            File.WriteAllText(fullPath, content);
+            await File.WriteAllTextAsync(fullPath, content);
             solution = solution.AddDocument(
                 RoslynDocumentId.CreateNewId(projectId),
                 fileName,

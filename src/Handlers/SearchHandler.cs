@@ -100,6 +100,7 @@ internal static class SearchHandler
                         Console.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
                     break;
 
+                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
                         new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },

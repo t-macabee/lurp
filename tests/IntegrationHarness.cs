@@ -43,7 +43,7 @@ internal static class IntegrationHarness
             await IndexRunner.RunAsync(
                 store, solutionPath, outputDir,
                 [], null, "full",
-                false, null, false, false, default);
+                false, null, false, false, CancellationToken.None);
 
             return store.LoadLatestSnapshot()?.SnapshotId
                    ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");

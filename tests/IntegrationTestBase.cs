@@ -195,7 +195,7 @@ public abstract class IntegrationTestBase : IDisposable
         await IndexRunner.RunAsync(
             store, SolutionPath, TestDir,
             [], null, "full",
-            false, null, false, force, default);
+            false, null, false, force, CancellationToken.None);
 
         var snapshot = store.LoadLatestSnapshot()
                        ?? throw new InvalidOperationException($"No snapshot found in {dbPath} after full index.");

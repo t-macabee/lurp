@@ -55,6 +55,7 @@ internal static class FindSymbolHandler
                     Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
                     break;
 
+                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.IndentedJson));
                     break;

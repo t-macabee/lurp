@@ -20,7 +20,7 @@ internal static class CursorUtils
         }
         catch (Exception ex) when (ex is FormatException or JsonException or DecoderFallbackException)
         {
-            return default;
+            return null;
         }
     }
 }

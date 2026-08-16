@@ -258,10 +258,10 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 
         // Simulates a tool upgrade between runs: the persisted manifest's
         // extractor version is rewritten while the workspace stays identical.
-        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        await using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
         {
             connection.Open();
-            using var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = "UPDATE snapshots SET extractor_version = @newVersion WHERE snapshot_id = @sid;";
             command.Parameters.AddWithValue("@newVersion", "9.9.9-bump");
             command.Parameters.AddWithValue("@sid", snapshotV1);

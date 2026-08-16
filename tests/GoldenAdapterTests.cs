@@ -54,10 +54,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
-        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        await using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
-            using var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
             command.Parameters.AddWithValue("@nodeId", "route://api/[controller]/{id}");
             var actual = command.ExecuteScalar();
@@ -229,10 +229,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
-        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        await using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
-            using var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
             command.Parameters.AddWithValue("@nodeId", edge.TargetSymbolId);
             var actual = command.ExecuteScalar();

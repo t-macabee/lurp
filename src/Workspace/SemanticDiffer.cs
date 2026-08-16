@@ -200,6 +200,7 @@ public class SemanticDiffer
                 transition_kind = transition.Kind.ToString()
             };
 
+            // All SymbolTransitionKind values (Rename, Move, RenameAndMove) are handled — exhaustive, no default needed
             switch (transition.Kind)
             {
                 case SymbolTransitionKind.Rename:
@@ -330,6 +331,7 @@ public class SemanticDiffer
             : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? [];
 
         foreach (var entry in MetadataComparisons)
+            // All MetadataComparisonKind values (String, Array, Scalar) handled — exhaustive
             switch (entry.Kind)
             {
                 case MetadataComparisonKind.String:

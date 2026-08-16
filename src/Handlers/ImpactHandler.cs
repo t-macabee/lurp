@@ -120,6 +120,7 @@ internal static class ImpactHandler
                         Console.WriteLine(JsonSerializer.Serialize(new { type = "path", path }, HandlerBootstrap.CompactJson));
                     break;
 
+                // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(new
                     {
