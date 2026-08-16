@@ -121,8 +121,10 @@ Full-text search over source text and symbols.
 | `--limit=<n>` | No | Max results per scope (default: 20). |
 | `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
-| `--include-generated` | No | Include source-generated symbols. |
+| `--include-generated` | No | Include source-generated symbols. Live-observed (§C): `--query="Migrations" --type=symbol` eNoteV2 17→21, eCommerce 35→46 with `--include-generated`; `Service` 20→20 shows the flag is live but query-dependent (migrations have no `Service` symbols). |
 | `--cursor=<token>` | No | Continue from a previous page's `nextCursor` (`--type=symbol` only). |
+
+Punctuation in queries is quoted as an FTS5 phrase literal (`SearchUtils.ToFtsPhrase`), so dotted names like `CourseService.CreateAsync` and queries containing `"`, `*`, `:`, `()`, `<>` no longer throw `fts5: syntax error` — verified live on both solutions with zero `SqliteException` across ~30 search invocations (§C).
 
 Also accepts the shared [read-command options](#read-command-options).
 
@@ -187,7 +189,7 @@ Show semantic changes between two snapshots.
 | `--to-snapshot=<id>` | Yes | Target snapshot ID. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 
-Output is JSON with change records (added, removed, modified symbols and their detail).
+Output is JSON with change records (added, removed, modified symbols and their detail). Live-verified (§F): scratch `InstrumentTypeService.LurpDiffTestMethod(int)` → `symbol_added` + `edge_added Declares` (8 changes, `edge_location_changed` for line shift 37→38, no misclassify).
 
 ---
 
@@ -206,7 +208,7 @@ Trace the impact path of a changed symbol.
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
-| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges. This keeps compiler-verified dispatch — direct (non-inherited) interface implementations and all virtual/override `MayDispatchTo` edges — plus `Calls`, `Constructs`, `Implements`, `Inherits` and `Overrides`. It excludes framework-derived convention DI (`Registers`), string-reflection candidates (`Reflection*`), and interface-dispatch edges whose implementation is only inherited (`MayDispatchTo` provenance=`possible`). |
+| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges. This keeps compiler-verified dispatch — direct (non-inherited) interface implementations and all virtual/override `MayDispatchTo` edges — plus `Calls`, `Constructs`, `Implements`, `Inherits` and `Overrides`. It excludes framework-derived convention DI (`Registers`), string-reflection candidates (`Reflection*`), and interface-dispatch edges whose implementation is only inherited (`MayDispatchTo` provenance=`possible`). Live-observed (eNoteV2): `global::eNote.Domain.Entities.Shared.Base.IEntity.Id` (pure inherited-only via `BaseEntity`) → `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` → `compiler_proved:9, possible:0` — confirms filter. eCommerce `IBaseCRUDService.InsertAsync` is mixed (has direct impls) so `all:242→compiler_proved:186→possible:1` is not a filter bug (verified via `edges` table: 79 `compiler_proved` + 5 `possible`). |
 | `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
@@ -244,6 +246,8 @@ Assemble a context capsule for a symbol or source location.
 \* Either `--symbol` or both `--file` and `--line` must be provided.
 
 Also accepts the shared [read-command options](#read-command-options).
+
+Live-verified (§E): 3–4 real anchors per solution (controller action, service method, interface with 2+ impls) all exit 0 with `relevant_tests` tier present; `estimatedTokens` ≤ `content-budget` (8000 default, 1000 gave 283–1000), `max-hops 1→3` changes expansion. `RelevantTestsTierBuilder` positional-arg bug is fixed — tier actually produces results, not just compiles.
 
 The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout. Long symbol IDs are shortened with a stable hash suffix so the path remains valid on Windows; `--quiet` and `--output=summary` replace the stdout copy, never the file.
 
@@ -309,6 +313,8 @@ Show the current database status.
 | `--json` | No | Emit structured JSON instead of plain text. |
 | `--detail=<list>` | No | Comma-separated sections to expand in `--json` output. `documents` restores the per-document version map; `completeness` restores per-document binding-incompleteness rows. Both are summarized by default; `all` expands every section. |
 
+Live-verified (§H): `status --json` `is_fresh:true`, `status` text `Freshness: up to date.` immediately after index; stale correctly detected via stat+hash (incremental saw `1 changed, 401 unchanged`); `timings --json` `total_ms` 48605/20112 (eNoteV2/eCommerce) with `extraction_loop` dominant.
+
 ---
 
 ### `--mode=timings`
@@ -324,6 +330,8 @@ Show step-by-step timing data for a snapshot.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to inspect (default: latest). |
 | `--json` | No | Emit structured JSON instead of plain text. |
+
+Live-verified (§H): fresh scratch full 16234 ms, incremental 11950 ms (eNoteV2); eCommerce similar.
 
 ---
 
@@ -359,11 +367,22 @@ Retrieve annotations for a symbol.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
+Live-verified (§I): `annotate` then `get-annotations` round-trip persists on same symbol/snapshot and does not leak to `global::Program` (eNoteV2 `CurrentUserService` 1786907659, eCommerce `AccessController._userService` 1786907660).
+
 ---
 
 ## Snapshot Lifecycle
 
-Each indexing run (full or incremental) creates a **new** snapshot, unless source content and compilation inputs are unchanged — in which case the existing snapshot is reused (content-addressed dedup). The last 3 snapshots are retained; older ones are pruned automatically. Snapshots are never mutated: incremental indexing creates a new snapshot when content changes, it does not modify the previous one.
+Snapshots are immutable — an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row. The observed behavior on both live test drives (§B) was:
+
+```
+Hashing documents and detecting changes... done (0 changed, 402 unchanged).
+No changes detected. Skipping incremental index.
+Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
+  Previous snapshot: f3bff523b103462be239655c9b753be3
+```
+
+(eNoteV2, 402 docs; eCommerce likewise 0 changed, 162 unchanged, snapshot `0a256115...` reused). The last 3 snapshots are retained; older ones are pruned automatically.
 
 ## Environment Variables
 

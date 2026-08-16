@@ -54,16 +54,16 @@ cited below. Evidence cites git commits and named tests directly.
 | 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 27 migrations; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
-| 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6 |
+| 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6; live-verified (§C) `CourseService.CreateAsync` no longer throws `fts5: syntax error` (phrase-literal quoting), punctuation `"` `*` `:()` `<>` `.` all zero `SqliteException`, `Service` substring fallback 20, `Migrations` 17→21/35→46 with `include-generated` |
 | 7 | Migrate dirty state, fingerprints, diagnostics, facts | ✅ Done | Order 7 |
 | 8 | Typed member-level semantic edges | ✅ Done | Order 8 + Order 13 + G1–G7 |
 | 9 | Polymorphism and dispatch candidates | ✅ Done | Order 12 + Order 13 + G3, G5, G6, G7 |
-| 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2 |
+| 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2; live-verified (§F) scratch `InstrumentTypeService.LurpDiffTestMethod` → `symbol_added` + `edge_added Declares` (8 changes, 0 skipped, no misclassify) |
 | 11 | Generated-code provenance | ✅ Done | Orders 10, 11 |
-| 12 | ASP.NET, DI, MediatR, EF, serialization, test adapters | ✅ Done | All 6 adapters; `TestedBy` granularity fix `63cfaf4`; `GoldenAdapterTests.TestAdapter_TestProjectProducesTestedBy` |
+| 12 | ASP.NET, DI, MediatR, EF, serialization, test adapters | ✅ Done | All 6 adapters; `TestedBy` granularity fix `63cfaf4`; `GoldenAdapterTests.TestAdapter_TestProjectProducesTestedBy` — live-verified §G: neither solution uses MediatR, 0 MediatR edges, no null warnings, framework_derived 1466/89 |
 | 13 | Reflection evidence ladder | ✅ Done | See below |
-| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, `semantic_causes` |
-| 15 | Context capsules with source and token budgets | ✅ Done | See below |
+| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, `semantic_causes` — live-verified §D & §H (see Phase 14) |
+| 15 | Context capsules with source and token budgets | ✅ Done | See below — live-verified §E (RelevantTestsTierBuilder fix) |
 | 16 | Rebase simulations and audits | ✅ Done → Removed in Aug 2026 cleanup |
 | 17 | Optimize incremental updates from measurements | ✅ Done | `CallsEdgeExtractor` 2051→1944 ms (Lurp) at time of record; member-edge coverage in `GoldenEdgeTests` |
 
@@ -80,7 +80,7 @@ All in `src/Workspace/`, registered as `"reflection-v1"`, covered by `GoldenRefl
 
 ### Phase 15 verification: Context Capsules
 
-All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery`), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`.
+All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery` — was build-breaking positional-arg bug, now fixed), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`. Live-verified on both solutions (§E): 3–4 real anchors (controller action, service method, interface method with 2+ impls) all exit 0 with `relevant_tests` tier present, `estimatedTokens` ≤ `content-budget` (eNoteV2 571/283/388 at 1000, 8000 at default), `max-hops 1→3` changes expansion — `RelevantTestsTierBuilder` no longer crashes and tier actually produces results.
 
 Closed capsule decisions: no occurrence multigraph (one evidence-bearing relation edge, not exhaustive call-site storage); no generated anchor narrative; architectural constraints come from snapshot annotations (no second JSON authority).
 
@@ -90,19 +90,19 @@ Closed capsule decisions: no occurrence multigraph (one evidence-bearing relatio
 |---|---|
 | `ImpactPath` with `List<ImpactHop>` | ✅ |
 | Hop details (`SourceSymbolId`, `TargetSymbolId`, `EdgeKind`, `Provenance`, `SourceDocument`, `SourceLine`) | ✅ |
-| Direction control (`Upstream`/`Downstream`) | ✅ |
-| Depth limiting (`maxDepth`) | ✅ |
-| Edge filtering (`allowedEdgeKinds`) | ✅ |
-| Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ |
+| Direction control (`Upstream`/`Downstream`) | ✅ verified live: `upstream 50 vs downstream 6` on `ENoteContext.SaveChangesAsync`, `IAuthenticatedUserAccessor.GetUserId` 2/50 truncated groups correct |
+| Depth limiting (`maxDepth`) | ✅ verified live: `1→5, 2→6, 3→6` (eNoteV2) and `1→1,2→2,3→2` (eCommerce) |
+| Edge filtering (`allowedEdgeKinds`) | ✅ verified live: `--kinds=Calls` 8 vs `Calls,MayDispatchTo` 14 |
+| Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ verified live: eNoteV2 `IEntity.Id` pure inherited `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` `9/9/0`; eCommerce `IBaseCRUDService` mixed 242→186→1 is not a bug (79 compiler_proved+5 possible) |
 | Cycle detection (`visited` set) | ✅ |
-| Truncation explanation (`Truncated`, `TruncationReason`) | ✅ |
-| Semantic causes (`SemanticCauses`) | ✅ |
+| Truncation explanation (`Truncated`, `TruncationReason`) | ✅ verified live: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor |
+| Semantic causes (`SemanticCauses`) | ✅ verified live: impact `semantic_causes` populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run — re-run shows 0 WARNING lines |
 
 Tests: `ImpactTraverserTests.cs`.
 
 ### Architecture §10 definitive-version checklist
 
-All criteria ✅ except the removed simulation/audit modes (—). One SQLite DB (migrations 1–27); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs; member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
+All criteria ✅ except the removed simulation/audit modes (—). One SQLite DB (migrations 1–27); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged — `No changes detected. Skipping incremental index.` — counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
 
 ---
 

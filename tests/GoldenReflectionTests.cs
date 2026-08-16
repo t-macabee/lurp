@@ -157,4 +157,38 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
             Provenance.NameCandidate);
         Assert.Equal("reflection-v1", nameCandidate.ExtractorVersion);
     }
+
+    [Fact]
+    public async Task StringLiteral_MatchingOwnMemberName_DoesNotProduceSelfEdge()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class AccessController
+                                                {
+                                                    public void Login()
+                                                    {
+                                                        var x = "Login";
+                                                    }
+                                                    public void Logout()
+                                                    {
+                                                        var y = "Logout";
+                                                    }
+                                                }
+                                                """));
+
+        // No ReflectionNameCandidate edge where source == target (self-reference).
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "ReflectionNameCandidate" && e.SourceSymbolId == e.TargetSymbolId);
+
+        // Specifically, Login must not emit a candidate to itself despite the literal "Login" in its body.
+        var loginId = extraction.ResolveId("global::N.AccessController.Login");
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "ReflectionNameCandidate" && e.Provenance == Provenance.NameCandidate
+                 && e.SourceSymbolId == loginId && e.TargetSymbolId == loginId);
+
+        var logoutId = extraction.ResolveId("global::N.AccessController.Logout");
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "ReflectionNameCandidate" && e.Provenance == Provenance.NameCandidate
+                 && e.SourceSymbolId == logoutId && e.TargetSymbolId == logoutId);
+    }
 }

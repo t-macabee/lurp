@@ -45,6 +45,9 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (sourceId == null)
                 continue;
 
+            if (sourceId == matchedSymbolId)
+                continue;
+
             var key = (sourceId, matchedSymbolId, nameof(EdgeKind.ReflectionNameCandidate));
             if (!seen.Add(key))
                 continue;

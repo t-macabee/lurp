@@ -158,11 +158,7 @@ WorkspaceLoader.LoadAsync
 
 ### 4.2 Incremental indexing
 
-`IncrementalIndexer.RunIncrementalAsync` creates a new snapshot without
-re-extracting unchanged documents. When the whole workspace is byte-identical
-to the previous snapshot (no document, compilation-input, or extractor-version
-change), no new snapshot is written — the existing one is reused via
-content-addressed dedup:
+`IncrementalIndexer.RunIncrementalAsync` re-extracts only the scoped document set and creates a new snapshot when content changes; it does not mutate an existing snapshot. When the whole workspace is byte-identical to the previous snapshot (no document, compilation-input, or extractor-version change), no new snapshot is written — the existing one is reused via content-addressed dedup (observed live on both solutions, §B: `Hashing documents and detecting changes... done (0 changed, 402 unchanged).` / `No changes detected. Skipping incremental index.` — snapshot `f3bff523...` / `0a256115...` reused, edge/symbol/doc counts identical before/after):
 
 1. Detect changed documents (hash-based `WorkspaceFreshness`).
 2. Compute reverse-edge closure + new-file widening.
