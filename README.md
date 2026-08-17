@@ -7,14 +7,32 @@ solution through the compiler and stores symbols, relationships, source spans,
 provenance, and completeness data in SQLite — a durable map that an agent can
 query instead of reopening and re-parsing the whole codebase for every question.
 
-## Install / Build
+## Install
 
 Prerequisites:
 
 - .NET 10 SDK (the repo's `global.json` pins SDK `10.0.301`).
 - A C# solution (`.sln` or `.slnx`) to index.
 
-Lurp is a console application, not a .NET global tool. Build and run it from the repo:
+Lurp needs the .NET SDK on the machine (it loads solutions through `MSBuildWorkspace` / `Microsoft.Build.Locator`). A self-contained single-file binary would not remove that requirement, so Lurp is distributed as a .NET global tool.
+
+### From NuGet (recommended)
+
+```bash
+dotnet tool install --global lurp
+lurp --mode=index --solution=path/to/Your.sln --output-dir=./out
+
+# update later
+dotnet tool update --global lurp
+```
+
+Or pin the version:
+
+```bash
+dotnet tool install --global lurp --version 1.1.0
+```
+
+### Build from source
 
 ```bash
 dotnet build Lurp.slnx
@@ -62,7 +80,20 @@ dotnet run --project src -- --mode=index --solution=path/to/Your.sln --output-di
 dotnet run --project src -- --mode=serve --solution=path/to/Your.sln --output-dir=./out
 ```
 
-Example MCP client config (stdio):
+Example MCP client configs (stdio) — global tool (recommended) vs. `dotnet` fallback:
+
+```json
+{
+  "mcpServers": {
+    "lurp": {
+      "command": "lurp",
+      "args": ["--mode=serve", "--solution=path/to/Your.sln", "--output-dir=./out"]
+    }
+  }
+}
+```
+
+Fallback if you are running from source:
 
 ```json
 {

@@ -7,6 +7,16 @@
     <Nullable>enable</Nullable>
     <Version>1.1.0</Version>
     <DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lurp</ToolCommandName>
+    <PackageId>lurp</PackageId>
+    <Authors>Tarik Džakić</Authors>
+    <Description>Roslyn-native semantic context engine for C# solutions — indexes a .NET solution into SQLite and serves retrieval, semantic-diff, impact, and bounded context capsules to other software agents.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/t-macabee/lurp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>roslyn;c-sharp;code-analysis;sqlite;agents;MCP;semantic-search</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +26,10 @@
   <ItemGroup>
     <Compile Remove="Storage\**\*.cs" />
     <ProjectReference Include="Storage\Lurp.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
