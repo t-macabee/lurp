@@ -17,8 +17,9 @@ public sealed class WorkspaceInfo
     private static readonly Encoding Utf16Le = new UnicodeEncoding(false, false, true);
     private static readonly Encoding Utf16Be = new UnicodeEncoding(true, false, true);
 
-    public WorkspaceInfo(Solution solution, string gitRoot)
+    public WorkspaceInfo(Solution solution, string gitRoot, IOutputSink? output = null)
     {
+        var sink = output ?? ConsoleOutputSink.Instance;
         Id = WorkspaceId.Create(gitRoot, solution.FilePath ?? "");
 
         var (documents, contents, generatedDocs) = BuildDocumentMap(solution, gitRoot);
@@ -26,12 +27,12 @@ public sealed class WorkspaceInfo
         DocumentContents = contents;
         GeneratedDocuments = generatedDocs;
 
-        SdkVersion = QuerySdkVersion();
+        SdkVersion = QuerySdkVersion(sink);
 
         CompilerVersion = typeof(CSharpCompilation).Assembly.GetName().Version
                           ?? new Version(0, 0);
 
-        TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot);
+        TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot, sink);
 
         ProjectGraph = BuildProjectGraph(solution);
 
@@ -217,8 +218,9 @@ public sealed class WorkspaceInfo
         return PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
     }
 
-    private static string QuerySdkVersion()
+    private static string QuerySdkVersion(IOutputSink? output = null)
     {
+        var sink = output ?? ConsoleOutputSink.Instance;
         try
         {
             var instances = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions { DiscoveryTypes = DiscoveryType.DotNetSdk });
@@ -230,7 +232,7 @@ public sealed class WorkspaceInfo
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"WARNING: Failed to detect MSBuild SDK version: {ex.Message}");
+            sink.WriteErrorLine($"WARNING: Failed to detect MSBuild SDK version: {ex.Message}");
             return UnknownValue;
         }
     }
@@ -288,8 +290,9 @@ public sealed class WorkspaceInfo
         return null;
     }
 
-    private static Dictionary<string, string> BuildTargetFrameworkMap(Solution solution, string gitRoot)
+    private static Dictionary<string, string> BuildTargetFrameworkMap(Solution solution, string gitRoot, IOutputSink? output = null)
     {
+        var sink = output ?? ConsoleOutputSink.Instance;
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var project in solution.Projects)
@@ -310,7 +313,7 @@ public sealed class WorkspaceInfo
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"WARNING: Failed to parse project file '{project.FilePath}' for TargetFramework: {ex.Message}");
+                sink.WriteErrorLine($"WARNING: Failed to parse project file '{project.FilePath}' for TargetFramework: {ex.Message}");
                 map[project.Name] = UnknownValue;
             }
         }

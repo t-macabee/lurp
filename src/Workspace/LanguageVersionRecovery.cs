@@ -36,8 +36,9 @@ internal static class LanguageVersionRecovery
     ///     effective language version instead of the C# 7.3 fallback. Projects
     ///     whose parse options are already correct are returned unchanged.
     /// </summary>
-    public static Solution Apply(Solution solution)
+    public static Solution Apply(Solution solution, IOutputSink? output = null)
     {
+        var sink = output ?? ConsoleOutputSink.Instance;
         var corrected = solution;
 
         foreach (var project in solution.Projects)
@@ -56,7 +57,7 @@ internal static class LanguageVersionRecovery
                 continue;
 
             corrected = corrected.WithProjectParseOptions(project.Id, recovered);
-            Console.WriteLine($"  [language-version recovery] {project.Name}: {reason} (was C# {parseOptions.LanguageVersion}, now {recovered.LanguageVersion})");
+            sink.WriteLine($"  [language-version recovery] {project.Name}: {reason} (was C# {parseOptions.LanguageVersion}, now {recovered.LanguageVersion})");
         }
 
         return corrected;

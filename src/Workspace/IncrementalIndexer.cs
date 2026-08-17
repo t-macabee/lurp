@@ -101,7 +101,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
 
         var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
-        var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters);
+        var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters, _output);
         var closureSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
         if (newFileProjectPaths != null)
             closureSeed.UnionWith(newFileProjectPaths);
@@ -407,7 +407,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 continue;
             }
 
-            var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths);
+            var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths, _output);
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
             result.EnsureRequiredSuccess();
 
@@ -535,7 +535,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         var sw = Stopwatch.StartNew();
         _output.Write("Updating cross-document edges... ");
-        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters);
+        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters, _output);
         // The reverse-edge closure was already computed in step 2 via
         // FindAffectedDocPaths on the genuinely-changed documents plus
         // binding-incompleteness seeding. Union in the documents step 6 already

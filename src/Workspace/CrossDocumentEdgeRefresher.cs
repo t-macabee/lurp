@@ -2,8 +2,9 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRoot, HashSet<string> skipAdapters)
+internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, IOutputSink? output = null)
 {
+    private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
     /// <summary>
     ///     Ratio of a project's document count past which the reverse-edge closure
     ///     stops paying for itself: bookkeeping the narrowed set costs more than the
@@ -206,7 +207,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
 
     private HashSet<string> ResolveProjectNames(Solution solution, HashSet<string> affectedPaths)
     {
-        Console.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
+        _output.WriteLine($"  ({affectedPaths.Count} documents need cross-document edge refresh)");
 
         var affectedProjectNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
@@ -279,7 +280,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (perProjectAffectedPaths.TryGetValue(project.Name, out var projectAffected) && projectAffected.Count > 0)
                 scopeDocs = projectAffected;
 
-            var options = CompilationFactExtractor.CreateOptions(skipAdapters, scopeDocs);
+            var options = CompilationFactExtractor.CreateOptions(skipAdapters, scopeDocs, _output);
             cancellationToken.ThrowIfCancellationRequested();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
             result.EnsureRequiredSuccess();
@@ -334,7 +335,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
             if (result.Annotations.Count > 0)
                 store.SaveAnnotations(newSnapshotId, result.Annotations);
             totalEdges += result.Edges.Count;
-            Console.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
+            _output.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
         }
 
         return totalEdges;

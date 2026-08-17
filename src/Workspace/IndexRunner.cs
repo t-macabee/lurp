@@ -16,7 +16,7 @@ public static class IndexRunner
 
         var sink = output ?? ConsoleOutputSink.Instance;
 
-        using var loader = new WorkspaceLoader();
+        using var loader = new WorkspaceLoader(sink);
 
         var strategy = ResolveStrategy(store, strategyArg, sink);
 
@@ -33,7 +33,7 @@ public static class IndexRunner
         var swWorkspaceInfo = Stopwatch.StartNew();
         sink.Write("Building workspace info... ");
 
-        var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
+        var workspaceInfo = new WorkspaceInfo(solution, gitRoot, sink);
 
         sink.WriteLine("done.");
         swWorkspaceInfo.Stop();
@@ -211,7 +211,7 @@ public static class IndexRunner
 
                 try
                 {
-                    var options = CompilationFactExtractor.CreateOptions(skipAdapters);
+                    var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
                     var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
                     result.EnsureRequiredSuccess();
 

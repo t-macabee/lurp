@@ -5,12 +5,14 @@ public sealed class ImpactTraverser
     private readonly ISemanticDiffStore? _semanticDiffStore;
     private readonly string _snapshotId;
     private readonly IEdgeStore _store;
+    private readonly IOutputSink _output;
 
-    public ImpactTraverser(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null)
+    public ImpactTraverser(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null, IOutputSink? output = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
         _semanticDiffStore = semanticDiffStore;
+        _output = output ?? ConsoleOutputSink.Instance;
     }
 
     public List<ImpactPath> TraceImpact(string symbolId, ImpactDirection direction, HashSet<string>? allowedEdgeKinds = null, HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true)
@@ -60,7 +62,7 @@ public sealed class ImpactTraverser
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve semantic changes for snapshot '{_snapshotId}': {ex.Message}");
+            _output.WriteErrorLine($"WARNING: ImpactTraverser: failed to retrieve semantic changes for snapshot '{_snapshotId}': {ex.Message}");
             return [];
         }
     }
@@ -79,7 +81,7 @@ public sealed class ImpactTraverser
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"WARNING: ImpactTraverser: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
+            _output.WriteErrorLine($"WARNING: ImpactTraverser: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
             edges = [];
             return false;
         }

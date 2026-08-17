@@ -15,15 +15,17 @@ namespace Lurp.Workspace;
 internal sealed class WorkspaceLoader : IDisposable
 {
     private readonly Func<string, CancellationToken, Task<Solution>> _openSolutionAsync;
+    private readonly IOutputSink _output;
     private MSBuildWorkspace? _workspace;
 
-    public WorkspaceLoader()
+    public WorkspaceLoader(IOutputSink? output = null)
     {
+        _output = output ?? ConsoleOutputSink.Instance;
         if (!MSBuildLocator.IsRegistered)
         {
             var instances = MSBuildLocator.RegisterDefaults();
 
-            Console.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
+            _output.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
         }
 
         _openSolutionAsync = OpenWithWorkspaceAsync;
@@ -33,8 +35,9 @@ internal sealed class WorkspaceLoader : IDisposable
     ///     Test seam: substitutes the solution opener so recovery ordering can be
     ///     verified deterministically without MSBuild. No workspace is created.
     /// </summary>
-    internal WorkspaceLoader(Func<string, CancellationToken, Task<Solution>> openSolutionAsync)
+    internal WorkspaceLoader(Func<string, CancellationToken, Task<Solution>> openSolutionAsync, IOutputSink? output = null)
     {
+        _output = output ?? ConsoleOutputSink.Instance;
         _openSolutionAsync = openSolutionAsync ?? throw new ArgumentNullException(nameof(openSolutionAsync));
     }
 
@@ -55,18 +58,18 @@ internal sealed class WorkspaceLoader : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var sw = Stopwatch.StartNew();
-        Console.Write("Loading solution... ");
+        _output.Write("Loading solution... ");
 
         var solution = await _openSolutionAsync(solutionPath, cancellationToken);
 
-        Console.WriteLine($"done ({solution.Projects.Count()} projects).");
+        _output.WriteLine($"done ({solution.Projects.Count()} projects).");
         sw.Stop();
 
         // Restore compiler fidelity: MSBuildWorkspace can silently fall back to
         // C# 7.3 parse options when a project fails to evaluate. Derive each
         // affected project's effective language version from its own inputs
         // (explicit LangVersion, or the SDK-style default) so modern C# binds.
-        var recovered = LanguageVersionRecovery.Apply(solution);
+        var recovered = LanguageVersionRecovery.Apply(solution, _output);
 
         return new LoadedSolution(recovered, sw.ElapsedMilliseconds);
     }

@@ -14,13 +14,15 @@ public static class CompilationFactExtractor
     /// </summary>
     public static ExtractionOptions CreateOptions(
         IReadOnlySet<string>? skipAdapters = null,
-        IReadOnlySet<string>? scopeDocuments = null)
+        IReadOnlySet<string>? scopeDocuments = null,
+        IOutputSink? output = null)
     {
+        var sink = output ?? ConsoleOutputSink.Instance;
         return new ExtractionOptions(
             skipAdapters,
             ScopeDocuments: scopeDocuments,
-            LogWarning: msg => Console.Error.WriteLine($"WARNING: {msg}"),
-            LogError: msg => Console.Error.WriteLine($"ERROR: {msg}"));
+            LogWarning: msg => sink.WriteErrorLine($"WARNING: {msg}"),
+            LogError: msg => sink.WriteErrorLine($"ERROR: {msg}"));
     }
 
     /// <summary>
