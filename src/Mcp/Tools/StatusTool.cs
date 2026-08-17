@@ -94,7 +94,7 @@ internal sealed class StatusTool
             {
                 try
                 {
-                    var latestRow = _session.Store.LoadSnapshotMetadata(snapshotId);
+                    var latestRow = _session.Store.LoadSnapshot(snapshotId);
                     var schemaVersion = _session.Store.GetCurrentSchemaVersion();
                     var dbPath = _session.DbPath;
                     detailObj = new
@@ -144,7 +144,7 @@ internal sealed class StatusTool
         var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!);
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(_session.SolutionPath!))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
-        var metadata = _session.Store.LoadSnapshotMetadata(snapshotId);
+        var metadata = _session.Store.LoadSnapshot(snapshotId);
         if (metadata == null)
             return new WorkspaceFreshness.FreshnessResult(false, [new SnapshotMismatch(MismatchKind.VersionChanged, "Snapshot not found.", null, snapshotId)]);
 

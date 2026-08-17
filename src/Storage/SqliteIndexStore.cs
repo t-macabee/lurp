@@ -176,6 +176,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _lifecycle!.LoadSnapshotMetadata(snapshotId);
     }
 
+    public SnapshotRow? LoadSnapshot(string snapshotId)
+    {
+        EnsureOpen();
+        return _lifecycle!.LoadSnapshot(snapshotId);
+    }
+
     public string? GetLatestSnapshotId(string? workspaceId = null)
     {
         EnsureOpen();

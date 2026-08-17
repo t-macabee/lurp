@@ -41,6 +41,7 @@ public interface ISnapshotManifestStore
     SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null);
     SnapshotRow? LoadLatestSnapshot(string? workspaceId = null);
     SnapshotRow? LoadSnapshotMetadata(string snapshotId);
+    SnapshotRow? LoadSnapshot(string snapshotId);
     string? GetLatestSnapshotId(string? workspaceId = null);
     string? GetSnapshotGitRoot(string snapshotId);
     string? GetSnapshotStatus(string snapshotId, string workspaceId);

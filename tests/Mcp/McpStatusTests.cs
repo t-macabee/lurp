@@ -110,6 +110,92 @@ public sealed class McpStatusTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Status_Full_AfterIndex_IsFresh_NoFalseStale()
+    {
+        var snapshotId = await IndexAsync();
+        var args = new[] { $"--solution={SolutionPath}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus();
+        using var doc = JsonDocument.Parse(json);
+        var freshness = doc.RootElement.GetProperty("freshness");
+        Assert.Equal("fresh", freshness.GetProperty("state").GetString());
+        Assert.Equal(0, freshness.GetProperty("changed_document_count").GetInt32());
+        Assert.Equal("full", freshness.GetProperty("method").GetString());
+        var sample = freshness.GetProperty("changed_documents_sample");
+        Assert.Equal(0, sample.GetArrayLength());
+        // Also check that the fresh result has empty mismatches when detail requested
+        var jsonDetail = await tool.LurpStatus(detail: true);
+        using var docDetail = JsonDocument.Parse(jsonDetail);
+        var freshnessDetail = docDetail.RootElement.GetProperty("freshness");
+        Assert.Equal("fresh", freshnessDetail.GetProperty("state").GetString());
+        Assert.Equal(0, freshnessDetail.GetProperty("changed_document_count").GetInt32());
+    }
+
+    [Fact]
+    public async Task Status_Full_AfterEdit_IsStale_ReportsOneChangedDocument()
+    {
+        var snapshotId = await IndexAsync();
+        // Edit exactly one file after indexing
+        var projFile = Path.Combine(Path.GetDirectoryName(SolutionPath)!, "src", "StatusProj", "Models.cs");
+        File.WriteAllText(projFile, "namespace StatusProj { public class Foo { public void Bar(int x) {} } }");
+        // Ensure hash change is detected (content differs) — WorkspaceFreshness full check uses hash, not mtime
+        var args = new[] { $"--solution={SolutionPath}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus();
+        using var doc = JsonDocument.Parse(json);
+        var freshness = doc.RootElement.GetProperty("freshness");
+        Assert.Equal("stale", freshness.GetProperty("state").GetString());
+        Assert.Equal(1, freshness.GetProperty("changed_document_count").GetInt32());
+        var sample = freshness.GetProperty("changed_documents_sample");
+        Assert.Equal(1, sample.GetArrayLength());
+        var samplePath = sample[0].GetString();
+        Assert.Contains("Models.cs", samplePath);
+        // Mismatches detail should contain one DocumentModified/Added entry
+        var jsonDetail = await tool.LurpStatus(detail: true);
+        using var docDetail = JsonDocument.Parse(jsonDetail);
+        var freshnessDetail = docDetail.RootElement.GetProperty("freshness");
+        Assert.True(freshnessDetail.TryGetProperty("mismatches", out var mismatches));
+        Assert.Equal(1, mismatches.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Status_Full_CliParity_FreshAfterIndex()
+    {
+        var snapshotId = await IndexAsync();
+        // CLI path parity: StatusHandler.CheckCurrentWorkspaceAsync via --mode=status --solution
+        // Verify the Handler's freshness path stays correct by checking the same invariant via WorkspaceFreshness directly
+        // using the store's LoadLatestSnapshot overload (CLI code path)
+        using var store = OpenStore(DbPath);
+        try
+        {
+            if (!Microsoft.Build.Locator.MSBuildLocator.IsRegistered)
+                try { Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults(); } catch { }
+            using var workspace = Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.Create();
+            var solution = await workspace.OpenSolutionAsync(SolutionPath);
+            var gitRoot = Path.GetDirectoryName(Path.GetFullPath(SolutionPath))!;
+            var workspaceInfo = new Lurp.Workspace.WorkspaceInfo(solution, gitRoot);
+            var result = Lurp.Workspace.WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
+            Assert.True(result.IsFresh);
+            Assert.Empty(result.Mismatches);
+        }
+        finally
+        {
+            store.Close();
+        }
+
+        // Also verify MCP full path now agrees (no false stale regression)
+        var args = new[] { $"--solution={SolutionPath}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus();
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("fresh", doc.RootElement.GetProperty("freshness").GetProperty("state").GetString());
+        Assert.Equal(0, doc.RootElement.GetProperty("freshness").GetProperty("changed_document_count").GetInt32());
+    }
+
+    [Fact]
     public async Task Status_ServesStaleData_WithFlag_StillReturnsPayload()
     {
         var snapshotId = await IndexAsync();
