@@ -19,7 +19,11 @@ internal static class McpServeHandler
             .WithTools<GetSourceTool>()
             .WithTools<NavigateTool>()
             .WithTools<FindSymbolTool>()
-            .WithTools<SearchTool>();
+            .WithTools<SearchTool>()
+            .WithTools<ImpactTool>()
+            .WithTools<DiffTool>()
+            .WithTools<GetSymbolTool>()
+            .WithTools<AnnotationsTool>();
 
         var host = builder.Build();
         await host.RunAsync();
