@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Tests.Mcp;
 
@@ -120,5 +122,85 @@ public sealed class McpParityTests : IntegrationTestBase
         Assert.True(directResults.Count >= 0);
         // At least parity in count for this small fixture (both should find Foo)
         Assert.Equal(directResults.Count > 0, toolResults > 0);
+    }
+
+    [Fact]
+    public async Task Impact_Parity_WithDirectTraverser()
+    {
+        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+        string symbolId;
+        using (var store = OpenStore(DbPath))
+            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First(id => store.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName?.Contains("ParityProj.Foo.Caller") == true);
+
+        var json = tool.LurpImpact(symbol: symbolId, direction: "downstream", max_depth: 3, max_paths: 50);
+        using var doc = JsonDocument.Parse(json);
+        var toolPaths = doc.RootElement.GetProperty("paths").GetArrayLength();
+
+        using var store2 = OpenStore(DbPath);
+        var traverser = new ImpactTraverser(store2, snapshotId, store2);
+        var direct = traverser.TraceImpact(symbolId, ImpactDirection.Downstream, null, null, 3);
+        // parity: counts should match when no filtering and same ordering
+        Assert.Equal(direct.Count, doc.RootElement.GetProperty("path_count_total").GetInt32());
+        Assert.True(toolPaths <= direct.Count);
+    }
+
+    [Fact]
+    public async Task Diff_Parity_WithDirectDiffer()
+    {
+        CreateProject("ParityDiffProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = "namespace ParityDiffProj { public class Foo { public void Bar() {} } }"
+        });
+        var snap1 = await RunFullIndexAsync(DbPath);
+        WriteFile("ParityDiffProj", "Models.cs", "namespace ParityDiffProj { public class Foo { public void Bar(int x) {} public void New() {} } }");
+        var snap2 = await RunIncrementalIndexAsync();
+        await using var session = CreateSession();
+        var tool = new DiffTool(session);
+        var json = tool.LurpDiff(from_snapshot: snap1, to_snapshot: snap2);
+        using var doc = JsonDocument.Parse(json);
+        var toolChanges = doc.RootElement.GetProperty("changes").GetArrayLength();
+        using var store = OpenStore(DbPath);
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
+        Assert.Equal(directChanges.Count, toolChanges);
+        Assert.Equal(directChanges.Count, doc.RootElement.GetProperty("change_count").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetSymbol_Parity_WithDirectStore()
+    {
+        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await using var session = CreateSession();
+        var tool = new GetSymbolTool(session);
+        string symbolId;
+        using (var store = OpenStore(DbPath))
+            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First();
+        var json = tool.LurpGetSymbol(symbol: symbolId, view: "summary");
+        using var doc = JsonDocument.Parse(json);
+        using var store2 = OpenStore(DbPath);
+        var direct = store2.GetSymbolInfo(symbolId, snapshotId);
+        Assert.Equal(direct?.FullyQualifiedName, doc.RootElement.GetProperty("fully_qualified_name").GetString());
+        Assert.Equal(symbolId, doc.RootElement.GetProperty("symbol_id").GetString());
+    }
+
+    [Fact]
+    public async Task GetAnnotations_Parity_WithDirectStore()
+    {
+        var snapshotId = await IndexFixtureAndGetSnapshot();
+        string symbolId;
+        using (var store = OpenStore(DbPath))
+        {
+            symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First();
+            store.SaveAnnotations(snapshotId, new[] { new AnnotationRecord(symbolId, "note", "parity") });
+        }
+        await using var session = CreateSession();
+        var tool = new AnnotationsTool(session);
+        var json = tool.LurpGetAnnotations(symbol: symbolId);
+        using var doc = JsonDocument.Parse(json);
+        using var store2 = OpenStore(DbPath);
+        var direct = store2.GetAnnotations(snapshotId, symbolId);
+        Assert.Equal(direct.Count, doc.RootElement.GetProperty("annotations").GetArrayLength());
     }
 }
