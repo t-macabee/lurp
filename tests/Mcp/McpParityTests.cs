@@ -203,4 +203,40 @@ public sealed class McpParityTests : IntegrationTestBase
         var direct = store2.GetAnnotations(snapshotId, symbolId);
         Assert.Equal(direct.Count, doc.RootElement.GetProperty("annotations").GetArrayLength());
     }
+
+    [Fact]
+    public async Task Timings_Parity_WithCliJson()
+    {
+        // Parity contract: lurp_timings (pinned snapshot) must equal --mode=timings --output=json (same snapshot).
+        // The CLI handler's JSON is { snapshot_id, total_ms, steps: [{step, elapsed_ms, percent}] } derived from store.GetTimings.
+        // The MCP tool reuses the same engine path; we verify envelope total_ms/steps match direct store computation
+        // which is byte-identical to what the CLI would emit for that snapshot.
+        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await using var session = CreateSession();
+        var tool = new TimingsTool(session);
+
+        var json = tool.LurpTimings(snapshot_id: snapshotId);
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
+        var toolTotal = doc.RootElement.GetProperty("total_ms").GetInt64();
+        var toolSteps = doc.RootElement.GetProperty("steps");
+
+        using var store = OpenStore(DbPath);
+        var direct = store.GetTimings(snapshotId);
+        var expectedTotal = direct.Sum(t => t.ElapsedMs);
+
+        Assert.Equal(expectedTotal, toolTotal);
+        Assert.Equal(direct.Count, toolSteps.GetArrayLength());
+
+        int idx = 0;
+        foreach (var el in toolSteps.EnumerateArray())
+        {
+            Assert.Equal(direct[idx].StepName, el.GetProperty("step").GetString());
+            Assert.Equal(direct[idx].ElapsedMs, el.GetProperty("elapsed_ms").GetInt64());
+            var expectedPct = expectedTotal > 0 ? Math.Round((double)direct[idx].ElapsedMs / expectedTotal * 100, 1) : 0;
+            Assert.Equal(expectedPct, el.GetProperty("percent").GetDouble());
+            idx++;
+        }
+    }
 }

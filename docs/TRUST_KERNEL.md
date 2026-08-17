@@ -50,9 +50,9 @@ cited below. Evidence cites git commits and named tests directly.
 | MCP Phase | Description | Status | Evidence |
 |---|---|---|---|
 | 1 | Read surface (`lurp_context` via MCP) | ✅ COMPLETE | `McpServeHandler`, `ContextTool`, `tests/Mcp/McpContextTests.cs` |
-| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool` |
+| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`) |
 | 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs` |
-| 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `docs/MCP_INDEX_EXECUTION_MODEL.md` gates 4.1/4.2; `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 |
+| 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 of commit `175e52d` |
 
 ## Architecture Phase completion status
 
