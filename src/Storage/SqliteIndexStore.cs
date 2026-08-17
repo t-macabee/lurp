@@ -67,6 +67,14 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
     }
 
+    public void EnableQueryOnly()
+    {
+        EnsureOpen();
+        using var command = _connection!.CreateCommand();
+        command.CommandText = "PRAGMA query_only=ON;";
+        command.ExecuteNonQuery();
+    }
+
     public void Close()
     {
         if (_disposed)

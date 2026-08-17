@@ -1,4 +1,5 @@
 ﻿using Lurp.Handlers;
+using Lurp.Mcp;
 using Lurp.Workspace;
 
 namespace Lurp;
@@ -65,7 +66,10 @@ public static class Program
             Sync(AnnotationHandler.RunAnnotate)),
         new("get-annotations", "Retrieve annotations for a symbol.",
             ["--symbol=", "--snapshot="],
-            Sync(AnnotationHandler.RunGetAnnotations))
+            Sync(AnnotationHandler.RunGetAnnotations)),
+        new("serve", "Run an MCP server over the index (stdio).",
+            ["--solution="],
+            McpServeHandler.Run)
     ];
 
     private static Func<string[], Task> Sync(Action<string[]> handler)

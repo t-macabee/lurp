@@ -25,6 +25,8 @@
     <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />   
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />   
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />   
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageReference Include="System.IO.Hashing" Version="10.0.10" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.8.2" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.8.2" ExcludeAssets="runtime" />

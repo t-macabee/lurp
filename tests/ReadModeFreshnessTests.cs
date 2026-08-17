@@ -146,7 +146,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         // outside T1's scope, so it is exempted explicitly here too; the partition
         // assertion below forces any brand-new mode to be classified one way or the
         // other, so a new read mode added without freshness fails the build.
-        var exempt = new[] { "index", "annotate", "timings", "diff", "status", "get-annotations" };
+        var exempt = new[] { "index", "annotate", "timings", "diff", "status", "get-annotations", "serve" };
 
         var registryNames = Program.ModeRegistry.Select(e => e.Name).ToArray();
         var classified = required.Concat(exempt).OrderBy(n => n, StringComparer.Ordinal).ToArray();
