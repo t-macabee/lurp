@@ -23,7 +23,9 @@ internal static class McpServeHandler
             .WithTools<ImpactTool>()
             .WithTools<DiffTool>()
             .WithTools<GetSymbolTool>()
-            .WithTools<AnnotationsTool>();
+            .WithTools<AnnotationsTool>()
+            .WithTools<StatusTool>()
+            .WithTools<RefreshTool>();
 
         var host = builder.Build();
         await host.RunAsync();
