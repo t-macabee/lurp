@@ -30,6 +30,56 @@ Or run the built binary directly:
 Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
 `--solution=` and `--output-dir=`.
 
+## MCP server (`--mode=serve`)
+
+Lurp also runs as an MCP server over stdio (13 tools via `tools/list`, verified
+2026-08-17 in `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §Tools present):
+`lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations,
+lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate,
+lurp_search, lurp_timings, lurp_impact` — `lurp_timings` is the 13th tool (added
+2026-08-17). There is no `lurp_annotate` tool by design: the MCP session opens
+SQLite with `PRAGMA query_only=ON` (`src/Storage/SqliteIndexStore.cs:74`,
+`src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`), so the transport
+is read-only; annotation writes remain CLI-only (`--mode=annotate`).
+
+Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
+and `Microsoft.Hosting.Lifetime` / `ModelContextProtocol` logs are routed to
+stderr (`src/Mcp/McpServeHandler.cs:Configure<ConsoleLoggerOptions>(o =>
+o.LogToStandardErrorThreshold = LogLevel.Trace)` plus `IOutputSink` plumbing);
+regression enforced by `tests/Mcp/McpStdioPurityTests.cs`. Report §J confirms
+158 stdout lines (eNoteV2) and 129 lines (eCommerce) with zero leaks.
+
+`--mode=serve` requires an existing indexed snapshot before it can start — it
+will not build one on first launch. `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`)
+throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is
+null. Index first via CLI (`--mode=index`) or MCP `lurp_index`, then serve:
+
+```bash
+# 1. Index once (creates index.db with a snapshot)
+dotnet run --project src -- --mode=index --solution=path/to/Your.sln --output-dir=./out
+
+# 2. Serve from that output dir (pins that snapshot)
+dotnet run --project src -- --mode=serve --solution=path/to/Your.sln --output-dir=./out
+```
+
+Example MCP client config (stdio):
+
+```json
+{
+  "mcpServers": {
+    "lurp": {
+      "command": "dotnet",
+      "args": ["path/to/Lurp.dll", "--mode=serve", "--solution=path/to/Your.sln", "--output-dir=./out"]
+    }
+  }
+}
+```
+
+Pin semantics: every read tool serves the snapshot pinned at startup, not
+`latest`. After any `lurp_index` completion, reads keep returning the old
+`snapshot_id` until `lurp_refresh {}` (and if `changed:true`, `lurp_refresh
+{"ack": new_id}`) — verified in report §Pin semantics / §A–B.
+
 ## The mental model
 
 | Command | What it does |

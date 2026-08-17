@@ -218,6 +218,22 @@ interfaces. They do not re-run Roslyn analysis (except `--mode=status
 | `TimingsHandler` | Per-step performance data |
 | `AnnotationHandler` | Write annotations (`annotate`) and read them (`get-annotations`) |
 
+MCP surface (`--mode=serve`, `src/Mcp/McpServeHandler.cs`): 13 tools via
+`tools/list` (`lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index,
+lurp_get_annotations, lurp_status, lurp_get_source, lurp_context,
+lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` —
+13th `lurp_timings` added 2026-08-17, verified in
+`.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §Tools present;
+no `lurp_annotate` by design). MCP session is read-only
+(`PRAGMA query_only=ON`, `src/Storage/SqliteIndexStore.cs:74` /
+`src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`) and stdio-pure
+(`ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` +
+`IOutputSink` plumbing, `tests/Mcp/McpStdioPurityTests.cs`; report §J: 0 leaks
+over 158/129 stdout lines). `--mode=serve` requires an existing snapshot at
+startup (`src/Mcp/McpSessionContext.cs:47` throws `ERROR: No snapshots found
+in the database` if `GetLatestSnapshotId()` is null) and pins that snapshot
+until `lurp_refresh` advances it.
+
 ## 6. Context Capsules
 
 A context capsule is a bounded, evidence-backed package of relevant code
@@ -320,8 +336,10 @@ Explicitly outside the core:
   correct facts and stable machine-readable retrieval.
 - **Change simulation / preflight** — withdrawn from the product. Pre-computing
   the consequences of hypothetical source edits is outside core scope.
-- **Premature daemon/server architecture** — begin with a local CLI and
-  persistent SQLite store.
+- **Premature daemon/server architecture** — the core remains a local CLI
+  and persistent SQLite store; the MCP stdio server (`--mode=serve`,
+  `src/Mcp/McpServeHandler.cs`) is a thin, pinned-snapshot, read-only
+  transport over that store, not a background daemon or autonomous editor.
 
 ## 9. Validation Strategy
 
