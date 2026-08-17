@@ -62,10 +62,7 @@ internal sealed class ContextTool
     {
         try
         {
-            var snapshotId = _session.PinnedSnapshotId;
-
-            if (!string.IsNullOrEmpty(snapshot_id) && !string.Equals(snapshot_id, snapshotId, StringComparison.Ordinal))
-                throw new McpProtocolException($"snapshot mismatch: pinned to '{snapshotId}'; got '{snapshot_id}'. Call with pinned snapshot or omit snapshot_id.", McpErrorCode.InvalidParams);
+            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             var normalizedFile = HandlerBootstrap.NormalizeDocumentPath(file);
             var hasSymbol = !string.IsNullOrEmpty(symbol);
@@ -147,7 +144,7 @@ internal sealed class ContextTool
                     ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
                     : null;
 
-                var freshness = HandlerBootstrap.FreshnessJson(_session.FreshnessStamp);
+                var freshness = _session.GetFreshnessJson();
 
                 var envelope = new
                 {
@@ -191,7 +188,7 @@ internal sealed class ContextTool
             using var capsuleDoc = JsonDocument.Parse(capsuleJson);
             var capsuleElement = capsuleDoc.RootElement.Clone();
 
-            var freshnessJson = HandlerBootstrap.FreshnessJson(_session.FreshnessStamp);
+            var freshnessJson = _session.GetFreshnessJson();
 
             var capsuleEnvelope = new
             {

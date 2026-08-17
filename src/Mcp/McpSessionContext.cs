@@ -1,6 +1,7 @@
 using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
+using ModelContextProtocol;
 
 namespace Lurp.Mcp;
 
@@ -35,6 +36,28 @@ internal sealed class McpSessionContext : IAsyncDisposable
         Console.Error.WriteLine($"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}");
 
         return new McpSessionContext(store, snapshotId, stamp);
+    }
+
+    /// <summary>
+    ///     Validates that <paramref name="requestedSnapshotId"/> matches the pinned snapshot.
+    ///     Returns the pinned snapshot id when valid, otherwise throws <see cref="McpProtocolException"/> with <c>InvalidParams</c>.
+    ///     Shared across all MCP tools to avoid duplicated checks.
+    /// </summary>
+    public string RequirePinnedSnapshot(string? requestedSnapshotId)
+    {
+        if (!string.IsNullOrEmpty(requestedSnapshotId) && !string.Equals(requestedSnapshotId, PinnedSnapshotId, StringComparison.Ordinal))
+            throw new McpProtocolException($"snapshot mismatch: session pinned to '{PinnedSnapshotId}'; got '{requestedSnapshotId}'. Call with pinned snapshot or omit snapshot_id.", McpErrorCode.InvalidParams);
+        return PinnedSnapshotId;
+    }
+
+    public FreshnessStamp GetFreshness()
+    {
+        return WorkspaceFreshness.CheckFreshnessCheap(Store, Store, PinnedSnapshotId, FreshnessMode.Auto);
+    }
+
+    public object GetFreshnessJson()
+    {
+        return HandlerBootstrap.FreshnessJson(GetFreshness());
     }
 
     public ValueTask DisposeAsync()

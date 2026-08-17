@@ -15,7 +15,11 @@ internal static class McpServeHandler
         builder.Services.AddSingleton(session);
         builder.Services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithTools<ContextTool>();
+            .WithTools<ContextTool>()
+            .WithTools<GetSourceTool>()
+            .WithTools<NavigateTool>()
+            .WithTools<FindSymbolTool>()
+            .WithTools<SearchTool>();
 
         var host = builder.Build();
         await host.RunAsync();
