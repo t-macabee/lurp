@@ -45,6 +45,15 @@ cited below. Evidence cites git commits and named tests directly.
 | 12: Phase 9/10 gap audit | Done | Backlog in "Order 12 findings" below; four `SemanticDiffer` `SignatureFormat` characterization tests live |
 | 13: Phase 9/10 implementation | Done | `CallsEdgeExtractor` records resolved operators/casts as `Calls`; covered by `GoldenEdgeTests` + parity tests |
 
+## MCP Server Phase completion status
+
+| MCP Phase | Description | Status | Evidence |
+|---|---|---|---|
+| 1 | Read surface (`lurp_context` via MCP) | ✅ COMPLETE | `McpServeHandler`, `ContextTool`, `tests/Mcp/McpContextTests.cs` |
+| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool` |
+| 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs` |
+| 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `docs/MCP_INDEX_EXECUTION_MODEL.md` gates 4.1/4.2; `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 |
+
 ## Architecture Phase completion status
 
 | Phase | Description | Status | Evidence |

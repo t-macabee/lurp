@@ -13,6 +13,7 @@ internal static class McpServeHandler
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddSingleton(session);
+        builder.Services.AddSingleton<McpIndexSessionState>();
         builder.Services.AddMcpServer()
             .WithStdioServerTransport()
             .WithTools<ContextTool>()
@@ -25,7 +26,8 @@ internal static class McpServeHandler
             .WithTools<GetSymbolTool>()
             .WithTools<AnnotationsTool>()
             .WithTools<StatusTool>()
-            .WithTools<RefreshTool>();
+            .WithTools<RefreshTool>()
+            .WithTools<IndexTool>();
 
         var host = builder.Build();
         await host.RunAsync();
