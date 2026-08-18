@@ -11,7 +11,7 @@ serves retrieval, semantic diffs, impact paths, and token-bounded context
 capsules. Index once, query as many times as you want, and get back exact
 source with evidence levels each time.
 
-## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)**
+## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
 An interactive map of how Lurp structures an eCommerce codebase for agent
 consumption: symbols, relationships, evidence levels, and capsule boundaries
