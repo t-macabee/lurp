@@ -19,7 +19,7 @@ public static class Program
             ["--solution=", "--strategy=", "--output-json=", "--skip-adapter=", "--skip-diff", "--verbose", "--force"],
             a => IndexHandler.Run(a)),
         new("get-source", "Retrieve source text for a document by relative path (--document=).",
-            ["--document=", "--snapshot=", "--freshness=", "--require-fresh", "--quiet"],
+            ["--document=", "--start-line=", "--end-line=", "--context-lines=", "--snapshot=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(GetSourceHandler.Run)),
         new("get-symbol", "Look up symbol metadata.",
             [

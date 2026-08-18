@@ -43,6 +43,9 @@ internal static class HelpText
 
         // get-source
         ["--document="] = "Relative path of the document to retrieve.",
+        ["--start-line="] = "1-based first line to return (inclusive, requires --document=).",
+        ["--end-line="] = "1-based last line to return (inclusive, requires --document=).",
+        ["--context-lines="] = "Extra lines of context around the --start-line/--end-line window (symmetric, 1-based).",
 
         // get-symbol
         ["--view="] = "What to return: metadata | signature | body | declaration | containing-type | surrounding.",
