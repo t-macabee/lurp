@@ -20,7 +20,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
 codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=search`,
-`--mode=context`, etc.) — you cannot index a subset up front.
+`--mode=context`, etc.). You cannot index a subset up front.
 
 ## Read-command options
 
@@ -35,11 +35,11 @@ Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=i
 
 Freshness is delivered in two tiers, because two payload shapes exist:
 
-- **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code — `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
+- **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code. `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
 - **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `find-symbol`, `impact`, `context`, `navigate`, and `get-symbol --view=metadata`.
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
-**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` — for example to `navigate` — and resolves to the same symbol.
+**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
 
 ## Modes
 
@@ -79,7 +79,7 @@ Retrieve source text for a document.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 
-Also accepts the shared [read-command options](#read-command-options). The source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code — never as a JSON wrapper.
+Also accepts the shared [read-command options](#read-command-options). The source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper.
 
 ---
 
@@ -149,7 +149,7 @@ Also accepts the shared [read-command options](#read-command-options).
 
 `declarationCount` is scoped to the requested snapshot, so a non-partial type reports `1` however many historical declarations retention still holds; a partial type reports its true multiplicity in that snapshot.
 
-The payload carries a `locations` array — one entry per declaration in the snapshot, each `{ document_path, start_line, end_line, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`.
+The payload carries a `locations` array: one entry per declaration in the snapshot, each `{ document_path, start_line, end_line, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`.
 
 ---
 
@@ -171,7 +171,7 @@ Resolve an indexed declaration by file and line.
 
 Also accepts the shared [read-command options](#read-command-options); the JSON payload embeds the `freshness` block.
 
-Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; the reported `start_line` round-trips — passing it back as `--line=` resolves to the same symbol.
+Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; the reported `start_line` round-trips, so passing it back as `--line=` resolves to the same symbol.
 
 ---
 
@@ -208,7 +208,7 @@ Trace the impact path of a changed symbol.
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
-| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges — direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. |
+| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. |
 | `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
@@ -234,7 +234,7 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached — typically `relevantTests` and `secondDegreeContext`. That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevantTests` and `secondDegreeContext`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
@@ -365,7 +365,7 @@ Retrieve annotations for a symbol.
 
 ## Snapshot Lifecycle
 
-Snapshots are immutable — an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
+Snapshots are immutable: an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
 
 ```
 Hashing documents and detecting changes... done (0 changed, 402 unchanged).
@@ -389,14 +389,14 @@ Lurp runs as an MCP server over stdio, exposing 13 read-only tools via
 `tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index,
 lurp_get_annotations, lurp_status, lurp_get_source, lurp_context,
 lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact`. There is
-no `lurp_annotate` tool by design — the MCP session opens SQLite with
+no `lurp_annotate` tool by design. The MCP session opens SQLite with
 `PRAGMA query_only=ON`, so the transport is read-only; annotation writes remain
 CLI-only (`--mode=annotate`).
 
 Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
 and framework logs are routed to stderr.
 
-`--mode=serve` requires an existing indexed snapshot at startup — it throws
+`--mode=serve` requires an existing indexed snapshot at startup. It throws
 `ERROR: No snapshots found in the database` if no snapshot exists. Index first
 via CLI (`--mode=index`) or MCP `lurp_index`, then serve:
 

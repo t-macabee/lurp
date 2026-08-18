@@ -50,8 +50,8 @@ cited below. Evidence cites git commits and named tests directly.
 | MCP Phase | Description | Status | Evidence |
 |---|---|---|---|
 | 1 | Read surface (`lurp_context` via MCP) | ✅ COMPLETE | `McpServeHandler`, `ContextTool`, `tests/Mcp/McpContextTests.cs` |
-| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | 13 MCP tools via `tools/list` — `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations, lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` (13th `lurp_timings` added 2026-08-17, no `lurp_annotate` by design). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP session is read-only — `PRAGMA query_only=ON` (`src/Storage/SqliteIndexStore.cs:74`, `src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`); annotation writes remain CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`). Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs` (report `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §J: 158/129 stdout lines, 0 leaks) |
-| 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs`. `--mode=serve` requires existing snapshot at startup — `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`) throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is null; it does not bootstrap a fresh index |
+| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | 13 MCP tools via `tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations, lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` (13th `lurp_timings` added 2026-08-17, no `lurp_annotate` by design). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP session is read-only, `PRAGMA query_only=ON` (`src/Storage/SqliteIndexStore.cs:74`, `src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`); annotation writes remain CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`). Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs` (report `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §J: 158/129 stdout lines, 0 leaks) |
+| 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs`. `--mode=serve` requires existing snapshot at startup, `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`) throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is null; it does not bootstrap a fresh index |
 | 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 of commit `175e52d` |
 
 ## Architecture Phase completion status
@@ -69,10 +69,10 @@ cited below. Evidence cites git commits and named tests directly.
 | 9 | Polymorphism and dispatch candidates | ✅ Done | Order 12 + Order 13 + G3, G5, G6, G7 |
 | 10 | Structured semantic snapshot diffs | ✅ Done | Order 12 + G1, G2; live-verified (§F) scratch `InstrumentTypeService.LurpDiffTestMethod` → `symbol_added` + `edge_added Declares` (8 changes, 0 skipped, no misclassify) |
 | 11 | Generated-code provenance | ✅ Done | Orders 10, 11 |
-| 12 | ASP.NET, DI, MediatR, EF, serialization, test adapters | ✅ Done | All 6 adapters; `TestedBy` granularity fix `63cfaf4`; `GoldenAdapterTests.TestAdapter_TestProjectProducesTestedBy` — live-verified §G: neither solution uses MediatR, 0 MediatR edges, no null warnings, framework_derived 1466/89 |
+| 12 | ASP.NET, DI, MediatR, EF, serialization, test adapters | ✅ Done | All 6 adapters; `TestedBy` granularity fix `63cfaf4`; `GoldenAdapterTests.TestAdapter_TestProjectProducesTestedBy`, live-verified §G: neither solution uses MediatR, 0 MediatR edges, no null warnings, framework_derived 1466/89 |
 | 13 | Reflection evidence ladder | ✅ Done | See below |
-| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, `semantic_causes` — live-verified §D & §H (see Phase 14) |
-| 15 | Context capsules with source and token budgets | ✅ Done | See below — live-verified §E (RelevantTestsTierBuilder fix) |
+| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, `semantic_causes`, live-verified §D & §H (see Phase 14) |
+| 15 | Context capsules with source and token budgets | ✅ Done | See below, live-verified §E (RelevantTestsTierBuilder fix) |
 | 16 | Rebase simulations and audits | ✅ Done → Removed in Aug 2026 cleanup |
 | 17 | Optimize incremental updates from measurements | ✅ Done | `CallsEdgeExtractor` 2051→1944 ms (Lurp) at time of record; member-edge coverage in `GoldenEdgeTests` |
 
@@ -89,7 +89,7 @@ All in `src/Workspace/`, registered as `"reflection-v1"`, covered by `GoldenRefl
 
 ### Phase 15 verification: Context Capsules
 
-All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery` — was build-breaking positional-arg bug, now fixed), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`. Live-verified on both solutions (§E): 3–4 real anchors (controller action, service method, interface method with 2+ impls) all exit 0 with `relevant_tests` tier present, `estimatedTokens` ≤ `content-budget` (eNoteV2 571/283/388 at 1000, 8000 at default), `max-hops 1→3` changes expansion — `RelevantTestsTierBuilder` no longer crashes and tier actually produces results.
+All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery`, was build-breaking positional-arg bug, now fixed), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`. Live-verified on both solutions (§E): 3–4 real anchors (controller action, service method, interface method with 2+ impls) all exit 0 with `relevant_tests` tier present, `estimatedTokens` ≤ `content-budget` (eNoteV2 571/283/388 at 1000, 8000 at default), `max-hops 1→3` changes expansion. `RelevantTestsTierBuilder` no longer crashes and tier actually produces results.
 
 Closed capsule decisions: no occurrence multigraph (one evidence-bearing relation edge, not exhaustive call-site storage); no generated anchor narrative; architectural constraints come from snapshot annotations (no second JSON authority).
 
@@ -105,13 +105,13 @@ Closed capsule decisions: no occurrence multigraph (one evidence-bearing relatio
 | Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ verified live: eNoteV2 `IEntity.Id` pure inherited `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` `9/9/0`; eCommerce `IBaseCRUDService` mixed 242→186→1 is not a bug (79 compiler_proved+5 possible) |
 | Cycle detection (`visited` set) | ✅ |
 | Truncation explanation (`Truncated`, `TruncationReason`) | ✅ verified live: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor |
-| Semantic causes (`SemanticCauses`) | ✅ verified live: impact `semantic_causes` populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run — re-run shows 0 WARNING lines |
+| Semantic causes (`SemanticCauses`) | ✅ verified live: impact `semantic_causes` populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run, re-run shows 0 WARNING lines |
 
 Tests: `ImpactTraverserTests.cs`.
 
 ### Architecture §10 definitive-version checklist
 
-All criteria ✅ except the removed simulation/audit modes (—). One SQLite DB (migrations 1–27); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged — `No changes detected. Skipping incremental index.` — counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
+All criteria ✅ except the removed simulation/audit modes (n/a). One SQLite DB (migrations 1–27); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged: `No changes detected. Skipping incremental index.` counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
 
 ---
 
@@ -135,7 +135,7 @@ Each item states the resulting current state. Citations name live tests or dated
 
 ### Phase 10 (structured semantic diff)
 
-Already covered by `SignatureFormat` (`IncludeNullableReferenceTypeModifier`, `IncludeParamsRefOut`, `IncludeExplicitInterface`, `IncludeTypeConstraints`) — locked by `SemanticDifferTests.cs`: S1 `S1_NullableAnnotationChanged`, S2 `S2_RefParameterModifierChanged`, S5 `S5_OperatorOverloadSignatureChanged`, S6 `S6_ConversionOperatorSignatureChanged`.
+Already covered by `SignatureFormat` (`IncludeNullableReferenceTypeModifier`, `IncludeParamsRefOut`, `IncludeExplicitInterface`, `IncludeTypeConstraints`), locked by `SemanticDifferTests.cs`: S1 `S1_NullableAnnotationChanged`, S2 `S2_RefParameterModifierChanged`, S5 `S5_OperatorOverloadSignatureChanged`, S6 `S6_ConversionOperatorSignatureChanged`.
 
 Remaining gaps, all closed: S8 interfaces key (`interfaces_changed`); S9 `isRecord` (`record_changed`); S10 persisted-but-uncompared modifiers (`metadata_changed` + field); S11 `semantic_changes` invalidation (`semantic_causes` on impact paths); S12 declaration move to another file (`symbol_relocated`, covered by `SemanticDifferTests.cs` relocation tests).
 
@@ -184,7 +184,7 @@ Narrow D3/D4: capture compiler-resolved overloaded operators and user-defined ca
 
 Observed: (1) no source-generator packages in any `.csproj`; (2) all `.g.cs` under `obj/` (compiler implicit-usings, not SG output); (3) `IsBuildOutputPath` filters `obj/`+`bin/`; (4) `GeneratedTreesIncluded` hardcoded `false`; (5) plumbing proven correct via injected-`.g.cs` test `GeneratedCodeProvenanceTests.GeneratedFile_MarksDeclarationsAndCrossGeneratedEdges`. Decision: `GeneratedTreesIncluded=false` is accurate, not a gap. `GeneratorDriver` execution correctly postponed. Revisit if a NuGet SG package is added or a generated file appears outside `obj/` with meaningful symbols.
 
-Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and reflection lineages (`MayDispatchTo`, `StaticallyCalls`, all four reflection kinds) — parity with member-edge/adapter lineages. The generated *set* is authoritative by path (`DocumentId.ToString()` = git-relative path, same form `EdgeLocationResolver.IsGenerated` normalizes).
+Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and reflection lineages (`MayDispatchTo`, `StaticallyCalls`, all four reflection kinds), parity with member-edge/adapter lineages. The generated *set* is authoritative by path (`DocumentId.ToString()` = git-relative path, same form `EdgeLocationResolver.IsGenerated` normalizes).
 
 ---
 
@@ -193,9 +193,9 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | Date | Area | Fix | Evidence |
 |---|---|---|---|
 | 08-05 | Deterministic snapshot IDs | `SnapshotIdentity.Create` production default; `SnapshotId.New()` tests-only | `SnapshotIdentityCompletenessTests.cs` |
-| 08-05 | `SqliteIndexStore` decomposition | Facade forwards to leaf stores; `EdgeStore`/`SearchStore` removed | — |
+| 08-05 | `SqliteIndexStore` decomposition | Facade forwards to leaf stores; `EdgeStore`/`SearchStore` removed | n/a |
 | 08-06 | Incremental doc-scoped re-extraction | `ExtractReplacementFacts` + `PrepareSnapshotData` narrow in lockstep; cross-doc refresh load-bearing; closures seed from binding incompleteness; adapters honor scope; doc-less binding falls back to containing type; CLI doc paths normalized to stored form | historical eNoteV2 run |
-| 08-07 | `--solution=` on every mode | `CliFlagValidation.GlobalFlags`; `ResolveOutputDir` fallback; `LURP_SOLUTION_PATH` env | — |
+| 08-07 | `--solution=` on every mode | `CliFlagValidation.GlobalFlags`; `ResolveOutputDir` fallback; `LURP_SOLUTION_PATH` env | n/a |
 | 08-07 | `impact` default `--max-depth` 10→3 | `ImpactHandler.Run` | finding 9 |
 | 08-07 | `context`/`impact` accept bare FQN/doc-comment ID | `HandlerBootstrap.ResolveSymbolArg` | finding 1, `d63d251` |
 | 08-10 | Snapshot identity covers compilation inputs | `MetadataReferenceIdentities` (SHA-256 of assembly bytes) + `CompilationOptionsFingerprints`; migration 27 nullable | R2 (`AssemblyIdentityGranularityTests.cs`) |
@@ -209,7 +209,7 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | 08-13 | T4: 1-based line numbers on emit | `LineNumbers.ToOneBased` single choke point; storage stays 0-based | `LineNumberBaseTests.cs` |
 | 08-13 | T3: lightweight "where is X defined?" | `find-symbol`/`get-symbol --view=metadata` gain `locations[]`; `navigate` gains 1-based lines | `SymbolLocationRetrievalTests.cs` |
 | 08-14 | R8 (3 live-test defects) | (1) full-index diff after orphan cleanup; (2) `--snapshot=latest` resolved; (3) punctuation-only search returns 0 | `LIVE_TEST_FIXES.md` Tasks 1–3; `SemanticDifferTests`, `CliExitSmokeTests.ResolveSnapshotId_Latest_*`, `StoreReadPathTests`/`CapsuleCharacterizationTests` |
-| 08-17 | MCP stdout-purity + `lurp_status` freshness + `lurp_timings` (13th tool) | Stdout leak: `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` (`src/Mcp/McpServeHandler.cs`) + `IOutputSink` plumbing for `Console.*` in `src/Workspace/` — every stdout line now JSON (`tests/Mcp/McpStdioPurityTests.cs`). `lurp_status` full-method freshness: pinned snapshot now loaded with documents (was metadata-only, mis-reported 397/402 stale). `lurp_timings` 13th MCP tool added. | `McpStdioPurityTests` Passed 1/1; report `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §H (fresh 0) + §J (0 leaks /158 + /129 lines) + §Tools present (13 tools) |
+| 08-17 | MCP stdout-purity + `lurp_status` freshness + `lurp_timings` (13th tool) | Stdout leak: `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` (`src/Mcp/McpServeHandler.cs`) + `IOutputSink` plumbing for `Console.*` in `src/Workspace/`, every stdout line now JSON (`tests/Mcp/McpStdioPurityTests.cs`). `lurp_status` full-method freshness: pinned snapshot now loaded with documents (was metadata-only, mis-reported 397/402 stale). `lurp_timings` 13th MCP tool added. | `McpStdioPurityTests` Passed 1/1; report `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §H (fresh 0) + §J (0 leaks /158 + /129 lines) + §Tools present (13 tools) |
 
 ---
 
@@ -251,7 +251,7 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 
 ## Reclassified as done
 
-- **Deterministic snapshot IDs** (`SnapshotIdentity.Create` default; `SnapshotId.New()` tests-only) — `SnapshotIdentityCompletenessTests.cs`.
+- **Deterministic snapshot IDs** (`SnapshotIdentity.Create` default; `SnapshotId.New()` tests-only), `SnapshotIdentityCompletenessTests.cs`.
 - **`SqliteIndexStore` decomposition** into leaf stores (08-05).
 - **Incremental re-extraction document-scoped** with lockstep delete/extract (08-06).
 - **Snapshot identity covers compilation inputs** (NuGet refs + compilation options hashed; migration 27) (08-10).

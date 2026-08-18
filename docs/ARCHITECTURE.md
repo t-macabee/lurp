@@ -1,7 +1,7 @@
 # Lurp Architecture
 
-**Status:** Design reference. The architecture described here is fully implemented
-— see `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
+**Status:** Design reference. The architecture described here is fully implemented.
+See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
 **Current:** schema v27, extractor 1.6.0, tool 1.1.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
@@ -43,17 +43,17 @@ There is no translation layer between a symbol ID and its source.
 
 One primary SQLite database (`index.db` in the output directory) is the
 canonical persisted state. JSON is appropriate for CLI response output and
-one-way export — it is never a parallel authority. Snapshot identity is
+one-way export, but it is never a parallel authority. Snapshot identity is
 content-derived and content-addressed: when source content and compilation
 inputs are unchanged, a re-index reuses the existing snapshot.
 
 Logical boundaries:
 
-1. **Repository source files** — authoritative content.
-2. **Roslyn compilation** — authoritative static semantics for a build config.
-3. **`index.db`** — persistent materialized snapshot.
-4. **Context capsules** — task-specific projections of stored facts + source.
-5. **Annotations** — human/agent interpretation, kept separate from compiler facts.
+1. **Repository source files**: authoritative content.
+2. **Roslyn compilation**: authoritative static semantics for a build config.
+3. **`index.db`**: persistent materialized snapshot.
+4. **Context capsules**: task-specific projections of stored facts + source.
+5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
 copied method bodies the canonical representation. Schema migrations: 27
@@ -153,12 +153,12 @@ entry, not a new extractor.
 
 ## 8. Non-Negotiable Design Rules
 
-1. **Read-only relationship to source** — may read, index, report consequences; must not apply fixes or modify the working tree.
-2. **C#/.NET specialization** — remain Roslyn-native; do not weaken the semantic model for multiple languages.
-3. **Fact before interpretation** — record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
-4. **Unknown is a valid result** — make each blind spot the strongest honest form available.
-5. **Schema stability** — every field is a contract; renaming/removing requires a major revision.
-6. **Roslyn boundary** — Roslyn analysis belongs in `src/Workspace/` and `src/Adapters/` only; never in `src/Storage/`.
+1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes or modify the working tree.
+2. **C#/.NET specialization**: remain Roslyn-native; do not weaken the semantic model for multiple languages.
+3. **Fact before interpretation**: record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
+4. **Unknown is a valid result**: make each blind spot the strongest honest form available.
+5. **Schema stability**: every field is a contract; renaming/removing requires a major revision.
+6. **Roslyn boundary**: Roslyn analysis belongs in `src/Workspace/` and `src/Adapters/` only; never in `src/Storage/`.
 
 ## 9. What Not to Build
 

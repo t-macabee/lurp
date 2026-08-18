@@ -1,26 +1,29 @@
-# Lurp — a Roslyn semantic map for .NET agents
+# Lurp: a Roslyn semantic map for .NET agents
 
 [![CI](https://github.com/t-macabee/lurp/actions/workflows/ci.yml/badge.svg)](https://github.com/t-macabee/lurp/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/lurp)](https://www.nuget.org/packages/lurp)
 
-Lurp indexes a .NET solution into SQLite via Roslyn so an agent fetches a small,
-sufficient code neighborhood instead of re-grepping and re-parsing per question.
-It loads a solution through the compiler, stores symbols, typed relationships,
-source spans, and provenance in one database, then serves retrieval, semantic
-diffs, impact paths, and token-bounded context capsules. The result is a durable
-map: index once, query many times, get back exact source with evidence levels.
+Lurp indexes a .NET solution into SQLite with Roslyn, so an agent gets a small,
+sufficient code neighborhood instead of re-grepping and re-parsing the whole
+thing for every question. It loads the solution through the compiler and stores
+symbols, typed relationships, source spans, and provenance in one database, then
+serves retrieval, semantic diffs, impact paths, and token-bounded context
+capsules. Index once, query as many times as you want, and get back exact
+source with evidence levels each time.
 
 ## Why this exists
 
-An agent working a C# codebase today loops search → read → guess, re-opening and
-re-parsing the whole solution for every question. Context windows fill with
-irrelevant source; the agent rediscovers the same call graph on each turn.
+An agent working a C# codebase today loops search → read → guess, reopening and
+re-parsing the whole solution for every question. Context windows fill up with
+irrelevant source, and the agent ends up rediscovering the same call graph on
+every turn.
 
-Lurp inverts that cost. A one-time index builds a snapshot-bound semantic graph.
-Every subsequent query reads persisted facts — no Roslyn reload, no re-grep.
-Capsules return the smallest sufficient neighborhood for a task, with each fact
-stating its provenance (`compiler_proved` → `runtime_unknown`) and every omitted
-tier named for a follow-up fetch.
+Lurp flips that cost around. A one-time index builds a snapshot-bound semantic
+graph. After that, every query just reads persisted facts: no Roslyn reload, no
+re-grep. Capsules return the smallest neighborhood that's actually sufficient
+for the task, each fact states its provenance (`compiler_proved` →
+`runtime_unknown`), and any omitted tier is named so you can fetch it
+separately.
 
 ## The mental model
 
@@ -104,11 +107,11 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Limitations
 
-- **Single active TFM/configuration** — one snapshot per index run.
-- **Source generators not executed** — `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
-- **Reflection string-literal candidates are `name_candidate`** — not `compiler_proved`.
-- **3-snapshot retention** — older snapshots and their document versions are pruned automatically.
-- **Workspace must be restorable** — `MSBuildWorkspace` requires a successful restore; no index without it.
+- **Single active TFM/configuration**: one snapshot per index run.
+- **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
+- **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
+- **3-snapshot retention**: older snapshots and their document versions are pruned automatically.
+- **Workspace must be restorable**: `MSBuildWorkspace` requires a successful restore; no index without it.
 
 ## Performance
 
@@ -129,9 +132,9 @@ parameter-type matching are postponed by design (see
 
 ## Documentation & license
 
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — product model, storage, pipeline, rules.
-- [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) — commands, options, output shapes, snapshot lifecycle, MCP.
-- MIT license — see [LICENSE](LICENSE).
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
+- [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- MIT license, see [LICENSE](LICENSE).
 
 Also MCP: `--mode=serve` exposes 13 read-only tools (`lurp_context`, `lurp_impact`,
 …) over stdio. Index first, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
