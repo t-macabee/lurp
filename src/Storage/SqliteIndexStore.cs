@@ -439,6 +439,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _annotations!.GetAnnotations(snapshotId, symbolId);
     }
 
+    public AnnotationPage GetAnnotationsPage(string snapshotId, string? symbolId, string? documentPath, string? kind, int limit, AnnotationCursor? cursor)
+    {
+        EnsureOpen();
+        return _annotations!.GetAnnotationsPage(snapshotId, symbolId, documentPath, kind, limit, cursor);
+    }
+
     public int CountEdges(string snapshotId)
     {
         EnsureOpen();

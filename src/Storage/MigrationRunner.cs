@@ -109,7 +109,8 @@ public class MigrationRunner
             new Migration_024_FailedSnapshotTombstone(),
             new Migration_025_CallReceiverConstraints(),
             new Migration_026_AnnotationDocumentPath(),
-            new Migration_027_ProjectCompilationInputs()
+            new Migration_027_ProjectCompilationInputs(),
+            new Migration_028_AnnotationDocumentIndex()
         ];
     }
 }

@@ -78,6 +78,103 @@ internal sealed class AnnotationStore
         return results;
     }
 
+    /// <summary>
+    ///     Paged, keyset-based read over annotations. Ordered by <c>annotation_id</c>.
+    ///     Supports filtering by symbol, document path, and kind. Uses keyset pagination
+    ///     (like SearchCursor/OutlineCursor) because the sequence comes from a SQL
+    ///     ORDER BY whose sort key can be pushed into the next query.
+    /// </summary>
+    public AnnotationPage GetAnnotationsPage(
+        string snapshotId,
+        string? symbolId,
+        string? documentPath,
+        string? kind,
+        int limit,
+        AnnotationCursor? cursor)
+    {
+        if (string.IsNullOrEmpty(snapshotId))
+            throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
+        if (limit <= 0)
+            throw new ArgumentException("--limit must be a positive integer.", nameof(limit));
+
+        limit = Math.Max(1, limit);
+        var fingerprint = AnnotationCursor.ComputeFingerprint(symbolId, documentPath, kind);
+        if (cursor != null)
+        {
+            try
+            {
+                cursor.Validate(snapshotId, fingerprint);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException(ex.Message, ex);
+            }
+        }
+
+        // Total count (without cursor/limit) for the header.
+        int totalCount;
+        using (var countCmd = _connection.CreateCommand())
+        {
+            var where = "WHERE snapshot_id = @snapshotId";
+            if (symbolId != null) where += " AND symbol_id = @symbolId";
+            if (documentPath != null) where += " AND document_path = @documentPath";
+            if (kind != null) where += " AND kind = @kind";
+            countCmd.CommandText = $"SELECT COUNT(*) FROM annotations {where};";
+            countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            if (symbolId != null) countCmd.Parameters.AddWithValue("@symbolId", symbolId);
+            if (documentPath != null) countCmd.Parameters.AddWithValue("@documentPath", documentPath);
+            if (kind != null) countCmd.Parameters.AddWithValue("@kind", kind);
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar());
+        }
+
+        using var cmd = _connection.CreateCommand();
+        var whereClause = "WHERE snapshot_id = @snapshotId";
+        if (symbolId != null) whereClause += " AND symbol_id = @symbolId";
+        if (documentPath != null) whereClause += " AND document_path = @documentPath";
+        if (kind != null) whereClause += " AND kind = @kind";
+        if (cursor != null) whereClause += " AND annotation_id > @lastAnnotationId";
+
+        cmd.CommandText = $"""
+            SELECT annotation_id, symbol_id, kind, value, document_path
+            FROM annotations
+            {whereClause}
+            ORDER BY annotation_id
+            LIMIT @limitPlusOne;
+            """;
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        if (symbolId != null) cmd.Parameters.AddWithValue("@symbolId", symbolId);
+        if (documentPath != null) cmd.Parameters.AddWithValue("@documentPath", documentPath);
+        if (kind != null) cmd.Parameters.AddWithValue("@kind", kind);
+        if (cursor != null) cmd.Parameters.AddWithValue("@lastAnnotationId", cursor.LastAnnotationId);
+        cmd.Parameters.AddWithValue("@limitPlusOne", limit + 1);
+
+        var rows = new List<(long Id, AnnotationRecord Rec)>();
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var id = reader.GetInt64(0);
+                var rec = new AnnotationRecord(
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4));
+                rows.Add((id, rec));
+            }
+        }
+
+        string? nextCursor = null;
+        if (rows.Count > limit)
+        {
+            rows.RemoveAt(rows.Count - 1);
+            var last = rows[^1];
+            nextCursor = new AnnotationCursor(snapshotId, fingerprint, last.Id).Encode();
+        }
+
+        var items = rows.Select(r => r.Rec).ToList();
+        return new AnnotationPage(items, nextCursor, totalCount);
+    }
+
     public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();
