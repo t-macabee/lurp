@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Lurp.Handlers;
+using Lurp.Storage;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -17,13 +18,14 @@ internal sealed class GetSourceTool
     }
 
     [McpServerTool(Name = "lurp_get_source", Title = "Lurp Get Source", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned.")]
+    [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response.")]
     public string LurpGetSource(
         string? document = null,
         int? start_line = null,
         int? end_line = null,
         int? context_lines = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        bool? outline = null)
     {
         try
         {
@@ -63,6 +65,38 @@ internal sealed class GetSourceTool
 
             var freshness = _session.GetFreshnessJson();
 
+            object? outlinePayload = null;
+            string? outlineNextCursor = null;
+            int? outlineCount = null;
+            if (outline == true)
+            {
+                try
+                {
+                    var outlinePage = _session.Store.GetDeclarationsOutline(normalized, snapshotId, false, 100, null);
+                    if (outlinePage != null)
+                    {
+                        outlinePayload = outlinePage.Items.Select(e => new
+                        {
+                            symbol_id = e.SymbolId,
+                            kind = e.Kind,
+                            fully_qualified_name = e.FullyQualifiedName,
+                            start_line = e.StartLine,
+                            end_line = e.EndLine,
+                            signature_start_line = e.SignatureStartLine,
+                            name_start_line = e.NameStartLine,
+                            is_partial = e.IsPartial,
+                            is_generated = e.IsGenerated
+                        }).ToList();
+                        outlineNextCursor = outlinePage.NextCursor;
+                        outlineCount = outlinePage.TotalCount;
+                    }
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+                }
+            }
+
             var envelope = new
             {
                 snapshot_id = snapshotId,
@@ -73,7 +107,10 @@ internal sealed class GetSourceTool
                 start_line = slice.StartLine,
                 end_line = slice.EndLine,
                 total_lines = slice.TotalLines,
-                truncated = slice.Truncated
+                truncated = slice.Truncated,
+                outline = outlinePayload,
+                outline_next_cursor = outlineNextCursor,
+                outline_declaration_count = outlineCount
             };
 
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });

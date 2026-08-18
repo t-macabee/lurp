@@ -21,6 +21,9 @@ public static class Program
         new("get-source", "Retrieve source text for a document by relative path (--document=).",
             ["--document=", "--start-line=", "--end-line=", "--context-lines=", "--snapshot=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(GetSourceHandler.Run)),
+        new("outline", "List declarations in a document with line spans (--document=).",
+            ["--document=", "--include-generated", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            Sync(OutlineHandler.Run)),
         new("get-symbol", "Look up symbol metadata.",
             [
                 "--symbol=", "--view=", "--context-lines=", "--include-generated", "--snapshot=",

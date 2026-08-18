@@ -378,6 +378,160 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return results;
     }
 
+    internal DeclarationOutlinePage? GetDeclarationsOutline(string relativePath, string snapshotId, bool includeGenerated, int limit, OutlineCursor? cursor)
+    {
+        if (string.IsNullOrEmpty(relativePath) || string.IsNullOrEmpty(snapshotId) || limit <= 0)
+            return null;
+
+        limit = Math.Max(1, limit);
+        var fingerprint = OutlineCursor.ComputeFingerprint(relativePath, includeGenerated);
+        if (cursor != null)
+        {
+            try
+            {
+                cursor.Validate(snapshotId, fingerprint);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException(ex.Message, ex);
+            }
+        }
+
+        // Resolve document version and line_starts for this snapshot/document.
+        string? docVersionId = null;
+        int[]? lineStarts = null;
+        using (var docCmd = _connection.CreateCommand())
+        {
+            docCmd.CommandText = """
+                SELECT dv.document_version_id, dv.line_starts
+                FROM snapshot_documents sd
+                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+                JOIN documents doc ON doc.document_id = dv.document_id
+                WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+                LIMIT 1;
+                """;
+            docCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            docCmd.Parameters.AddWithValue("@relativePath", relativePath);
+            using var reader = docCmd.ExecuteReader();
+            if (!reader.Read())
+                return null;
+            docVersionId = reader.GetString(0);
+            if (!reader.IsDBNull(1))
+            {
+                try { lineStarts = JsonSerializer.Deserialize<int[]>(reader.GetString(1)); } catch { lineStarts = null; }
+            }
+        }
+
+        // Total count (without cursor/limit) for the header.
+        int totalCount;
+        using (var countCmd = _connection.CreateCommand())
+        {
+            countCmd.CommandText = """
+                SELECT COUNT(*)
+                FROM declarations d
+                JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+                JOIN documents doc ON doc.document_id = dv.document_id
+                JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+                WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+                  AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
+                """;
+            if (!includeGenerated)
+                countCmd.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
+            countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            countCmd.Parameters.AddWithValue("@relativePath", relativePath);
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar());
+        }
+
+        // Fetch page (limit+1 to detect hasMore).
+        using var cmd = _connection.CreateCommand();
+        var whereCursor = cursor != null
+            ? " AND ((d.full_start > @lastFullStart) OR (d.full_start = @lastFullStart AND d.symbol_id > @lastSymbolId))"
+            : string.Empty;
+        cmd.CommandText = $"""
+            SELECT d.symbol_id, s.kind, ss.fqn, d.full_start, d.full_end, d.signature_start, d.name_start,
+                   COALESCE(d.is_partial, 0), COALESCE(d.is_generated, 0)
+            FROM declarations d
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+            JOIN documents doc ON doc.document_id = dv.document_id
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            JOIN symbols s ON s.symbol_id = d.symbol_id
+            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sd.snapshot_id
+            WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+              AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
+            {(includeGenerated ? string.Empty : " AND COALESCE(d.is_generated, 0) = 0")}
+            {whereCursor}
+            ORDER BY d.full_start ASC, d.symbol_id ASC
+            LIMIT @limitPlusOne;
+            """;
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        cmd.Parameters.AddWithValue("@relativePath", relativePath);
+        cmd.Parameters.AddWithValue("@limitPlusOne", limit + 1);
+        if (cursor != null)
+        {
+            cmd.Parameters.AddWithValue("@lastFullStart", cursor.LastFullStart);
+            cmd.Parameters.AddWithValue("@lastSymbolId", cursor.LastSymbolId);
+        }
+
+        var rows = new List<DeclarationOutlineEntry>();
+        int fetchedFullStartsForCursor = 0;
+        string fetchedLastSymbolId = string.Empty;
+        int fetchedLastFullStart = 0;
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var symbolId = reader.GetString(0);
+                var kind = reader.GetString(1);
+                var fqn = reader.IsDBNull(2) ? null : reader.GetString(2);
+                var fullStart = reader.GetInt32(3);
+                var fullEnd = reader.GetInt32(4);
+                var sigStart = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+                var nameStart = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
+                var isPartial = reader.GetInt32(7) == 1;
+                var isGenerated = reader.GetInt32(8) == 1;
+
+                int startLine, endLine;
+                int? sigStartLine = null, nameStartLine = null;
+                if (lineStarts is { Length: > 0 } && fullStart >= 0 && fullEnd >= fullStart)
+                {
+                    var sIdx = FindLineIndex(lineStarts, fullStart);
+                    var eIdx = FindLineIndex(lineStarts, fullEnd);
+                    startLine = LineNumbers.ToOneBased(sIdx);
+                    endLine = LineNumbers.ToOneBased(eIdx);
+                    if (sigStart.HasValue)
+                        sigStartLine = LineNumbers.ToOneBased(FindLineIndex(lineStarts, sigStart.Value));
+                    if (nameStart.HasValue)
+                        nameStartLine = LineNumbers.ToOneBased(FindLineIndex(lineStarts, nameStart.Value));
+                }
+                else
+                {
+                    // Degraded: no line_starts, cannot map — emit 0 and let caller know via is_generated etc.
+                    // This path should not happen on a normal index (line_starts populated for all docs).
+                    startLine = 0;
+                    endLine = 0;
+                }
+
+                rows.Add(new DeclarationOutlineEntry(symbolId, kind, fqn, startLine, endLine, sigStartLine, nameStartLine, isPartial, isGenerated, fullStart));
+                fetchedLastFullStart = fullStart;
+                fetchedLastSymbolId = symbolId;
+                fetchedFullStartsForCursor = fullStart;
+            }
+        }
+
+        string? nextCursor = null;
+        if (rows.Count > limit)
+        {
+            // Last row is the lookahead; remove it and encode cursor from it.
+            var lookahead = rows[^1];
+            rows.RemoveAt(rows.Count - 1);
+            // Cursor points to the last returned row, not the lookahead.
+            var last = rows[^1];
+            nextCursor = new OutlineCursor(snapshotId, fingerprint, last.FullStart, last.SymbolId).Encode();
+        }
+
+        return new DeclarationOutlinePage(rows, nextCursor, totalCount);
+    }
+
     private static string? DeriveParentTypeDocCommentId(string docCommentId)
     {
         return SymbolId.DeriveContainingTypeDocCommentId(docCommentId);

@@ -395,6 +395,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _declMaintenance!.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
     }
 
+    public DeclarationOutlinePage? GetDeclarationsOutline(string relativePath, string snapshotId, bool includeGenerated, int limit, OutlineCursor? cursor)
+    {
+        EnsureOpen();
+        return _declReader!.GetDeclarationsOutline(relativePath, snapshotId, includeGenerated, limit, cursor);
+    }
+
     // ── IEdgeStore ─────────────────────────────────────────────────────
 
     public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)

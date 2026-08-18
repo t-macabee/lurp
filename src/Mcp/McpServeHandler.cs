@@ -21,6 +21,7 @@ internal static class McpServeHandler
             .WithStdioServerTransport()
             .WithTools<ContextTool>()
             .WithTools<GetSourceTool>()
+            .WithTools<OutlineTool>()
             .WithTools<NavigateTool>()
             .WithTools<FindSymbolTool>()
             .WithTools<SearchTool>()
