@@ -73,69 +73,40 @@ internal sealed class McpSessionContext : IAsyncDisposable
         return WorkspaceFreshness.CheckFreshnessCheap(Store, Store, PinnedSnapshotId, FreshnessMode.Auto);
     }
 
-    public object GetFreshnessJson()
+    public object GetFreshnessJson(int maxDocuments = 10)
     {
-        return GetFreshnessJsonInternal(GetFreshness(), truncateSample: true);
+        return GetFreshnessJsonInternal(GetFreshness(), maxDocuments);
     }
 
     internal object GetFreshnessJsonUncapped()
     {
-        var stamp = GetFreshnessUncapped();
-        return GetFreshnessJsonInternal(stamp, truncateSample: false);
+        // Kept for backward compat: uncapped is now just a large maxDocuments
+        return GetFreshnessJson(int.MaxValue);
     }
 
-    internal FreshnessStamp GetFreshnessUncapped()
+    internal FreshnessStamp GetFreshnessUncappedStamp()
     {
-        // Recompute without the 10-entry cap: collect all changed documents.
-        var metadata = Store.LoadSnapshotMetadata(PinnedSnapshotId);
-        var checkedAt = DateTime.UtcNow;
-        if (metadata == null)
-            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, PinnedSnapshotId, "documents_only");
-        try
-        {
-            var gitRoot = metadata.GitRoot;
-            var builtAtUtc = metadata.CreatedAtUtc;
-            var versionsByPath = Store.GetDocumentVersionIdsByPath(PinnedSnapshotId);
-            var changed = new List<string>();
-            foreach (var (relativePath, storedVersionId) in versionsByPath)
-            {
-                var fullPath = Path.GetFullPath(Path.Combine(gitRoot, relativePath));
-                if (!File.Exists(fullPath))
-                {
-                    changed.Add(relativePath);
-                    continue;
-                }
-                var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
-                if (lastWriteUtc <= builtAtUtc)
-                    continue;
-                changed.Add(relativePath);
-            }
-            var state = changed.Count == 0 ? "fresh" : "stale";
-            return new FreshnessStamp(state, "stat", changed.Count, changed, checkedAt, PinnedSnapshotId, "documents_only");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
-        {
-            return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, PinnedSnapshotId, "documents_only");
-        }
+        // Full list is now returned by GetFreshness directly (no cap)
+        return GetFreshness();
     }
 
-    private static object GetFreshnessJsonInternal(FreshnessStamp stamp, bool truncateSample)
+    internal object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
     {
-        var sample = stamp.ChangedDocumentsSample;
-        if (truncateSample && sample.Count > 10)
-            sample = sample.Take(10).ToList();
-        // Cap at 10 even when uncapped is not requested; when truncate is true we enforce 10.
-        // When truncate is false we return the full list (used only by lurp_status with detail).
-        if (truncateSample && sample.Count > 10)
-            sample = sample.Take(10).ToList();
-        // Ensure capped at 10 for normal envelope
-        var cappedSample = truncateSample ? sample.Take(10).ToList() : sample.ToList();
+        return GetFreshnessJsonInternal(stamp, maxDocuments);
+    }
+
+    private static object GetFreshnessJsonInternal(FreshnessStamp stamp, int maxDocuments)
+    {
+        var fullSample = stamp.ChangedDocumentsSample;
+        var cappedSample = fullSample.Take(maxDocuments).ToList();
+        var truncated = fullSample.Count > cappedSample.Count;
         return new
         {
             state = stamp.State,
             method = stamp.Method,
             changed_document_count = stamp.ChangedDocumentCount,
             changed_documents_sample = cappedSample,
+            changed_documents_sample_truncated = truncated ? true : (bool?)null,
             checked_at_utc = stamp.CheckedAtUtc,
             snapshot_id = stamp.SnapshotId,
             scope = stamp.Scope

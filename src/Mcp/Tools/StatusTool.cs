@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -14,6 +15,9 @@ namespace Lurp.Mcp.Tools;
 internal sealed class StatusTool
 {
     private readonly McpSessionContext _session;
+    private const int DefaultMaxDocuments = 50;
+    private const int DefaultMaxMismatches = 50;
+    private const int EnvelopeCapBytes = 80000;
 
     public StatusTool(McpSessionContext session)
     {
@@ -21,76 +25,141 @@ internal sealed class StatusTool
     }
 
     [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Show pinned snapshot status and freshness. Uses full workspace check when --solution= was given, otherwise cheap stat check. Detail expands sample and manifest.")]
+    [Description("Show pinned snapshot status and freshness. Uses full workspace check when --solution= was given, otherwise cheap stat check. Supports sections and caps to bound payload.")]
     public async Task<string> LurpStatus(
         string? snapshot_id = null,
-        object? detail = null)
+        object? detail = null,
+        string? sections = null,
+        int? max_documents = null,
+        int? max_mismatches = null,
+        object? documents = null)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            var isDetail = IsDetail(detail);
+            var maxDocs = max_documents ?? DefaultMaxDocuments;
+            var maxMism = max_mismatches ?? DefaultMaxMismatches;
+            if (maxDocs < 1)
+                throw new McpProtocolException("--max-documents must be a positive integer.", McpErrorCode.InvalidParams);
+            if (maxMism < 1)
+                throw new McpProtocolException("--max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
+
+            var resolvedSections = ResolveSections(detail, sections);
+            var includeManifest = resolvedSections != "freshness";
+            var includeReferences = resolvedSections == "references" || resolvedSections == "all";
+            var includeDocumentsInManifest = resolvedSections == "all";
+            var includeMismatches = includeManifest;
+
+            var requestedDocs = ParseDocuments(documents);
+            if (documents != null && requestedDocs == null)
+                throw new McpProtocolException("--documents must be an array of strings.", McpErrorCode.InvalidParams);
+
+            // Normalize requested docs early for validation and later use
+            List<string>? normalizedRequested = null;
+            if (requestedDocs != null)
+            {
+                normalizedRequested = new List<string>();
+                foreach (var raw in requestedDocs)
+                {
+                    var norm = HandlerBootstrap.NormalizeDocumentPath(raw) ?? raw;
+                    if (string.IsNullOrWhiteSpace(norm))
+                        throw new McpProtocolException("--documents contains an empty path.", McpErrorCode.InvalidParams);
+                    normalizedRequested.Add(norm);
+                }
+            }
 
             object freshness;
-            string freshnessMethod;
-            bool isFresh = true;
-            IReadOnlyList<object>? mismatchesForDetail = null;
+            FreshnessStamp? cheapStampForDoc = null;
+            WorkspaceFreshness.FreshnessResult? fullResultForDoc = null;
+            string freshnessScope = "documents_only";
 
             if (!string.IsNullOrEmpty(_session.SolutionPath) && File.Exists(_session.SolutionPath))
             {
-                // Full freshness path — may touch MSBuild/WorkspaceLoader but acceptable only here.
                 try
                 {
                     var result = await CheckFullFreshnessAsync(snapshotId);
-                    isFresh = result.IsFresh;
+                    fullResultForDoc = result;
                     var state = result.IsFresh ? "fresh" : "stale";
-                    freshnessMethod = "full";
                     var count = result.Mismatches.Count;
-                    var sample = result.Mismatches
-                        .Select(m => m.Document?.ToString() ?? m.Description)
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Take(isDetail ? int.MaxValue : 10)
-                        .ToList();
-                    freshness = new
+                    var mismatchesCapped = includeMismatches ? result.Mismatches.Take(maxMism).ToList() : new List<SnapshotMismatch>();
+                    var mismatchesTruncated = result.Mismatches.Count > mismatchesCapped.Count;
+
+                    List<string>? sample = null;
+                    bool sampleTruncated = false;
+                    if (includeMismatches && count > 0)
                     {
-                        state,
-                        method = freshnessMethod,
-                        changed_document_count = count,
-                        changed_documents_sample = sample,
-                        checked_at_utc = DateTime.UtcNow,
-                        snapshot_id = snapshotId,
-                        scope = "full",
-                        is_fresh = result.IsFresh,
-                        mismatches = isDetail ? result.Mismatches.Select(m => new
-                        {
-                            kind = m.Kind.ToString(),
-                            description = m.Description,
-                            document = m.Document?.ToString(),
-                            detail = m.Detail
-                        }).ToList() : null
+                        // Gap1: drop sample when mismatches present (redundant)
+                        sample = null;
+                    }
+                    else
+                    {
+                        var sampleRaw = result.Mismatches
+                            .Select(m => m.Document?.ToString() ?? m.Description)
+                            .Where(s => !string.IsNullOrEmpty(s))
+                            .ToList();
+                        var capped = sampleRaw.Take(maxDocs).ToList();
+                        sampleTruncated = sampleRaw.Count > capped.Count;
+                        sample = capped;
+                    }
+
+                    var freshnessDict = new Dictionary<string, object?>
+                    {
+                        ["state"] = state,
+                        ["method"] = "full",
+                        ["changed_document_count"] = count,
+                        ["checked_at_utc"] = DateTime.UtcNow,
+                        ["snapshot_id"] = snapshotId,
+                        ["scope"] = "full",
+                        ["is_fresh"] = result.IsFresh
                     };
-                    if (isDetail)
-                        mismatchesForDetail = result.Mismatches.Select(m => (object)new
+                    if (sample != null)
+                    {
+                        freshnessDict["changed_documents_sample"] = sample;
+                        if (sampleTruncated)
+                            freshnessDict["changed_documents_sample_truncated"] = true;
+                    }
+                    else
+                    {
+                        // still include empty or null sample field for parity; include as null so consumer knows it's omitted due to mismatches
+                        freshnessDict["changed_documents_sample"] = null;
+                    }
+                    if (includeMismatches)
+                    {
+                        freshnessDict["mismatches"] = mismatchesCapped.Select(m => new
                         {
                             kind = m.Kind.ToString(),
                             description = m.Description,
                             document = m.Document?.ToString(),
                             detail = m.Detail
                         }).ToList();
+                        if (mismatchesTruncated)
+                            freshnessDict["mismatches_truncated"] = true;
+                    }
+                    else
+                    {
+                        freshnessDict["mismatches"] = null;
+                    }
+                    freshness = freshnessDict;
+                    freshnessScope = "full";
                 }
                 catch
                 {
-                    // Fall back to cheap on any workspace load failure.
-                    freshness = isDetail ? _session.GetFreshnessJsonUncapped() : _session.GetFreshnessJson();
+                    var stamp = _session.GetFreshness();
+                    cheapStampForDoc = stamp;
+                    freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
+                    freshnessScope = stamp.Scope;
                 }
             }
             else
             {
-                freshness = isDetail ? _session.GetFreshnessJsonUncapped() : _session.GetFreshnessJson();
+                var stamp = _session.GetFreshness();
+                cheapStampForDoc = stamp;
+                freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
+                freshnessScope = stamp.Scope;
             }
 
             object? detailObj = null;
-            if (isDetail)
+            if (includeManifest)
             {
                 try
                 {
@@ -102,7 +171,7 @@ internal sealed class StatusTool
                         database_path = dbPath,
                         schema_version = schemaVersion,
                         latest_snapshot_id = snapshotId,
-                        manifest = latestRow != null ? ManifestJson(latestRow, includeDocuments: false) : null,
+                        manifest = latestRow != null ? ManifestJson(latestRow, includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences) : null,
                         git_root = latestRow?.GitRoot,
                         solution_path = latestRow?.SolutionPath
                     };
@@ -113,15 +182,47 @@ internal sealed class StatusTool
                 }
             }
 
-            var envelope = new
+            // Compute document_freshness if requested
+            List<object>? documentFreshness = null;
+            if (normalizedRequested != null && normalizedRequested.Count > 0)
             {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                detail = detailObj
-            };
+                documentFreshness = ComputeDocumentFreshness(snapshotId, cheapStampForDoc, fullResultForDoc, normalizedRequested);
+            }
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            var envelope = new Dictionary<string, object?>
+            {
+                ["snapshot_id"] = snapshotId,
+                ["freshness"] = freshness,
+                ["pinned"] = true,
+                ["detail"] = detailObj
+            };
+            if (documentFreshness != null)
+                envelope["document_freshness"] = documentFreshness;
+
+            var json = JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+
+            // Hard envelope cap per Gap1 step 5
+            if (json.Length > EnvelopeCapBytes)
+            {
+                // Rebuild with manifest stripped and truncation marker
+                var truncatedDetail = new
+                {
+                    note = $"payload truncated at {EnvelopeCapBytes} bytes; manifest omitted. Use sections=references or max_documents/max_mismatches to request specific data."
+                };
+                var truncatedEnvelope = new Dictionary<string, object?>
+                {
+                    ["snapshot_id"] = snapshotId,
+                    ["freshness"] = freshness,
+                    ["pinned"] = true,
+                    ["detail"] = includeManifest ? truncatedDetail : detailObj,
+                    ["truncated"] = true
+                };
+                if (documentFreshness != null)
+                    truncatedEnvelope["document_freshness"] = documentFreshness;
+                json = JsonSerializer.Serialize(truncatedEnvelope, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            return json;
         }
         catch (McpProtocolException)
         {
@@ -131,6 +232,144 @@ internal sealed class StatusTool
         {
             throw McpErrorMapper.Map(ex);
         }
+    }
+
+    private List<object> ComputeDocumentFreshness(string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
+    {
+        var snapshotDocs = _session.Store.GetDocumentVersionIdsByPath(snapshotId);
+        var snapshotSet = new HashSet<string>(snapshotDocs.Keys, StringComparer.Ordinal);
+        HashSet<string> changedSet;
+        if (fullResult != null)
+        {
+            changedSet = new HashSet<string>(
+                fullResult.Mismatches
+                    .Where(m => m.Document != null)
+                    .Select(m => m.Document!.ToString()!),
+                StringComparer.Ordinal);
+        }
+        else if (cheapStamp != null)
+        {
+            changedSet = new HashSet<string>(cheapStamp.ChangedDocumentsSample, StringComparer.Ordinal);
+        }
+        else
+        {
+            var fallback = _session.GetFreshness();
+            changedSet = new HashSet<string>(fallback.ChangedDocumentsSample, StringComparer.Ordinal);
+        }
+
+        var result = new List<object>();
+        foreach (var norm in requested)
+        {
+            string state;
+            if (!snapshotSet.Contains(norm))
+                state = "not_in_snapshot";
+            else if (changedSet.Contains(norm))
+                state = "stale";
+            else
+                state = "fresh";
+            result.Add(new { document = norm, state });
+        }
+        return result;
+    }
+
+    private static string ResolveSections(object? detail, string? sections)
+    {
+        if (!string.IsNullOrWhiteSpace(sections))
+        {
+            var lower = sections.Trim().ToLowerInvariant();
+            var parts = lower.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            // NormalizeKnown values
+            bool hasAll = parts.Contains("all");
+            if (hasAll) return "all";
+            // Priority: references > completeness > manifest > freshness > documents
+            if (parts.Contains("references")) return "references";
+            if (parts.Contains("completeness")) return "completeness";
+            if (parts.Contains("manifest")) return "manifest";
+            if (parts.Contains("freshness")) return "freshness";
+            if (parts.Contains("documents")) return "manifest"; // documents is handled as manifest variant
+            // Single unknown value: map known aliases, else fresh
+            var single = parts.FirstOrDefault();
+            return single switch
+            {
+                "freshness" => "freshness",
+                "manifest" => "manifest",
+                "references" => "references",
+                "completeness" => "completeness",
+                "all" => "all",
+                _ => "freshness"
+            };
+        }
+        if (detail != null)
+        {
+            if (IsDetail(detail)) return "manifest";
+            else return "freshness";
+        }
+        return "freshness";
+    }
+
+    private static List<string>? ParseDocuments(object? documents)
+    {
+        if (documents == null) return null;
+        if (documents is string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            return new List<string> { s };
+        }
+        if (documents is string[] arr)
+        {
+            var list = arr.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            return list.Count == 0 ? null : list;
+        }
+        if (documents is JsonElement je)
+        {
+            if (je.ValueKind == JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var el in je.EnumerateArray())
+                {
+                    if (el.ValueKind == JsonValueKind.String)
+                    {
+                        var str = el.GetString();
+                        if (!string.IsNullOrWhiteSpace(str)) list.Add(str!);
+                    }
+                    else if (el.ValueKind != JsonValueKind.Null)
+                    {
+                        // coerce numbers etc to string?
+                        var str = el.ToString();
+                        if (!string.IsNullOrWhiteSpace(str)) list.Add(str);
+                    }
+                }
+                return list.Count == 0 ? null : list;
+            }
+            if (je.ValueKind == JsonValueKind.String)
+            {
+                var str = je.GetString();
+                return string.IsNullOrWhiteSpace(str) ? null : new List<string> { str! };
+            }
+            if (je.ValueKind == JsonValueKind.Null || je.ValueKind == JsonValueKind.Undefined)
+                return null;
+            return null;
+        }
+        if (documents is IEnumerable<string> enStr)
+        {
+            var list = enStr.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            return list.Count == 0 ? null : list;
+        }
+        if (documents is IEnumerable<object> enObj)
+        {
+            var list = new List<string>();
+            foreach (var o in enObj)
+            {
+                if (o is string str && !string.IsNullOrWhiteSpace(str)) list.Add(str);
+                else if (o is JsonElement je2 && je2.ValueKind == JsonValueKind.String)
+                {
+                    var str2 = je2.GetString();
+                    if (!string.IsNullOrWhiteSpace(str2)) list.Add(str2!);
+                }
+            }
+            return list.Count == 0 ? null : list;
+        }
+        return null;
     }
 
     private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(string snapshotId)
@@ -180,7 +419,6 @@ internal sealed class StatusTool
                 default: return false;
             }
         }
-        // Handle JsonElement boxed as object via System.Text.Json deserialization to object
         var t = detail.GetType().Name;
         if (t == "JsonElement")
         {
@@ -195,23 +433,49 @@ internal sealed class StatusTool
         return false;
     }
 
-    private static object? ManifestJson(SnapshotRow row, bool includeDocuments)
+    private static object? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
     {
         try
         {
             var manifest = SnapshotManifest.FromStorageManifest(row);
             var node = JsonSerializer.SerializeToNode(manifest, new JsonSerializerOptions { WriteIndented = false, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
-            if (node is System.Text.Json.Nodes.JsonObject obj && !includeDocuments)
+            if (node is not JsonObject obj)
+                return node;
+
+            if (!includeDocuments)
             {
-                var docCount = (obj["document_versions"] as System.Text.Json.Nodes.JsonObject)?.Count ?? 0;
+                var docCount = (obj["document_versions"] as JsonObject)?.Count ?? 0;
                 obj.Remove("document_versions");
                 obj["document_count"] = docCount;
             }
+
+            if (!includeReferences && obj["metadata_reference_identities"] is JsonObject refsObj)
+            {
+                var counts = new JsonObject();
+                int total = 0;
+                foreach (var kvp in refsObj)
+                {
+                    var cnt = (kvp.Value as JsonArray)?.Count ?? 0;
+                    counts[kvp.Key] = cnt;
+                    total += cnt;
+                }
+                obj.Remove("metadata_reference_identities");
+                obj["metadata_reference_counts"] = counts;
+                obj["metadata_reference_total"] = total;
+                obj["metadata_reference_note"] = "Full identities omitted; pass sections=references to include them.";
+            }
+
             return node;
         }
         catch
         {
             return null;
         }
+    }
+
+    // Back-compat overload for callers that still use single bool
+    private static object? ManifestJson(SnapshotRow row, bool includeDocuments)
+    {
+        return ManifestJson(row, includeDocuments, includeReferences: false);
     }
 }

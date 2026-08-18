@@ -67,17 +67,20 @@ internal static class StatusHandler
             }
 
             var includeDocuments = WantsDetail(args, "documents");
+            var includeReferences = WantsDetail(args, "references");
             var includeCompleteness = WantsDetail(args, "completeness");
+            var maxDocuments = ParseMaxArg(args, "--max-documents=", 50);
+            var maxMismatches = ParseMaxArg(args, "--max-mismatches=", 50);
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
                                   ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
-                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeCompleteness);
+                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeReferences, includeCompleteness);
                 return;
             }
 
             var freshness = await CheckCurrentWorkspaceAsync(store, solutionPathArg!);
-            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments, includeCompleteness);
+            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments, includeReferences, includeCompleteness, maxMismatches);
         }
         finally
         {
@@ -116,7 +119,7 @@ internal static class StatusHandler
         Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
-    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeCompleteness)
+    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
@@ -139,7 +142,7 @@ internal static class StatusHandler
                 note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
+                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences),
                 latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId)
             }, JsonOutputOptions));
             return;
@@ -152,7 +155,7 @@ internal static class StatusHandler
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
 
-    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeCompleteness)
+    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, int maxMismatches = 50)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         if (asJson)
@@ -166,22 +169,27 @@ internal static class StatusHandler
             {
             }
 
+            var mismatchesCapped = freshness.Mismatches.Take(maxMismatches).ToList();
+            var mismatchesTruncated = freshness.Mismatches.Count > mismatchesCapped.Count;
+
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
                 latest_snapshot_id = latestSnapshotId,
                 is_fresh = freshness.IsFresh,
-                mismatches = freshness.Mismatches.Select(m => new
+                mismatches = mismatchesCapped.Select(m => new
                 {
                     kind = m.Kind.ToString(),
                     description = m.Description,
                     document = m.Document?.ToString(),
                     detail = m.Detail
                 }),
+                mismatches_truncated = mismatchesTruncated ? true : (bool?)null,
+                mismatches_total = freshness.Mismatches.Count,
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
-                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments),
+                manifest = ManifestJson(WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences),
                 latest_failure = store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId)
             }, JsonOutputOptions));
             return;
@@ -223,6 +231,16 @@ internal static class StatusHandler
         return manifest;
     }
 
+    private static int ParseMaxArg(string[] args, string prefix, int defaultValue)
+    {
+        var raw = HandlerBootstrap.GetArgValue(args, prefix);
+        if (string.IsNullOrEmpty(raw))
+            return defaultValue;
+        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
+            HandlerBootstrap.Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
+        return value;
+    }
+
     /// <summary>
     ///     True when <c>--detail=</c> names <paramref name="section" /> (comma-separated, or
     ///     <c>all</c>).
@@ -248,16 +266,42 @@ internal static class StatusHandler
     ///     other manifest field bound to the model rather than to a hand-copied field list
     ///     that would drift the first time the manifest gains a property.
     /// </summary>
-    private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments)
+    private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments, bool includeReferences = false)
     {
         var node = JsonSerializer.SerializeToNode(manifest, JsonOutputOptions);
-        if (includeDocuments || node is not JsonObject obj)
+        if (node is not JsonObject obj)
             return node;
 
-        var documentCount = (obj["document_versions"] as JsonObject)?.Count ?? 0;
-        obj.Remove("document_versions");
-        obj["document_count"] = documentCount;
-        obj["documents_note"] = "Per-document versions omitted; pass --detail=documents to include them.";
-        return obj;
+        if (!includeDocuments)
+        {
+            var documentCount = (obj["document_versions"] as JsonObject)?.Count ?? 0;
+            obj.Remove("document_versions");
+            obj["document_count"] = documentCount;
+            obj["documents_note"] = "Per-document versions omitted; pass --detail=documents to include them.";
+        }
+
+        if (!includeReferences && obj["metadata_reference_identities"] is JsonObject refsObj)
+        {
+            var counts = new JsonObject();
+            int total = 0;
+            foreach (var kvp in refsObj)
+            {
+                var cnt = (kvp.Value as JsonArray)?.Count ?? 0;
+                counts[kvp.Key] = cnt;
+                total += cnt;
+            }
+            obj.Remove("metadata_reference_identities");
+            obj["metadata_reference_counts"] = counts;
+            obj["metadata_reference_total"] = total;
+            obj["metadata_reference_note"] = "Full identities omitted; pass --detail=references to include them.";
+        }
+
+        return node;
+    }
+
+    private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments)
+    {
+        // Back-compat overload: references omitted by default
+        return ManifestJson(manifest, includeDocuments, includeReferences: false);
     }
 }

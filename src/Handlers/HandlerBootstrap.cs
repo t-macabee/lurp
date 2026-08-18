@@ -155,14 +155,17 @@ internal static class HandlerBootstrap
         return WorkspaceFreshness.CheckFreshnessCheap(manifests, documents, snapshotId, ParseFreshnessMode(args));
     }
 
-    public static object FreshnessJson(FreshnessStamp stamp)
+    public static object FreshnessJson(FreshnessStamp stamp, int maxDocuments = 50)
     {
+        var capped = stamp.ChangedDocumentsSample.Take(maxDocuments).ToList();
+        var truncated = stamp.ChangedDocumentsSample.Count > capped.Count;
         return new
         {
             state = stamp.State,
             method = stamp.Method,
             changed_document_count = stamp.ChangedDocumentCount,
-            changed_documents_sample = stamp.ChangedDocumentsSample,
+            changed_documents_sample = capped,
+            changed_documents_sample_truncated = truncated ? true : (bool?)null,
             checked_at_utc = stamp.CheckedAtUtc,
             snapshot_id = stamp.SnapshotId,
             scope = stamp.Scope

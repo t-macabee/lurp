@@ -87,7 +87,7 @@ public static class WorkspaceFreshness
 
             var method = mode == FreshnessMode.Hash ? "stat+hash" : "stat";
             var state = changed.Count == 0 ? "fresh" : "stale";
-            return new FreshnessStamp(state, method, changed.Count, [.. changed.Take(10)], checkedAt, snapshotId, "documents_only");
+            return new FreshnessStamp(state, method, changed.Count, changed, checkedAt, snapshotId, "documents_only");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
         {
@@ -213,11 +213,24 @@ public static class WorkspaceFreshness
 
             if (!currentRefs.SetEquals(storedRefs))
             {
-                var currentSorted = currentRefs.OrderBy(x => x, StringComparer.Ordinal);
-                var storedSorted = storedRefs.OrderBy(x => x, StringComparer.Ordinal);
-                yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged, $"Project references changed for '{projName}'.", null, $"stored=[{string.Join(", ", storedSorted)}]  current=[{string.Join(", ", currentSorted)}]");
+                var added = currentRefs.Except(storedRefs).OrderBy(x => x, StringComparer.Ordinal).ToList();
+                var removed = storedRefs.Except(currentRefs).OrderBy(x => x, StringComparer.Ordinal).ToList();
+                var detail = FormatSetDifference(added, removed);
+                yield return new SnapshotMismatch(MismatchKind.ProjectReferenceChanged, $"Project references changed for '{projName}'.", null, detail);
             }
         }
+    }
+
+    private static string FormatSetDifference(IReadOnlyList<string> added, IReadOnlyList<string> removed, int limit = 20)
+    {
+        static string FormatList(IReadOnlyList<string> items, int lim)
+        {
+            if (items.Count == 0) return "[]";
+            var shown = items.Take(lim).ToList();
+            var suffix = items.Count > lim ? $", … +{items.Count - lim} more" : "";
+            return $"[{string.Join(", ", shown)}{suffix}]";
+        }
+        return $"added={FormatList(added, limit)} removed={FormatList(removed, limit)}";
     }
 
     private static IEnumerable<SnapshotMismatch> CheckMetadataReferences(WorkspaceInfo current, SnapshotManifest stored)
@@ -234,10 +247,15 @@ public static class WorkspaceFreshness
             if (!storedRefs.TryGetValue(projName, out var storedIds))
                 continue;
 
-            var sortedCurrent = currentIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-            var sortedStored = storedIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-            if (!sortedCurrent.SequenceEqual(sortedStored))
-                yield return new SnapshotMismatch(MismatchKind.MetadataReferencesChanged, $"Metadata references changed for '{projName}'.", null, $"stored=[{string.Join(", ", sortedStored)}]  current=[{string.Join(", ", sortedCurrent)}]");
+            var currentSet = currentIds.ToHashSet(StringComparer.Ordinal);
+            var storedSet = storedIds.ToHashSet(StringComparer.Ordinal);
+            if (!currentSet.SetEquals(storedSet))
+            {
+                var added = currentSet.Except(storedSet).OrderBy(x => x, StringComparer.Ordinal).ToList();
+                var removed = storedSet.Except(currentSet).OrderBy(x => x, StringComparer.Ordinal).ToList();
+                var detail = FormatSetDifference(added, removed);
+                yield return new SnapshotMismatch(MismatchKind.MetadataReferencesChanged, $"Metadata references changed for '{projName}'.", null, detail);
+            }
         }
     }
 
