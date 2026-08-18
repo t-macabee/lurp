@@ -1,7 +1,7 @@
 # Trust Kernel: Implementation Status
 
 **Status:** implementation-status reference. The architecture is documented in
-`docs/LURP_ARCHITECTURE.md` and `CLAUDE.md`; this file records the
+`docs/ARCHITECTURE.md` and `AGENTS.md`; this file records the
 evidence-backed status of implementation, verification, and known deviations.
 There is no live task queue in this repository.
 

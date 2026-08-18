@@ -1,183 +1,97 @@
-# Lurp
+# Lurp — a Roslyn semantic map for .NET agents
 
 [![CI](https://github.com/t-macabee/lurp/actions/workflows/ci.yml/badge.svg)](https://github.com/t-macabee/lurp/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/lurp)](https://www.nuget.org/packages/lurp)
 
-Lurp is a Roslyn-native semantic context engine for C# solutions. It loads a
-solution through the compiler and stores symbols, relationships, source spans,
-provenance, and completeness data in SQLite — a durable map that an agent can
-query instead of reopening and re-parsing the whole codebase for every question.
+Lurp indexes a .NET solution into SQLite via Roslyn so an agent fetches a small,
+sufficient code neighborhood instead of re-grepping and re-parsing per question.
+It loads a solution through the compiler, stores symbols, typed relationships,
+source spans, and provenance in one database, then serves retrieval, semantic
+diffs, impact paths, and token-bounded context capsules. The result is a durable
+map: index once, query many times, get back exact source with evidence levels.
 
-## Install
+## Why this exists
 
-Prerequisites:
+An agent working a C# codebase today loops search → read → guess, re-opening and
+re-parsing the whole solution for every question. Context windows fill with
+irrelevant source; the agent rediscovers the same call graph on each turn.
 
-- .NET 10 SDK (the repo's `global.json` pins SDK `10.0.301`).
-- A C# solution (`.sln` or `.slnx`) to index.
-
-Lurp needs the .NET SDK on the machine (it loads solutions through `MSBuildWorkspace` / `Microsoft.Build.Locator`). A self-contained single-file binary would not remove that requirement, so Lurp is distributed as a .NET global tool.
-
-### From NuGet (recommended)
-
-```bash
-dotnet tool install --global lurp
-lurp --mode=index --solution=path/to/Your.sln --output-dir=./out
-
-# update later
-dotnet tool update --global lurp
-```
-
-Or pin the version:
-
-```bash
-dotnet tool install --global lurp --version 1.1.0
-```
-
-### Build from source
-
-```bash
-dotnet build Lurp.slnx
-dotnet run --project src -- --mode=index --solution=path/to/Your.sln --output-dir=./out
-```
-
-Or run the built binary directly:
-
-```bash
-./src/bin/Debug/net10.0/lurp --mode=index --solution=path/to/Your.sln --output-dir=./out
-```
-
-Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
-`--solution=` and `--output-dir=`.
-
-## MCP server (`--mode=serve`)
-
-Lurp also runs as an MCP server over stdio (13 tools via `tools/list`, verified
-2026-08-17 in `.tmp_test/MCP_LIVE_TEST_REPORT_MCP_SURFACE_2026-08-17_P2.md` §Tools present):
-`lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations,
-lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate,
-lurp_search, lurp_timings, lurp_impact` — `lurp_timings` is the 13th tool (added
-2026-08-17). There is no `lurp_annotate` tool by design: the MCP session opens
-SQLite with `PRAGMA query_only=ON` (`src/Storage/SqliteIndexStore.cs:74`,
-`src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`), so the transport
-is read-only; annotation writes remain CLI-only (`--mode=annotate`).
-
-Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
-and `Microsoft.Hosting.Lifetime` / `ModelContextProtocol` logs are routed to
-stderr (`src/Mcp/McpServeHandler.cs:Configure<ConsoleLoggerOptions>(o =>
-o.LogToStandardErrorThreshold = LogLevel.Trace)` plus `IOutputSink` plumbing);
-regression enforced by `tests/Mcp/McpStdioPurityTests.cs`. Report §J confirms
-158 stdout lines (eNoteV2) and 129 lines (eCommerce) with zero leaks.
-
-`--mode=serve` requires an existing indexed snapshot before it can start — it
-will not build one on first launch. `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`)
-throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is
-null. Index first via CLI (`--mode=index`) or MCP `lurp_index`, then serve:
-
-```bash
-# 1. Index once (creates index.db with a snapshot)
-dotnet run --project src -- --mode=index --solution=path/to/Your.sln --output-dir=./out
-
-# 2. Serve from that output dir (pins that snapshot)
-dotnet run --project src -- --mode=serve --solution=path/to/Your.sln --output-dir=./out
-```
-
-Example MCP client configs (stdio) — global tool (recommended) vs. `dotnet` fallback:
-
-```json
-{
-  "mcpServers": {
-    "lurp": {
-      "command": "lurp",
-      "args": ["--mode=serve", "--solution=path/to/Your.sln", "--output-dir=./out"]
-    }
-  }
-}
-```
-
-Fallback if you are running from source:
-
-```json
-{
-  "mcpServers": {
-    "lurp": {
-      "command": "dotnet",
-      "args": ["path/to/Lurp.dll", "--mode=serve", "--solution=path/to/Your.sln", "--output-dir=./out"]
-    }
-  }
-}
-```
-
-Pin semantics: every read tool serves the snapshot pinned at startup, not
-`latest`. After any `lurp_index` completion, reads keep returning the old
-`snapshot_id` until `lurp_refresh {}` (and if `changed:true`, `lurp_refresh
-{"ack": new_id}`) — verified in report §Pin semantics / §A–B.
+Lurp inverts that cost. A one-time index builds a snapshot-bound semantic graph.
+Every subsequent query reads persisted facts — no Roslyn reload, no re-grep.
+Capsules return the smallest sufficient neighborhood for a task, with each fact
+stating its provenance (`compiler_proved` → `runtime_unknown`) and every omitted
+tier named for a follow-up fetch.
 
 ## The mental model
 
 | Command | What it does |
 |---|---|
-| `index` | Builds or updates the snapshot-bound map in `index.db`. |
-| `search` | Full-text search over source and symbols. |
-| `find-symbol` | Resolve a symbol by its fully-qualified name. |
-| `get-symbol` | Look up symbol metadata (signature, provenance, declaration spans). |
-| `get-source` | Retrieve source text for a document by relative path. |
-| `navigate` | Resolve an indexed declaration by file and line. |
 | `context` | Assemble a bounded capsule of relevant code from a symbol or source location. |
 | `impact` | Follow typed relationships outward and explain each path. |
 | `diff` | Show semantic changes between two snapshots. |
+| `search` | Full-text search over source and symbols. |
+| `find-symbol` | Resolve a symbol by its fully-qualified name. |
+| `navigate` | Resolve an indexed declaration by file and line. |
+| `get-symbol` | Look up symbol metadata (signature, provenance, declaration spans). |
+| `get-source` | Retrieve source text for a document by relative path. |
+| `index` | Build or update the snapshot-bound map in `index.db`. |
 | `annotate` / `get-annotations` | Attach and retrieve user-authored annotations on symbols. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |
 
-## A real example journey
+## Worked example
 
-Index a solution, then build a context capsule or trace impact from a source
-location. See [src/README.md](src/README.md) for the full command reference.
-
-## Quick start
-
-Index a solution:
+Index a solution, then build a context capsule from a source location:
 
 ```bash
 lurp --mode=index --solution=MySolution.slnx --output-dir=./out
-```
-
-Then build a context capsule from a source location:
-
-```bash
-lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out
-```
-
-The capsule is written to `./out` and includes the anchor source, contracts,
-callers and callees, relevant tests, likely change sites, evidence levels, and
-uncertainties within the requested budget.
-
-Hand a capsule over as a digest, and fetch any budget-exhausted tier unbudgeted:
-
-```bash
-# Summary mode prints the handoff facts instead of the full JSON: anchor,
-# snapshot, the two token estimates (content = what --content-budget bounded,
-# delivery = the whole emitted file, size the context window from it), and
-# each omitted tier with its fetch command.
 lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --output=summary
+```
 
-# When the summary reports a tier as budget_exhausted, fetch that tier alone
-# with no budget applied; --tier= takes the category named in the summary.
+`--output=summary` prints the handoff facts instead of the full JSON capsule:
+
+```
+anchor:       OrderService.CreateAsync (src/Services/OrderService.cs:42)
+snapshot:     f3bff523b103462be239655c9b753be3
+estimatedTokens:          283   (content bounded by --content-budget)
+estimatedArtifactTokens:  571   (whole emitted file; size your window from this)
+omittedTiers:
+  directCallers     budget_exhausted
+  relevantTests     budget_exhausted
+```
+
+When a tier is `budget_exhausted`, fetch it on its own with no budget applied:
+
+```bash
 lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --tier=directCallers
 ```
 
-## What an agent gets
+## Install
 
-- Exact source retrieved from the indexed document version.
-- Symbols, declarations, callers, callees, contracts, and tests.
-- Typed relationships with provenance, including possible dispatch targets and framework-mediated relationships.
-- Snapshot freshness and completeness information.
-- Explicit uncertainty when the compiler or workspace cannot establish a fact.
-- Token-bounded context capsules with inclusion reasons and evidence levels.
+```bash
+dotnet tool install --global lurp --version 1.1.0
+lurp --mode=index --solution=path/to/Your.slnx --output-dir=./out
+```
+
+<details>
+<summary>Build from source & environment variables</summary>
+
+```bash
+dotnet build Lurp.slnx
+dotnet run --project src -- --mode=index --solution=path/to/Your.slnx --output-dir=./out
+```
+
+Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to
+`--solution=` and `--output-dir=`. Requires .NET 10 SDK 10.0.301 (pinned via
+`src/global.json` `rollForward=latestMajor`; Roslyn 5.6 requires `net10.0`).
+
+</details>
 
 ## Framework adapters
 
 Lurp models framework-mediated relationships through six adapters that emit
-ordinary typed facts into the shared model:
+ordinary typed facts into the shared model. Each fact retains its evidence level;
+see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 | Adapter | Facts emitted |
 |---|---|
@@ -188,14 +102,36 @@ ordinary typed facts into the shared model:
 | Serialization | DTO/property contract participation |
 | Test | `TestedBy` (production symbol → covering test) |
 
-Each fact retains its evidence level: `compiler_proved`, `framework_derived`,
-`global_implementation_relation`, `possible`, `convention`, `name_candidate`,
-or `runtime_unknown`.
+## Limitations
 
-## Documentation and status
+- **Single active TFM/configuration** — one snapshot per index run.
+- **Source generators not executed** — `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
+- **Reflection string-literal candidates are `name_candidate`** — not `compiler_proved`.
+- **3-snapshot retention** — older snapshots and their document versions are pruned automatically.
+- **Workspace must be restorable** — `MSBuildWorkspace` requires a successful restore; no index without it.
 
-The [docs](docs/) folder contains the architecture guide and implementation status.
+## Performance
 
-## License
+| Measurement | Value |
+|---|---|
+| eNoteV2 (402 docs) full index | ~48 s |
+| eNoteV2 incremental (no changes) | ~11 s |
+| Capsule token estimates | `estimatedTokens` (content) vs `estimatedArtifactTokens` (delivery) |
+| Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
 
-MIT. See [src/LICENSE](src/LICENSE).
+## Status & roadmap
+
+Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v27, extractor
+1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
+eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
+parameter-type matching are postponed by design (see
+[DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
+
+## Documentation & license
+
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — product model, storage, pipeline, rules.
+- [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) — commands, options, output shapes, snapshot lifecycle, MCP.
+- MIT license — see [LICENSE](LICENSE).
+
+Also MCP: `--mode=serve` exposes 13 read-only tools (`lurp_context`, `lurp_impact`,
+…) over stdio. Index first, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).

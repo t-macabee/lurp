@@ -25,7 +25,12 @@ AGENTS.md
 .tokensave/
 .mimocode/
 .repograph/
-qodana.yaml
+.qodana/*
+!.qodana/qodana.yaml
+
+# Scratch / local-only (never committed)
+prompt.txt
+.tmp_test/
 
 # Lurp index outputs (present: index.db + capsule-*.json + .trace-tmp)
 index.db

@@ -11,7 +11,7 @@
     <ToolCommandName>lurp</ToolCommandName>
     <PackageId>lurp</PackageId>
     <Authors>Tarik Džakić</Authors>
-    <Description>Roslyn-native semantic context engine for C# solutions — indexes a .NET solution into SQLite and serves retrieval, semantic-diff, impact, and bounded context capsules to other software agents.</Description>
+    <Description>Lurp — a Roslyn semantic map for .NET agents. Indexes a C# solution into SQLite via Roslyn and serves retrieval, semantic-diff, impact, and bounded context capsules to other software agents.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/t-macabee/lurp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
