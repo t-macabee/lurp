@@ -18,7 +18,7 @@ internal sealed class DiagnosticsTool
     }
 
     [McpServerTool(Name = "lurp_diagnostics", Title = "Lurp Diagnostics", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("List compiler diagnostics captured at index time for the pinned snapshot. Filters: document (git-relative), project, severity (default excludes Hidden), id (diagnostic code, e.g. CS8933). Keyset pagination via limit/cursor, ordered by diagnostic_id. Reports what the compiler said at index time — not re-evaluated, ranked, or deduplicated.")]
+    [Description("List compiler diagnostics captured at index time for the pinned snapshot. Filters: document (solution-relative path, not git-relative), project, severity (Hidden, Info, Warning, Error case-insensitive, or \"all\" for every severity including Hidden; default excludes Hidden), id (diagnostic code, e.g. CS8933). Unknown severity values are rejected with an error instead of returning empty. Keyset pagination via limit/cursor, ordered by diagnostic_id. diagnostic_count is the total match count across all pages, not the page size. start_column/end_column are 0-based (unlike the 1-based start_line/end_line). Reports what the compiler said at index time — not re-evaluated, ranked, or deduplicated.")]
     public string LurpDiagnostics(
         string? document = null,
         string? project = null,
@@ -37,7 +37,7 @@ internal sealed class DiagnosticsTool
             {
                 normalizedDocument = HandlerBootstrap.NormalizeDocumentPath(document);
                 if (string.IsNullOrEmpty(normalizedDocument))
-                    throw new McpProtocolException("--document is required.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
             }
 
             var projectFilter = string.IsNullOrEmpty(project) ? null : project;
@@ -46,14 +46,14 @@ internal sealed class DiagnosticsTool
 
             var limitVal = limit ?? 100;
             if (limitVal < 1)
-                throw new McpProtocolException("--limit must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
 
             DiagnosticsCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
             {
                 cursorObj = DiagnosticsCursor.TryDecode(cursor);
                 if (cursorObj == null)
-                    throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
             }
 
             DiagnosticsPage page;

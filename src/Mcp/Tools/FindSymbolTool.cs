@@ -28,7 +28,7 @@ internal sealed class FindSymbolTool
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             if (string.IsNullOrEmpty(symbol))
-                throw new McpProtocolException("--symbol is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
 

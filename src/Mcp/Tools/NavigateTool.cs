@@ -31,10 +31,10 @@ internal sealed class NavigateTool
 
             var normalized = HandlerBootstrap.NormalizeDocumentPath(file);
             if (string.IsNullOrEmpty(normalized) || !line.HasValue)
-                throw new McpProtocolException("--file and --line are required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("file and line are required.", McpErrorCode.InvalidParams);
 
             if (line.Value < 1)
-                throw new McpProtocolException("--line must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
 

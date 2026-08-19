@@ -44,7 +44,7 @@ internal sealed class ContextTool
             "inspect" => ContextIntent.Inspect,
             "modify" => ContextIntent.Modify,
             "diagnose" => ContextIntent.Diagnose,
-            _ => throw new McpProtocolException("--intent must be one of: inspect, modify, diagnose.", McpErrorCode.InvalidParams)
+            _ => throw new McpProtocolException("intent must be one of: inspect, modify, diagnose.", McpErrorCode.InvalidParams)
         };
     }
 
@@ -83,7 +83,7 @@ internal sealed class ContextTool
                 throw new McpProtocolException("Provide either symbol or file+line, not both.", McpErrorCode.InvalidParams);
 
             if (hasFile && line!.Value < 1)
-                throw new McpProtocolException("--line must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
 
             var intentParsed = ParseIntent(intent ?? "inspect");
             var budget = content_budget ?? DefaultBudgetFor(symbol);
@@ -131,7 +131,7 @@ internal sealed class ContextTool
                 {
                     cursorObj = SequenceCursor.TryDecode(cursor);
                     if (cursorObj == null)
-                        throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                        throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
 
                     try
                     {

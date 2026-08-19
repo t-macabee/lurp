@@ -35,20 +35,20 @@ internal sealed class AnnotationsTool
             var hasDocument = !string.IsNullOrEmpty(document);
 
             if (hasSymbol && hasDocument)
-                throw new McpProtocolException("--symbol and --document are mutually exclusive; provide one or neither.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("symbol and document are mutually exclusive; provide one or neither.", McpErrorCode.InvalidParams);
 
             var kindFilter = string.IsNullOrEmpty(kind) ? null : kind;
 
             var limitVal = limit ?? 100;
             if (limitVal < 1)
-                throw new McpProtocolException("--limit must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
 
             AnnotationCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
             {
                 cursorObj = AnnotationCursor.TryDecode(cursor);
                 if (cursorObj == null)
-                    throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
             }
 
             string? resolvedSymbol = null;
@@ -62,7 +62,7 @@ internal sealed class AnnotationsTool
             {
                 normalizedDocument = HandlerBootstrap.NormalizeDocumentPath(document);
                 if (string.IsNullOrEmpty(normalizedDocument))
-                    throw new McpProtocolException("--document is required.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
                 // Distinguish "no annotations here" from "no such document"
                 var docs = _session.Store.GetDocumentVersionIdsByPath(snapshotId);

@@ -33,18 +33,18 @@ internal sealed class GetSourceTool
 
             var normalized = HandlerBootstrap.NormalizeDocumentPath(document);
             if (string.IsNullOrEmpty(normalized))
-                throw new McpProtocolException("--document is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
             if (start_line.HasValue && start_line.Value < 1)
-                throw new McpProtocolException("--start-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("start-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
             if (end_line.HasValue && end_line.Value < 1)
-                throw new McpProtocolException("--end-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("end-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
             if (context_lines.HasValue && context_lines.Value < 0)
-                throw new McpProtocolException("--context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
             if (context_lines.HasValue && start_line == null && end_line == null)
-                throw new McpProtocolException("--context-lines requires --start-line or --end-line.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context-lines requires start-line or end-line.", McpErrorCode.InvalidParams);
             if (start_line.HasValue && end_line.HasValue && start_line.Value > end_line.Value)
-                throw new McpProtocolException("--start-line must be <= --end-line.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("start-line must be <= end-line.", McpErrorCode.InvalidParams);
 
             SourceSlice? slice;
             try

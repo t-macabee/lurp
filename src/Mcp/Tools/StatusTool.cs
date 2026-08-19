@@ -40,9 +40,9 @@ internal sealed class StatusTool
             var maxDocs = max_documents ?? DefaultMaxDocuments;
             var maxMism = max_mismatches ?? DefaultMaxMismatches;
             if (maxDocs < 1)
-                throw new McpProtocolException("--max-documents must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max-documents must be a positive integer.", McpErrorCode.InvalidParams);
             if (maxMism < 1)
-                throw new McpProtocolException("--max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
 
             var resolvedSections = ResolveSections(detail, sections);
             var includeManifest = resolvedSections != "freshness";
@@ -53,7 +53,7 @@ internal sealed class StatusTool
 
             var requestedDocs = ParseDocuments(documents);
             if (documents != null && requestedDocs == null)
-                throw new McpProtocolException("--documents must be an array of strings.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("documents must be an array of strings.", McpErrorCode.InvalidParams);
 
             // Normalize requested docs early for validation and later use
             List<string>? normalizedRequested = null;
@@ -64,7 +64,7 @@ internal sealed class StatusTool
                 {
                     var norm = HandlerBootstrap.NormalizeDocumentPath(raw) ?? raw;
                     if (string.IsNullOrWhiteSpace(norm))
-                        throw new McpProtocolException("--documents contains an empty path.", McpErrorCode.InvalidParams);
+                        throw new McpProtocolException("documents contains an empty path.", McpErrorCode.InvalidParams);
                     normalizedRequested.Add(norm);
                 }
             }

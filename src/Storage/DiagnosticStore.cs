@@ -126,6 +126,21 @@ internal sealed class DiagnosticStore
         if (limit <= 0)
             throw new ArgumentException("--limit must be a positive integer.", nameof(limit));
 
+        if (severity != null)
+        {
+            if (string.Equals(severity, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                // wildcard: include every severity including Hidden — handled in SQL below
+            }
+            else if (!string.Equals(severity, "Hidden", StringComparison.OrdinalIgnoreCase)
+                  && !string.Equals(severity, "Info", StringComparison.OrdinalIgnoreCase)
+                  && !string.Equals(severity, "Warning", StringComparison.OrdinalIgnoreCase)
+                  && !string.Equals(severity, "Error", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"Unknown severity '{severity}'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).", nameof(severity));
+            }
+        }
+
         limit = Math.Max(1, limit);
         var fingerprint = DiagnosticsCursor.ComputeFingerprint(projectName, documentPath, severity, excludeHidden, id);
         if (cursor != null)
@@ -149,8 +164,12 @@ internal sealed class DiagnosticStore
 
         if (severity != null)
         {
-            where += " AND severity = @severity COLLATE NOCASE";
-            cmd.Parameters.AddWithValue("@severity", severity);
+            if (!string.Equals(severity, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                where += " AND severity = @severity COLLATE NOCASE";
+                cmd.Parameters.AddWithValue("@severity", severity);
+            }
+            // else wildcard: no severity filter, include Hidden
         }
         else if (excludeHidden)
         {

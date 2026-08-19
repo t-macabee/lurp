@@ -31,14 +31,14 @@ internal sealed class GetSymbolTool
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             if (string.IsNullOrEmpty(symbol))
-                throw new McpProtocolException("--symbol is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
             var viewArg = string.IsNullOrEmpty(view) ? "summary" : view.ToLowerInvariant();
             if (viewArg != "summary" && viewArg != "source" && viewArg != "all")
-                throw new McpProtocolException("--view must be one of: summary, source, all.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("view must be one of: summary, source, all.", McpErrorCode.InvalidParams);
 
             if (context_lines.HasValue && context_lines.Value < 0)
-                throw new McpProtocolException("--context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
             var contextLines = context_lines ?? 3;

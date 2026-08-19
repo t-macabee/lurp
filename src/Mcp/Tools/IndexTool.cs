@@ -91,7 +91,7 @@ internal sealed class IndexTool
             {
                 var s = strategy.ToLowerInvariant();
                 if (s != "full" && s != "incremental")
-                    throw new McpProtocolException("--strategy must be 'full' or 'incremental'.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("strategy must be 'full' or 'incremental'.", McpErrorCode.InvalidParams);
             }
 
             var solutionPath = string.IsNullOrWhiteSpace(solution)

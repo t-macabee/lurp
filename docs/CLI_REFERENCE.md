@@ -22,6 +22,8 @@ no per-project or per-directory scoping flag. To point Lurp at one part of a lar
 codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=search`,
 `--mode=context`, etc.). You cannot index a subset up front.
 
+**MCP callers, note:** CLI validation errors name flags (e.g. `ERROR: --document is required.`), while MCP errors name plain properties (e.g. `document is required.`) without the `--` prefix — the two surfaces share the same validation logic but render the argument name in the form that matches the caller.
+
 ## Read-command options
 
 Accepted by the read commands: `--mode=search`, `--mode=find-symbol`,
@@ -49,6 +51,8 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
 **Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
+
+**Column-number base:** unlike line numbers, column numbers are **not** converted to 1-based. `diagnostics`' `start_column`/`end_column` are the raw Roslyn `LinePosition.Character` values and are **0-based**. There is no CLI or MCP input that takes a column, so this only affects how you read the output.
 
 ## Modes
 
@@ -128,14 +132,14 @@ List compiler diagnostics captured at index time for the snapshot.
 |---|---|---|
 | `--document=<relative-path>` | No | Filter to diagnostics in this document. |
 | `--project=<name>` | No | Filter to diagnostics in this project. |
-| `--severity=<level>` | No | Filter by severity (Roslyn `DiagnosticSeverity` names: `Hidden`, `Info`, `Warning`, `Error`; matched case-insensitively). When omitted, `Hidden` diagnostics are excluded. |
+| `--severity=<level>` | No | Filter by severity (Roslyn `DiagnosticSeverity` names: `Hidden`, `Info`, `Warning`, `Error`; matched case-insensitively, or `all` for every severity including `Hidden`). When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result. |
 | `--id=<code>` | No | Filter by diagnostic ID (e.g. `CS8933`). |
 | `--limit=<n>` | No | Max diagnostics per page (default: 100). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
-Also accepts the shared [read-command options](#read-command-options). The response includes `snapshot_id`, `document`, `project`, `severity`, `id`, `diagnostics` (array with `project_name`, `document_path`, `in_snapshot`, `severity`, `id`, `message`, `start_line`, `start_column`, `end_line`, `end_column`), `diagnostic_count`, and `next_cursor` for pagination. Diagnostics reflect the compiler state at index time, not re-evaluated diagnostics.
+Also accepts the shared [read-command options](#read-command-options). The response includes `snapshot_id`, `document`, `project`, `severity`, `id`, `diagnostics` (array with `project_name`, `document_path`, `in_snapshot`, `severity`, `id`, `message`, `start_line`, `start_column`, `end_line`, `end_column`), `diagnostic_count`, and `next_cursor` for pagination. `diagnostic_count` is the **total** number of diagnostics matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page). Diagnostics reflect the compiler state at index time, not re-evaluated diagnostics. See the column-number-base note above: `start_column`/`end_column` are 0-based.
 
 ---
 

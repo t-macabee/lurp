@@ -96,6 +96,18 @@ Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent 
 `--solution=` and `--output-dir=`. Requires .NET 10 SDK 10.0.301 (pinned via
 `src/global.json` `rollForward=latestMajor`; Roslyn 5.6 requires `net10.0`).
 
+**Installing a local build as the global tool:** if you pack a local build and its
+version number matches the version already on nuget.org (both `1.1.0`, for
+example), `dotnet tool install --global --add-source <path> lurp` can silently
+install the nuget.org copy instead of yours. `--add-source` only appends a source;
+it does not remove nuget.org, and when two sources offer the same version, NuGet is
+free to pick either one. Use `--source <path>` instead — it replaces every other
+source, so only your local build is visible. Confirm afterward with
+`lurp --version`, which prints the source commit hash. This will bite again on
+every future local build that reuses the `1.1.0` version number; bump the local
+package version before packing, or always install with `--source`, never
+`--add-source`.
+
 </details>
 
 ## Framework adapters

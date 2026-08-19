@@ -40,23 +40,23 @@ internal sealed class ImpactTool
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             if (string.IsNullOrEmpty(symbol))
-                throw new McpProtocolException("--symbol is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
             var directionArg = string.IsNullOrEmpty(direction) ? "downstream" : direction;
             var impactDirection = directionArg.ToLowerInvariant() switch
             {
                 "downstream" => ImpactDirection.Downstream,
                 "upstream" => ImpactDirection.Upstream,
-                _ => throw new McpProtocolException("--direction must be one of: downstream, upstream.", McpErrorCode.InvalidParams)
+                _ => throw new McpProtocolException("direction must be one of: downstream, upstream.", McpErrorCode.InvalidParams)
             };
 
             var maxDepth = max_depth ?? DefaultMaxDepth;
             if (maxDepth < 1)
-                throw new McpProtocolException("--max-depth must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max-depth must be a positive integer.", McpErrorCode.InvalidParams);
 
             var maxPaths = max_paths ?? DefaultMaxPaths;
             if (maxPaths < 1)
-                throw new McpProtocolException("--max-paths must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max-paths must be a positive integer.", McpErrorCode.InvalidParams);
 
             HashSet<string>? allowedKinds = null;
             string? kindsRaw = null;
@@ -96,7 +96,7 @@ internal sealed class ImpactTool
             {
                 cursorObj = SequenceCursor.TryDecode(cursor);
                 if (cursorObj == null)
-                    throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
 
                 try
                 {

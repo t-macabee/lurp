@@ -31,19 +31,19 @@ internal sealed class OutlineTool
 
             var normalized = Lurp.Handlers.HandlerBootstrap.NormalizeDocumentPath(document);
             if (string.IsNullOrEmpty(normalized))
-                throw new McpProtocolException("--document is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
             var limitVal = limit ?? 100;
             if (limitVal < 1)
-                throw new McpProtocolException("--limit must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
 
             OutlineCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
             {
                 cursorObj = OutlineCursor.TryDecode(cursor);
                 if (cursorObj == null)
-                    throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
             }
 
             DeclarationOutlinePage? page;

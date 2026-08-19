@@ -26,9 +26,9 @@ internal sealed class DiffTool
         try
         {
             if (string.IsNullOrEmpty(from_snapshot))
-                throw new McpProtocolException("--from-snapshot is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("from-snapshot is required.", McpErrorCode.InvalidParams);
             if (string.IsNullOrEmpty(to_snapshot))
-                throw new McpProtocolException("--to-snapshot is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("to-snapshot is required.", McpErrorCode.InvalidParams);
 
             ValidateSnapshotExists(from_snapshot);
             ValidateSnapshotExists(to_snapshot);

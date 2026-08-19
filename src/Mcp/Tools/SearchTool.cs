@@ -34,23 +34,23 @@ internal sealed class SearchTool
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             if (string.IsNullOrEmpty(query))
-                throw new McpProtocolException("--query is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
 
             var typeArg = string.IsNullOrEmpty(type) ? "all" : type.ToLowerInvariant();
             if (typeArg is not ("source" or "symbol" or "all"))
-                throw new McpProtocolException("--type must be one of: source, symbol, all.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("type must be one of: source, symbol, all.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
             var limitVal = limit ?? 20;
             if (limitVal < 1)
-                throw new McpProtocolException("--limit must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
 
             var snippetTokens = snippet_tokens ?? 64;
             if (snippetTokens < 1)
-                throw new McpProtocolException("--snippet-tokens must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("snippet-tokens must be a positive integer.", McpErrorCode.InvalidParams);
 
             if (!string.IsNullOrEmpty(cursor) && typeArg != "symbol")
-                throw new McpProtocolException("--cursor is only supported with --type=symbol.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("cursor is only supported with type=symbol.", McpErrorCode.InvalidParams);
 
             var freshness = _session.GetFreshnessJson();
 
@@ -75,7 +75,7 @@ internal sealed class SearchTool
                     {
                         cursorObj = SearchCursor.TryDecode(cursor);
                         if (cursorObj == null)
-                            throw new McpProtocolException("--cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
+                            throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
                     }
 
                     SymbolSearchPage page;
