@@ -16,10 +16,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void MigrationList_CountIs27()
+    public void MigrationList_CountIs28()
     {
         var versions = MigrationRunner.MigrationVersions;
-        Assert.Equal(27, versions.Count);
+        Assert.Equal(28, versions.Count);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var current = runner.GetCurrentSchemaVersion();
         Assert.Equal(VersionConstants.DatabaseSchemaVersion, current);
-        Assert.Equal(27, current);
+        Assert.Equal(28, current);
     }
 
     [Fact]

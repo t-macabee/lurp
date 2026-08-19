@@ -48,6 +48,7 @@ internal sealed class StatusTool
             var includeManifest = resolvedSections != "freshness";
             var includeReferences = resolvedSections == "references" || resolvedSections == "all";
             var includeDocumentsInManifest = resolvedSections == "all";
+            var includeCompleteness = resolvedSections == "completeness" || resolvedSections == "all";
             var includeMismatches = includeManifest;
 
             var requestedDocs = ParseDocuments(documents);
@@ -171,14 +172,22 @@ internal sealed class StatusTool
                         database_path = dbPath,
                         schema_version = schemaVersion,
                         latest_snapshot_id = snapshotId,
-                        manifest = latestRow != null ? ManifestJson(latestRow, includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences) : null,
+                        manifest = latestRow != null
+                            ? ManifestJson(WithBindingCompleteness(_session.Store, latestRow, includeCompleteness), includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences)
+                            : null,
                         git_root = latestRow?.GitRoot,
                         solution_path = latestRow?.SolutionPath
                     };
                 }
-                catch
+                catch (Exception ex)
                 {
-                    detailObj = new { note = "detail unavailable" };
+                    Console.Error.WriteLine($"mcp: status detail failure for snapshot {snapshotId}: {ex.GetType().Name}: {ex.Message}");
+                    detailObj = new
+                    {
+                        error = ex.GetType().Name,
+                        error_message = ex.Message,
+                        note = "detail unavailable due to a store error"
+                    };
                 }
             }
 
@@ -433,11 +442,18 @@ internal sealed class StatusTool
         return false;
     }
 
-    private static object? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
+    private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot, bool includeDetail)
+    {
+        var manifest = SnapshotManifest.FromStorageManifest(snapshot);
+        var records = store.GetBindingIncompleteness(snapshot.SnapshotId);
+        manifest.Completeness = manifest.Completeness?.WithBindingIncompleteness(records, includeDetail);
+        return manifest;
+    }
+
+    private static object? ManifestJson(SnapshotManifest manifest, bool includeDocuments, bool includeReferences)
     {
         try
         {
-            var manifest = SnapshotManifest.FromStorageManifest(row);
             var node = JsonSerializer.SerializeToNode(manifest, new JsonSerializerOptions { WriteIndented = false, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
             if (node is not JsonObject obj)
                 return node;
@@ -471,6 +487,11 @@ internal sealed class StatusTool
         {
             return null;
         }
+    }
+
+    private static object? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
+    {
+        return ManifestJson(SnapshotManifest.FromStorageManifest(row), includeDocuments, includeReferences);
     }
 
     // Back-compat overload for callers that still use single bool
