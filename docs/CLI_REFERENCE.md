@@ -24,7 +24,10 @@ codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=s
 
 ## Read-command options
 
-Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=impact`, `--mode=context`, `--mode=get-source`, `--mode=get-symbol`, and `--mode=navigate`.
+Accepted by the read commands: `--mode=search`, `--mode=find-symbol`,
+`--mode=impact`, `--mode=context`, `--mode=get-source`, `--mode=get-symbol`,
+`--mode=navigate`, `--mode=outline`, `--mode=diagnostics`, and
+`--mode=get-annotations`.
 
 | Argument | Required | Description |
 |---|---|---|
@@ -33,10 +36,16 @@ Accepted by every read command: `--mode=search`, `--mode=find-symbol`, `--mode=i
 | `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
+`--output=` applies to modes whose payload is a JSON sequence (`search`,
+`find-symbol`, `impact`, `context`, `outline`, `diagnostics`, `get-annotations`).
+`get-source`, `get-symbol`, and `navigate` emit a single fixed shape — raw source
+bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`, and
+`--quiet` but reject `--output=`.
+
 Freshness is delivered in two tiers, because two payload shapes exist:
 
 - **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code. `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
-- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `find-symbol`, `impact`, `context`, `navigate`, and `get-symbol --view=metadata`.
+- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, and `get-annotations`.
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
 **Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
@@ -70,16 +79,63 @@ Index a solution and store facts in the database.
 Retrieve source text for a document.
 
 ```
---mode=get-source --document=<relative-path> --output-dir=<path> [--snapshot=<id>]
+--mode=get-source --document=<relative-path> --output-dir=<path> [--start-line=<n>] [--end-line=<n>] [--context-lines=<n>] [--snapshot=<id>]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `--document=<relative-path>` | Yes | Relative path of the document within the solution. |
+| `--start-line=<n>` | No | 1-based start line for line window. |
+| `--end-line=<n>` | No | 1-based end line for line window. |
+| `--context-lines=<n>` | No | Lines of context (symmetric expansion). Requires `--start-line=` or `--end-line=`. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 
-Also accepts the shared [read-command options](#read-command-options). The source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper.
+Accepts the shared [read-command options](#read-command-options) except `--output=` (the source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper). There is no CLI `--outline` flag for this mode; the MCP tool `lurp_get_source` offers an `outline` parameter instead.
+
+---
+
+### `--mode=outline`
+
+List declarations in a document with line spans.
+
+```
+--mode=outline --document=<relative-path> --output-dir=<path> [--include-generated] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--document=<relative-path>` | Yes | Relative path of the document within the solution. |
+| `--include-generated` | No | Include source-generated declarations. |
+| `--limit=<n>` | No | Max declarations per page (default: 100). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+Also accepts the shared [read-command options](#read-command-options). Output includes `symbol_id`, `kind`, `fully_qualified_name`, `start_line`, `end_line`, `signature_start_line`, `name_start_line`, `is_partial`, `is_generated`, `declaration_count`, and `next_cursor` for pagination.
+
+---
+
+### `--mode=diagnostics`
+
+List compiler diagnostics captured at index time for the snapshot.
+
+```
+--mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=] [--id=] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--document=<relative-path>` | No | Filter to diagnostics in this document. |
+| `--project=<name>` | No | Filter to diagnostics in this project. |
+| `--severity=<level>` | No | Filter by severity (Roslyn `DiagnosticSeverity` names: `Hidden`, `Info`, `Warning`, `Error`; matched case-insensitively). When omitted, `Hidden` diagnostics are excluded. |
+| `--id=<code>` | No | Filter by diagnostic ID (e.g. `CS8933`). |
+| `--limit=<n>` | No | Max diagnostics per page (default: 100). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+Also accepts the shared [read-command options](#read-command-options). The response includes `snapshot_id`, `document`, `project`, `severity`, `id`, `diagnostics` (array with `project_name`, `document_path`, `in_snapshot`, `severity`, `id`, `message`, `start_line`, `start_column`, `end_line`, `end_column`), `diagnostic_count`, and `next_cursor` for pagination. Diagnostics reflect the compiler state at index time, not re-evaluated diagnostics.
 
 ---
 
@@ -100,7 +156,7 @@ Look up symbol metadata or source by view kind.
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
 | `--include-generated` | No | Include source-generated symbols. |
 
-Also accepts the shared [read-command options](#read-command-options). `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code.
+Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code.
 
 ---
 
@@ -169,7 +225,7 @@ Resolve an indexed declaration by file and line.
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated declarations. |
 
-Also accepts the shared [read-command options](#read-command-options); the JSON payload embeds the `freshness` block.
+Accepts the shared [read-command options](#read-command-options) except `--output=`; the JSON payload embeds the `freshness` block.
 
 Returns the symbol ID, fully-qualified name, kind, and exact source span of the declaration at that location. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; the reported `start_line` round-trips, so passing it back as `--line=` resolves to the same symbol.
 
@@ -308,8 +364,22 @@ Show the current database status.
 |---|---|---|
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
-| `--json` | No | Emit structured JSON instead of plain text. |
-| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output. `documents` restores the per-document version map; `completeness` restores per-document binding-incompleteness rows. Both are summarized by default; `all` expands every section. |
+| `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
+| `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
+| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. |
+| `--max-documents=<n>` | No | Accepted and validated (default: 50; positive integer), but **inert in the CLI**: the status JSON reports `mismatches`, not a changed-documents sample. The MCP `lurp_status` `max_documents` parameter is the effective cap. |
+| `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
+
+The manifest always carries a completeness block (`binding_incompleteness_summary`
+plus `binding_incompleteness_total`); `--detail=completeness` (or `all`) adds the
+per-document `binding_incompleteness` rows. This matches the MCP `lurp_status`
+`sections=completeness` behavior.
+
+Batch document freshness — checking a specific list of documents against the
+snapshot, the MCP `lurp_status` `documents` parameter — has **no CLI
+equivalent**: `--documents=` is not a flag of `--mode=status` (and would be
+rejected as unknown). To check one document from the CLI, read its freshness via
+a read mode's stderr line / `--require-fresh` exit code instead.
 
 ---
 
@@ -349,17 +419,33 @@ Attach a user-authored annotation to a symbol.
 
 ### `--mode=get-annotations`
 
-Retrieve annotations for a symbol.
+Retrieve annotations by symbol, document, or snapshot (with kind filtering and keyset pagination).
 
 ```
---mode=get-annotations --symbol=<id> --output-dir=<path> [options]
+--mode=get-annotations (--symbol=<id> | --document=<path>) --output-dir=<path> [--kind=<kind>] [--limit=<n>] [--cursor=<token>] [options]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | No | The symbol ID to query. Omit to return all annotations. |
+| `--symbol=<id>` | No | The symbol ID to query. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`. |
+| `--document=<relative-path>` | No | Relative path of the document within the solution. Mutually exclusive with `--symbol=`. |
+| `--kind=<kind>` | No | Filter to one annotation kind. |
+| `--limit=<n>` | No | Max annotations per page (default: 100; positive integer). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+
+Accepts the shared [read-command options](#read-command-options). `--symbol=` and
+`--document=` are enforced as mutually exclusive. With neither, all annotations in
+the snapshot are returned.
+
+The JSON payload is `{ snapshot_id, symbol_id, document, kind, annotations,
+annotation_count, next_cursor, freshness }`; each annotation is `{ symbol_id,
+kind, value, document_path }`. `annotation_count` is the total matching count for
+the filter; when more results remain than fit on the page, `next_cursor` is set
+and `--output=summary` prints `-- <shown>/<total> annotation(s); more available
+(--cursor)`. `--cursor` tokens are snapshot-scoped continuation tokens, not raw
+offsets.
 
 ---
 
@@ -385,13 +471,16 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 13 read-only tools via
-`tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index,
-lurp_get_annotations, lurp_status, lurp_get_source, lurp_context,
-lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact`. There is
-no `lurp_annotate` tool by design. The MCP session opens SQLite with
-`PRAGMA query_only=ON`, so the transport is read-only; annotation writes remain
-CLI-only (`--mode=annotate`).
+Lurp runs as an MCP server over stdio, exposing 15 tools via `tools/list`:
+`lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
+lurp_search, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
+lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index`. All are
+read-only except `lurp_index`, which starts a background (re-)index. There is no
+`lurp_annotate` tool by design. The MCP session's SQLite connection opens with
+`PRAGMA query_only=ON`, so read tools never mutate the pinned snapshot;
+`lurp_index` writes through a separate writer connection while reads keep
+answering from the old pin. Annotation writes remain CLI-only
+(`--mode=annotate`).
 
 Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
 and framework logs are routed to stderr.

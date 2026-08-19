@@ -47,6 +47,8 @@ separately.
 | `annotate` / `get-annotations` | Attach and retrieve user-authored annotations on symbols. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |
+| `outline` | List declarations in a document with line spans. |
+| `diagnostics` | List compiler diagnostics captured at index time. |
 
 ## Worked example
 
@@ -130,7 +132,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Status & roadmap
 
-Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v27, extractor
+Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v28, extractor
 1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
 eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
 parameter-type matching are postponed by design (see
@@ -142,5 +144,9 @@ parameter-type matching are postponed by design (see
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes 13 read-only tools (`lurp_context`, `lurp_impact`,
-…) over stdio. Index first, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
+Also MCP: `--mode=serve` exposes 15 tools (`lurp_context`, `lurp_get_source`,
+`lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`,
+`lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`,
+`lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_index`) over stdio; all are
+read-only except `lurp_index` (background re-index). Index first, then serve. See
+[CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).

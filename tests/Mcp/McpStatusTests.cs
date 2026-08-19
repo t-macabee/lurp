@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Storage;
+using Microsoft.Data.Sqlite;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -17,9 +19,9 @@ public sealed class McpStatusTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
-    {
-        var snapshotId = await IndexAsync();
+public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
+{
+    var snapshotId = await IndexAsync();
         // Session without --solution= (cheap path)
         var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
@@ -635,5 +637,166 @@ public sealed class McpStatusTests : IntegrationTestBase
         Assert.Equal("stale", fullState);
         // Also consistency check: cheap and full agree on staleness for this edit
         Assert.Equal(cheapDocState, fullDocState);
+    }
+
+    // ── Fix 1: store-exception surfacing (StatusTool.cs:162-191) ──────
+
+    [Fact]
+    public async Task Status_DetailBranch_StoreFailure_SurfacesErrorNotSwallowed()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        // Force a genuine store failure inside the detail branch. Freshness
+        // does not read binding completeness; the manifest branch does.
+        // Removing that table leaves freshness usable, then makes the detail
+        // read throw a SQLite exception.
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DROP TABLE binding_incompleteness;";
+            command.ExecuteNonQuery();
+        }
+
+        var json = await tool.LurpStatus(sections: "manifest");
+        using var doc = JsonDocument.Parse(json);
+        var detail = doc.RootElement.GetProperty("detail");
+
+        Assert.True(detail.TryGetProperty("error", out var errorProp));
+        Assert.False(string.IsNullOrEmpty(errorProp.GetString()));
+        Assert.True(detail.TryGetProperty("error_message", out _));
+        Assert.Equal("detail unavailable due to a store error", detail.GetProperty("note").GetString());
+
+        // Regression guard: must NOT be the old blank note.
+        Assert.NotEqual("detail unavailable", detail.GetProperty("note").GetString());
+    }
+
+    // ── Fix 2: sections=completeness wiring (StatusTool.cs:444-450) ──
+
+    private async Task<(string snapshotId, string dbPath)> IndexAndSeedBindingIncompletenessAsync()
+    {
+        var snapshotId = await IndexAsync();
+
+        // Seed a binding-incompleteness row via a writable store before
+        // the McpSessionContext opens it in query-only mode.
+        using (var store = OpenStore(DbPath))
+        {
+            store.SaveBindingIncompleteness(snapshotId, new[]
+            {
+                new BindingIncompletenessRecord(
+                    ProjectName: "StatusProj",
+                    DocumentPath: "src/StatusProj/Models.cs",
+                    Reason: "UnresolvedTypeReference",
+                    Count: 3,
+                    ExtractorVersion: "test")
+            });
+        }
+
+        return (snapshotId, DbPath);
+    }
+
+    [Fact]
+    public async Task Status_Sections_Completeness_PopulatesBindingIncompletenessDetail()
+    {
+        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "completeness");
+        using var doc = JsonDocument.Parse(json);
+        var completeness = doc.RootElement
+            .GetProperty("detail")
+            .GetProperty("manifest")
+            .GetProperty("completeness");
+
+        Assert.True(completeness.GetProperty("binding_incompleteness_total").GetInt32() > 0,
+            "binding_incompleteness_total should be non-zero with seeded record");
+        Assert.True(completeness.GetProperty("binding_incompleteness").GetArrayLength() > 0,
+            "binding_incompleteness detail array should be non-empty for sections=completeness");
+    }
+
+    [Fact]
+    public async Task Status_Sections_Manifest_PopulatesSummaryButNotDetail()
+    {
+        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "manifest");
+        using var doc = JsonDocument.Parse(json);
+        var completeness = doc.RootElement
+            .GetProperty("detail")
+            .GetProperty("manifest")
+            .GetProperty("completeness");
+
+        // Summary and total are always populated now (WithBindingCompleteness runs on every manifest render)
+        Assert.True(completeness.GetProperty("binding_incompleteness_total").GetInt32() > 0,
+            "binding_incompleteness_total should be populated even for sections=manifest");
+        Assert.True(completeness.GetProperty("binding_incompleteness_summary").GetArrayLength() > 0,
+            "binding_incompleteness_summary should be populated even for sections=manifest");
+
+        // But the per-document detail array must be empty (includeDetail=false for manifest)
+        Assert.Equal(0, completeness.GetProperty("binding_incompleteness").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Status_Sections_All_PopulatesBothSummaryAndDetail()
+    {
+        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "all");
+        using var doc = JsonDocument.Parse(json);
+        var completeness = doc.RootElement
+            .GetProperty("detail")
+            .GetProperty("manifest")
+            .GetProperty("completeness");
+
+        Assert.True(completeness.GetProperty("binding_incompleteness_total").GetInt32() > 0);
+        Assert.True(completeness.GetProperty("binding_incompleteness_summary").GetArrayLength() > 0);
+        Assert.True(completeness.GetProperty("binding_incompleteness").GetArrayLength() > 0,
+            "sections=all should include per-document detail rows");
+    }
+
+    [Fact]
+    public async Task Status_Sections_Completeness_DiffersFromManifest_ForCompletenessFields()
+    {
+        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var jsonManifest = await tool.LurpStatus(sections: "manifest");
+        using var docManifest = JsonDocument.Parse(jsonManifest);
+        var manifestCompleteness = docManifest.RootElement
+            .GetProperty("detail")
+            .GetProperty("manifest")
+            .GetProperty("completeness");
+        var manifestDetailArray = manifestCompleteness.GetProperty("binding_incompleteness");
+        var manifestTotal = manifestCompleteness.GetProperty("binding_incompleteness_total").GetInt32();
+
+        var jsonCompleteness = await tool.LurpStatus(sections: "completeness");
+        using var docCompleteness = JsonDocument.Parse(jsonCompleteness);
+        var completenessCompleteness = docCompleteness.RootElement
+            .GetProperty("detail")
+            .GetProperty("manifest")
+            .GetProperty("completeness");
+        var completenessDetailArray = completenessCompleteness.GetProperty("binding_incompleteness");
+        var completenessTotal = completenessCompleteness.GetProperty("binding_incompleteness_total").GetInt32();
+
+        // Total and summary are the same for both sections
+        Assert.Equal(manifestTotal, completenessTotal);
+
+        // The distinguishing behavior: completeness includes detail rows, manifest does not
+        Assert.Equal(0, manifestDetailArray.GetArrayLength());
+        Assert.True(completenessDetailArray.GetArrayLength() > 0,
+            "sections=completeness must produce detail rows that sections=manifest does not");
     }
 }

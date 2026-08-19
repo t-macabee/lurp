@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v27, extractor 1.6.0, tool 1.1.0
+**Current:** schema v28, extractor 1.6.0, tool 1.1.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -56,7 +56,7 @@ Logical boundaries:
 5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
-copied method bodies the canonical representation. Schema migrations: 27
+copied method bodies the canonical representation. Schema migrations: 28
 sequential migrations managed by `MigrationRunner`.
 
 ## 4. Indexing Pipeline
@@ -107,9 +107,14 @@ Handlers consume persisted facts through `IIndexStore` and related store
 interfaces. They do not re-run Roslyn analysis (except `--mode=status
 --solution=`, which performs a storage-backed freshness check).
 
-Twelve handlers cover: index, search, find-symbol, get-symbol, get-source,
-navigate, diff, impact, context, status, timings, and annotations. MCP surface
-(`--mode=serve`): 13 read-only tools over stdio (see
+Fourteen handlers cover: index, search, find-symbol, get-symbol, get-source,
+navigate, outline, diagnostics, diff, impact, context, status, timings, and
+annotations. MCP surface (`--mode=serve`): 15 tools over stdio
+(`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`,
+`lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`,
+`lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
+`lurp_timings`, `lurp_refresh`, `lurp_index`) — 14 read-only plus `lurp_index`,
+which starts a background (re-)index through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
 
 ## 6. Context Capsules
@@ -149,7 +154,7 @@ entry, not a new extractor.
 | **tier** | A category within a capsule; may be `budget_exhausted` |
 | **evidence / provenance** | The 7-level ladder (`compiler_proved` → `runtime_unknown`) |
 | **adapter** | Framework-mediated edge emitter (ASP.NET, DI, MediatR, …) |
-| **freshness** | `status --json` reports fresh/stale + `binding_incompleteness` + `not_determinable` |
+| **freshness** | Snapshot state (`fresh`/`stale`/`unknown`); `status --json` also reports a `completeness` block with `binding_incompleteness` / `binding_incompleteness_summary` / `binding_incompleteness_total` |
 
 ## 8. Non-Negotiable Design Rules
 
