@@ -29,6 +29,7 @@ internal static class McpServeHandler
             .WithTools<DiffTool>()
             .WithTools<GetSymbolTool>()
             .WithTools<AnnotationsTool>()
+            .WithTools<DiagnosticsTool>()
             .WithTools<StatusTool>()
             .WithTools<TimingsTool>()
             .WithTools<RefreshTool>()

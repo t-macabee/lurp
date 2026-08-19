@@ -1,4 +1,4 @@
-﻿using Lurp.Handlers;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Workspace;
 
@@ -70,6 +70,9 @@ public static class Program
         new("get-annotations", "Retrieve annotations by symbol, document, or snapshot (with kind/limit/cursor paging).",
             ["--symbol=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(AnnotationHandler.RunGetAnnotations)),
+        new("diagnostics", "List compiler diagnostics captured at index time (--document=, --project=, --severity=, --id=).",
+            ["--document=", "--project=", "--severity=", "--id=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            Sync(DiagnosticsHandler.Run)),
         new("serve", "Run an MCP server over the index (stdio).",
             ["--solution="],
             McpServeHandler.Run)
