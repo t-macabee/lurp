@@ -43,11 +43,12 @@ internal sealed class ContextTool
     }
 
     [McpServerTool(Name = "lurp_context", Title = "Lurp Context Capsule", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Supports tier continuation via tier/cursor.")]
+    [Description("Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Intent: inspect | modify | diagnose (default: inspect). Supports tier continuation via tier/cursor.")]
     public string LurpContext(
         string? symbol = null,
         string? file = null,
         int? line = null,
+        [Description("Intent hint: inspect | modify | diagnose (default: inspect).")]
         string? intent = null,
         int? content_budget = null,
         int? max_hops = null,
