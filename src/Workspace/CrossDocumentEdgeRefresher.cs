@@ -282,7 +282,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
 
             var options = CompilationFactExtractor.CreateOptions(skipAdapters, scopeDocs, _output);
             cancellationToken.ThrowIfCancellationRequested();
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, options);
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, project, options);
             result.EnsureRequiredSuccess();
 
             // Binding-incompleteness rows are persisted with paths relative

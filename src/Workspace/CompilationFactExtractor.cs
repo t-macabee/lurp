@@ -82,6 +82,11 @@ public static class CompilationFactExtractor
 
     public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, ExtractionOptions? options = null)
     {
+        return ExtractAll(compilation, workspaceInfo, snapshotId, projectName, project: null, options);
+    }
+
+    public static ExtractionResult ExtractAll(Compilation compilation, WorkspaceInfo workspaceInfo, string snapshotId, string projectName, Project? project, ExtractionOptions? options = null)
+    {
         var skipAdapters = options?.SkipAdapters;
         var logWarning = options?.LogWarning;
         var logError = options?.LogError;
@@ -170,7 +175,9 @@ public static class CompilationFactExtractor
                     annotations.AddRange(result.Annotations);
                 });
 
-        var diagnostics = CompilationHelper.GetDiagnostics(projectName, compilation);
+        var diagnostics = project != null
+            ? CompilationHelper.GetDiagnostics(project, compilation)
+            : CompilationHelper.GetDiagnostics(projectName, compilation);
 
         return new ExtractionResult(declarations, edges, diagnostics, [.. incompleteness.ToRecords()], measurements, annotations, failures.Count > 0 ? failures : null);
     }

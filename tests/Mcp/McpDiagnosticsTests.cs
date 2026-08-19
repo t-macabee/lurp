@@ -392,6 +392,92 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Diagnostics_UnusedUsing_SurfacesViaCompilerDiagnostic()
+    {
+        // Regression: CompilationHelper.GetDiagnostics(Project, Compilation) must still
+        // surface the same compiler-level unused-using diagnostic (CS8019) that the old
+        // GetDiagnostics(string, Compilation) overload produced, now that extraction routes
+        // through the Project-aware overload (which additionally runs analyzers).
+        CreateProject("UnusedUsingProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                using System.Text;
+
+                namespace UnusedUsingProj {
+                    public class Foo {
+                        public void M1() { }
+                    }
+                }
+                """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        await using var session = CreateSession();
+        var tool = new DiagnosticsTool(session);
+
+        var json = tool.LurpDiagnostics(project: "UnusedUsingProj", severity: "all", limit: 1000);
+        using var doc = JsonDocument.Parse(json);
+
+        var diags = doc.RootElement.GetProperty("diagnostics").EnumerateArray().ToList();
+
+        // ImplicitUsings=enable means the SDK-generated GlobalUsings.g.cs can itself carry
+        // unused-using diagnostics (e.g. an unused implicit `global using System.Threading;`),
+        // so more than one CS8019 row can legitimately exist. Scope to the one located in the
+        // fixture's own Models.cs to isolate the explicit `using System.Text;` this test wrote.
+        var unused = diags.FirstOrDefault(d =>
+            d.GetProperty("id").GetString() == "CS8019" &&
+            d.GetProperty("document_path").ValueKind != JsonValueKind.Null &&
+            d.GetProperty("document_path").GetString()!.EndsWith("Models.cs", StringComparison.Ordinal));
+
+        Assert.False(unused.ValueKind == JsonValueKind.Undefined,
+            "Expected a CS8019 diagnostic located in Models.cs for the unused `using System.Text;`.");
+        Assert.Equal("Hidden", unused.GetProperty("severity").GetString());
+        Assert.Equal(1, unused.GetProperty("start_line").GetInt32());
+    }
+
+    [Fact]
+    public async Task Diagnostics_UnusedUsing_AnalyzerIdIfPresentIsQueryableById()
+    {
+        // Observational, not a fixed-outcome assertion: whether IDE0005 (the broader
+        // analyzer-level "unused using" rule) fires on a bare test-fixture .csproj with no
+        // explicit analyzer package reference and no EnforceCodeStyleInBuild is not
+        // guaranteed by SDK defaults. This test only asserts that IF an IDE-family id shows
+        // up in the unfiltered "all" severity view, it is independently retrievable via the
+        // id filter (proving the read path handles analyzer-sourced rows identically to
+        // compiler-sourced ones). It intentionally does not assert IDE0005 is present.
+        CreateProject("AnalyzerCheckProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                using System.Text;
+
+                namespace AnalyzerCheckProj {
+                    public class Foo {
+                        public void M1() { }
+                    }
+                }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        await using var session = CreateSession();
+        var tool = new DiagnosticsTool(session);
+
+        var allJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", severity: "all", limit: 1000);
+        using var allDoc = JsonDocument.Parse(allJson);
+        var ideId = allDoc.RootElement.GetProperty("diagnostics").EnumerateArray()
+            .Select(d => d.GetProperty("id").GetString())
+            .FirstOrDefault(id => id != null && id.StartsWith("IDE", StringComparison.Ordinal));
+
+        if (ideId == null)
+            return; // No IDE-family diagnostic fired on this fixture; nothing further to check.
+
+        var filteredJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", id: ideId, severity: "all", limit: 1000);
+        using var filteredDoc = JsonDocument.Parse(filteredJson);
+        Assert.True(filteredDoc.RootElement.GetProperty("diagnostics").EnumerateArray().Any(),
+            $"Expected id filter '{ideId}' to retrieve at least the row seen in the unfiltered view.");
+    }
+
+    [Fact]
     public void DiagnosticsTool_Registered_ReadOnly()
     {
         var tools = typeof(McpServeHandler).Assembly.GetTypes()

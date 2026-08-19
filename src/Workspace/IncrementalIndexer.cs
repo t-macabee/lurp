@@ -319,10 +319,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped);
     }
 
-    private async Task<Dictionary<string, Compilation>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
     {
         _output.Write("Loading compilations for affected projects... ");
-        var result = new Dictionary<string, Compilation>(StringComparer.Ordinal);
+        var result = new Dictionary<string, (Project Project, Compilation Compilation)>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
         {
             if (!affectedProjects.Contains(project.Name))
@@ -331,7 +331,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
                 throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
-            result[project.Name] = compilation;
+            result[project.Name] = (project, compilation);
         }
 
         _output.WriteLine($"done ({result.Count} compilations).");
@@ -387,15 +387,16 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
-        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, Compilation> affectedCompilations,
+        WorkspaceInfo workspaceInfo, string newSnapshotIdStr, Dictionary<string, (Project Project, Compilation Compilation)> affectedCompilations,
         IReadOnlySet<string> extractionScopeAbsolutePaths,
         IReadOnlySet<string> extractionScopeRelativePaths)
     {
         _output.WriteLine("Extracting replacement facts for affected projects...");
         int totalDecl = 0, totalEdge = 0, totalDiag = 0;
 
-        foreach (var (projectName, compilation) in affectedCompilations)
+        foreach (var (projectName, entry) in affectedCompilations)
         {
+            var (project, compilation) = entry;
             _output.Write($"  [{projectName}] ");
 
             if (WorkspaceLoadGate.Classify(compilation) == CompilationReadability.Blind)
@@ -408,7 +409,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             }
 
             var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths, _output);
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, options);
+            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, project, options);
             result.EnsureRequiredSuccess();
 
             _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);

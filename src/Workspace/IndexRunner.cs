@@ -212,7 +212,7 @@ public static class IndexRunner
                 try
                 {
                     var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
-                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, options);
+                    var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, project, options);
                     result.EnsureRequiredSuccess();
 
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
