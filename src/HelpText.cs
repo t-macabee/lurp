@@ -78,7 +78,7 @@ internal static class HelpText
         // context
         ["--intent="] = "Assembly-priority hint: inspect | modify | diagnose (default: inspect).",
         ["--content-budget="] =
-            "Token budget for capsule CONTENT (default: 8000). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
+            "Token budget for capsule CONTENT (default: 8000, or 16000 when --symbol= is a type anchor and --content-budget= is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit --content-budget= is always honored as-is). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surroundingSource first); as a last resort the anchor source is bounded, so estimatedTokens never exceeds the budget. Every truncated category gets one record in omittedTiers.",
         ["--max-hops="] = "Maximum graph hops to expand (default: 3).",
         ["--scope="] = "Logical scope label recorded on the anchor (default: the symbol ID).",
         ["--affected-project="] = "Repeatable. A project affected by the change.",

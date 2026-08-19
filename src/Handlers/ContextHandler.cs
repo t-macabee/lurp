@@ -26,9 +26,18 @@ internal static class ContextHandler
 
     internal static int DefaultBudgetFor(string? symbolArg)
     {
-        return symbolArg is not null && SymbolId.TryParse(symbolArg, out var id) && id.IsType
-            ? DefaultTypeAnchorBudget
-            : DefaultBudget;
+        if (symbolArg is not null)
+        {
+            if (SymbolId.TryParse(symbolArg, out var id) && id.IsType)
+                return DefaultTypeAnchorBudget;
+            // Bare doc-comment ID form without assembly identity (e.g. "T:Namespace.Type")
+            // is what --mode=find-symbol also prints and what HandlerBootstrap accepts;
+            // it must still trigger the type-aware default.
+            if (symbolArg.StartsWith("T:", StringComparison.Ordinal))
+                return DefaultTypeAnchorBudget;
+        }
+
+        return DefaultBudget;
     }
 
     public static void Run(string[] args)

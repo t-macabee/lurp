@@ -26,9 +26,15 @@ internal sealed class ContextTool
 
     private static int DefaultBudgetFor(string? symbolArg)
     {
-        return symbolArg is not null && SymbolId.TryParse(symbolArg, out var id) && id.IsType
-            ? DefaultTypeAnchorBudget
-            : DefaultBudget;
+        if (symbolArg is not null)
+        {
+            if (SymbolId.TryParse(symbolArg, out var id) && id.IsType)
+                return DefaultTypeAnchorBudget;
+            if (symbolArg.StartsWith("T:", StringComparison.Ordinal))
+                return DefaultTypeAnchorBudget;
+        }
+
+        return DefaultBudget;
     }
 
     private static ContextIntent ParseIntent(string intentArg)
@@ -50,6 +56,7 @@ internal sealed class ContextTool
         int? line = null,
         [Description("Intent hint: inspect | modify | diagnose (default: inspect).")]
         string? intent = null,
+        [Description("Token budget for capsule content (default: 8000, or 16000 when symbol is a type anchor and content_budget is omitted).")]
         int? content_budget = null,
         int? max_hops = null,
         string? scope = null,
