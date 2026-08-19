@@ -433,6 +433,24 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _diagnostics!.GetDiagnostics(snapshotId, projectName);
     }
 
+    public DiagnosticsPage GetDiagnosticsPage(
+        string snapshotId,
+        string? projectName,
+        string? documentPath,
+        string? severity,
+        bool excludeHidden,
+        string? id,
+        int limit,
+        DiagnosticsCursor? cursor)
+    {
+        EnsureOpen();
+        var snapshot = _lifecycle!.LoadSnapshot(snapshotId);
+        var gitRoot = snapshot?.GitRoot;
+        var docPaths = _documents!.GetDocumentVersionIdsByPath(snapshotId);
+        var pathSet = new HashSet<string>(docPaths.Keys, StringComparer.Ordinal);
+        return _diagnostics!.GetDiagnosticsPage(snapshotId, projectName, documentPath, severity, excludeHidden, id, limit, cursor, gitRoot, pathSet);
+    }
+
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
     {
         EnsureOpen();

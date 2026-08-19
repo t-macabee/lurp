@@ -181,7 +181,6 @@ internal sealed class StatusTool
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"mcp: status detail failure for snapshot {snapshotId}: {ex.GetType().Name}: {ex.Message}");
                     detailObj = new
                     {
                         error = ex.GetType().Name,

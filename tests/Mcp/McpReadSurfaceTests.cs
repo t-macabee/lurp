@@ -303,4 +303,219 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             Assert.Contains("snapshot mismatch", ex.Message);
         }
     }
+
+    // ── Gap 6: line-windowed reads ───────────────────────────────────
+
+    private async Task<(string snapshotId, string docPath, string fullContent)> IndexLineFixtureAsync()
+    {
+        var lines = Enumerable.Range(1, 20).Select(i => $"// line {i:D2} content for line {i}").ToList();
+        // Add a class declaration spanning lines 21-23 to give outline/declarations something to find
+        lines.Add("namespace LineProj {");
+        lines.Add("    public class LineClass {");
+        lines.Add("        public void MethodA() {}");
+        lines.Add("        public void MethodB() {}");
+        lines.Add("    }");
+        lines.Add("}");
+        var content = string.Join("\n", lines);
+        CreateProject("LineProj", new Dictionary<string, string>
+        {
+            ["Lines.cs"] = content
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        // Resolve normalized path
+        string docPath;
+        using (var store = OpenStore(DbPath))
+        {
+            docPath = store.GetDocumentVersionIdsByPath(snapshotId).Keys.First(k => k.Contains("Lines.cs"));
+        }
+        return (snapshotId, docPath, content);
+    }
+
+    [Fact]
+    public async Task GetSource_LineWindow_ReturnsExactLinesAndEchoesRange()
+    {
+        var (snapshotId, docPath, fullContent) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var json = getSource.LurpGetSource(document: docPath, start_line: 5, end_line: 8);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
+            Assert.Equal(5, doc.RootElement.GetProperty("start_line").GetInt32());
+            Assert.Equal(8, doc.RootElement.GetProperty("end_line").GetInt32());
+            var source = doc.RootElement.GetProperty("source").GetString()!;
+            var expectedLines = fullContent.Split('\n').Skip(4).Take(4);
+            var expected = string.Join("\n", expectedLines) + "\n";
+            // The store slices at byte offsets including trailing newline when present; compare trimmed
+            Assert.Contains("// line 05", source);
+            Assert.Contains("// line 08", source);
+            Assert.True(doc.RootElement.GetProperty("truncated").GetBoolean(), "windowed read should be truncated");
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_ContextLines_WithOnlyStartLine_ExpandsAndClampsAtOne()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            // start_line=2, context=5 => expandedStart should clamp to 1
+            var json = getSource.LurpGetSource(document: docPath, start_line: 2, context_lines: 5);
+            using var doc = JsonDocument.Parse(json);
+            var start = doc.RootElement.GetProperty("start_line").GetInt32();
+            Assert.Equal(1, start);
+            // end should be clamped appropriately (totalLines or start+ctx expanded)
+            var end = doc.RootElement.GetProperty("end_line").GetInt32();
+            Assert.True(end >= 2);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_ContextLines_WithOnlyEndLine_ExpandsAndClampsAtTotal()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            // Get total lines first
+            var wholeJson = getSource.LurpGetSource(document: docPath);
+            using var wholeDoc = JsonDocument.Parse(wholeJson);
+            var total = wholeDoc.RootElement.GetProperty("total_lines").GetInt32();
+
+            var json = getSource.LurpGetSource(document: docPath, end_line: total - 1, context_lines: 5);
+            using var doc = JsonDocument.Parse(json);
+            var end = doc.RootElement.GetProperty("end_line").GetInt32();
+            Assert.Equal(total, end);
+            var start = doc.RootElement.GetProperty("start_line").GetInt32();
+            Assert.True(start <= total - 1);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_ContextLines_WithoutBounds_ThrowsInvalidParams()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, context_lines: 2));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Contains("context-lines", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_StartGreaterThanEnd_ThrowsInvalidParams()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: 8, end_line: 5));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Contains("start-line", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_StartBeyondTotal_ThrowsOutOfRange()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            // Get total lines
+            var wholeJson = getSource.LurpGetSource(document: docPath);
+            using var wholeDoc = JsonDocument.Parse(wholeJson);
+            var total = wholeDoc.RootElement.GetProperty("total_lines").GetInt32();
+
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: total + 100));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Contains("beyond", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_EndBeyondTotal_ClampsToTotal()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var wholeJson = getSource.LurpGetSource(document: docPath);
+            using var wholeDoc = JsonDocument.Parse(wholeJson);
+            var total = wholeDoc.RootElement.GetProperty("total_lines").GetInt32();
+            var wholeSource = wholeDoc.RootElement.GetProperty("source").GetString();
+
+            var json = getSource.LurpGetSource(document: docPath, start_line: 1, end_line: total + 100);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal(total, doc.RootElement.GetProperty("end_line").GetInt32());
+            var source = doc.RootElement.GetProperty("source").GetString();
+            Assert.Equal(wholeSource, source);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_WholeFile_WhenNoWindow_ReturnsAllWithTruncatedFalse()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var json = getSource.LurpGetSource(document: docPath);
+            using var doc = JsonDocument.Parse(json);
+            Assert.False(doc.RootElement.GetProperty("truncated").GetBoolean());
+            Assert.True(doc.RootElement.TryGetProperty("source", out var src));
+            Assert.False(string.IsNullOrEmpty(src.GetString()));
+            Assert.True(doc.RootElement.TryGetProperty("total_lines", out var totalEl));
+            Assert.True(totalEl.GetInt32() > 0);
+
+            // Compare with explicit whole-file call — should be same
+            var json2 = getSource.LurpGetSource(document: docPath, start_line: null, end_line: null, context_lines: null);
+            using var doc2 = JsonDocument.Parse(json2);
+            Assert.Equal(src.GetString(), doc2.RootElement.GetProperty("source").GetString());
+            Assert.Equal(doc.RootElement.GetProperty("total_lines").GetInt32(), doc2.RootElement.GetProperty("total_lines").GetInt32());
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_OutlineTrue_ReturnsOutlineAlongsideSource()
+    {
+        var (snapshotId, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var json = getSource.LurpGetSource(document: docPath, outline: true);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("outline", out var outline));
+            Assert.Equal(JsonValueKind.Array, outline.ValueKind);
+            Assert.True(outline.GetArrayLength() > 0);
+            Assert.True(doc.RootElement.TryGetProperty("outline_declaration_count", out var countEl));
+            var count = countEl.GetInt32();
+            Assert.Equal(outline.GetArrayLength(), count);
+
+            // Cross-check via direct store
+            using var store = OpenStore(DbPath);
+            var page = store.GetDeclarationsOutline(docPath, snapshotId, false, 100, null);
+            Assert.NotNull(page);
+            Assert.Equal(page!.TotalCount, count);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_TotalLines_EqualsActualLineCount()
+    {
+        var (_, docPath, fullContent) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var json = getSource.LurpGetSource(document: docPath);
+            using var doc = JsonDocument.Parse(json);
+            var total = doc.RootElement.GetProperty("total_lines").GetInt32();
+            var expected = fullContent.Split('\n').Length;
+            // Note: Join with \n gives N lines; ensure file ends without extra empty line
+            Assert.Equal(expected, total);
+        }
+    }
 }

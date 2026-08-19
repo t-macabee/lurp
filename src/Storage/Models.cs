@@ -98,6 +98,14 @@ public sealed class DiagnosticRecord
     public int? EndColumn { get; init; }
 }
 
+/// <summary>
+///     Read-surface wrapper around <see cref="DiagnosticRecord" /> that adds
+///     computed fields (<see cref="InSnapshot" />) without polluting the
+///     index-time extraction type. The <see cref="DocumentPath" /> on this
+///     record is the normalized git-relative path, not the raw stored value.
+/// </summary>
+public sealed record DiagnosticEntry(DiagnosticRecord Record, string? NormalizedDocumentPath, bool? InSnapshot);
+
 public sealed record BindingIncompletenessRecord(
     [property: JsonPropertyName("project_name")]
     string ProjectName,

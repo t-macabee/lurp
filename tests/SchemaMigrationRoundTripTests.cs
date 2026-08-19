@@ -107,6 +107,24 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
+    public void ValidateSchema_AfterRunMigrations_DoesNotThrow()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+        using var store = new SqliteIndexStore(_dbPath);
+        store.Open();
+        try
+        {
+            var ex = Record.Exception(() => store.ValidateSchema(VersionConstants.DatabaseSchemaVersion));
+            Assert.Null(ex);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
     public void ForwardMigration_FromV1Schema_PreservesSeededData()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-e4-{Guid.NewGuid():N}.db");
@@ -171,6 +189,37 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         {
             SqliteConnection.ClearAllPools();
             if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+}
+
+public sealed class IndexHandlerSchemaTests : IntegrationTestBase
+{
+    [Fact]
+    public async Task IndexHandler_Run_AgainstFixtureSolution_CompletesWithoutThrowing()
+    {
+        CreateProject("SchemaProbe", new Dictionary<string, string>
+        {
+            ["A.cs"] = "namespace SchemaProbe { public class A { public void Foo() {} } }"
+        });
+        var handlerOut = Path.Combine(TestDir, "handler-out");
+        Directory.CreateDirectory(handlerOut);
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={handlerOut}" };
+        var ex = await Record.ExceptionAsync(() => Lurp.Handlers.IndexHandler.Run(args, CancellationToken.None));
+        Assert.Null(ex);
+        var dbPath = Path.Combine(handlerOut, "index.db");
+        Assert.True(File.Exists(dbPath));
+        using var store = new SqliteIndexStore(dbPath);
+        store.Open();
+        try
+        {
+            var latest = store.GetLatestSnapshotId();
+            Assert.NotNull(latest);
+            Assert.False(string.IsNullOrWhiteSpace(latest));
+        }
+        finally
+        {
+            store.Close();
         }
     }
 }
