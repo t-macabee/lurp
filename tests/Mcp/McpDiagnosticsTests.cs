@@ -13,13 +13,13 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         CreateProject("DiagProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """
-                using System;
-                using System.Linq;
                 namespace DiagProj {
                     public class Foo {
-                        public void Bar() {
-                            int unused = 0;
-                        }
+                        public void M1() { int unused1 = 0; }
+                        public void M2() { int unused2 = 0; }
+                        public void M3() { int unused3 = 0; }
+                        public void M4() { int unused4 = 0; }
+                        public void M5() { int unused5 = 0; }
                     }
                 }
                 """
@@ -240,33 +240,53 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
-        // Get all diagnostics at once
+        // Get all diagnostics at once (unpaginated)
         var jsonAll = tool.LurpDiagnostics(limit: 1000);
         using var docAll = JsonDocument.Parse(jsonAll);
-        var allDiags = docAll.RootElement.GetProperty("diagnostics").EnumerateArray().ToList();
         var totalCount = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
+        var allDiags = docAll.RootElement.GetProperty("diagnostics").EnumerateArray().ToList();
 
-        // Walk with limit=1
+        // Fixture must produce enough diagnostics to exercise pagination
+        Assert.True(totalCount >= 3, $"Fixture should produce at least 3 diagnostics for pagination, got {totalCount}");
+        Assert.True(allDiags.Count >= 3, $"Expected >=3 diagnostics in default view, got {allDiags.Count}");
+
+        // Serialize unpaginated diagnostics to stable keys (ordered by diagnostic_id)
+        static string DiagKey(JsonElement d) =>
+            $"{d.GetProperty("project_name").GetString()}|{d.GetProperty("id").GetString()}|{d.GetProperty("document_path").GetString()}|{d.GetProperty("start_line").GetInt32()}|{d.GetProperty("start_column").ValueKind}|{d.GetProperty("message").GetString()}";
+        var expectedKeys = allDiags.Select(DiagKey).ToList();
+
+        // Walk with limit=2 (keyset pagination via diagnostic_id)
         var collected = new List<string>();
         string? cursor = null;
-        while (true)
+        int pages = 0;
+        do
         {
-            var pageJson = tool.LurpDiagnostics(limit: 1, cursor: cursor);
+            var pageJson = tool.LurpDiagnostics(limit: 2, cursor: cursor);
             using var pageDoc = JsonDocument.Parse(pageJson);
             var pageDiags = pageDoc.RootElement.GetProperty("diagnostics");
-            foreach (var d in pageDiags.EnumerateArray())
-            {
-                // Use a composite key for dedup detection
-                var key = $"{d.GetProperty("project_name").GetString()}|{d.GetProperty("id").GetString()}|{d.GetProperty("start_line")}";
-                collected.Add(key);
-            }
-            cursor = pageDoc.RootElement.GetProperty("next_cursor").GetString();
-            if (string.IsNullOrEmpty(cursor))
-                break;
-        }
+            var pageCount = pageDoc.RootElement.GetProperty("diagnostic_count").GetInt32();
+            var nextCursor = pageDoc.RootElement.GetProperty("next_cursor").GetString();
 
-        Assert.Equal(totalCount, collected.Count);
-        Assert.Equal(collected.Count, collected.Distinct().Count()); // no duplicates
+            // diagnostic_count must be stable across pages (total, not page size)
+            Assert.Equal(totalCount, pageCount);
+
+            foreach (var d in pageDiags.EnumerateArray())
+                collected.Add(DiagKey(d));
+
+            cursor = nextCursor;
+            pages++;
+
+            // Must produce next_cursor until last page
+            if (pages < Math.Ceiling(totalCount / 2.0))
+                Assert.False(string.IsNullOrEmpty(cursor), $"Expected next_cursor on page {pages} with total {totalCount}");
+            if (pages > 10) break; // safety
+        } while (!string.IsNullOrEmpty(cursor));
+
+        // Walk must reproduce the unpaginated set exactly, no duplicates, no gaps, same order
+        Assert.Equal(expectedKeys.Count, collected.Count);
+        Assert.Equal(expectedKeys, collected);
+        Assert.Equal(collected.Count, collected.Distinct().Count());
+        Assert.True(pages >= 2, $"Expected at least 2 pages, got {pages}");
     }
 
     [Fact]
@@ -276,19 +296,56 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
-        // Get a cursor with one set of filters
-        var json = tool.LurpDiagnostics(project: "DiagProj", limit: 1);
+        // Ensure fixture has enough diagnostics for a cursor (limit=2 over 5 => 3 pages)
+        var jsonAll = tool.LurpDiagnostics(limit: 1000);
+        using var docAll = JsonDocument.Parse(jsonAll);
+        var total = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
+        Assert.True(total >= 3, $"Need >=3 diagnostics for cursor test, got {total}");
+
+        // Get a cursor with one set of filters (project=DiagProj)
+        var json = tool.LurpDiagnostics(project: "DiagProj", limit: 2);
         using var doc = JsonDocument.Parse(json);
         var cursor = doc.RootElement.GetProperty("next_cursor").GetString();
+        Assert.False(string.IsNullOrEmpty(cursor), "Expected next_cursor for pagination with limit=2");
+        Assert.NotNull(cursor);
 
-        if (!string.IsNullOrEmpty(cursor))
+        // Reuse cursor with different project → should throw
+        var exProject = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(project: "OtherProj", limit: 2, cursor: cursor));
+        Assert.Equal(McpErrorCode.InvalidParams, exProject.ErrorCode);
+        Assert.Contains("Cursor does not match", exProject.Message);
+
+        // Reuse cursor with different severity filter → should throw
+        var exSeverity = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(severity: "Error", limit: 2, cursor: cursor));
+        Assert.Equal(McpErrorCode.InvalidParams, exSeverity.ErrorCode);
+        Assert.Contains("Cursor does not match", exSeverity.Message);
+
+        // Reuse cursor with different id filter → should throw
+        var firstId = docAll.RootElement.GetProperty("diagnostics").EnumerateArray().First().GetProperty("id").GetString()!;
+        var exId = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(id: firstId + "_NOPE", limit: 2, cursor: cursor));
+        Assert.Equal(McpErrorCode.InvalidParams, exId.ErrorCode);
+        Assert.Contains("Cursor does not match", exId.Message);
+
+        // Reuse cursor with different document filter → should throw
+        string docPath;
+        using (var store = OpenStore(DbPath))
         {
-            // Reuse cursor with different filter → should throw
-            var ex = Assert.Throws<McpProtocolException>(
-                () => tool.LurpDiagnostics(project: "OtherProj", limit: 1, cursor: cursor));
-            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("Cursor does not match", ex.Message);
+            docPath = store.GetDocumentVersionIdsByPath(snapshotId).Keys.First(k => k.Contains("Models.cs"));
         }
+        var exDoc = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(document: docPath, limit: 2, cursor: cursor));
+        Assert.Equal(McpErrorCode.InvalidParams, exDoc.ErrorCode);
+        Assert.Contains("Cursor does not match", exDoc.Message);
+
+        // Garbage cursor should also throw InvalidParams
+        var exGarbage = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(limit: 2, cursor: "not-a-valid-cursor"));
+        Assert.Equal(McpErrorCode.InvalidParams, exGarbage.ErrorCode);
+
+        // Cursor issued for one snapshot must not be reusable for another snapshot (if we had one)
+        // This is covered by fingerprint including snapshot_id inside cursor itself.
     }
 
     [Fact]
