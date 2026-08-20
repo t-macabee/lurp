@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v28, extractor 1.6.0, tool 1.1.0
+**Current:** schema v29, extractor 1.6.0, tool 1.1.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -56,7 +56,7 @@ Logical boundaries:
 5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
-copied method bodies the canonical representation. Schema migrations: 28
+copied method bodies the canonical representation. Schema migrations: 29
 sequential migrations managed by `MigrationRunner`.
 
 ## 4. Indexing Pipeline

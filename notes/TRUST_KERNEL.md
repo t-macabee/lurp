@@ -60,7 +60,7 @@ cited below. Evidence cites git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `VersionConstants.DatabaseSchemaVersion`, `MigrationRunner` |
 | 2 | Workspace, snapshot, document, configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 27 migrations; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountIs27`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 29 migrations; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountIs28`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6; live-verified (§C) `CourseService.CreateAsync` no longer throws `fts5: syntax error` (phrase-literal quoting), punctuation `"` `*` `:()` `<>` `.` all zero `SqliteException`, `Service` substring fallback 20, `Migrations` 17→21/35→46 with `include-generated` |
@@ -111,7 +111,7 @@ Tests: `ImpactTraverserTests.cs`.
 
 ### Architecture §10 definitive-version checklist
 
-All criteria ✅ except the removed simulation/audit modes (n/a). One SQLite DB (migrations 1–27); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged: `No changes detected. Skipping incremental index.` counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
+All criteria ✅ except the removed simulation/audit modes (n/a). One SQLite DB (migrations 1–29); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged: `No changes detected. Skipping incremental index.` counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
 
 ---
 

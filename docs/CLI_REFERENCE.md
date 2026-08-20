@@ -378,7 +378,10 @@ corresponding `omittedTiers` record is the authority.
 A capsule is byte-for-byte regenerable from the snapshot it was built against,
 but only while that snapshot is retained: `--mode=index` prunes to the most
 recent 3 snapshots. Once the source snapshot is pruned, the artifact can no
-longer be reproduced or re-verified against the store.
+longer be reproduced or re-verified against the store. A snapshot pinned via
+[`--mode=pin-snapshot`](#--mode=pin-snapshot) is excluded from pruning
+regardless of recency, so pinning a snapshot also extends how long any capsule
+built against it stays reproducible.
 
 ---
 

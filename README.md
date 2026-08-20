@@ -133,7 +133,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 - **Single active TFM/configuration**: one snapshot per index run.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
-- **3-snapshot retention**: older snapshots and their document versions are pruned automatically.
+- **3-snapshot retention**: older snapshots and their document versions are pruned automatically, except a snapshot pinned via `pin-snapshot`, which pruning always skips.
 - **Workspace must be restorable**: `MSBuildWorkspace` requires a successful restore; no index without it.
 
 ## Performance
@@ -147,7 +147,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Status & roadmap
 
-Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v28, extractor
+Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v29, extractor
 1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
 eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
 parameter-type matching are postponed by design (see
