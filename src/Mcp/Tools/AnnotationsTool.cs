@@ -18,7 +18,7 @@ internal sealed class AnnotationsTool
     }
 
     [McpServerTool(Name = "lurp_get_annotations", Title = "Lurp Get Annotations", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Get annotations in the pinned snapshot. Supports three modes: by symbol (resolved via docCommentId|assemblyIdentity, bare T: docCommentId, or FQN), by document (git-relative forward-slashed path), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). Annotations with document_path IS NULL (user-authored via lurp_annotate) are unreachable via document filter.")]
+    [Description("Get annotations in the pinned snapshot. Supports three modes: by symbol (resolved via docCommentId|assemblyIdentity, bare T: docCommentId, or FQN), by document (git-relative forward-slashed path), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination. Annotations with document_path IS NULL (user-authored via lurp_annotate) are unreachable via document filter.")]
     public string LurpGetAnnotations(
         string? symbol = null,
         string? document = null,

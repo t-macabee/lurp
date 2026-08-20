@@ -118,7 +118,7 @@ internal sealed class ContextTool
                 else
                 {
                     resolvedSymbol = _session.Store.ResolveSymbolByLocation(normalizedFile!, line!.Value, snapshotId, includeGenerated)
-                        ?? throw new McpProtocolException($"no symbol found at {normalizedFile}:{line}; --tier needs an anchor symbol.", McpErrorCode.InvalidParams);
+                        ?? throw new McpProtocolException($"no symbol found at {normalizedFile}:{line}; tier needs an anchor symbol.", McpErrorCode.InvalidParams);
                 }
 
                 var fingerprint = SequenceCursor.ComputeFingerprint(

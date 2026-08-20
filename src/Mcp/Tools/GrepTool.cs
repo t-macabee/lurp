@@ -17,7 +17,7 @@ internal sealed class GrepTool
     }
 
     [McpServerTool(Name = "lurp_grep", Title = "Lurp Grep", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Literal/exact-text search over source content in the pinned snapshot. Returns per-occurrence results with 1-based start_line/end_line and 0-based start_column/end_column plus the full line_text. Use this instead of lurp_search when you need the exact line where a string appears. Supports pagination via cursor and case-insensitive search via ignore_case.")]
+    [Description("Literal/exact-text search over source content in the pinned snapshot. Returns per-occurrence results with 1-based start_line/end_line and 0-based start_column/end_column plus the full line_text. Use this instead of lurp_search when you need the exact line where a string appears. Supports pagination via cursor and case-insensitive search via ignore_case. match_count is the total match count across all pages, not the page size — use next_cursor for pagination.")]
     public string LurpGrep(
         string? query = null,
         int? limit = null,

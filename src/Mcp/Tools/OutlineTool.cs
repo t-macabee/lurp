@@ -17,7 +17,7 @@ internal sealed class OutlineTool
     }
 
     [McpServerTool(Name = "lurp_outline", Title = "Lurp Outline", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("List declarations in a document with 1-based line spans. Ordered by full_start. Supports pagination via limit/cursor and filtering generated declarations.")]
+    [Description("List declarations in a document with 1-based line spans. Ordered by full_start. Supports pagination via limit/cursor and filtering generated declarations. declaration_count is the total match count across all pages, not the page size — use next_cursor for pagination.")]
     public string LurpOutline(
         string? document = null,
         bool? include_generated = null,

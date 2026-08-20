@@ -116,7 +116,7 @@ List declarations in a document with line spans.
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
-Also accepts the shared [read-command options](#read-command-options). Output includes `symbol_id`, `kind`, `fully_qualified_name`, `start_line`, `end_line`, `signature_start_line`, `name_start_line`, `is_partial`, `is_generated`, `declaration_count`, and `next_cursor` for pagination.
+Also accepts the shared [read-command options](#read-command-options). Output includes `symbol_id`, `kind`, `fully_qualified_name`, `start_line`, `end_line`, `signature_start_line`, `name_start_line`, `is_partial`, `is_generated`, `declaration_count`, and `next_cursor` for pagination. `declaration_count` is the **total** number of declarations matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page).
 
 ---
 
@@ -469,11 +469,13 @@ the snapshot are returned.
 
 The JSON payload is `{ snapshot_id, symbol_id, document, kind, annotations,
 annotation_count, next_cursor, freshness }`; each annotation is `{ symbol_id,
-kind, value, document_path }`. `annotation_count` is the total matching count for
-the filter; when more results remain than fit on the page, `next_cursor` is set
-and `--output=summary` prints `-- <shown>/<total> annotation(s); more available
-(--cursor)`. `--cursor` tokens are snapshot-scoped continuation tokens, not raw
-offsets.
+kind, value, document_path }`. `annotation_count` is the **total** number of
+annotations matching the filter across every page, not the number of items on the
+current page — do not use it to drive a pagination loop; use `next_cursor` (a
+`null`/absent `next_cursor` marks the last page). When more results remain than
+fit on the page, `next_cursor` is set and `--output=summary` prints
+`-- <shown>/<total> annotation(s); more available (--cursor)`. `--cursor` tokens
+are snapshot-scoped continuation tokens, not raw offsets.
 
 ---
 

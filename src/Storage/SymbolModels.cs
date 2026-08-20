@@ -206,6 +206,9 @@ public sealed record NavigationTarget(
     [property: JsonPropertyName("end_line")]
     int EndLine);
 
+/// <summary>
+/// A declaration's source location. Lines are 1-based; columns are 0-based (Roslyn-native).
+/// </summary>
 public sealed record DeclarationLocation(
     [property: JsonPropertyName("document_path")]
     string DocumentPath,
