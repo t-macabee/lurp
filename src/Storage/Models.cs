@@ -124,12 +124,13 @@ public sealed record BindingIncompletenessSummary(
 
 public sealed class AnnotationRecord
 {
-    public AnnotationRecord(string symbolId, string kind, string value, string? documentPath = null)
+    public AnnotationRecord(string symbolId, string kind, string value, string? documentPath = null, long annotationId = 0)
     {
         SymbolId = symbolId ?? throw new ArgumentNullException(nameof(symbolId));
         Kind = kind ?? throw new ArgumentNullException(nameof(kind));
         Value = value ?? throw new ArgumentNullException(nameof(value));
         DocumentPath = documentPath;
+        AnnotationId = annotationId;
     }
 
     public string SymbolId { get; }
@@ -142,6 +143,13 @@ public sealed class AnnotationRecord
     ///     retired by the incremental path-scoped delete).
     /// </summary>
     public string? DocumentPath { get; }
+
+    /// <summary>
+    ///     Surrogate primary key from <c>annotations.annotation_id</c>. Zero when the record was constructed
+    ///     before being persisted (e.g. via <c>SaveAnnotations</c>). Populated on reads so a caller can
+    ///     address a single row for retraction (<c>--mode=retract-annotation --annotation-id=&lt;n&gt;</c>).
+    /// </summary>
+    public long AnnotationId { get; }
 }
 
 /// <summary>

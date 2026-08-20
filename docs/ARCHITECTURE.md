@@ -109,11 +109,11 @@ interfaces. They do not re-run Roslyn analysis (except `--mode=status
 
 Sixteen handlers cover: index, search, grep, find-symbol, get-symbol, get-source,
 navigate, outline, diagnostics, diff, impact, context, status, timings,
-annotations, and dead-candidates. MCP surface (`--mode=serve`): 17 tools over stdio
+annotations, and dead-candidates. MCP surface (`--mode=serve`): 18 tools over stdio
 (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`,
 `lurp_find_symbol`, `lurp_search`, `lurp_grep`, `lurp_impact`, `lurp_diff`,
-`lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
-`lurp_timings`, `lurp_refresh`, `lurp_index`, `lurp_dead_candidates`) — 16 read-only plus `lurp_index`,
+`lurp_get_symbol`, `lurp_get_annotations`, `lurp_retract_annotation`, `lurp_diagnostics`, `lurp_status`,
+`lurp_timings`, `lurp_refresh`, `lurp_index`, `lurp_dead_candidates`) — 16 read-only plus `lurp_index` and `lurp_retract_annotation` (write),
 which starts a background (re-)index through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
 

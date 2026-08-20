@@ -49,7 +49,7 @@ internal sealed class AnnotationStore
         if (symbolId != null)
         {
             command.CommandText = """
-                SELECT symbol_id, kind, value, document_path
+                SELECT annotation_id, symbol_id, kind, value, document_path
                 FROM annotations
                 WHERE snapshot_id = @snapshotId AND symbol_id = @symbolId
                 ORDER BY annotation_id;
@@ -59,7 +59,7 @@ internal sealed class AnnotationStore
         else
         {
             command.CommandText = """
-                SELECT symbol_id, kind, value, document_path
+                SELECT annotation_id, symbol_id, kind, value, document_path
                 FROM annotations
                 WHERE snapshot_id = @snapshotId
                 ORDER BY annotation_id;
@@ -71,11 +71,36 @@ internal sealed class AnnotationStore
         var results = new List<AnnotationRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            results.Add(new AnnotationRecord(reader.GetString(0),
-                reader.GetString(1),
+            results.Add(new AnnotationRecord(reader.GetString(1),
                 reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetString(3)));
+                reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetInt64(0)));
         return results;
+    }
+
+    /// <summary>
+    ///     Hard-delete of a single user-authored annotation. Scoped to exactly one row:
+    ///     <c>WHERE snapshot_id = @snapshotId AND annotation_id = @annotationId</c>.
+    ///     Returns true when one row was deleted, false when no such row exists in that snapshot.
+    ///     Document_path is not filtered — the caller already resolved an annotation_id that may be
+    ///     user-authored (NULL path) or document-anchored; retraction is explicit and single-row by design.
+    /// </summary>
+    public bool TryRetractAnnotation(string snapshotId, long annotationId)
+    {
+        if (string.IsNullOrEmpty(snapshotId))
+            throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
+        if (annotationId <= 0)
+            throw new ArgumentException("annotationId must be a positive integer.", nameof(annotationId));
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM annotations
+            WHERE snapshot_id = @snapshotId AND annotation_id = @annotationId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@annotationId", annotationId);
+        return command.ExecuteNonQuery() == 1;
     }
 
     /// <summary>
@@ -158,7 +183,8 @@ internal sealed class AnnotationStore
                     reader.GetString(1),
                     reader.GetString(2),
                     reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4));
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    id);
                 rows.Add((id, rec));
             }
         }

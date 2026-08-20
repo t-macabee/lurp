@@ -87,7 +87,7 @@ internal sealed class GetSymbolTool
                 is_partial = info.IsPartial,
                 locations,
                 source = (viewArg is "source" or "all") ? source : null,
-                annotations = annotations.Select(static a => new { symbol_id = a.SymbolId, kind = a.Kind, value = a.Value, document_path = a.DocumentPath }).ToList()
+                annotations = annotations.Select(static a => new { annotation_id = a.AnnotationId, symbol_id = a.SymbolId, kind = a.Kind, value = a.Value, document_path = a.DocumentPath }).ToList()
             };
 
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });

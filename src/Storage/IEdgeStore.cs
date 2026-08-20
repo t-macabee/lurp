@@ -26,6 +26,7 @@ public interface IEdgeStore
     void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames);
 
     void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
+    bool TryRetractAnnotation(string snapshotId, long annotationId);
     void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
 
     OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId);

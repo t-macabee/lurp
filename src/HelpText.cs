@@ -98,7 +98,8 @@ internal static class HelpText
 
         // annotate
         ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
-        ["--value="] = "Annotation value text (required for --mode=annotate)."
+        ["--value="] = "Annotation value text (required for --mode=annotate).",
+        ["--annotation-id="] = "Surrogate PK of the annotation to retract (from get-annotations' annotation_id)."
     };
 
     // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag

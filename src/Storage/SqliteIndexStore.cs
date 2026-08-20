@@ -541,6 +541,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _annotations!.CopyAnnotationsToSnapshot(fromSnapshotId, toSnapshotId);
     }
 
+    public bool TryRetractAnnotation(string snapshotId, long annotationId)
+    {
+        EnsureOpen();
+        return _annotations!.TryRetractAnnotation(snapshotId, annotationId);
+    }
+
     public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
         EnsureOpen();

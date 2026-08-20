@@ -19,13 +19,50 @@ internal static class AnnotationHandler
             var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
             store.SaveAnnotations(snapshotId, [annotation]);
 
+            // Read back the freshly inserted row so we can return its surrogate id. The single INSERT per snapshot
+            // plus the snapshot_id scope makes MAX(annotation_id) unambiguous within this snapshot even when prior
+            // snapshots hold their own copies (CopyAnnotationsToSnapshot allocates fresh ids).
+            var inserted = store.GetAnnotations(snapshotId).LastOrDefault(a => a.SymbolId == symbolArg && a.Kind == kindArg && a.Value == valueArg);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 status = "ok",
                 snapshot_id = snapshotId,
                 symbol_id = symbolArg,
                 kind = kindArg,
-                value = valueArg
+                value = valueArg,
+                annotation_id = inserted?.AnnotationId ?? 0
+            }, HandlerBootstrap.IndentedJson));
+        });
+    }
+
+    public static void RunRetractAnnotation(string[] args)
+    {
+        var rawId = HandlerBootstrap.RequireArg(args, "--annotation-id=", "ERROR: --annotation-id=<id> is required for --mode=retract-annotation.");
+        if (!long.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var annotationId) || annotationId < 1)
+            HandlerBootstrap.Fail("ERROR: --annotation-id must be a positive integer.");
+
+        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        {
+            bool deleted;
+            try
+            {
+                deleted = store.TryRetractAnnotation(snapshotId, annotationId);
+            }
+            catch (ArgumentException ex)
+            {
+                HandlerBootstrap.Fail($"ERROR: {ex.Message}");
+                return;
+            }
+
+            if (!deleted)
+                HandlerBootstrap.Fail($"ERROR: annotation_id {annotationId} not found in snapshot '{snapshotId}'.");
+
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                status = "ok",
+                snapshot_id = snapshotId,
+                annotation_id = annotationId,
+                retracted = true
             }, HandlerBootstrap.IndentedJson));
         });
     }
@@ -94,6 +131,7 @@ internal static class AnnotationHandler
 
             var annotations = page.Items.Select(a => new
             {
+                annotation_id = a.AnnotationId,
                 symbol_id = a.SymbolId,
                 kind = a.Kind,
                 value = a.Value,

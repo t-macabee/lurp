@@ -325,6 +325,11 @@ public sealed class ImpactTraverserTests
             throw new NotSupportedException();
         }
 
+        public bool TryRetractAnnotation(string snapshotId, long annotationId)
+        {
+            throw new NotSupportedException();
+        }
+
         public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
         {
             throw new NotSupportedException();

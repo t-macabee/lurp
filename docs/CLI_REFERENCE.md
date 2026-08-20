@@ -54,6 +54,8 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 
 **Column-number base:** unlike line numbers, column numbers are **not** converted to 1-based. `diagnostics`' `start_column`/`end_column` are the raw Roslyn `LinePosition.Character` values and are **0-based**. There is no CLI or MCP input that takes a column, so this only affects how you read the output.
 
+**Document-path base:** every `--document=<relative-path>` argument (and the matching MCP `document` property) is relative to the directory containing the `--solution=` file, **not** the repository/git root. When the solution lives in a subdirectory of the repo (e.g. `--solution=eNote/eNote.sln`), a git-root-relative path like `eNote/eNote.Tests/Foo.cs` will not resolve — pass `eNote.Tests/Foo.cs` instead. Confirmed 2026-08-20 against a live target: `get-source` fails fast with `ERROR: Document '...' not found in snapshot.` on a mismatched path; `dead-candidates --document=` does not error on a mismatch — it's a filter, not a required lookup, so a wrong prefix silently returns `candidate_count: 0` instead of surfacing the mistake.
+
 ## Modes
 
 ### `--mode=index`
@@ -468,14 +470,32 @@ Accepts the shared [read-command options](#read-command-options). `--symbol=` an
 the snapshot are returned.
 
 The JSON payload is `{ snapshot_id, symbol_id, document, kind, annotations,
-annotation_count, next_cursor, freshness }`; each annotation is `{ symbol_id,
+annotation_count, next_cursor, freshness }`; each annotation is `{ annotation_id, symbol_id,
 kind, value, document_path }`. `annotation_count` is the **total** number of
 annotations matching the filter across every page, not the number of items on the
 current page — do not use it to drive a pagination loop; use `next_cursor` (a
 `null`/absent `next_cursor` marks the last page). When more results remain than
 fit on the page, `next_cursor` is set and `--output=summary` prints
 `-- <shown>/<total> annotation(s); more available (--cursor)`. `--cursor` tokens
-are snapshot-scoped continuation tokens, not raw offsets.
+are snapshot-scoped continuation tokens, not raw offsets. Each annotation now carries `annotation_id` (surrogate PK) so a caller can address one row with `--mode=retract-annotation`.
+
+---
+
+### `--mode=retract-annotation`
+
+Retract one user-authored annotation by surrogate id, scoped to exactly one snapshot. This is the supported way to correct or remove a mistaken `--mode=annotate` entry without manual SQL.
+
+```
+--mode=retract-annotation --annotation-id=<n> --output-dir=<path> [--snapshot=<id>]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--annotation-id=<n>` | Yes | Surrogate PK from `get-annotations` annotation_id (positive integer). |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--snapshot=<id>` | No | Snapshot to act on (default: latest). The DELETE is `WHERE snapshot_id=@snapshot AND annotation_id=@id` — one row only, no cross-snapshot effect. Copy-forward clones (`CopyAnnotationsToSnapshot`) allocate fresh ids, so retracting in one snapshot does not delete its clone in another. |
+
+JSON output is `{ status:"ok", snapshot_id, annotation_id, retracted:true }`. On no such row in that snapshot the mode exits 1 with `ERROR: annotation_id <n> not found in snapshot <id>.` Use `--snapshot=` explicitly when you have more than one snapshot pinned.
 
 ---
 
@@ -490,7 +510,7 @@ List dead-code candidates: symbols with no incoming LIVE edge after suppression-
 | Argument | Required | Description |
 |---|---|---|
 | `--project=<name>` | No | Filter to this project (assembly simple name, e.g. `eNote.API`). |
-| `--document=<relative-path>` | No | Filter to symbols declared in this document (forward-slash, git-relative). |
+| `--document=<relative-path>` | No | Filter to symbols declared in this document (forward-slash, relative to the solution root — see [Document-path base](#read-command-options) above, not the repo root). |
 | `--kind=<kind>` | No | Filter by symbol kind: `Type`, `Method`, `Property`, `Field`, `Event` (case-insensitive). |
 | `--limit=<n>` | No | Max dead candidates per page (default: 50, max: 200). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
@@ -526,16 +546,19 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 17 tools via `tools/list`:
+Lurp runs as an MCP server over stdio, exposing 18 tools via `tools/list`:
 `lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
 lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
-lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index, lurp_dead_candidates`. All are
-read-only except `lurp_index`, which starts a background (re-)index. There is no
-`lurp_annotate` tool by design. The MCP session's SQLite connection opens with
+lurp_retract_annotation, lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index,
+lurp_dead_candidates`. All are read-only except `lurp_index` and `lurp_retract_annotation`. There
+is no `lurp_annotate` tool by design. The MCP session's SQLite connection opens with
 `PRAGMA query_only=ON`, so read tools never mutate the pinned snapshot;
 `lurp_index` writes through a separate writer connection while reads keep
-answering from the old pin. Annotation writes remain CLI-only
-(`--mode=annotate`).
+answering from the old pin, and `lurp_retract_annotation` opens its own short-lived
+writable connection the same way, scoped to a single `DELETE` (see
+[`--mode=retract-annotation`](#--mode=retract-annotation)). Annotation *creation*
+remains CLI-only (`--mode=annotate`); *retraction* is available from both
+surfaces (`--mode=retract-annotation` and `lurp_retract_annotation`).
 
 Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
 and framework logs are routed to stderr.

@@ -45,7 +45,7 @@ separately.
 | `get-symbol` | Look up symbol metadata (signature, provenance, declaration spans). |
 | `get-source` | Retrieve source text for a document by relative path. |
 | `index` | Build or update the snapshot-bound map in `index.db`. |
-| `annotate` / `get-annotations` | Attach and retrieve user-authored annotations on symbols. |
+| `annotate` / `get-annotations` / `retract-annotation` | Attach, retrieve, and retract (by `annotation_id`) user-authored annotations on symbols. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
@@ -158,10 +158,10 @@ parameter-type matching are postponed by design (see
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes 17 tools (`lurp_context`, `lurp_get_source`,
+Also MCP: `--mode=serve` exposes 18 tools (`lurp_context`, `lurp_get_source`,
 `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_grep`,
-`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`,
+`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_retract_annotation`,
 `lurp_diagnostics`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_index`,
-`lurp_dead_candidates`) over stdio; all are read-only except `lurp_index`
+`lurp_dead_candidates`) over stdio; all are read-only except `lurp_index` and `lurp_retract_annotation`
 (background re-index). Index first, then serve. See
 [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
