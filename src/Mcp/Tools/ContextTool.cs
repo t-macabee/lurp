@@ -86,7 +86,10 @@ internal sealed class ContextTool
                 throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
 
             var intentParsed = ParseIntent(intent ?? "inspect");
-            var budget = content_budget ?? DefaultBudgetFor(symbol);
+            // Deferred: resolved to the canonical form before the default is picked (see
+            // below) so the type-anchor budget default keys off the resolved symbol kind,
+            // not whichever of the three accepted input forms the caller used.
+            var budget = content_budget ?? DefaultBudget;
             if (budget < 1)
                 throw new McpProtocolException("content_budget must be a positive integer.", McpErrorCode.InvalidParams);
 
@@ -183,6 +186,8 @@ internal sealed class ContextTool
             string? symbolArg = symbol;
             if (hasSymbol)
                 symbolArg = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol!, snapshotId, includeGenerated);
+            if (content_budget is null && hasSymbol)
+                budget = DefaultBudgetFor(symbolArg);
 
             var lookup = new ContextLookup(snapshotId, symbolArg, normalizedFile, line);
             var gitRoot = _session.Store.GetSnapshotGitRoot(snapshotId);

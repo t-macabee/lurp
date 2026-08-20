@@ -62,15 +62,21 @@ internal static class ContextHandler
         if (!hasSymbol && !hasFile) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
 
         var intent = ParseIntent(intentArg);
-        var budget = string.IsNullOrEmpty(budgetArg)
-            ? DefaultBudgetFor(symbolArg)
-            : HandlerBootstrap.ParsePositiveIntArg(args, "--content-budget=", DefaultBudget);
+        var explicitBudget = !string.IsNullOrEmpty(budgetArg);
+        var budget = explicitBudget
+            ? HandlerBootstrap.ParsePositiveIntArg(args, "--content-budget=", DefaultBudget)
+            : DefaultBudget;
         var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
         HandlerBootstrap.WithStore(args, snapshotArg, (store, snapshotId) =>
         {
+            // Resolve to the canonical docCommentId|assemblyIdentity form first: the
+            // type-anchor budget default must key off the resolved symbol kind, not
+            // whichever of the three accepted input forms the caller happened to use
+            // (an FQN carries no "T:" prefix to pattern-match against).
             if (hasSymbol) symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
+            if (!explicitBudget && hasSymbol) budget = DefaultBudgetFor(symbolArg);
 
             if (!string.IsNullOrEmpty(tierArg))
             {

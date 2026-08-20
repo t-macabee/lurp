@@ -142,11 +142,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     public void EveryReadMode_Registry_DeclaresFreshnessFlags()
     {
         var required = new[] { "search", "grep", "find-symbol", "impact", "context", "get-source", "get-symbol", "navigate", "outline", "diagnostics", "dead-candidates" };
-        // The audit names exactly five exempt modes. get-annotations is a read mode
-        // outside T1's scope, so it is exempted explicitly here too; the partition
-        // assertion below forces any brand-new mode to be classified one way or the
-        // other, so a new read mode added without freshness fails the build.
-        var exempt = new[] { "index", "annotate", "timings", "diff", "status", "get-annotations", "serve" };
+        // get-annotations is a read mode outside T1's scope, so it is exempted explicitly
+        // here too. index/annotate/retract-annotation/pin-snapshot are mutations, not reads.
+        // The partition assertion below forces any brand-new mode to be classified one way
+        // or the other, so a new read mode added without freshness fails the build.
+        var exempt = new[] { "index", "annotate", "retract-annotation", "pin-snapshot", "timings", "diff", "status", "get-annotations", "serve" };
 
         var registryNames = Program.ModeRegistry.Select(e => e.Name).ToArray();
         var classified = required.Concat(exempt).OrderBy(n => n, StringComparer.Ordinal).ToArray();

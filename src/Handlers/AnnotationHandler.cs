@@ -16,18 +16,25 @@ internal static class AnnotationHandler
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var annotation = new AnnotationRecord(symbolArg!, kindArg!, valueArg!);
+            // Resolve to the canonical docCommentId|assemblyIdentity form, same as every
+            // other --symbol= consumer (get-annotations, find-symbol, get-symbol, impact,
+            // context). Without this, annotations stored under a non-canonical input form
+            // (FQN or bare doc-comment ID) silently don't round-trip through get-annotations,
+            // which always resolves its own --symbol= before querying.
+            var resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+
+            var annotation = new AnnotationRecord(resolvedSymbol, kindArg!, valueArg!);
             store.SaveAnnotations(snapshotId, [annotation]);
 
             // Read back the freshly inserted row so we can return its surrogate id. The single INSERT per snapshot
             // plus the snapshot_id scope makes MAX(annotation_id) unambiguous within this snapshot even when prior
             // snapshots hold their own copies (CopyAnnotationsToSnapshot allocates fresh ids).
-            var inserted = store.GetAnnotations(snapshotId).LastOrDefault(a => a.SymbolId == symbolArg && a.Kind == kindArg && a.Value == valueArg);
+            var inserted = store.GetAnnotations(snapshotId).LastOrDefault(a => a.SymbolId == resolvedSymbol && a.Kind == kindArg && a.Value == valueArg);
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 status = "ok",
                 snapshot_id = snapshotId,
-                symbol_id = symbolArg,
+                symbol_id = resolvedSymbol,
                 kind = kindArg,
                 value = valueArg,
                 annotation_id = inserted?.AnnotationId ?? 0
