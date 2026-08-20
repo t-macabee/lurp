@@ -141,7 +141,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     [Fact]
     public void EveryReadMode_Registry_DeclaresFreshnessFlags()
     {
-        var required = new[] { "search", "grep", "find-symbol", "impact", "context", "get-source", "get-symbol", "navigate", "outline", "diagnostics" };
+        var required = new[] { "search", "grep", "find-symbol", "impact", "context", "get-source", "get-symbol", "navigate", "outline", "diagnostics", "dead-candidates" };
         // The audit names exactly five exempt modes. get-annotations is a read mode
         // outside T1's scope, so it is exempted explicitly here too; the partition
         // assertion below forces any brand-new mode to be classified one way or the

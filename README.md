@@ -39,6 +39,7 @@ separately.
 | `impact` | Follow typed relationships outward and explain each path. |
 | `diff` | Show semantic changes between two snapshots. |
 | `search` | Full-text search over source and symbols. |
+| `grep` | Literal/exact-text search over source content with line numbers. |
 | `find-symbol` | Resolve a symbol by its fully-qualified name. |
 | `navigate` | Resolve an indexed declaration by file and line. |
 | `get-symbol` | Look up symbol metadata (signature, provenance, declaration spans). |
@@ -49,6 +50,7 @@ separately.
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
 | `diagnostics` | List compiler diagnostics captured at index time. |
+| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder that keeps public surface, EF/serialization conventions, and generated/test code out of the default view. |
 
 ## Worked example
 
@@ -156,9 +158,10 @@ parameter-type matching are postponed by design (see
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes 15 tools (`lurp_context`, `lurp_get_source`,
-`lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`,
-`lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`,
-`lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_index`) over stdio; all are
-read-only except `lurp_index` (background re-index). Index first, then serve. See
+Also MCP: `--mode=serve` exposes 17 tools (`lurp_context`, `lurp_get_source`,
+`lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_grep`,
+`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`,
+`lurp_diagnostics`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_index`,
+`lurp_dead_candidates`) over stdio; all are read-only except `lurp_index`
+(background re-index). Index first, then serve. See
 [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).

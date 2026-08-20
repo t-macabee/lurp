@@ -769,9 +769,14 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeBindingIncompletenessUncertainty(string symbolId, List<BindingIncompletenessRecord> all, List<string> docPaths, string assemblyName)
     {
-        // Find relevant binding records that overlap this candidate's docs
-        var relevant = all.Where(r => r.DocumentPath != null && docPaths.Contains(r.DocumentPath, StringComparer.Ordinal)
-                                   || r.DocumentPath == null && string.Equals(r.ProjectName, assemblyName, StringComparison.Ordinal)).ToList();
+        // Find relevant binding records that overlap this candidate's docs. Restricted
+        // to IsUnobservableReason so the description names the reason that actually
+        // triggered OverlapsBindingIncompleteness — otherwise a co-located but
+        // non-triggering record (e.g. filtered_external, which never makes a
+        // candidate unresolved) could win the reason pick and describe the wrong cause.
+        var relevant = all.Where(r => IsUnobservableReason(r.Reason)
+                                   && (r.DocumentPath != null && docPaths.Contains(r.DocumentPath, StringComparer.Ordinal)
+                                   || r.DocumentPath == null && string.Equals(r.ProjectName, assemblyName, StringComparison.Ordinal))).ToList();
         var byReason = relevant.GroupBy(r => r.Reason, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).FirstOrDefault();
         if (byReason != null)
         {
