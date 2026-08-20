@@ -19,6 +19,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     private ExtractorRegistryStore? _extractors;
 
     private SnapshotLifecycleStore? _lifecycle;
+    private SnapshotPinStore? _pinStore;
     private SnapshotPruner? _pruner;
     private SearchIndexMaintenance? _searchMaintenance;
     private SearchSourceStore? _searchSource;
@@ -51,6 +52,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _connection.Open();
 
         _lifecycle = new SnapshotLifecycleStore(_connection);
+        _pinStore = new SnapshotPinStore(_connection);
         _documents = new SnapshotDocumentStore(_connection);
         _symbols = new SnapshotSymbolStore(_connection);
         _pruner = new SnapshotPruner(_connection);
@@ -93,6 +95,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _connection = null;
 
         _lifecycle = null;
+        _pinStore = null;
         _documents = null;
         _symbols = null;
         _pruner = null;
@@ -173,6 +176,19 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     public SnapshotRow? LoadLatestSnapshot(string? workspaceId = null)
     {
         EnsureOpen();
+        var pinned = _pinStore!.GetPinnedSnapshot(workspaceId);
+        if (pinned != null)
+        {
+            var snap = _lifecycle!.LoadSnapshot(pinned.PinnedSnapshotId);
+            if (snap != null)
+                return snap;
+        }
+        return _lifecycle!.LoadLatestSnapshot(workspaceId);
+    }
+
+    public SnapshotRow? LoadBuiltAtLatestSnapshot(string? workspaceId = null)
+    {
+        EnsureOpen();
         return _lifecycle!.LoadLatestSnapshot(workspaceId);
     }
 
@@ -191,7 +207,40 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     public string? GetLatestSnapshotId(string? workspaceId = null)
     {
         EnsureOpen();
+        var pinned = _pinStore!.GetPinnedSnapshotId(workspaceId);
+        if (pinned != null)
+            return pinned;
         return _lifecycle!.GetLatestSnapshotId(workspaceId);
+    }
+
+    public string? GetBuiltAtLatestSnapshotId(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _lifecycle!.GetLatestSnapshotId(workspaceId);
+    }
+
+    public PinnedSnapshotRow? GetPinnedSnapshot(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _pinStore!.GetPinnedSnapshot(workspaceId);
+    }
+
+    public string? GetPinnedSnapshotId(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _pinStore!.GetPinnedSnapshotId(workspaceId);
+    }
+
+    public void SetPinnedSnapshot(string snapshotId)
+    {
+        EnsureOpen();
+        _pinStore!.SetPinnedSnapshot(snapshotId);
+    }
+
+    public bool ClearPinnedSnapshot(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _pinStore!.ClearPinnedSnapshot(workspaceId);
     }
 
     public string? GetSnapshotGitRoot(string snapshotId)

@@ -212,6 +212,8 @@ public sealed class SnapshotTimingRow
 
 public sealed record SnapshotFailureRow(string SnapshotId, string ReasonCode, string? Message, DateTime CreatedAtUtc);
 
+public sealed record PinnedSnapshotRow(string WorkspaceId, string PinnedSnapshotId, DateTime PinnedAtUtc, string? PreviousPinnedSnapshotId, DateTime? BuiltAtUtc);
+
 public class DocumentVersion
 {
     public DocumentVersion()

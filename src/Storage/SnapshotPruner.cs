@@ -40,7 +40,8 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         if (snapshotIds.Count <= keep)
             return;
 
-        var pruneIds = snapshotIds.Skip(keep).ToList();
+        var pinnedIds = GetPinnedSnapshotIds(workspaceId);
+        var pruneIds = snapshotIds.Skip(keep).Where(id => !pinnedIds.Contains(id)).ToList();
         if (pruneIds.Count == 0)
             return;
 
@@ -116,6 +117,9 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     internal void DeleteSnapshotData(string snapshotId)
     {
+        if (IsPinnedSnapshot(snapshotId))
+            throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
+
         using var transaction = _connection.BeginTransaction();
         try
         {
@@ -274,5 +278,40 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             """;
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
+    }
+
+    private HashSet<string> GetPinnedSnapshotIds(string workspaceId)
+    {
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT pinned_snapshot_id FROM snapshot_pins WHERE workspace_id = @workspaceId;";
+            cmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                set.Add(reader.GetString(0));
+            return set;
+        }
+        catch
+        {
+            // Table may not exist yet (pre-migration)
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+    }
+
+    private bool IsPinnedSnapshot(string snapshotId)
+    {
+        try
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM snapshot_pins WHERE pinned_snapshot_id = @snapshotId LIMIT 1;";
+            cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+            return cmd.ExecuteScalar() != null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

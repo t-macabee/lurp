@@ -51,7 +51,7 @@ public static class IndexRunner
 
         if (strategy == IncrementalStrategy)
         {
-            var previousStorageManifest = store.LoadLatestSnapshot(workspaceInfo.Id.Value);
+            var previousStorageManifest = store.LoadBuiltAtLatestSnapshot(workspaceInfo.Id.Value);
 
             if (previousStorageManifest == null)
             {
@@ -281,7 +281,7 @@ public static class IndexRunner
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds));
 
-            var previousManifest = store.LoadLatestSnapshot(manifest.WorkspaceId.Value);
+            var previousManifest = store.LoadBuiltAtLatestSnapshot(manifest.WorkspaceId.Value);
 
             // Step: Remove edges targeting symbols not declared in this snapshot
             // Runs before the semantic diff so the diff compares the new snapshot's
@@ -388,7 +388,7 @@ public static class IndexRunner
             return strategy;
         }
 
-        var latestSnapshotId = store.GetLatestSnapshotId();
+        var latestSnapshotId = store.GetBuiltAtLatestSnapshotId();
 
         if (latestSnapshotId == null)
         {

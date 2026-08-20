@@ -110,7 +110,8 @@ public class MigrationRunner
             new Migration_025_CallReceiverConstraints(),
             new Migration_026_AnnotationDocumentPath(),
             new Migration_027_ProjectCompilationInputs(),
-            new Migration_028_AnnotationDocumentIndex()
+            new Migration_028_AnnotationDocumentIndex(),
+            new Migration_029_AddSnapshotPins()
         ];
     }
 }

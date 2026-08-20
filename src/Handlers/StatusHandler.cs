@@ -122,6 +122,9 @@ internal static class StatusHandler
     private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
+        var pinnedRow = store.GetPinnedSnapshot();
+        var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
+        var pinActive = pinnedRow != null;
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
@@ -138,6 +141,12 @@ internal static class StatusHandler
                 database_path = dbPath,
                 schema_version = schemaVersion,
                 latest_snapshot_id = latestSnapshotId,
+                effective_latest_snapshot_id = latestSnapshotId,
+                built_at_latest_snapshot_id = builtAtLatestId,
+                pinned_snapshot_id = pinnedRow?.PinnedSnapshotId,
+                pinned_at_utc = pinnedRow?.PinnedAtUtc,
+                previous_pinned_snapshot_id = pinnedRow?.PreviousPinnedSnapshotId,
+                pin_active = pinActive ? true : (bool?)null,
                 freshness_checked = false,
                 note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.",
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
@@ -151,6 +160,14 @@ internal static class StatusHandler
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        if (pinActive)
+        {
+            Console.WriteLine($"Pinned snapshot: {pinnedRow!.PinnedSnapshotId} (pinned at {pinnedRow.PinnedAtUtc:O}, built at {pinnedRow.BuiltAtUtc:O})");
+            if (!string.Equals(latestSnapshotId, builtAtLatestId, StringComparison.Ordinal))
+                Console.WriteLine($"  Note: effective latest is pinned; built-at latest is {builtAtLatestId}");
+            if (pinnedRow.PreviousPinnedSnapshotId != null)
+                Console.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
+        }
         Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
@@ -158,6 +175,9 @@ internal static class StatusHandler
     private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, int maxMismatches = 50)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
+        var pinnedRow = store.GetPinnedSnapshot();
+        var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
+        var pinActive = pinnedRow != null;
         if (asJson)
         {
             List<SnapshotTimingRow>? timings = null;
@@ -177,6 +197,12 @@ internal static class StatusHandler
                 database_path = dbPath,
                 schema_version = schemaVersion,
                 latest_snapshot_id = latestSnapshotId,
+                effective_latest_snapshot_id = latestSnapshotId,
+                built_at_latest_snapshot_id = builtAtLatestId,
+                pinned_snapshot_id = pinnedRow?.PinnedSnapshotId,
+                pinned_at_utc = pinnedRow?.PinnedAtUtc,
+                previous_pinned_snapshot_id = pinnedRow?.PreviousPinnedSnapshotId,
+                pin_active = pinActive ? true : (bool?)null,
                 is_fresh = freshness.IsFresh,
                 mismatches = mismatchesCapped.Select(m => new
                 {
@@ -198,6 +224,14 @@ internal static class StatusHandler
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        if (pinActive)
+        {
+            Console.WriteLine($"Pinned snapshot: {pinnedRow!.PinnedSnapshotId} (pinned at {pinnedRow.PinnedAtUtc:O}, built at {pinnedRow.BuiltAtUtc:O})");
+            if (!string.Equals(latestSnapshotId, builtAtLatestId, StringComparison.Ordinal))
+                Console.WriteLine($"  Note: effective latest is pinned; built-at latest is {builtAtLatestId}");
+            if (pinnedRow.PreviousPinnedSnapshotId != null)
+                Console.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
+        }
         Console.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
         foreach (var mismatch in freshness.Mismatches) Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");

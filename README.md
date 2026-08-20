@@ -45,6 +45,7 @@ separately.
 | `get-symbol` | Look up symbol metadata (signature, provenance, declaration spans). |
 | `get-source` | Retrieve source text for a document by relative path. |
 | `index` | Build or update the snapshot-bound map in `index.db`. |
+| `pin-snapshot` | Pin which snapshot reads default to when `--snapshot=` is omitted, without deleting or rewriting any snapshot. |
 | `annotate` / `get-annotations` / `retract-annotation` | Attach, retrieve, and retract (by `annotation_id`) user-authored annotations on symbols. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |

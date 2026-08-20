@@ -30,6 +30,17 @@ public enum ExistingSnapshotDisposition
 /// <summary>Resolution of the deterministic-identity reuse/retry decision.</summary>
 public sealed record ExistingSnapshotResolution(ExistingSnapshotDisposition Disposition, string? ExistingStatus);
 
+/// <summary>Persisted pin that overrides which snapshot is treated as latest.</summary>
+public interface ISnapshotPinStore
+{
+    PinnedSnapshotRow? GetPinnedSnapshot(string? workspaceId = null);
+    string? GetPinnedSnapshotId(string? workspaceId = null);
+    string? GetBuiltAtLatestSnapshotId(string? workspaceId = null);
+    SnapshotRow? LoadBuiltAtLatestSnapshot(string? workspaceId = null);
+    void SetPinnedSnapshot(string snapshotId);
+    bool ClearPinnedSnapshot(string? workspaceId = null);
+}
+
 /// <summary>Workspace/snapshot manifest rows and their lifecycle status.</summary>
 public interface ISnapshotManifestStore
 {
@@ -91,6 +102,7 @@ public interface ISnapshotTimingStore
 public interface ISnapshotStore
     : IStoreConnection,
         ISnapshotManifestStore,
+        ISnapshotPinStore,
         ISnapshotDocumentStore,
         ISnapshotSymbolStore,
         ISnapshotPruner,

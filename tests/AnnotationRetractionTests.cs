@@ -186,7 +186,7 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
             SdkVersion = "8",
             CompilerVersion = "8",
             CreatedAtUtc = DateTime.UtcNow,
-            DatabaseSchemaVersion = 28,
+            DatabaseSchemaVersion = Lurp.Workspace.VersionConstants.DatabaseSchemaVersion,
             OutputSchemaVersion = 1,
             ExtractorVersion = "1",
             ToolVersion = "1"

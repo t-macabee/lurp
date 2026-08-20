@@ -524,6 +524,36 @@ Also accepts the shared [read-command options](#read-command-options). Output is
 
 ---
 
+### `--mode=pin-snapshot`
+
+Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destructive, auditable override — the snapshots themselves remain immutable; `built_at_utc` is never rewritten.
+
+```
+--mode=pin-snapshot --snapshot=<id> --output-dir=<path> [--json]
+--mode=pin-snapshot --clear --output-dir=<path> [--json]
+--mode=pin-snapshot --snapshot=latest --output-dir=<path>  # alias for --clear
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--snapshot=<id>` | Yes* | Snapshot ID to pin. Only snapshots with `status='complete'` can be pinned. The literal `latest` is an alias for `--clear`. |
+| `--clear` | No | Clear the pin; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`). |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--json` | No | Emit structured JSON instead of plain text. `--output=json` is an alias. |
+
+\* Either `--snapshot=<id>` or `--clear` (or `--snapshot=latest`) must be provided.
+
+Behavior:
+
+- Pin is per-workspace (stored as one row per `workspace_id` in `snapshot_pins`: `pinned_snapshot_id`, `pinned_at_utc`, `previous_pinned_snapshot_id`). If the database holds a single workspace, `--clear` clears its pin without a workspace argument.
+- When a pin is active, every read mode that defaults to "latest" (`search`, `grep`, `find-symbol`, `get-symbol`, `get-source`, `outline`, `navigate`, `diagnostics`, `get-annotations`, `impact`, `context`, `dead-candidates`, `timings`, `annotate/retract-annotation`) resolves `null`/`latest` to the pinned ID. Explicit `--snapshot=<id>` still bypasses the pin.
+- `status` surfaces the override visibly: text reports `Pinned snapshot: <id> (pinned at <utc>, built at <utc>)` and `Note: effective latest is pinned; built-at latest is <id>` when they differ; JSON adds `pinned_snapshot_id`, `pinned_at_utc`, `previous_pinned_snapshot_id`, `effective_latest_snapshot_id`, `built_at_latest_snapshot_id`, `pin_active`.
+- Pin is protected from pruning: `PruneOldSnapshots(keep=3)` excludes the pinned ID from deletion (it does not count toward `keep`). A pinned snapshot cannot be deleted with `DeleteSnapshotData` — clear the pin first.
+- Indexing is unaffected: incremental and full pipelines still compute the next snapshot's content against the built-at latest (not the pin), so a correct pin never skips a needed re-index.
+- Recovery from a botched environment: revert the source, re-index (which prints `Identical complete snapshot ... already exists` when content reconverges), then `lurp --mode=pin-snapshot --snapshot=<correct-id> --output-dir=./out` to make that older snapshot the effective latest without deleting rows.
+
+---
+
 ## Snapshot Lifecycle
 
 Snapshots are immutable: an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
@@ -551,14 +581,18 @@ Lurp runs as an MCP server over stdio, exposing 18 tools via `tools/list`:
 lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
 lurp_retract_annotation, lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index,
 lurp_dead_candidates`. All are read-only except `lurp_index` and `lurp_retract_annotation`. There
-is no `lurp_annotate` tool by design. The MCP session's SQLite connection opens with
-`PRAGMA query_only=ON`, so read tools never mutate the pinned snapshot;
-`lurp_index` writes through a separate writer connection while reads keep
-answering from the old pin, and `lurp_retract_annotation` opens its own short-lived
-writable connection the same way, scoped to a single `DELETE` (see
+is no `lurp_annotate` tool by design, and no `lurp_pin_snapshot` tool either —
+[`--mode=pin-snapshot`](#--mode=pin-snapshot) is CLI-only. The MCP session's SQLite
+connection opens with `PRAGMA query_only=ON`, so read tools never mutate the
+session's pinned snapshot; `lurp_index` writes through a separate writer
+connection while reads keep answering from the old pin, and
+`lurp_retract_annotation` opens its own short-lived writable connection the
+same way, scoped to a single `DELETE` (see
 [`--mode=retract-annotation`](#--mode=retract-annotation)). Annotation *creation*
 remains CLI-only (`--mode=annotate`); *retraction* is available from both
 surfaces (`--mode=retract-annotation` and `lurp_retract_annotation`).
+
+**Two different things are both called "pinned" in this document — don't conflate them.** The MCP *session* pin above is per-connection and in-memory: `McpSessionContext` resolves "latest" once at startup and every read for that session's lifetime answers from that same snapshot, even if a background `lurp_index` produces a newer one, until `lurp_refresh` re-pins the session. The *database* pin from `--mode=pin-snapshot` is persisted, cross-session, and overrides which snapshot "latest" resolves to for every future caller — CLI or MCP — until cleared. A fresh MCP session started after a database pin is set will pin itself to the pinned snapshot, since it resolves "latest" through the same pin-aware `GetLatestSnapshotId()`.
 
 Stdio transport is JSON-RPC pure: every non-empty stdout line parses as JSON
 and framework logs are routed to stderr.
