@@ -64,12 +64,16 @@ internal static class HandlerBootstrap
     ///     surfaces whose payload is a single document rather than a sequence (the context
     ///     capsule): claiming to stream one object per line there would be a lie about the
     ///     shape, so it is rejected instead of silently degraded to <see cref="OutputMode.Json" />.
+    ///     <paramref name="defaultMode" /> is returned when <c>--output=</c> is absent; the
+    ///     historical default is <see cref="OutputMode.Json" />, while single-document surfaces
+    ///     whose historical default is human-readable (status) pass
+    ///     <see cref="OutputMode.Summary" />.
     /// </summary>
-    public static OutputMode ParseOutputMode(string[] args, bool allowJsonl = true)
+    public static OutputMode ParseOutputMode(string[] args, bool allowJsonl = true, OutputMode defaultMode = OutputMode.Json)
     {
         var raw = GetArgValue(args, "--output=");
         if (string.IsNullOrEmpty(raw))
-            return OutputMode.Json;
+            return defaultMode;
 
         switch (raw.ToLowerInvariant())
         {

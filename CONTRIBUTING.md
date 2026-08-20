@@ -33,6 +33,22 @@ dotnet test Lurp.slnx
 - Snapshots are immutable. Do not alter persisted snapshots merely to make a test pass.
 - Prefer narrow validation (the directly affected test, then its class, then the project).
 
+## CLI/MCP contract versioning
+
+Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (28+ migrations,
+enforced by `SchemaMigrationRoundTripTests`). The equivalent for the CLI/MCP surface that
+other agents integrate against is `VersionConstants.CliMcpContractVersion`
+(`src/Workspace/VersionConstants.cs`), exposed in `status --json` as `contract_version`
+and in the MCP `lurp_status` envelope/detail. See [VERSIONING.md](VERSIONING.md) for the
+full policy.
+
+Short rule: **breaking** = removing a mode/flag/tool param, renaming/changing the type
+of a JSON field, or changing default behavior → bump `CliMcpContractVersion`. **Non-breaking**
+= adding a new optional flag, new mode, or new additive JSON field/tool param → keep the
+version but update the snapshot. Either way, any change to `Program.ModeRegistry`
+(`src/Program.cs`) or `src/Mcp/Tools/*.cs` must update `tests/CliMcpContractSnapshotTests.cs`;
+the test snapshot makes surface changes a visible, deliberate diff.
+
 ## Reporting issues
 
 Strip any sensitive or proprietary code before sharing fixtures or logs.

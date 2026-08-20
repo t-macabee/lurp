@@ -1,6 +1,7 @@
 using Lurp.Handlers;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
@@ -139,5 +140,69 @@ public sealed class CliExitSmokeTests : IDisposable
         var ex = Assert.Throws<CliExitException>(() =>
             CliFlagValidation.Validate(entry, ["--query=x", "--bogus-flag=1"]));
         Assert.Contains("unknown flag '--bogus-flag='", ex.Message);
+    }
+
+    [Fact]
+    public async Task StatusHandler_OutputMode_MatchesDocumentedVocabulary()
+    {
+        // The refactor routes status through HandlerBootstrap.ParseOutputMode; this pins the
+        // documented contract: default summary text, --json alias for --output=json, and the
+        // same jsonl/invalid rejections as every other single-document surface.
+        var dir = Path.Combine(Path.GetTempPath(), $"lurp-status-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var summaryDefault = await RunStatusCapturedAsync([$"--output-dir={dir}"]);
+            Assert.Null(summaryDefault.Failure);
+            Assert.Contains("Status: not indexed", summaryDefault.Stdout);
+
+            var json = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=json"]);
+            Assert.Null(json.Failure);
+            using (var doc = JsonDocument.Parse(json.Stdout))
+                Assert.True(doc.RootElement.TryGetProperty("indexed", out _));
+
+            var jsonAlias = await RunStatusCapturedAsync([$"--output-dir={dir}", "--json"]);
+            Assert.Null(jsonAlias.Failure);
+            using (var docAlias = JsonDocument.Parse(jsonAlias.Stdout))
+                Assert.True(docAlias.RootElement.TryGetProperty("indexed", out _));
+
+            var summary = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=summary"]);
+            Assert.Null(summary.Failure);
+            Assert.Contains("Status: not indexed", summary.Stdout);
+
+            var jsonl = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=jsonl"]);
+            Assert.NotNull(jsonl.Failure);
+            Assert.Contains("single document", jsonl.Failure!.Message);
+
+            var invalid = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=banana"]);
+            Assert.NotNull(invalid.Failure);
+            Assert.Contains("--output must be one of: summary, json.", invalid.Failure.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private static async Task<(string Stdout, CliExitException? Failure)> RunStatusCapturedAsync(string[] args)
+    {
+        var stdout = new StringWriter();
+        var originalOut = Console.Out;
+        CliExitException? failure = null;
+        try
+        {
+            Console.SetOut(stdout);
+            await StatusHandler.Run(args);
+        }
+        catch (CliExitException ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        return (stdout.ToString(), failure);
     }
 }

@@ -171,6 +171,7 @@ internal sealed class StatusTool
                     {
                         database_path = dbPath,
                         schema_version = schemaVersion,
+                        contract_version = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                         latest_snapshot_id = snapshotId,
                         manifest = latestRow != null
                             ? ManifestJson(WithBindingCompleteness(_session.Store, latestRow, includeCompleteness), includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences)
@@ -200,6 +201,7 @@ internal sealed class StatusTool
             var envelope = new Dictionary<string, object?>
             {
                 ["snapshot_id"] = snapshotId,
+                ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                 ["freshness"] = freshness,
                 ["pinned"] = true,
                 ["detail"] = detailObj
@@ -220,6 +222,7 @@ internal sealed class StatusTool
                 var truncatedEnvelope = new Dictionary<string, object?>
                 {
                     ["snapshot_id"] = snapshotId,
+                    ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                     ["freshness"] = freshness,
                     ["pinned"] = true,
                     ["detail"] = includeManifest ? truncatedDetail : detailObj,

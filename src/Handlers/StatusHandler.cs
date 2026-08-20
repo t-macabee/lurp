@@ -10,40 +10,24 @@ internal static class StatusHandler
 {
     private static readonly JsonSerializerOptions JsonOutputOptions = LurpJsonOptions.IndentedIgnoreNull;
 
-    /// <summary>
-    ///     Status renders one document, not a sequence, so it accepts the same
-    ///     <c>--output=summary|json</c> vocabulary other read commands use (jsonl is rejected,
-    ///     same as <c>--mode=context</c> for its non-tier path). <c>--json</c> is kept working
-    ///     as a back-compat alias so existing callers are unaffected; the historical default
-    ///     (neither flag given) stays the human-readable summary text.
-    /// </summary>
-    private static bool ResolveAsJson(string[] args)
-    {
-        var outputRaw = HandlerBootstrap.GetArgValue(args, "--output=");
-        if (string.IsNullOrEmpty(outputRaw))
-            return args.Contains("--json");
-
-        switch (outputRaw.ToLowerInvariant())
-        {
-            case "json":
-                return true;
-            case "summary":
-                return false;
-            case "jsonl":
-                HandlerBootstrap.Fail("ERROR: --output=jsonl is not supported for this mode; its payload is a single document. Use --output=json or --output=summary.");
-                return false;
-            default:
-                HandlerBootstrap.Fail("ERROR: --output must be one of: summary, json.");
-                return false;
-        }
-    }
-
     public static async Task Run(string[] args)
     {
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
-        var asJson = ResolveAsJson(args);
+
+        // Status renders one document, not a sequence, so it shares the same
+        // --output=summary|json vocabulary the other read commands use (jsonl is
+        // rejected, same as --mode=context for its non-tier path). Route it through
+        // the single ParseOutputMode chokepoint so the vocabulary and its error text
+        // cannot drift from the read commands. --json stays a back-compat alias for
+        // --output=json; the historical default (neither flag given) stays the
+        // human-readable summary text.
+        var asJson = HandlerBootstrap.ParseOutputMode(
+                args,
+                allowJsonl: false,
+                defaultMode: args.Contains("--json") ? OutputMode.Json : OutputMode.Summary)
+            == OutputMode.Json;
 
         if (!File.Exists(dbPath))
         {
@@ -109,6 +93,7 @@ internal static class StatusHandler
                 database_path = dbPath,
                 database_exists = File.Exists(dbPath),
                 schema_version = schemaVersion,
+                contract_version = VersionConstants.CliMcpContractVersion,
                 indexed = false,
                 latest_failure = latestFailure
             }, HandlerBootstrap.IndentedJson));
@@ -116,6 +101,7 @@ internal static class StatusHandler
         }
 
         Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
         Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
@@ -140,6 +126,7 @@ internal static class StatusHandler
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
+                contract_version = VersionConstants.CliMcpContractVersion,
                 latest_snapshot_id = latestSnapshotId,
                 effective_latest_snapshot_id = latestSnapshotId,
                 built_at_latest_snapshot_id = builtAtLatestId,
@@ -159,6 +146,7 @@ internal static class StatusHandler
 
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
+        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
         if (pinActive)
         {
@@ -196,6 +184,7 @@ internal static class StatusHandler
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
+                contract_version = VersionConstants.CliMcpContractVersion,
                 latest_snapshot_id = latestSnapshotId,
                 effective_latest_snapshot_id = latestSnapshotId,
                 built_at_latest_snapshot_id = builtAtLatestId,
@@ -223,6 +212,7 @@ internal static class StatusHandler
 
         Console.WriteLine($"Database: {dbPath}");
         Console.WriteLine($"Schema version: {schemaVersion}");
+        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
         Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
         if (pinActive)
         {
