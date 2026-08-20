@@ -76,6 +76,9 @@ public static class Program
         new("grep", "Literal/exact-text search over source content with line numbers (--query=).",
             ["--query=", "--limit=", "--cursor=", "--ignore-case", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(GrepHandler.Run)),
+        new("dead-candidates", "List dead-code candidates: symbols with no incoming LIVE edge after suppression-ladder filtering.",
+            ["--project=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet", "--include-public", "--include-generated", "--include-tests"],
+            Sync(DeadCandidatesHandler.Run)),
         new("serve", "Run an MCP server over the index (stdio).",
             ["--solution="],
             McpServeHandler.Run)

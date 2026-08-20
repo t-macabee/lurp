@@ -34,7 +34,8 @@ internal static class McpServeHandler
             .WithTools<StatusTool>()
             .WithTools<TimingsTool>()
             .WithTools<RefreshTool>()
-            .WithTools<IndexTool>();
+            .WithTools<IndexTool>()
+            .WithTools<DeadCandidatesTool>();
 
         var host = builder.Build();
         await host.RunAsync();

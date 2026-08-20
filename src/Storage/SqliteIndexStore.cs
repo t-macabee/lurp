@@ -27,6 +27,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     private SemanticDiffStore? _semanticDiffStore;
     private SnapshotSymbolStore? _symbols;
     private SnapshotTimingStore? _timings;
+    private DeadCandidateStore? _deadCandidates;
 
     public SqliteIndexStore(string dbPath)
     {
@@ -67,6 +68,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _textSearch = new TextSearchStore(_connection);
         _semanticDiffStore = new SemanticDiffStore(_connection);
         _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
+        _deadCandidates = new DeadCandidateStore(_connection);
     }
 
     public void EnableQueryOnly()
@@ -108,6 +110,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _textSearch = null;
         _semanticDiffStore = null;
         _bindingIncompletenessStore = null;
+        _deadCandidates = null;
     }
 
     // ── Migrations (use their own connection) ──────────────────────────
@@ -631,6 +634,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     {
         EnsureOpen();
         return _textSearch!.SearchTextPage(query, snapshotId, limit, includeGenerated, ignoreCase, cursor);
+    }
+
+    public DeadCandidatePage GetDeadCandidatesPage(string snapshotId, string? project, string? document, string? kind, bool includePublic, bool includeGenerated, bool includeTests, int limit, DeadCandidateCursor? cursor)
+    {
+        EnsureOpen();
+        return _deadCandidates!.GetDeadCandidatesPage(snapshotId, project, document, kind, includePublic, includeGenerated, includeTests, limit, cursor);
     }
 
     // ── ISemanticDiffReadStore ─────────────────────────────────────────

@@ -28,8 +28,8 @@ codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=s
 
 Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symbol`,
 `--mode=impact`, `--mode=context`, `--mode=get-source`, `--mode=get-symbol`,
-`--mode=navigate`, `--mode=outline`, `--mode=diagnostics`, and
-`--mode=get-annotations`.
+`--mode=navigate`, `--mode=outline`, `--mode=diagnostics`,
+`--mode=get-annotations`, and `--mode=dead-candidates`.
 
 | Argument | Required | Description |
 |---|---|---|
@@ -39,7 +39,7 @@ Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symb
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
 `--output=` applies to modes whose payload is a JSON sequence (`search`, `grep`,
-`find-symbol`, `impact`, `context`, `outline`, `diagnostics`, `get-annotations`).
+`find-symbol`, `impact`, `context`, `outline`, `diagnostics`, `get-annotations`, `dead-candidates`).
 `get-source`, `get-symbol`, and `navigate` emit a single fixed shape — raw source
 bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`, and
 `--quiet` but reject `--output=`.
@@ -47,7 +47,7 @@ bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`,
 Freshness is delivered in two tiers, because two payload shapes exist:
 
 - **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code. `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
-- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `grep`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, and `get-annotations`.
+- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `grep`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, `get-annotations`, and `dead-candidates`.
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
 **Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
@@ -122,7 +122,7 @@ Also accepts the shared [read-command options](#read-command-options). Output in
 
 ### `--mode=diagnostics`
 
-List diagnostics captured at index time for the snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (`Project.AnalyzerReferences`, e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included unless the target project's own build enables them (e.g. `EnforceCodeStyleInBuild`), since Lurp does not bundle a code-style analyzer of its own.
+List diagnostics captured at index time for the snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (`Project.AnalyzerReferences`, e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. `EnforceCodeStyleInBuild` plus an `.editorconfig` severity) — confirmed 2026-08-20 against a live target: Roslyn's build-time compilation additionally gates `IDE0005` behind `GenerateDocumentationFile=true`, independent of anything Lurp does. **For unused-using-directive detection, query the compiler diagnostic instead: `--severity=hidden --id=CS8019`** ("Unnecessary using directive") — Lurp always captures this regardless of the target's analyzer/code-style configuration.
 
 ```
 --mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=] [--id=] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
@@ -479,6 +479,31 @@ are snapshot-scoped continuation tokens, not raw offsets.
 
 ---
 
+### `--mode=dead-candidates`
+
+List dead-code candidates: symbols with no incoming LIVE edge after suppression-ladder filtering.
+
+```
+--mode=dead-candidates --output-dir=<path> [--project=<name>] [--document=<path>] [--kind=<Type|Method|Property|Field|Event>] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>] [--include-public] [--include-generated] [--include-tests]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--project=<name>` | No | Filter to this project (assembly simple name, e.g. `eNote.API`). |
+| `--document=<relative-path>` | No | Filter to symbols declared in this document (forward-slash, git-relative). |
+| `--kind=<kind>` | No | Filter by symbol kind: `Type`, `Method`, `Property`, `Field`, `Event` (case-insensitive). |
+| `--limit=<n>` | No | Max dead candidates per page (default: 50, max: 200). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--include-public` | No | Include public/protected symbols with no internal LIVE incoming edge as `uncertain_dead` (reason: `public_surface`). Default excludes them from `proved_dead`. |
+| `--include-generated` | No | Include source-generated symbols (default excludes `is_generated=1`). Surfaced as `uncertain` reason `generated_excluded` when no other signal. |
+| `--include-tests` | No | Include test-project symbols (project `%.Tests`) with no LIVE incoming edge as `uncertain` (reason: `test_harness`). Default excludes them. |
+
+Also accepts the shared [read-command options](#read-command-options). Output is JSON with `snapshot_id`, `filters` (echo of project/document/kind/include_*), `incoming_edge_kinds_checked[14]` (frozen canonical LIVE ordering: `Calls, Constructs, Reads, Writes, Handles, RoutesTo, Registers, MapsTo, MayDispatchTo, StaticallyCalls, TestedBy, ReflectionTypeRef, ReflectionMemberRef, ReflectionNameCandidate`), `live_provenance_rank[3]` (`compiler_proved, framework_derived, global_implementation_relation`), `uncertain_provenance[4]` (`possible, convention, name_candidate, runtime_unknown`), `candidate_count` (total filtered universe before LIVE/suppression, not page length), `dead_count`/`uncertain_count`/`unresolved_count` (totals across all pages, not page length), `candidates[]` page window (ordered by `symbol_id ASC`, `limit` items, default 50) with `symbol_id, fqn, kind, accessibility, document_path, locations[], project_name, declaration_count, is_generated, status (proved_dead/uncertain_dead/unresolved/uncertain), reason (handler-enum: no_incoming_live_edges, binding_incompleteness, public_surface, ef_convention, serialization_convention, framework_convention, possible_dispatch, name_candidate, runtime_unknown, generated_excluded, test_harness), uncertainties[] (verbatim `UncertaintyDetector`/`DeclaredBoundaries` wording), incoming_edge_summary {live_strong, live_weak, provenance_breakdown, kind_breakdown}, and `next_cursor` for pagination; `freshness` block is embedded. `candidate_count`/`dead_count`/`uncertain_count`/`unresolved_count` are totals, not page size — do not use them to drive a loop; use `next_cursor` (`null`/absent marks last page). `next_cursor` drives pagination (keyset over `symbol_id`). The handler uses batched `WHERE target_symbol_id IN (...)` per page, never per-candidate `GetIncomingEdges`. Structural kinds (`References, Inherits, Implements, Contains, Declares, Overrides, Hides, Returns, Throws, ExtensionReceiver`) are explicitly excluded from LIVE. Suppression ladder (strongest → weakest): strong LIVE edge -> alive (not dead); `MayDispatchTo` `possible` -> uncertain `possible_dispatch`; `convention`/`name_candidate`/`runtime_unknown` edges -> uncertain; binding_incompleteness `UnobservableReasons` overlap (`unsupported_syntax`, `compiler_error`, `unresolved_metadata`, `ambiguous_overload`, `extractor_failure`, `project_unreadable`, `convention_scan`) -> unresolved `binding_incompleteness` (excludes `filtered_external`); public/protected without `include_public` -> excluded from proved_dead; attribute-free `Public`/`Internal` property in `System.Text.Json`-referencing project with no `JsonPropertyName`/`JsonProperty`/`DataMember`/`JsonIgnore`/`IgnoreDataMember` attribute -> uncertain `serialization_convention`; private `set`/`get`/field/ctor of a `MapsTo` entity (21 eNoteV2 entities) -> uncertain `ef_convention`; otherwise `no_incoming_live_edges` -> `proved_dead`. Every `reason` is a frozen handler-enum; changing a code is a contract break. CLI `--output=summary` emits one line per candidate (`kind accessibility fqn document_path:start_line reason status`) plus `-- shown/total proved/uncertain/unresolved; more available (--cursor)`. CLI `--output=jsonl` emits `{"type":"meta", meta}` then `{"type":"candidate", candidate}` per entry. MCP tool `lurp_dead_candidates` mirrors CLI shape: `limit, cursor, snapshot_id, project, document, kind, include_public, include_generated, include_tests` plain properties; `Description` text matches this section verbatim (item #6 docs/tool mismatch not repeated).
+
+---
+
 ## Snapshot Lifecycle
 
 Snapshots are immutable: an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
@@ -501,10 +526,10 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 16 tools via `tools/list`:
+Lurp runs as an MCP server over stdio, exposing 17 tools via `tools/list`:
 `lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
 lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
-lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index`. All are
+lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index, lurp_dead_candidates`. All are
 read-only except `lurp_index`, which starts a background (re-)index. There is no
 `lurp_annotate` tool by design. The MCP session's SQLite connection opens with
 `PRAGMA query_only=ON`, so read tools never mutate the pinned snapshot;

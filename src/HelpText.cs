@@ -20,6 +20,8 @@ internal static class HelpText
         ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
         ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly). Not honored by --mode=timings, which resolves its own snapshot independently of this flag.",
         ["--include-generated"] = "Include source-generated symbols. Live-observed (both drives, §C): eNoteV2 Migrations 17→21, eCommerce 35→46 with --include-generated; Service 20→20 shows the flag is not a no-op, just query-dependent (EF migrations have no Service symbols).",
+        ["--include-public"] = "Include public/protected symbols with no internal LIVE incoming edge as uncertain_dead (reason: public_surface). Default excludes them from proved_dead; without this flag a public helper with no callers is not flagged.",
+        ["--include-tests"] = "Include test-project symbols (project name %.Tests) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
         ["--json"] = "Emit structured JSON instead of plain text.",
         ["--file="] = "Source file path (paired with --line=) to anchor by location.",
@@ -90,6 +92,9 @@ internal static class HelpText
 
         // status
         ["--detail="] = "Comma-separated JSON sections to expand: 'documents' (per-document version map), 'completeness' (per-document binding rows), or 'all'. Both are summarized by default.",
+
+        // dead-candidates
+        ["--project="] = "Filter to this project (assembly name, e.g. eNote.API). For --mode=dead-candidates the candidate's owning project is its assembly identity's simple name.",
 
         // annotate
         ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
