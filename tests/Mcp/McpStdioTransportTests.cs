@@ -146,7 +146,6 @@ public sealed class McpStdioTransportTests : IntegrationTestBase
         finally
         {
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-            process.Dispose();
         }
     }
 }

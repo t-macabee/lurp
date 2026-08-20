@@ -280,8 +280,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             {
                 _store.MarkSnapshotFailed(newSnapshotIdStr, reasonCode, ex.Message);
             }
-            catch
+            catch (Exception markEx)
             {
+                _output.WriteErrorLine($"WARNING: Failed to mark snapshot '{newSnapshotIdStr}' as failed: {markEx.Message}");
             }
 
             _output.WriteErrorLine($"ERROR: Incremental index failed mid-operation, snapshot {newSnapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");

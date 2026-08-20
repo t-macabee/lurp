@@ -353,8 +353,9 @@ public static class IndexRunner
             {
                 store.MarkSnapshotFailed(snapshotIdStr, reasonCode, ex.Message);
             }
-            catch
+            catch (Exception markEx)
             {
+                sink.WriteErrorLine($"WARNING: Failed to mark snapshot '{snapshotIdStr}' as failed: {markEx.Message}");
             }
 
             sink.WriteErrorLine($"ERROR: Full index failed, snapshot {snapshotIdStr} marked '{SnapshotStatusValues.Failed}' ({reasonCode}): {ex.Message}");

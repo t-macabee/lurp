@@ -471,7 +471,6 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
         finally
         {
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-            try { process.Dispose(); } catch { }
             try { await stderrReader.WaitAsync(TimeSpan.FromSeconds(1)); } catch { }
         }
     }
