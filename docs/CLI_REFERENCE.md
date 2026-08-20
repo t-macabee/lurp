@@ -320,12 +320,12 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevantTests` and `secondDegreeContext`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevantTests` (see `--tier=` below). Reported as `estimatedTokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimatedTokens`: size a context window from `estimatedArtifactTokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omittedTiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
-| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omittedTiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `direct_callees`, `direct_callers`, `registered_implementations`, `relevant_tests`, `second_degree_context`, `surrounding_source`. |
+| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omitted_tiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `direct_callees`, `direct_callers`, `registered_implementations`, `relevant_tests`, `second_degree_context`, `surrounding_source`. |
 | `--tier-limit=<n>` | No | Items per tier page (default: 25). |
 | `--cursor=<token>` | No | Continue a tier from its `next_cursor` (`--tier` only). |
 
@@ -341,18 +341,24 @@ A capsule reports two different numbers, and they are not interchangeable:
 
 | Field | What it measures | Use it for |
 |---|---|---|
-| `estimatedTokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
-| `estimatedArtifactTokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
+| `estimated_tokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
+| `estimated_artifact_tokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
 
-`estimatedArtifactTokens` is always the larger of the two, typically by a wide
+`estimated_artifact_tokens` is always the larger of the two, typically by a wide
 margin on capsules with many small items. It is reported, never budgeted
 against: budgeting on the whole serialization was measured to force dropping
-whole tiers (`directCallees`, `registeredImplementations`, `surroundingSource`)
+whole tiers (`direct_callees`, `registered_implementations`, `surrounding_source`)
 at realistic budgets, which is a worse capsule for the same context cost.
 
-#### Reading `omittedTiers`
+The same two numbers are restated under an advisory `token_estimate` block:
+`budget_basis` mirrors `estimated_tokens` and `delivery` mirrors
+`estimated_artifact_tokens`, so a consumer reading only the JSON payload can
+distinguish the budget basis from the delivery size without the surrounding
+prose.
 
-`omittedTiers` carries **exactly one terminal record per category**, describing
+#### Reading `omitted_tiers`
+
+`omitted_tiers` carries **exactly one terminal record per category**, describing
 the emitted capsule rather than the history of how it settled. Reasons:
 
 | Reason | Meaning |
@@ -363,7 +369,7 @@ the emitted capsule rather than the history of how it settled. Reasons:
 | `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
 
 Both `budget_exhausted` shapes are recovered the same way: refetch that one tier
-unbudgeted with `--tier=<category>` (see `inclusionReasons["omittedTiers.budget_exhausted"]`,
+unbudgeted with `--tier=<category>` (see `inclusion_reasons["omittedTiers.budget_exhausted"]`,
 which is retained in the capsule even when budget pressure clears every other
 inclusion reason).
 
@@ -371,7 +377,7 @@ A missing section is not the same as an empty one. When the enforcer drops
 `topology` or `completeness` they are omitted from the JSON entirely rather than
 serialized with zeroed counts, because zeroed counts read as a positive claim
 ("no incoming references") that the capsule has not established. The
-corresponding `omittedTiers` record is the authority.
+corresponding `omitted_tiers` record is the authority.
 
 #### Regeneration is bounded by snapshot retention
 
@@ -594,6 +600,13 @@ same way, scoped to a single `DELETE` (see
 [`--mode=retract-annotation`](#--mode=retract-annotation)). Annotation *creation*
 remains CLI-only (`--mode=annotate`); *retraction* is available from both
 surfaces (`--mode=retract-annotation` and `lurp_retract_annotation`).
+
+**MCP callers, note:** `view` is **not** shared vocabulary between the CLI and
+MCP surfaces. The CLI's `--mode=get-symbol --view=` accepts
+`metadata|signature|body|declaration|containing-type|surrounding`; MCP's
+`lurp_get_symbol` `view` parameter accepts `summary|source|all` (default
+`summary`). Do not pass one surface's view names to the other — each validates
+against its own list.
 
 **Two different things are both called "pinned" in this document — don't conflate them.** The MCP *session* pin above is per-connection and in-memory: `McpSessionContext` resolves "latest" once at startup and every read for that session's lifetime answers from that same snapshot, even if a background `lurp_index` produces a newer one, until `lurp_refresh` re-pins the session. The *database* pin from `--mode=pin-snapshot` is persisted, cross-session, and overrides which snapshot "latest" resolves to for every future caller — CLI or MCP — until cleared. A fresh MCP session started after a database pin is set will pin itself to the pinned snapshot, since it resolves "latest" through the same pin-aware `GetLatestSnapshotId()`.
 

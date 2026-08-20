@@ -65,19 +65,19 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 `--output=summary` prints the handoff facts instead of the full JSON capsule:
 
 ```
-anchor:       OrderService.CreateAsync (src/Services/OrderService.cs:42)
-snapshot:     f3bff523b103462be239655c9b753be3
-estimatedTokens:          283   (content bounded by --content-budget)
-estimatedArtifactTokens:  571   (whole emitted file; size your window from this)
-omittedTiers:
-  directCallers     budget_exhausted
-  relevantTests     budget_exhausted
+capsule OrderService.CreateAsync (Method)
+  snapshot: f3bff523b103462be239655c9b753be3  intent: inspect  maxHops: 3
+  content tokens:  283/8000  (estimatedTokens: the budget basis)
+  delivery tokens: ~571  (estimatedArtifactTokens: whole emitted file; size the context window from this)
+  truncated: true
+  omitted: direct_callers (budget_exhausted) : fetch with --tier=direct_callers
+  omitted: relevant_tests (budget_exhausted) : fetch with --tier=relevant_tests
 ```
 
 When a tier is `budget_exhausted`, fetch it on its own with no budget applied:
 
 ```bash
-lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --tier=directCallers
+lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --tier=direct_callers
 ```
 
 ## Install
@@ -142,7 +142,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 |---|---|
 | eNoteV2 (402 docs) full index | ~48 s |
 | eNoteV2 incremental (no changes) | ~11 s |
-| Capsule token estimates | `estimatedTokens` (content) vs `estimatedArtifactTokens` (delivery) |
+| Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 | Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
 
 ## Status & roadmap
