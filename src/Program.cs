@@ -73,6 +73,9 @@ public static class Program
         new("diagnostics", "List compiler diagnostics captured at index time (--document=, --project=, --severity=, --id=).",
             ["--document=", "--project=", "--severity=", "--id=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(DiagnosticsHandler.Run)),
+        new("grep", "Literal/exact-text search over source content with line numbers (--query=).",
+            ["--query=", "--limit=", "--cursor=", "--ignore-case", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            Sync(GrepHandler.Run)),
         new("serve", "Run an MCP server over the index (stdio).",
             ["--solution="],
             McpServeHandler.Run)

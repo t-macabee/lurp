@@ -30,6 +30,7 @@ internal static class McpServeHandler
             .WithTools<GetSymbolTool>()
             .WithTools<AnnotationsTool>()
             .WithTools<DiagnosticsTool>()
+            .WithTools<GrepTool>()
             .WithTools<StatusTool>()
             .WithTools<TimingsTool>()
             .WithTools<RefreshTool>()

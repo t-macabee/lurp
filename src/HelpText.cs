@@ -52,11 +52,12 @@ internal static class HelpText
         ["--context-lines="] = "Extra source lines of context around the symbol.",
 
         // search
-        ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\").",
+        ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\"). For --mode=grep the query is a literal exact substring (byte-exact, including punctuation); use --ignore-case for case-insensitive.",
         ["--type="] = "Search scope: all | source | symbol (default: all).",
         ["--kind="] = "Filter symbol results by Roslyn SymbolKind (e.g. Type, Method, Field, Property).",
-        ["--limit="] = "Max results per scope (default: 20).",
+        ["--limit="] = "Max results per scope (default: 20; for --mode=grep default is 50).",
         ["--snippet-tokens="] = "Token window for source snippets (default: 64).",
+        ["--ignore-case"] = "For --mode=grep, make the literal search case-insensitive (default: case-sensitive).",
 
         // impact
         ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",

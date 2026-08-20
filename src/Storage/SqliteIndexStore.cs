@@ -23,6 +23,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     private SearchIndexMaintenance? _searchMaintenance;
     private SearchSourceStore? _searchSource;
     private SearchSymbolStore? _searchSymbols;
+    private TextSearchStore? _textSearch;
     private SemanticDiffStore? _semanticDiffStore;
     private SnapshotSymbolStore? _symbols;
     private SnapshotTimingStore? _timings;
@@ -63,6 +64,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _searchSource = new SearchSourceStore(_connection);
         _searchSymbols = new SearchSymbolStore(_connection);
         _searchMaintenance = new SearchIndexMaintenance(_connection);
+        _textSearch = new TextSearchStore(_connection);
         _semanticDiffStore = new SemanticDiffStore(_connection);
         _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
     }
@@ -103,6 +105,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _searchSource = null;
         _searchSymbols = null;
         _searchMaintenance = null;
+        _textSearch = null;
         _semanticDiffStore = null;
         _bindingIncompletenessStore = null;
     }
@@ -616,6 +619,18 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     {
         EnsureOpen();
         return _searchSymbols!.ResolveSymbolByDocCommentId(docCommentId, snapshotId, includeGenerated);
+    }
+
+    public List<TextSearchResult> SearchText(string query, string snapshotId, int limit = 50, bool includeGenerated = false, bool ignoreCase = false)
+    {
+        EnsureOpen();
+        return _textSearch!.SearchText(query, snapshotId, limit, includeGenerated, ignoreCase);
+    }
+
+    public TextSearchPage SearchTextPage(string query, string snapshotId, int limit, bool includeGenerated, bool ignoreCase, TextSearchCursor? cursor)
+    {
+        EnsureOpen();
+        return _textSearch!.SearchTextPage(query, snapshotId, limit, includeGenerated, ignoreCase, cursor);
     }
 
     // ── ISemanticDiffReadStore ─────────────────────────────────────────

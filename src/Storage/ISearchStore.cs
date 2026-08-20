@@ -39,4 +39,16 @@ public interface ISearchStore
 
     IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false);
     IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false);
+
+    /// <summary>
+    ///     Literal / exact-text search over source content. Returns per-occurrence results
+    ///     with 1-based lines and 0-based columns, ordered by document_path then offset.
+    /// </summary>
+    List<TextSearchResult> SearchText(string query, string snapshotId, int limit = 50, bool includeGenerated = false, bool ignoreCase = false);
+
+    /// <summary>
+    ///     Keyset-paginated literal search. Fetches one extra row beyond <paramref name="limit"/>
+    ///     to determine whether a next page exists, then returns an opaque cursor.
+    /// </summary>
+    TextSearchPage SearchTextPage(string query, string snapshotId, int limit, bool includeGenerated, bool ignoreCase, TextSearchCursor? cursor);
 }

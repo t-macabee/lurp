@@ -107,13 +107,13 @@ Handlers consume persisted facts through `IIndexStore` and related store
 interfaces. They do not re-run Roslyn analysis (except `--mode=status
 --solution=`, which performs a storage-backed freshness check).
 
-Fourteen handlers cover: index, search, find-symbol, get-symbol, get-source,
+Fifteen handlers cover: index, search, grep, find-symbol, get-symbol, get-source,
 navigate, outline, diagnostics, diff, impact, context, status, timings, and
-annotations. MCP surface (`--mode=serve`): 15 tools over stdio
+annotations. MCP surface (`--mode=serve`): 16 tools over stdio
 (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`,
-`lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`,
+`lurp_find_symbol`, `lurp_search`, `lurp_grep`, `lurp_impact`, `lurp_diff`,
 `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
-`lurp_timings`, `lurp_refresh`, `lurp_index`) — 14 read-only plus `lurp_index`,
+`lurp_timings`, `lurp_refresh`, `lurp_index`) — 15 read-only plus `lurp_index`,
 which starts a background (re-)index through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
 

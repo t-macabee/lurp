@@ -26,7 +26,7 @@ codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=s
 
 ## Read-command options
 
-Accepted by the read commands: `--mode=search`, `--mode=find-symbol`,
+Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symbol`,
 `--mode=impact`, `--mode=context`, `--mode=get-source`, `--mode=get-symbol`,
 `--mode=navigate`, `--mode=outline`, `--mode=diagnostics`, and
 `--mode=get-annotations`.
@@ -38,7 +38,7 @@ Accepted by the read commands: `--mode=search`, `--mode=find-symbol`,
 | `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes files whose stat differs; `off` skips the check. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
-`--output=` applies to modes whose payload is a JSON sequence (`search`,
+`--output=` applies to modes whose payload is a JSON sequence (`search`, `grep`,
 `find-symbol`, `impact`, `context`, `outline`, `diagnostics`, `get-annotations`).
 `get-source`, `get-symbol`, and `navigate` emit a single fixed shape — raw source
 bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`, and
@@ -47,7 +47,7 @@ bytes or one JSON document — so they accept `--freshness=`, `--require-fresh`,
 Freshness is delivered in two tiers, because two payload shapes exist:
 
 - **Every read mode emits a freshness signal**: a stderr line reporting `state` (`fresh`, `stale`, `unknown`) and the `method` used to determine it, plus an exit code. `--require-fresh` exits `2` when the snapshot is not fresh, so a stale read is never presented as a current one.
-- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, and `get-annotations`.
+- **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `grep`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, and `get-annotations`.
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
 **Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
@@ -187,6 +187,30 @@ Full-text search over source text and symbols.
 Punctuation in queries is quoted as an FTS5 phrase literal (`SearchUtils.ToFtsPhrase`), so dotted names like `CourseService.CreateAsync` and queries containing `"`, `*`, `:`, `()`, `<>` no longer throw `fts5: syntax error`.
 
 Also accepts the shared [read-command options](#read-command-options).
+
+---
+
+### `--mode=grep`
+
+Literal/exact-text search over source content with per-occurrence line numbers.
+
+```
+--mode=grep --query=<term> --output-dir=<path> [options]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--query=<term>` | Yes | Exact substring to find. The match is byte-exact, including punctuation and spacing. Case-sensitive by default; pass `--ignore-case` for case-insensitive. |
+| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--limit=<n>` | No | Max matches per page (default: 50). |
+| `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
+| `--ignore-case` | No | Make the search case-insensitive (default: case-sensitive). |
+| `--include-generated` | No | Include source-generated documents. |
+| `--snapshot=<id>` | No | Snapshot to search (default: latest). |
+
+Also accepts the shared [read-command options](#read-command-options).
+
+Output is JSON with `snapshot_id`, `query`, `ignore_case`, `results` (array of `{ document_path, start_line, start_column, end_line, end_column, line_text }` — lines 1-based, columns 0-based), `match_count` (total matches across every page, not the page size), and `next_cursor`. `match_count` is the total, not the page length — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page). Each result is one exact occurrence, ordered by `document_path` then `start_line`/`start_column`, so the same `start_line` can be passed to `get-source --start-line=` or `navigate --file= --line=` to re-resolve the location.
 
 ---
 
@@ -475,9 +499,9 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 15 tools via `tools/list`:
+Lurp runs as an MCP server over stdio, exposing 16 tools via `tools/list`:
 `lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
-lurp_search, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
+lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
 lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index`. All are
 read-only except `lurp_index`, which starts a background (re-)index. There is no
 `lurp_annotate` tool by design. The MCP session's SQLite connection opens with
