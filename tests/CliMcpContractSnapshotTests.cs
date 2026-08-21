@@ -20,6 +20,32 @@ public sealed class CliMcpContractSnapshotTests
     }
 
     [Fact]
+    public void ToolVersion_MatchesAssemblyPackageVersion()
+    {
+        // The csproj <Version> is the published NuGet/dotnet-tool version and drives
+        // the Lurp assembly version; ToolVersion is what `lurp --version` prints and
+        // what snapshot manifests stamp. The two must never disagree again — bump
+        // both together (or this test fails).
+        var assemblyVersion = typeof(VersionConstants).Assembly.GetName().Version!;
+        Assert.Equal(VersionConstants.ToolVersion,
+            $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}");
+    }
+
+    [Fact]
+    public void BuildVersionOutput_PinsToolAndSubsystemVersions()
+    {
+        var output = Program.BuildVersionOutput();
+
+        var lines = output.Split('\n');
+        Assert.Equal(2, lines.Length);
+        Assert.Equal($"lurp {VersionConstants.ToolVersion}", lines[0]);
+        Assert.Contains($"schema v{VersionConstants.DatabaseSchemaVersion}", lines[1]);
+        Assert.Contains($"extractor v{VersionConstants.ExtractorVersion}", lines[1]);
+        Assert.Contains($"cli/mcp contract v{VersionConstants.CliMcpContractVersion}", lines[1]);
+        Assert.Contains($"output schema v{VersionConstants.OutputSchemaVersion}", lines[1]);
+    }
+
+    [Fact]
     public void CliModeRegistry_SnapshotMatchesExpected()
     {
         // Actual surface derived from the single source of truth Program.ModeRegistry.

@@ -83,7 +83,7 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 ## Install
 
 ```bash
-dotnet tool install --global lurp --version 1.1.0
+dotnet tool install --global lurp --version 1.4.0
 lurp --mode=index --solution=path/to/Your.slnx --output-dir=./out
 ```
 
@@ -100,8 +100,8 @@ Environment variables `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent 
 `src/global.json` `rollForward=latestMajor`; Roslyn 5.6 requires `net10.0`).
 
 **Installing a local build as the global tool:** if you pack a local build and its
-version number matches the version already on nuget.org (both `1.1.0`, for
-example), `dotnet tool install --global --add-source <path> lurp` can silently
+version number matches the version already on nuget.org, `dotnet tool install
+--global --add-source <path> lurp` can silently
 install the nuget.org copy instead of yours. `--add-source` only appends a source;
 it does not remove nuget.org, and when two sources offer the same version, NuGet is
 free to pick either one. Use `--source <path>` instead — it replaces every other
@@ -110,7 +110,7 @@ source, so only your local build is visible. Confirm afterward with
 installed binary was built with — compare that against the docs you're reading; a
 mismatch means `dotnet tool install` pulled an older published build than the repo
 this doc came from. This will bite again on every future local build that reuses
-the `1.1.0` version number; bump the local package version before packing, or
+an already-published version number; bump the local package version before packing, or
 always install with `--source`, never `--add-source`.
 
 </details>
@@ -163,7 +163,8 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Status & roadmap
 
-Shipped 1.1.0 as a global tool (`dotnet tool install lurp`). Schema v29, extractor
+Shipped 1.1.0 as a global tool (`dotnet tool install lurp`); the source tree
+currently carries 1.4.0, pending publish. Schema v29, extractor
 1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
 eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
 parameter-type matching are postponed by design (see

@@ -99,12 +99,24 @@ public static class Program
         };
     }
 
+    /// <summary>
+    ///     Builds the two-line <c>--version</c> output: the tool version plus the
+    ///     schema/extractor/contract versions this binary was built with. Extracted
+    ///     from Main so the string is unit-testable without spawning a process;
+    ///     Main stays a thin dispatcher.
+    /// </summary>
+    internal static string BuildVersionOutput()
+    {
+        return
+            $"lurp {VersionConstants.ToolVersion}\n" +
+            $"  schema v{VersionConstants.DatabaseSchemaVersion}  extractor v{VersionConstants.ExtractorVersion}  cli/mcp contract v{VersionConstants.CliMcpContractVersion}  output schema v{VersionConstants.OutputSchemaVersion}";
+    }
+
     public static async Task Main(string[] args)
     {
         if (args.Contains("--version"))
         {
-            Console.WriteLine($"lurp {VersionConstants.ToolVersion}");
-            Console.WriteLine($"  schema v{VersionConstants.DatabaseSchemaVersion}  extractor v{VersionConstants.ExtractorVersion}  cli/mcp contract v{VersionConstants.CliMcpContractVersion}  output schema v{VersionConstants.OutputSchemaVersion}");
+            Console.WriteLine(BuildVersionOutput());
             return;
         }
 
