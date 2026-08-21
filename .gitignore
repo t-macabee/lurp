@@ -25,6 +25,7 @@ AGENTS.md
 .tokensave/
 .mimocode/
 .repograph/
+.agents/
 .qodana/*
 !.qodana/qodana.yaml
 
