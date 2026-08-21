@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/t-macabee/lurp/actions/workflows/ci.yml/badge.svg)](https://github.com/t-macabee/lurp/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/lurp)](https://www.nuget.org/packages/lurp)
+![Windows only](https://img.shields.io/badge/platform-Windows%20only-4c6b8a)
+
+> **Windows only, today.** Lurp is developed and CI-tested on Windows
+> (`windows-latest`); cross-platform support is on the roadmap but not there yet.
 
 Lurp indexes a .NET solution into SQLite with Roslyn, so an agent gets a small,
 sufficient code neighborhood instead of re-grepping and re-parsing the whole
