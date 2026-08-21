@@ -22,8 +22,21 @@ public readonly record struct WorkspaceId
 
     public static WorkspaceId Create(string gitRoot, string solutionPath)
     {
+        return Create(gitRoot, solutionPath, false);
+    }
+
+    /// <summary>
+    ///     Build a <see cref="WorkspaceId" />. When <paramref name="solutionPathIsRootRelative" />
+    ///     is true the solution path is already relative to <paramref name="gitRoot" /> and is
+    ///     preserved as-is (forward-slashed) instead of being re-absolutized, which would
+    ///     otherwise re-prefix a foreign-platform root with the current directory.
+    /// </summary>
+    public static WorkspaceId Create(string gitRoot, string solutionPath, bool solutionPathIsRootRelative)
+    {
         var root = Normalise(gitRoot).TrimEnd('/');
-        var sln = Normalise(solutionPath);
+        var sln = solutionPathIsRootRelative
+            ? PathNormalizer.ToForwardSlash(solutionPath)
+            : Normalise(solutionPath);
 
         var relative = sln.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase)
             ? sln[(root.Length + 1)..]
@@ -40,7 +53,7 @@ public readonly record struct WorkspaceId
 
     private static string Normalise(string path)
     {
-        return PathNormalizer.ToForwardSlash(Path.GetFullPath(path));
+        return PathNormalizer.NormalizeForStorage(path);
     }
 }
 

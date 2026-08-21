@@ -30,6 +30,20 @@ public static class PathNormalizer
     }
 
     /// <summary>
+    ///     Normalise a path for storage/comparison: forward-slash form, and only
+    ///     absolutized against the current directory when it is not already rooted on
+    ///     this platform. A path that is already rooted -- including a foreign-platform
+    ///     absolute path such as a Windows drive path read on Linux -- is left
+    ///     untouched, so it is not misinterpreted as relative and re-prefixed with the
+    ///     current working directory (the cross-platform double-prefix defect).
+    /// </summary>
+    public static string NormalizeForStorage(string path)
+    {
+        var resolved = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
+        return ToForwardSlash(resolved);
+    }
+
+    /// <summary>
     ///     Resolve and normalise a git-root directory: absolute path, trailing
     ///     separators stripped. Callers that need to normalise the root once and
     ///     reuse it across many documents pass the result to

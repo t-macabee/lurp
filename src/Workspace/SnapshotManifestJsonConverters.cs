@@ -90,8 +90,7 @@ public sealed partial class SnapshotManifest
 
             var gitRoot = rest[..slashIndex];
             var slnPath = rest[(slashIndex + 1)..];
-            var fullSlnPath = Path.GetFullPath(Path.Combine(gitRoot, slnPath));
-            return WorkspaceId.Create(gitRoot, fullSlnPath);
+            return WorkspaceId.Create(gitRoot, slnPath, solutionPathIsRootRelative: true);
         }
     }
 

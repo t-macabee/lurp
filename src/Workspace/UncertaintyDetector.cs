@@ -398,7 +398,7 @@ internal sealed class UncertaintyDetector
         var location = _declarationStore.GetDeclarationLocations(symbolId, _snapshotId, _includeGenerated).FirstOrDefault();
         if (location == null)
             return null;
-        var root = Path.GetFullPath(_gitRoot);
+        var root = PathNormalizer.NormalizeForStorage(_gitRoot);
         var directory = Path.GetDirectoryName(Path.Combine(root, location.DocumentPath));
         return ResolveProjectFromDirectory(directory, root);
     }
