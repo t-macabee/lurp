@@ -167,8 +167,8 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Status & roadmap
 
-Shipped 1.1.0 as a global tool (`dotnet tool install lurp`); the source tree
-currently carries 1.4.0, pending publish. Schema v29, extractor
+Shipped as a global tool (`dotnet tool install lurp`); the published version is
+1.4.0. Schema v29, extractor
 1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
 eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
 parameter-type matching are postponed by design (see
