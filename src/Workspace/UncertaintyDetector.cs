@@ -414,6 +414,9 @@ internal sealed class UncertaintyDetector
         var current = directory;
         while (!string.IsNullOrEmpty(current) && current.StartsWith(root, StringComparison.OrdinalIgnoreCase))
         {
+            if (!Directory.Exists(current))
+                break;
+
             var project = Directory.EnumerateFiles(current, "*.csproj", SearchOption.TopDirectoryOnly)
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
