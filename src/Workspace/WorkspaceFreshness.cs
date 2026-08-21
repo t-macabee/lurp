@@ -75,7 +75,15 @@ public static class WorkspaceFreshness
                 }
 
                 var rawBytes = File.ReadAllBytes(fullPath);
-                var normalized = WorkspaceInfo.NormalizeSourceBytesForFreshnessCheck(relativePath, rawBytes);
+                if (!WorkspaceInfo.TryNormalizeSourceBytesForFreshnessCheck(rawBytes, out var normalized))
+                {
+                    // File is no longer valid UTF-8/UTF-16 text (e.g. replaced with
+                    // binary, or re-saved in a different encoding) since it was
+                    // indexed. That is a genuine content change, not a crash.
+                    changed.Add(relativePath);
+                    continue;
+                }
+
                 var currentHash = DocumentVersionId.Compute(new DocumentId(relativePath), normalized).Hash;
                 // document_version_id is persisted as "{documentId}:{contentHash}"
                 // (Migration_016); the hash is always the substring after the
