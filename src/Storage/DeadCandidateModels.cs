@@ -15,6 +15,7 @@ public static class DeadCandidateReason
     public const string RuntimeUnknown = "runtime_unknown";
     public const string GeneratedExcluded = "generated_excluded";
     public const string TestHarness = "test_harness";
+    public const string EntryPointConvention = "entry_point_convention";
 }
 
 public static class DeadCandidateStatus

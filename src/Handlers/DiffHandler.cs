@@ -19,6 +19,11 @@ internal static class DiffHandler
 
         try
         {
+            if (store.LoadSnapshotMetadata(fromSnapshot!) == null)
+                HandlerBootstrap.Fail($"ERROR: snapshot '{fromSnapshot}' not found.");
+            if (store.LoadSnapshotMetadata(toSnapshot!) == null)
+                HandlerBootstrap.Fail($"ERROR: snapshot '{toSnapshot}' not found.");
+
             var differ = new SemanticDiffer(store, store, store, store);
             var (changes, skippedComparisons) = differ.ComputeDiff(fromSnapshot, toSnapshot);
 

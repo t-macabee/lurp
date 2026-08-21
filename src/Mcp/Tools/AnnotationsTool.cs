@@ -115,7 +115,7 @@ internal sealed class AnnotationsTool
     }
 
     [McpServerTool(Name = "lurp_retract_annotation", Title = "Lurp Retract Annotation", ReadOnly = false, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Retract (hard-delete) one user-authored annotation by annotation_id, scoped to the pinned snapshot. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone.")]
+    [Description("Retract (hard-delete) one annotation by annotation_id, scoped to the pinned snapshot — any provenance, not limited to user-authored (lurp_annotate) rows; extractor-derived rows can be removed the same way. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone.")]
     public string LurpRetractAnnotation(
         long annotation_id,
         string? snapshot_id = null)

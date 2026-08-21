@@ -80,7 +80,7 @@ internal sealed class AnnotationStore
     }
 
     /// <summary>
-    ///     Hard-delete of a single user-authored annotation. Scoped to exactly one row:
+    ///     Hard-delete of a single annotation, regardless of provenance. Scoped to exactly one row:
     ///     <c>WHERE snapshot_id = @snapshotId AND annotation_id = @annotationId</c>.
     ///     Returns true when one row was deleted, false when no such row exists in that snapshot.
     ///     Document_path is not filtered — the caller already resolved an annotation_id that may be

@@ -70,7 +70,7 @@ public static class Program
         new("annotate", "Attach a user-authored annotation to a symbol.",
             ["--symbol=", "--annotation-kind=", "--value=", "--snapshot="],
             Sync(AnnotationHandler.RunAnnotate)),
-        new("retract-annotation", "Retract one user-authored annotation by id (scoped to the resolved snapshot).",
+        new("retract-annotation", "Retract one annotation by id, scoped to the resolved snapshot (any provenance, not limited to user-authored rows).",
             ["--annotation-id=", "--snapshot="],
             Sync(AnnotationHandler.RunRetractAnnotation)),
         new("get-annotations", "Retrieve annotations by symbol, document, or snapshot (with kind/limit/cursor paging).",

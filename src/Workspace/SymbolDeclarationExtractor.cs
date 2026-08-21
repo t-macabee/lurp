@@ -7,6 +7,17 @@ namespace Lurp.Workspace;
 
 internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext context)
 {
+    // Computed once per compilation. GetEntryPoint returns the Main method (explicit or the
+    // compiler-synthesized top-level-statements form) for an executable project, null for a
+    // library. Neither form sets IsImplicitlyDeclared and both carry an ordinary-looking
+    // docCommentId (e.g. top-level statements: "M:Program.{Main}$(System.String[])", containing
+    // type "T:Program" — structurally indistinguishable from a hand-written Program.Main), so
+    // identity comparison against this cached symbol is the only reliable way to recognize it;
+    // name/pattern matching on the FQN is not (observed FQN rendering already differs across
+    // SDKs: "Program.<top-level-statements-entry-point>" vs. an invalid-code fallback like
+    // "<invalid-global-code>" when the source has unrelated syntax errors).
+    private readonly IMethodSymbol? _entryPointMethod = context.Compilation.GetEntryPoint(CancellationToken.None);
+
     private static readonly SymbolDisplayFormat SignatureFormat = new(
         SymbolDisplayGlobalNamespaceStyle.Omitted,
         SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
@@ -52,7 +63,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
         var fqn = BuildFullyQualifiedName(symbol);
         var kind = MapKind(symbol);
-        var metadataJson = BuildMetadataJson(symbol);
+        var metadataJson = BuildMetadataJson(symbol, _entryPointMethod);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
         var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 } typeSymbol;
@@ -133,7 +144,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         };
     }
 
-    private static string? BuildMetadataJson(ISymbol symbol)
+    private static string? BuildMetadataJson(ISymbol symbol, IMethodSymbol? entryPointMethod)
     {
         var metadata = new Dictionary<string, object?>();
 
@@ -150,6 +161,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.Arity] = method.Arity;
                 metadata[SymbolMetadataKeys.IsExtensionMethod] = method.IsExtensionMethod;
                 metadata[SymbolMetadataKeys.Signature] = method.ToDisplayString(SignatureFormat);
+                if (entryPointMethod != null && SymbolEqualityComparer.Default.Equals(method, entryPointMethod))
+                    metadata[SymbolMetadataKeys.IsEntryPoint] = true;
                 break;
             case INamedTypeSymbol type:
                 metadata[SymbolMetadataKeys.TypeKind] = type.TypeKind.ToString();

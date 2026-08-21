@@ -46,12 +46,12 @@ separately.
 | `get-source` | Retrieve source text for a document by relative path. |
 | `index` | Build or update the snapshot-bound map in `index.db`. |
 | `pin-snapshot` | Pin which snapshot reads default to when `--snapshot=` is omitted, without deleting or rewriting any snapshot. |
-| `annotate` / `get-annotations` / `retract-annotation` | Attach, retrieve, and retract (by `annotation_id`) user-authored annotations on symbols. |
+| `annotate` / `get-annotations` / `retract-annotation` | Attach and retrieve user-authored annotations on symbols; retract (by `annotation_id`) any annotation regardless of provenance. |
 | `status` | Report whether the indexed snapshot still matches the workspace. |
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
 | `diagnostics` | List compiler diagnostics captured at index time. |
-| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder that keeps public surface, EF/serialization conventions, and generated/test code out of the default view. |
+| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder that keeps public surface, EF/serialization conventions, process entry points, and generated/test code out of the default view. |
 
 ## Worked example
 

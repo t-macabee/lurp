@@ -21,4 +21,5 @@ public static class SymbolMetadataKeys
     public const string IsConst = "isConst";
     public const string IsVolatile = "isVolatile";
     public const string Attributes = "attributes";
+    public const string IsEntryPoint = "isEntryPoint";
 }

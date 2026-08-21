@@ -187,6 +187,18 @@ internal sealed class DeadCandidateStore
                 uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, docPaths, assemblyName)];
                 unresolvedCount++;
             }
+            else if (IsProcessEntryPoint(cand))
+            {
+                // Checked ahead of the public/protected suppression below: the entry point's own
+                // accessibility varies by coding style (private for top-level statements, often
+                // public/internal for an explicit Main), and either way "nothing in-repo calls the
+                // process entry point" is definitional, not evidence of dead code. Surface it
+                // visibly as uncertain rather than either proved_dead or silently excluded.
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.EntryPointConvention;
+                uncertainties = [MakeEntryPointConventionUncertainty(cand.SymbolId)];
+                uncertainCount++;
+            }
             else if (IsPublicOrProtected(accessibility) && !includePublic)
             {
                 // Excluded from proved_dead - not counted as dead at all
@@ -695,6 +707,29 @@ internal sealed class DeadCandidateStore
             || assemblyName.EndsWith(".Tests", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    ///     True when this candidate is the compilation's own process entry point (an explicit
+    ///     <c>static void Main</c> or the compiler-synthesized top-level-statements form), tagged
+    ///     at extraction time by <see cref="Lurp.Workspace.SymbolDeclarationExtractor"/> via
+    ///     <c>SymbolMetadataKeys.IsEntryPoint</c>. Nothing in-repo ever calls the entry point —
+    ///     the runtime launcher does — so it would otherwise always land in the terminal
+    ///     no-incoming-edges branch below and read as proved_dead.
+    /// </summary>
+    private static bool IsProcessEntryPoint(CandidateRow cand)
+    {
+        if (cand.Kind != nameof(IndexedSymbolKind.Method))
+            return false;
+        if (string.IsNullOrEmpty(cand.MetadataJson))
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(cand.MetadataJson);
+            return doc.RootElement.TryGetProperty(SymbolMetadataKeys.IsEntryPoint, out var el)
+                && el.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
+    }
+
     private bool IsEfPrivateMember(CandidateRow cand, string? accessibility, HashSet<string> mapsToTargets)
     {
         if (cand.Kind is not (nameof(IndexedSymbolKind.Method) or nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
@@ -843,6 +878,11 @@ internal sealed class DeadCandidateStore
         if (string.Equals(edge.Kind, nameof(EdgeKind.ReflectionTargetUnknown), StringComparison.Ordinal))
             desc = "Unknown reflection target: the runtime target of this reflection call cannot be statically determined.";
         return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, desc);
+    }
+
+    private static DeadCandidateUncertainty MakeEntryPointConventionUncertainty(string symbolId)
+    {
+        return new DeadCandidateUncertainty([symbolId], "entry_point_convention", "Process entry point: this is the compilation's Main method (explicit or the compiler-synthesized top-level-statements form), invoked by the runtime launcher rather than from within the indexed call graph. It has no incoming edge by definition; that is not evidence of dead code.");
     }
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)

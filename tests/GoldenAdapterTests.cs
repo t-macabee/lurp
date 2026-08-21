@@ -133,8 +133,17 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     ///     registration call sitting directly in top-level statements (the .NET 6+
     ///     default <c>Program.cs</c> template) had neither ancestor and the edge was
     ///     silently dropped. The source symbol here is the compiler-synthesized
-    ///     top-level-statements entry point, which is never itself a declared snapshot
-    ///     symbol, so it's asserted by document/line rather than via ResolveSymbolId.
+    ///     top-level-statements entry point — contrary to an earlier version of this
+    ///     comment, it IS a declared snapshot symbol (confirmed 2026-08-21: its
+    ///     docCommentId and DeclaringSyntaxReferences are both non-empty, so
+    ///     SymbolDeclarationExtractor declares it like any ordinary method; it surfaces
+    ///     as FQN <c>global::Program.&lt;top-level-statements-entry-point&gt;</c>, and is
+    ///     the reason DeadCandidateStore now special-cases entry points — see
+    ///     ProcessEntryPoint_TopLevelStatements_IsUncertainNotProvedDead in
+    ///     DeadCandidateCharacterizationTests.cs). This test still asserts by document/line
+    ///     rather than via ResolveSymbolId because the exact FQN rendering is Roslyn/SDK-
+    ///     version-dependent (observed to differ from the form above when the surrounding
+    ///     source has unrelated syntax errors), so hardcoding it here would be fragile.
     /// </summary>
     [SkippableFact]
     public async Task DependencyInjectionAdapter_TopLevelStatementAddScopedProducesRegisters()

@@ -184,6 +184,71 @@ public sealed class CliExitSmokeTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Diff_MissingFromSnapshot_Throws()
+    {
+        var dir = CreateIndexedDir(withSnapshot: false);
+        try
+        {
+            var ex = Assert.Throws<CliExitException>(() =>
+                DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=bogus", "--to-snapshot=also-bogus"]));
+            Assert.Contains("snapshot 'bogus' not found", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Diff_MissingToSnapshot_Throws()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            var ex = Assert.Throws<CliExitException>(() =>
+                DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=s1", "--to-snapshot=bogus"]));
+            Assert.Contains("snapshot 'bogus' not found", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>
+    ///     Creates a temp directory holding a migrated index.db (with the workspace
+    ///     row DiffHandler's metadata join needs), optionally containing one complete
+    ///     snapshot 's1', so <see cref="DiffHandler.Run" /> can resolve the database
+    ///     through its own <c>--output-dir</c> path.
+    /// </summary>
+    private string CreateIndexedDir(bool withSnapshot)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"lurp-diff-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var dbPath = Path.Combine(dir, "index.db");
+        using (var store = new SqliteIndexStore(dbPath))
+        {
+            store.Open();
+            store.RunMigrations();
+            store.SaveWorkspace("w1", "gitroot", "solution.sln");
+            if (withSnapshot)
+            {
+                store.SaveSnapshot(new SnapshotRow
+                {
+                    SnapshotId = "s1",
+                    WorkspaceId = "w1",
+                    GitRoot = "gitroot",
+                    SolutionPath = "solution.sln",
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                store.MarkSnapshotComplete("s1");
+            }
+        }
+
+        return dir;
+    }
+
     private static async Task<(string Stdout, CliExitException? Failure)> RunStatusCapturedAsync(string[] args)
     {
         var stdout = new StringWriter();
