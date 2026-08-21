@@ -19,7 +19,7 @@ internal static class HelpText
         // Shared across modes
         ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
         ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly). Not honored by --mode=timings, which resolves its own snapshot independently of this flag.",
-        ["--include-generated"] = "Include source-generated symbols. Live-observed (both drives, §C): eNoteV2 Migrations 17→21, eCommerce 35→46 with --include-generated; Service 20→20 shows the flag is not a no-op, just query-dependent (EF migrations have no Service symbols).",
+        ["--include-generated"] = "Include source-generated code (obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs); default excludes it. See CLI_REFERENCE.md's read-command options for live-observed evidence this isn't a no-op.",
         ["--include-public"] = "Include public/protected symbols with no internal LIVE incoming edge as uncertain_dead (reason: public_surface). Default excludes them from proved_dead; without this flag a public helper with no callers is not flagged.",
         ["--include-tests"] = "Include test-project symbols (project name %.Tests) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
@@ -70,7 +70,7 @@ internal static class HelpText
                             + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
                             + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
                             + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "
-                            + "Live-observed (eNoteV2, IEntity.Id pure inherited-only via BaseEntity): all:1, compiler_proved:0, possible:1 vs direct ICurrentUserService.UserId 9/9/0 — confirms filter; eCommerce IBaseCRUDService is mixed (has direct impls) so 242→186→1 is not a filter bug.",
+                            + "See CLI_REFERENCE.md's impact section for live-observed evidence this filters correctly.",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
         ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
 

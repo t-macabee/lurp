@@ -17,6 +17,10 @@ lurp --mode=index --solution=MySolution.sln --output-dir=./out
 
 This creates `./out/index.db` containing all indexed symbols, edges, and source facts.
 
+**Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. `--output-dir=` and `--solution=` are otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)); a bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
+
+**This document describes the CLI as of schema v29 / tool `1.4.0`.** Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
 codebase, index the whole `.sln`/`.slnx` once and then query narrowly (`--mode=search`,
@@ -54,6 +58,8 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 
 **Column-number base:** unlike line numbers, column numbers are **not** converted to 1-based. `diagnostics`' `start_column`/`end_column` are the raw Roslyn `LinePosition.Character` values and are **0-based**. There is no CLI or MCP input that takes a column, so this only affects how you read the output.
 
+**`--include-generated`:** accepted by `search`, `grep`, `outline`, `get-symbol`, `find-symbol`, `navigate`, `context`, `diagnostics`, and `dead-candidates`. Default excludes source-generated code (`obj/**`, `*.g.cs`, `*.generated.cs`, `*.Designer.cs`, `*ModelSnapshot.cs`); passing the flag includes it. Live-observed (both drives, §C of the eNoteV2/eCommerce evaluation): eNoteV2 `Migrations` 17→21, eCommerce 35→46 with `--include-generated`; `Service` 20→20 shows the flag is not a no-op, just query-dependent (EF migrations have no `Service` symbols to reveal).
+
 **Document-path base:** every `--document=<relative-path>` argument (and the matching MCP `document` property) is relative to the directory containing the `--solution=` file, **not** the repository/git root. When the solution lives in a subdirectory of the repo (e.g. `--solution=eNote/eNote.sln`), a git-root-relative path like `eNote/eNote.Tests/Foo.cs` will not resolve — pass `eNote.Tests/Foo.cs` instead. Confirmed 2026-08-20 against a live target: `get-source` fails fast with `ERROR: Document '...' not found in snapshot.` on a mismatched path; `dead-candidates --document=` does not error on a mismatch — it's a filter, not a required lookup, so a wrong prefix silently returns `candidate_count: 0` instead of surfacing the mistake.
 
 ## Modes
@@ -68,7 +74,7 @@ Index a solution and store facts in the database.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--solution=<path>` | Yes | Path to the `.sln` or `.slnx` file. |
+| `--solution=<path>` | Yes, or `LURP_SOLUTION_PATH` | Path to the `.sln` or `.slnx` file. |
 | `--output-dir=<path>` | No | Directory where `index.db` is stored. Defaults to the solution's directory. Also accepted via `LURP_OUTPUT_DIR`. |
 | `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON. |
@@ -94,7 +100,7 @@ Retrieve source text for a document.
 | `--start-line=<n>` | No | 1-based start line for line window. |
 | `--end-line=<n>` | No | 1-based end line for line window. |
 | `--context-lines=<n>` | No | Lines of context (symmetric expansion). Requires `--start-line=` or `--end-line=`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 
 Accepts the shared [read-command options](#read-command-options) except `--output=` (the source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper). There is no CLI `--outline` flag for this mode; the MCP tool `lurp_get_source` offers an `outline` parameter instead.
@@ -115,7 +121,7 @@ List declarations in a document with line spans.
 | `--include-generated` | No | Include source-generated declarations. |
 | `--limit=<n>` | No | Max declarations per page (default: 100). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
 Also accepts the shared [read-command options](#read-command-options). Output includes `symbol_id`, `kind`, `fully_qualified_name`, `start_line`, `end_line`, `signature_start_line`, `name_start_line`, `is_partial`, `is_generated`, `declaration_count`, and `next_cursor` for pagination. `declaration_count` is the **total** number of declarations matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page).
@@ -127,7 +133,7 @@ Also accepts the shared [read-command options](#read-command-options). Output in
 List diagnostics captured at index time for the snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (`Project.AnalyzerReferences`, e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. `EnforceCodeStyleInBuild` plus an `.editorconfig` severity) — confirmed 2026-08-20 against a live target: Roslyn's build-time compilation additionally gates `IDE0005` behind `GenerateDocumentationFile=true`, independent of anything Lurp does. **For unused-using-directive detection, query the compiler diagnostic instead: `--severity=hidden --id=CS8019`** ("Unnecessary using directive") — Lurp always captures this regardless of the target's analyzer/code-style configuration.
 
 ```
---mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=] [--id=] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
+--mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=] [--id=] [--include-generated] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
 ```
 
 | Argument | Required | Description |
@@ -136,12 +142,15 @@ List diagnostics captured at index time for the snapshot: compiler diagnostics p
 | `--project=<name>` | No | Filter to diagnostics in this project. |
 | `--severity=<level>` | No | Filter by severity (Roslyn `DiagnosticSeverity` names: `Hidden`, `Info`, `Warning`, `Error`; matched case-insensitively, or `all` for every severity including `Hidden`). When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result. |
 | `--id=<code>` | No | Filter by diagnostic ID (e.g. `CS8933`). |
+| `--include-generated` | No | Include diagnostics located in generated files (matches the same `obj/**`, `*.g.cs`, `*.generated.cs`, `*.Designer.cs`, `*ModelSnapshot.cs` patterns as every other read mode's `--include-generated`). Default excludes them, same as `search`/`grep`/`outline`/`get-symbol`/`find-symbol`/`navigate`/`context`/`dead-candidates` — `diagnostics` used to be the one mode where this filter did not exist and everything came back unfiltered; it is not an outlier anymore. |
 | `--limit=<n>` | No | Max diagnostics per page (default: 100). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
 Also accepts the shared [read-command options](#read-command-options). The response includes `snapshot_id`, `document`, `project`, `severity`, `id`, `diagnostics` (array with `project_name`, `document_path`, `in_snapshot`, `severity`, `id`, `message`, `start_line`, `start_column`, `end_line`, `end_column`), `diagnostic_count`, and `next_cursor` for pagination. `diagnostic_count` is the **total** number of diagnostics matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page). Diagnostics reflect compiler and analyzer state at index time, not re-evaluated diagnostics. See the column-number-base note above: `start_column`/`end_column` are 0-based.
+
+`in_snapshot` is `true` when the diagnostic's document is one of the documents tracked by the resolved snapshot, `false` when it resolves outside that set (for example a linked file included via project reference but not itself indexed), and `null` when the diagnostic has no source location at all — a compilation-wide diagnostic (e.g. a missing required argument on the compiler invocation) that Roslyn does not attach to any document.
 
 ---
 
@@ -157,7 +166,7 @@ Look up symbol metadata or source by view kind.
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to look up. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--view=<kind>` | Yes | View kind: `metadata`, `signature`, `body`, `declaration`, `containing-type`, `surrounding`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
 | `--include-generated` | No | Include source-generated symbols. |
@@ -177,7 +186,7 @@ Full-text search over source text and symbols.
 | Argument | Required | Description |
 |---|---|---|
 | `--query=<term>` | Yes | Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count). |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). |
 | `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
 | `--limit=<n>` | No | Max results per scope (default: 20). |
@@ -203,7 +212,7 @@ Literal/exact-text search over source content with per-occurrence line numbers.
 | Argument | Required | Description |
 |---|---|---|
 | `--query=<term>` | Yes | Exact substring to find. The match is byte-exact, including punctuation and spacing. Case-sensitive by default; pass `--ignore-case` for case-insensitive. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--limit=<n>` | No | Max matches per page (default: 50). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
 | `--ignore-case` | No | Make the search case-insensitive (default: case-sensitive). |
@@ -227,7 +236,7 @@ Resolve a symbol by fully qualified name.
 | Argument | Required | Description |
 |---|---|---|
 | `--symbol=<name>` | Yes | Fully qualified name to resolve. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to search (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 
@@ -251,7 +260,7 @@ Resolve an indexed declaration by file and line.
 |---|---|---|
 | `--file=<path>` | Yes | Source file path relative to the solution root. |
 | `--line=<n>` | Yes | 1-based line number in the source file. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated declarations. |
 
@@ -273,7 +282,7 @@ Show semantic changes between two snapshots.
 |---|---|---|
 | `--from-snapshot=<id>` | Yes | Base snapshot ID. |
 | `--to-snapshot=<id>` | Yes | Target snapshot ID. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 
 Output is JSON with change records (added, removed, modified symbols and their detail).
 
@@ -290,11 +299,11 @@ Trace the impact path of a changed symbol.
 | Argument | Required | Description |
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
-| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. |
+| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Live-observed (eNoteV2, `IEntity.Id` pure inherited-only via `BaseEntity`): `all`:1, `compiler_proved`:0, `possible`:1 vs. direct `ICurrentUserService.UserId` 9/9/0 — confirms the filter; eCommerce's `IBaseCRUDService` is mixed (has direct impls) so its 242→186→1 progression is not a filter bug. |
 | `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
@@ -318,7 +327,7 @@ Assemble a context capsule for a symbol or source location.
 | `--symbol=<id>` | Yes* | Symbol ID to anchor on. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--file=<path>` | Yes* | Source file path (use with `--line`). |
 | `--line=<n>` | Yes* | Line number in the source file. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
 | `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
@@ -401,7 +410,7 @@ Show the current database status.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
 | `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
@@ -432,7 +441,7 @@ Show step-by-step timing data for a snapshot.
 
 | Argument | Required | Description |
 |---|---|---|
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to inspect (default: latest). |
 | `--json` | No | Emit structured JSON instead of plain text. |
 
@@ -451,7 +460,7 @@ Attach a user-authored annotation to a symbol.
 | `--symbol=<id>` | Yes | The symbol ID to annotate. |
 | `--annotation-kind=<kind>` | Yes | Annotation kind. |
 | `--value=<text>` | Yes | Annotation value. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
 ---
@@ -471,7 +480,7 @@ Retrieve annotations by symbol, document, or snapshot (with kind filtering and k
 | `--kind=<kind>` | No | Filter to one annotation kind. |
 | `--limit=<n>` | No | Max annotations per page (default: 100; positive integer). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
 Accepts the shared [read-command options](#read-command-options). `--symbol=` and
@@ -501,7 +510,7 @@ Retract one annotation by surrogate id, scoped to exactly one snapshot. The dele
 | Argument | Required | Description |
 |---|---|---|
 | `--annotation-id=<n>` | Yes | Surrogate PK from `get-annotations` annotation_id (positive integer). |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to act on (default: latest). The DELETE is `WHERE snapshot_id=@snapshot AND annotation_id=@id` — one row only, no cross-snapshot effect. Copy-forward clones (`CopyAnnotationsToSnapshot`) allocate fresh ids, so retracting in one snapshot does not delete its clone in another. |
 
 JSON output is `{ status:"ok", snapshot_id, annotation_id, retracted:true }`. On no such row in that snapshot the mode exits 1 with `ERROR: annotation_id <n> not found in snapshot <id>.` Use `--snapshot=` explicitly when you have more than one snapshot pinned.
@@ -523,7 +532,7 @@ List dead-code candidates: symbols with no incoming LIVE edge after suppression-
 | `--kind=<kind>` | No | Filter by symbol kind: `Type`, `Method`, `Property`, `Field`, `Event` (case-insensitive). |
 | `--limit=<n>` | No | Max dead candidates per page (default: 50, max: 200). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-public` | No | Include public/protected symbols with no internal LIVE incoming edge as `uncertain_dead` (reason: `public_surface`). Default excludes them from `proved_dead`. |
 | `--include-generated` | No | Include source-generated symbols (default excludes `is_generated=1`). Surfaced as `uncertain` reason `generated_excluded` when no other signal. |
@@ -547,7 +556,7 @@ Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destr
 |---|---|---|
 | `--snapshot=<id>` | Yes* | Snapshot ID to pin. Only snapshots with `status='complete'` can be pinned. The literal `latest` is an alias for `--clear`. |
 | `--clear` | No | Clear the pin; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`). |
-| `--output-dir=<path>` | Yes | Directory where `index.db` is stored. |
+| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--json` | No | Emit structured JSON instead of plain text. `--output=json` is an alias. |
 
 \* Either `--snapshot=<id>` or `--clear` (or `--snapshot=latest`) must be provided.
@@ -577,6 +586,8 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 (402 docs; eCommerce likewise 162 unchanged, snapshot reused). The last 3 snapshots are retained; older ones are pruned automatically.
 
 ## Environment Variables
+
+Set once (e.g. in the shell profile an agent's session inherits) and every mode below that lists `--solution=`/`--output-dir=` as required accepts the env var instead — a flag always wins if both are present.
 
 | Variable | Purpose |
 |---|---|

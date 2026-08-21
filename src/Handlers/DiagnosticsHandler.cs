@@ -16,6 +16,7 @@ internal static class DiagnosticsHandler
         var idArg = HandlerBootstrap.GetArgValue(args, "--id=");
         var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
+        var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
         var projectFilter = string.IsNullOrEmpty(projectArg) ? null : projectArg;
@@ -45,7 +46,7 @@ internal static class DiagnosticsHandler
                 page = store.GetDiagnosticsPage(
                     snapshotId, projectFilter, documentArg,
                     severityFilter, excludeHidden: severityFilter == null,
-                    idFilter, limit, cursor);
+                    idFilter, limit, cursor, includeGenerated);
             }
             catch (ArgumentException ex)
             {
@@ -76,6 +77,7 @@ internal static class DiagnosticsHandler
                 project = projectFilter,
                 severity = severityFilter,
                 id = idFilter,
+                include_generated = includeGenerated,
                 diagnostic_count = page.TotalCount,
                 next_cursor = page.NextCursor,
                 freshness = HandlerBootstrap.FreshnessJson(freshness)
@@ -97,7 +99,7 @@ internal static class DiagnosticsHandler
 
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

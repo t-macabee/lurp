@@ -77,7 +77,7 @@ public static class Program
             ["--symbol=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(AnnotationHandler.RunGetAnnotations)),
         new("diagnostics", "List compiler diagnostics captured at index time (--document=, --project=, --severity=, --id=).",
-            ["--document=", "--project=", "--severity=", "--id=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            ["--document=", "--project=", "--severity=", "--id=", "--limit=", "--cursor=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
             Sync(DiagnosticsHandler.Run)),
         new("grep", "Literal/exact-text search over source content with line numbers (--query=).",
             ["--query=", "--limit=", "--cursor=", "--ignore-case", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
@@ -101,6 +101,13 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
+        if (args.Contains("--version"))
+        {
+            Console.WriteLine($"lurp {VersionConstants.ToolVersion}");
+            Console.WriteLine($"  schema v{VersionConstants.DatabaseSchemaVersion}  extractor v{VersionConstants.ExtractorVersion}  cli/mcp contract v{VersionConstants.CliMcpContractVersion}  output schema v{VersionConstants.OutputSchemaVersion}");
+            return;
+        }
+
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
         {
             HelpText.PrintHelp();

@@ -115,6 +115,7 @@ internal sealed class DiagnosticStore
         string? documentPath,
         string? severity,
         bool excludeHidden,
+        bool includeGenerated,
         string? id,
         int limit,
         DiagnosticsCursor? cursor,
@@ -142,7 +143,7 @@ internal sealed class DiagnosticStore
         }
 
         limit = Math.Max(1, limit);
-        var fingerprint = DiagnosticsCursor.ComputeFingerprint(projectName, documentPath, severity, excludeHidden, id);
+        var fingerprint = DiagnosticsCursor.ComputeFingerprint(projectName, documentPath, severity, excludeHidden, includeGenerated, id);
         if (cursor != null)
         {
             try
@@ -247,6 +248,8 @@ internal sealed class DiagnosticStore
         IEnumerable<(long Id, DiagnosticEntry Entry)> filtered = all;
         if (documentPath != null)
             filtered = all.Where(x => string.Equals(x.Entry.NormalizedDocumentPath, documentPath, StringComparison.Ordinal));
+        if (!includeGenerated)
+            filtered = filtered.Where(x => !IsGeneratedDiagnosticPath(x.Entry.NormalizedDocumentPath));
 
         // Keyset pagination: skip past cursor, take limit + 1.
         var windowed = filtered;
@@ -267,6 +270,36 @@ internal sealed class DiagnosticStore
         var totalCount = filtered.Count();
         var items = rows.Select(r => r.Entry).ToList();
         return new DiagnosticsPage(items, nextCursor, totalCount);
+    }
+
+    /// <summary>
+    ///     Path-pattern generated-code detection for the <c>--include-generated</c> filter.
+    ///     Duplicated from <c>EdgeLocationResolver.IsGeneratedFilePath</c> (Lurp.Shared)
+    ///     because Lurp.Storage is a separate assembly with no reference back to the main
+    ///     Lurp assembly (the same constraint the inlined <c>PathNormalizer.ToGitRelative</c>
+    ///     logic above works around) — keep the two definitions in sync by hand.
+    ///     <c>ModelSnapshot.cs</c> is treated as generated alongside <c>*.Designer.cs</c>:
+    ///     EF Core scaffolds both from migrations and hand-editing either is discouraged,
+    ///     even though — unlike <c>obj/**</c> — both are normally committed to source control.
+    /// </summary>
+    private static bool IsGeneratedDiagnosticPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+
+        var normalized = path.Replace('\\', '/');
+
+        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalized.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)

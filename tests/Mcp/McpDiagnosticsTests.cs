@@ -478,6 +478,72 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Diagnostics_GeneratedDocument_ExcludedByDefault_IncludedWithFlag()
+    {
+        // A ModelSnapshot.cs (EF Core migration scaffold) with an unused `using` should
+        // be treated as generated for --include-generated purposes, same as *.Designer.cs.
+        CreateProject("GenDiagProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                using System.Text;
+
+                namespace GenDiagProj {
+                    public class Foo {
+                        public void M1() { }
+                    }
+                }
+                """,
+            ["FooContextModelSnapshot.cs"] = """
+                using System.Text;
+
+                namespace GenDiagProj {
+                    public class FooContextModelSnapshot {
+                    }
+                }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        await using var session = CreateSession();
+        var tool = new DiagnosticsTool(session);
+
+        var defaultJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 1000);
+        using var defaultDoc = JsonDocument.Parse(defaultJson);
+        Assert.False(defaultDoc.RootElement.GetProperty("include_generated").GetBoolean());
+        var defaultDocs = defaultDoc.RootElement.GetProperty("diagnostics").EnumerateArray()
+            .Select(d => d.GetProperty("document_path").GetString())
+            .ToList();
+        Assert.DoesNotContain(defaultDocs, p => p != null && p.EndsWith("ModelSnapshot.cs", StringComparison.Ordinal));
+        Assert.Contains(defaultDocs, p => p != null && p.EndsWith("Models.cs", StringComparison.Ordinal));
+
+        var includedJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 1000, include_generated: true);
+        using var includedDoc = JsonDocument.Parse(includedJson);
+        Assert.True(includedDoc.RootElement.GetProperty("include_generated").GetBoolean());
+        var includedDocs = includedDoc.RootElement.GetProperty("diagnostics").EnumerateArray()
+            .Select(d => d.GetProperty("document_path").GetString())
+            .ToList();
+        Assert.Contains(includedDocs, p => p != null && p.EndsWith("ModelSnapshot.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Diagnostics_CursorFingerprint_ChangesWithIncludeGenerated()
+    {
+        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await using var session = CreateSession();
+        var tool = new DiagnosticsTool(session);
+
+        var json = tool.LurpDiagnostics(limit: 2);
+        using var doc = JsonDocument.Parse(json);
+        var cursor = doc.RootElement.GetProperty("next_cursor").GetString();
+        Assert.False(string.IsNullOrEmpty(cursor));
+
+        var ex = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(limit: 2, cursor: cursor, include_generated: true));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("Cursor does not match", ex.Message);
+    }
+
+    [Fact]
     public void DiagnosticsTool_Registered_ReadOnly()
     {
         var tools = typeof(McpServeHandler).Assembly.GetTypes()

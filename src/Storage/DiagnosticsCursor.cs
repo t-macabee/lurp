@@ -3,16 +3,16 @@ namespace Lurp.Storage;
 /// <summary>
 ///     Opaque keyset-pagination cursor for diagnostics. Snapshots are immutable, so
 ///     a cursor into one stays valid indefinitely. The fingerprint binds the cursor
-///     to the exact request that produced it — project/document/severity/id/snapshot
+///     to the exact request that produced it — project/document/severity/id/includeGenerated/snapshot
 ///     must match, otherwise resuming would silently reorder or reinterpret.
 ///     Follows the SearchCursor / OutlineCursor / AnnotationCursor keyset idiom
 ///     (see six-gaps-in-lurp.md: diagnostics ordered by diagnostic_id).
 /// </summary>
 public sealed record DiagnosticsCursor(string SnapshotId, string Fingerprint, long LastDiagnosticId)
 {
-    public static string ComputeFingerprint(string? projectName, string? documentPath, string? severity, bool excludeHidden, string? id)
+    public static string ComputeFingerprint(string? projectName, string? documentPath, string? severity, bool excludeHidden, bool includeGenerated, string? id)
     {
-        return $"{projectName ?? string.Empty}\u0001{documentPath ?? string.Empty}\u0001{severity ?? string.Empty}\u0001{excludeHidden}\u0001{id ?? string.Empty}";
+        return $"{projectName ?? string.Empty}{documentPath ?? string.Empty}{severity ?? string.Empty}{excludeHidden}{includeGenerated}{id ?? string.Empty}";
     }
 
     public string Encode()
@@ -30,7 +30,7 @@ public sealed record DiagnosticsCursor(string SnapshotId, string Fingerprint, lo
         if (!string.Equals(SnapshotId, snapshotId, StringComparison.Ordinal))
             throw new ArgumentException($"Cursor was issued for snapshot '{SnapshotId}', not '{snapshotId}'.");
         if (!string.Equals(Fingerprint, fingerprint, StringComparison.Ordinal))
-            throw new ArgumentException("Cursor does not match the current project/document/severity/id filters; request a fresh page instead of resuming with a different query.");
+            throw new ArgumentException("Cursor does not match the current project/document/severity/id/includeGenerated filters; request a fresh page instead of resuming with a different query.");
     }
 }
 

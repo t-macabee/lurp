@@ -496,14 +496,15 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         bool excludeHidden,
         string? id,
         int limit,
-        DiagnosticsCursor? cursor)
+        DiagnosticsCursor? cursor,
+        bool includeGenerated = false)
     {
         EnsureOpen();
         var snapshot = _lifecycle!.LoadSnapshot(snapshotId);
         var gitRoot = snapshot?.GitRoot;
         var docPaths = _documents!.GetDocumentVersionIdsByPath(snapshotId);
         var pathSet = new HashSet<string>(docPaths.Keys, StringComparer.Ordinal);
-        return _diagnostics!.GetDiagnosticsPage(snapshotId, projectName, documentPath, severity, excludeHidden, id, limit, cursor, gitRoot, pathSet);
+        return _diagnostics!.GetDiagnosticsPage(snapshotId, projectName, documentPath, severity, excludeHidden, includeGenerated, id, limit, cursor, gitRoot, pathSet);
     }
 
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)

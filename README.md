@@ -106,12 +106,28 @@ install the nuget.org copy instead of yours. `--add-source` only appends a sourc
 it does not remove nuget.org, and when two sources offer the same version, NuGet is
 free to pick either one. Use `--source <path>` instead — it replaces every other
 source, so only your local build is visible. Confirm afterward with
-`lurp --version`, which prints the source commit hash. This will bite again on
-every future local build that reuses the `1.1.0` version number; bump the local
-package version before packing, or always install with `--source`, never
-`--add-source`.
+`lurp --version`, which prints the schema/extractor/CLI-MCP-contract versions the
+installed binary was built with — compare that against the docs you're reading; a
+mismatch means `dotnet tool install` pulled an older published build than the repo
+this doc came from. This will bite again on every future local build that reuses
+the `1.1.0` version number; bump the local package version before packing, or
+always install with `--source`, never `--add-source`.
 
 </details>
+
+## Common recipes
+
+Task-first lookup for things you already know Lurp can do but not which mode does it:
+
+| Task | Command |
+|---|---|
+| Find unused `using` directives | `lurp --mode=diagnostics --severity=hidden --id=CS8019 --output-dir=./out` |
+| Confirm the installed build matches these docs | `lurp --version` |
+| Find dead code, excluding public API and tests | `lurp --mode=dead-candidates --output-dir=./out` |
+| Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
+| See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
+| Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
+| Find every caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
 
 ## Framework adapters
 

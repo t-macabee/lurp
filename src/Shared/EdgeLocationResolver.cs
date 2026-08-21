@@ -74,11 +74,19 @@ public sealed class EdgeLocationResolver
         return IsGeneratedFilePath(normalized);
     }
 
+    /// <summary>
+    ///     <c>ModelSnapshot.cs</c> (e.g. <c>AppDbContextModelSnapshot.cs</c>) is scaffolded by
+    ///     <c>dotnet ef migrations add</c> alongside each migration's own <c>.Designer.cs</c>,
+    ///     and hand-editing it is discouraged the same way hand-editing a designer file is —
+    ///     so it counts as generated here even though, unlike <c>obj/**</c>, it is normally
+    ///     committed to source control rather than gitignored.
+    /// </summary>
     public static bool IsGeneratedFilePath(string normalizedPath)
     {
         if (normalizedPath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
             normalizedPath.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+            normalizedPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
             return true;
 
         if (normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||

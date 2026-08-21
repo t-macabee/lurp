@@ -38,7 +38,7 @@ public sealed class CliMcpContractSnapshotTests
             "annotate:--symbol=,--annotation-kind=,--value=,--snapshot=",
             "context:--symbol=,--file=,--line=,--intent=,--content-budget=,--max-hops=,--scope=,--affected-project=,--tier=,--tier-limit=,--cursor=,--completeness-detail,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
             "dead-candidates:--project=,--document=,--kind=,--limit=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet,--include-public,--include-generated,--include-tests",
-            "diagnostics:--document=,--project=,--severity=,--id=,--limit=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
+            "diagnostics:--document=,--project=,--severity=,--id=,--limit=,--cursor=,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
             "diff:--from-snapshot=,--to-snapshot=",
             "find-symbol:--symbol=,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
             "get-annotations:--symbol=,--document=,--kind=,--limit=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
@@ -81,7 +81,7 @@ public sealed class CliMcpContractSnapshotTests
         {
             "lurp_context(symbol,file,line,intent,content_budget,max_hops,scope,affected_project,include_generated,completeness_detail,tier,tier_limit,cursor,snapshot_id)",
             "lurp_dead_candidates(limit,cursor,snapshot_id,project,document,kind,include_public,include_generated,include_tests)",
-            "lurp_diagnostics(document,project,severity,id,limit,cursor,snapshot_id)",
+            "lurp_diagnostics(document,project,severity,id,limit,cursor,include_generated,snapshot_id)",
             "lurp_diff(from_snapshot,to_snapshot)",
             "lurp_find_symbol(symbol,include_generated,snapshot_id)",
             "lurp_get_annotations(symbol,document,kind,limit,cursor,snapshot_id)",
