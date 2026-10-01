@@ -26,9 +26,31 @@ public static class IndexRunner
 
         var totalSw = Stopwatch.StartNew();
 
-        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, cancellationToken);
-
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
+
+        if (strategy == IncrementalStrategy && !force)
+        {
+            var precheckWorkspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(solutionPath));
+
+            if (WorkspaceFreshness.CanSkipIncrementalIndex(store, store, store, store, precheckWorkspaceId, gitRoot, sink) is { } builtSnapshot)
+            {
+                sink.WriteLine("No changes detected. Skipping incremental index.");
+                sink.WriteLine("Workspace load skipped: stored snapshot is still current.");
+
+                WriteIncrementalSummary(store, sink, new IncrementalIndexer.IncrementalResult(builtSnapshot.SnapshotId, builtSnapshot.SnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty));
+
+                sink.Write("Pruning old snapshots... ");
+                store.DeleteIncompleteSnapshots();
+                store.PruneOldSnapshots();
+                sink.WriteLine("done.");
+
+                totalSw.Stop();
+                sink.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
+                return;
+            }
+        }
+
+        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, cancellationToken);
 
         var swWorkspaceInfo = Stopwatch.StartNew();
         sink.Write("Building workspace info... ");
@@ -65,18 +87,8 @@ public static class IndexRunner
                     var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink, skipDiff, force);
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
 
-                    sink.WriteLine();
-                    sink.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
-                    sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-                    sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
-                    sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
-                    sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edges_dropped_outside_snapshot_scope: {result.OrphanEdgesDropped.FormatDropSummary()}");
-                    sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {store.CountEdges(result.NewSnapshotId)}");
-                    var incWarning = result.OrphanEdgesDropped.FormatWarning();
-                    if (incWarning != null)
-                        sink.WriteErrorLine(incWarning);
-                    sink.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
-                    sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+                    WriteIncrementalSummary(store, sink, result);
+
                     sink.Write("Pruning old snapshots... ");
 
                     store.DeleteIncompleteSnapshots();
@@ -91,7 +103,7 @@ public static class IndexRunner
                 }
                 catch (FullRebuildRequiredException ex)
                 {
-                    sink.WriteLine($"Full rebuild required: {ex.Message}");
+                    sink.WriteLine(ex.Message);
                     strategy = FullStrategy;
                 }
             }
@@ -397,5 +409,21 @@ public static class IndexRunner
         }
 
         return IncrementalStrategy;
+    }
+
+    private static void WriteIncrementalSummary(IIndexStore store, IOutputSink sink, IncrementalIndexer.IncrementalResult result)
+    {
+        sink.WriteLine();
+        sink.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
+        sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
+        sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
+        sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
+        sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edges_dropped_outside_snapshot_scope: {result.OrphanEdgesDropped.FormatDropSummary()}");
+        sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {store.CountEdges(result.NewSnapshotId)}");
+        var warning = result.OrphanEdgesDropped.FormatWarning();
+        if (warning != null)
+            sink.WriteErrorLine(warning);
+        sink.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
+        sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
     }
 }

@@ -149,6 +149,129 @@ public static class WorkspaceFreshness
         return mismatches;
     }
 
+    /// <summary>
+    /// Checks whether an incremental index run can be safely skipped without loading the workspace.
+    /// Known limit: a file changed with a preserved old mtime is not detected.
+    /// An untracked .cs file under the root or a .cs file that is not valid text disables the shortcut (safe fallback).
+    /// </summary>
+    public static SnapshotRow? CanSkipIncrementalIndex(ISnapshotPinStore pins, ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, IEdgeStore edges, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
+    {
+        try
+        {
+            var built = pins.LoadBuiltAtLatestSnapshot(workspaceId.Value);
+            if (built == null)
+                return null;
+
+            if (CheckFreshnessCheap(manifests, documents, built.SnapshotId, FreshnessMode.Hash).State != "fresh")
+                return null;
+
+            if (!string.Equals(built.ExtractorVersion, VersionConstants.ExtractorVersion, StringComparison.Ordinal))
+                return null;
+
+            if (!string.Equals(built.CompilerVersion, WorkspaceInfo.CurrentCompilerVersion.ToString(), StringComparison.Ordinal))
+                return null;
+
+            if (!string.Equals(built.SdkVersion, WorkspaceInfo.QuerySdkVersion(output), StringComparison.Ordinal))
+                return null;
+
+            edges.UpsertExtractors(ExtractorRegistry.All);
+            if (edges.HasStaleExtractorVersions(built.SnapshotId))
+                return null;
+
+            return HasNoNewSourcesOrBuildInputs(documents, built.SnapshotId, built.CreatedAtUtc, gitRoot)
+                ? built
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    private static bool HasNoNewSourcesOrBuildInputs(ISnapshotDocumentStore documents, string snapshotId, DateTime builtAtUtc, string gitRoot)
+    {
+        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
+        var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var knownDocuments = new HashSet<string>(documents.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
+        var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
+
+        var dirs = new Stack<string>();
+        dirs.Push(normalizedRoot);
+
+        while (dirs.Count > 0)
+        {
+            var currentDir = dirs.Pop();
+
+            foreach (var fullPath in Directory.EnumerateFiles(currentDir))
+            {
+                var relativePath = PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
+
+                if (IsBuildInputPath(relativePath))
+                {
+                    if (File.GetLastWriteTimeUtc(fullPath) > builtAtUtc)
+                        return false;
+                    continue;
+                }
+
+                if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (gitIgnore.IsIgnored(relativePath))
+                    continue;
+
+                if (!knownDocuments.Contains(relativePath))
+                    return false;
+            }
+
+            foreach (var subDir in Directory.EnumerateDirectories(currentDir))
+            {
+                var relSubDir = PathNormalizer.ToGitRelativeFromNormalizedRoot(subDir, normalizedRoot);
+
+                if (relSubDir.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+                    relSubDir.StartsWith(".git/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (WorkspaceInfo.IsBuildOutputPath(relSubDir + "/"))
+                {
+                    if (Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (var assetsFile in Directory.EnumerateFiles(subDir, "project.assets.json", SearchOption.AllDirectories))
+                        {
+                            if (IsProjectAssetsPath(assetsFile) && File.GetLastWriteTimeUtc(assetsFile) > builtAtUtc)
+                                return false;
+                        }
+                    }
+                    continue;
+                }
+
+                dirs.Push(subDir);
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsProjectAssetsPath(string relativePath)
+    {
+        return Path.GetFileName(relativePath).Equals("project.assets.json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBuildInputPath(string relativePath)
+    {
+        var extension = Path.GetExtension(relativePath);
+        if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".props", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".targets", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var fileName = Path.GetFileName(relativePath);
+        return relativePath.Equals(".gitignore", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("global.json", StringComparison.OrdinalIgnoreCase) ||
+               fileName.Equals("nuget.config", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IEnumerable<SnapshotMismatch> CheckWorkspaceIdentity(WorkspaceInfo current, SnapshotManifest stored)
     {
         if (current.Id.Value != stored.WorkspaceId.Value)

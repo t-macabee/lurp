@@ -23,6 +23,9 @@ public sealed class WorkspaceInfo
     // string is discarded, never stored. See IsGeneratedHeader.
     private static readonly Encoding Utf8Lenient = new UTF8Encoding(false, false);
 
+    internal static Version CurrentCompilerVersion { get; } = typeof(CSharpCompilation).Assembly.GetName().Version
+                                                              ?? new Version(0, 0);
+
     public WorkspaceInfo(Solution solution, string gitRoot, IOutputSink? output = null)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
@@ -35,8 +38,7 @@ public sealed class WorkspaceInfo
 
         SdkVersion = QuerySdkVersion(sink);
 
-        CompilerVersion = typeof(CSharpCompilation).Assembly.GetName().Version
-                          ?? new Version(0, 0);
+        CompilerVersion = CurrentCompilerVersion;
 
         TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot, sink);
 
@@ -126,7 +128,7 @@ public sealed class WorkspaceInfo
         return (map, contentMap, generatedDocs);
     }
 
-    private static bool IsBuildOutputPath(string relPath)
+    internal static bool IsBuildOutputPath(string relPath)
     {
         var normalized = PathNormalizer.ToForwardSlash(relPath);
 
@@ -241,7 +243,7 @@ public sealed class WorkspaceInfo
         return PathNormalizer.ToGitRelativeFromNormalizedRoot(fullPath, normalizedRoot);
     }
 
-    private static string QuerySdkVersion(IOutputSink? output = null)
+    internal static string QuerySdkVersion(IOutputSink? output = null)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
         try
