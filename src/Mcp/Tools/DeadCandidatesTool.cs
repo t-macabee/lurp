@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Lurp.Handlers;
 using Lurp.Storage;
+using Lurp.Workspace;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -67,7 +68,7 @@ internal sealed class DeadCandidatesTool
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
-            if (!string.IsNullOrEmpty(kind) && !IsValidKind(kind!))
+            if (!string.IsNullOrEmpty(kind) && !DeadCandidateKinds.IsValidKind(kind!))
                 throw new McpProtocolException($"kind must be one of: Type, Method, Property, Field, Event. Got '{kind}'.", McpErrorCode.InvalidParams);
 
             string? normalizedDocument = null;
@@ -180,14 +181,5 @@ internal sealed class DeadCandidatesTool
         {
             throw McpErrorMapper.Map(ex);
         }
-    }
-
-    private static bool IsValidKind(string kind)
-    {
-        return string.Equals(kind, "Type", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Method", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Property", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Field", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Event", StringComparison.OrdinalIgnoreCase);
     }
 }

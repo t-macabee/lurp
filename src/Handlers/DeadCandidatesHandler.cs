@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -53,7 +54,7 @@ internal static class DeadCandidatesHandler
         var includeTests = args.Contains("--include-tests");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        if (!string.IsNullOrEmpty(kindArg) && !IsValidKind(kindArg))
+        if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateKinds.IsValidKind(kindArg))
             HandlerBootstrap.Fail($"ERROR: --kind must be one of: Type, Method, Property, Field, Event (case-insensitive). Got '{kindArg}'.");
 
         var limit = DefaultLimit;
@@ -197,14 +198,5 @@ internal static class DeadCandidatesHandler
                     break;
             }
         });
-    }
-
-    private static bool IsValidKind(string kind)
-    {
-        return string.Equals(kind, "Type", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Method", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Property", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Field", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(kind, "Event", StringComparison.OrdinalIgnoreCase);
     }
 }
