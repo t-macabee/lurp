@@ -20,7 +20,7 @@ internal sealed class IndexTool
     }
 
     [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Index or re-index the solution. Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress as MCP notifications/progress keyed by operation_id. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
+    [Description("Index or re-index the solution. Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
     public string LurpIndex(
         string? solution = null,
         string? strategy = null,
@@ -228,11 +228,6 @@ internal sealed class IndexTool
         public void Write(string message)
         {
             _op.AppendProgress(message);
-            // TODO: when an IMcpServer notification channel is available, send
-            // notifications/progress with progressToken = _op.OperationId.
-            // For now progress is buffered and observable via lurp_index {operation_id}
-            // polling or via lurp_status detail. The MCP SDK's progress notification
-            // is best-effort and must not fail the run.
         }
 
         public void WriteLine(string message = "")
