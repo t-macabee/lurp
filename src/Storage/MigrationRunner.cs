@@ -111,7 +111,8 @@ public class MigrationRunner
             new Migration_026_AnnotationDocumentPath(),
             new Migration_027_ProjectCompilationInputs(),
             new Migration_028_AnnotationDocumentIndex(),
-            new Migration_029_AddSnapshotPins()
+            new Migration_029_AddSnapshotPins(),
+            new Migration_030_EdgeSnapshotTargetIndex()
         ];
     }
 }
