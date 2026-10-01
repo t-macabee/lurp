@@ -64,22 +64,6 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         return GetPinnedSnapshot(workspaceId)?.PinnedSnapshotId;
     }
 
-    internal string? GetBuiltAtLatestSnapshotId(string? workspaceId = null)
-    {
-        using var command = _connection.CreateCommand();
-        if (!string.IsNullOrEmpty(workspaceId))
-        {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = @status ORDER BY built_at_utc DESC LIMIT 1;";
-            command.Parameters.AddWithValue("@workspaceId", workspaceId);
-        }
-        else
-        {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;";
-        }
-        command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
-        return command.ExecuteScalar() as string;
-    }
-
     internal void SetPinnedSnapshot(string snapshotId)
     {
         if (string.IsNullOrWhiteSpace(snapshotId))

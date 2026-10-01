@@ -78,18 +78,6 @@ internal sealed class McpSessionContext : IAsyncDisposable
         return GetFreshnessJsonInternal(GetFreshness(), maxDocuments);
     }
 
-    internal object GetFreshnessJsonUncapped()
-    {
-        // Kept for backward compat: uncapped is now just a large maxDocuments
-        return GetFreshnessJson(int.MaxValue);
-    }
-
-    internal FreshnessStamp GetFreshnessUncappedStamp()
-    {
-        // Full list is now returned by GetFreshness directly (no cap)
-        return GetFreshness();
-    }
-
     internal object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
     {
         return GetFreshnessJsonInternal(stamp, maxDocuments);

@@ -26,8 +26,6 @@ AGENTS.md
 .mimocode/
 .repograph/
 .agents/
-.qodana/*
-!.qodana/qodana.yaml
 
 # Scratch / local-only (never committed)
 prompt.txt

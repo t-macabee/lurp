@@ -77,7 +77,6 @@ internal sealed class IndexOperation
     public object? ErrorData { get; private set; }
     public string? ResultSnapshotId { get; private set; }
     public string? PreviousSnapshotId { get; private set; }
-    public List<string>? UnrestoredProjects { get; private set; }
     public Task? BackgroundTask { get; set; }
 
     public IndexOperation(string operationId, CancellationTokenSource cts)
@@ -94,11 +93,6 @@ internal sealed class IndexOperation
     public IReadOnlyList<string> GetProgress()
     {
         lock (_progressLock) return _progressLines.ToList();
-    }
-
-    public void SetUnrestoredProjects(List<string>? projects)
-    {
-        UnrestoredProjects = projects;
     }
 
     public void Complete(string? newSnapshotId, string? previousSnapshotId)
@@ -136,8 +130,7 @@ internal sealed class IndexOperation
             ErrorCode,
             ErrorData,
             ResultSnapshotId,
-            PreviousSnapshotId,
-            UnrestoredProjects);
+            PreviousSnapshotId);
     }
 }
 
@@ -151,5 +144,4 @@ internal sealed record IndexOperationSnapshot(
     string? ErrorCode,
     object? ErrorData,
     string? ResultSnapshotId,
-    string? PreviousSnapshotId,
-    List<string>? UnrestoredProjects);
+    string? PreviousSnapshotId);

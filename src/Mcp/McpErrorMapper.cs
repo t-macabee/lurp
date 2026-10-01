@@ -43,34 +43,4 @@ internal static class McpErrorMapper
 
         return new McpProtocolException(ex.Message, McpErrorCode.InternalError);
     }
-
-    /// <summary>
-    ///     Structured error payload for the MSBuild restore gate.
-    ///     Callers that have a concrete <see cref="List{String}"/> of unrestored project names
-    ///     should prefer this overload so the client receives a machine-readable list.
-    /// </summary>
-    public static McpProtocolException RestoreRequired(IReadOnlyList<string> unrestoredProjects, string? contextMessage = null)
-    {
-        var data = new
-        {
-            reason_code = "restore_required",
-            message = contextMessage ?? WorkspaceLoadGate.DescribeUnrestored(unrestoredProjects),
-            unrestored_projects = unrestoredProjects,
-            remediation = "Run 'dotnet restore' on the solution before indexing."
-        };
-        var msg = $"{data.message} | data: {System.Text.Json.JsonSerializer.Serialize(data)}";
-        return new McpProtocolException(msg, McpErrorCode.InternalError);
-    }
-
-    public static McpProtocolException WorkspaceUnreadable(string message)
-    {
-        var data = new
-        {
-            reason_code = "workspace_unreadable",
-            message,
-            remediation = "Run 'dotnet restore' on the solution and confirm the required SDK and target frameworks are installed, then re-index."
-        };
-        var msg = $"{message} | data: {System.Text.Json.JsonSerializer.Serialize(data)}";
-        return new McpProtocolException(msg, McpErrorCode.InternalError);
-    }
 }

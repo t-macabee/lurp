@@ -77,8 +77,7 @@ internal sealed class IndexTool
                     error_code = snapshot.ErrorCode,
                     error_data = snapshot.ErrorData,
                     result_snapshot_id = snapshot.ResultSnapshotId,
-                    previous_snapshot_id = snapshot.PreviousSnapshotId,
-                    unrestored_projects = snapshot.UnrestoredProjects
+                    previous_snapshot_id = snapshot.PreviousSnapshotId
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
@@ -133,15 +132,6 @@ internal sealed class IndexTool
                     store.RunMigrations();
                     store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
 
-                    // Proactively compute unrestored set so progress/structured error can carry it.
-                    // This is a cheap file-existence check, not a full load; the heavy load happens
-                    // inside IndexRunner. We capture it for error_data when the run fails.
-                    // We also store it on the operation for the success case as a warning.
-                    // We defer the actual LoadAsync to IndexRunner; we just note the session solution's
-                    // unrestored state opportunistically via a lightweight check if the file is accessible.
-                    // For now, leave it to IndexRunner's own warning — we will harvest it from the sink
-                    // output on failure if needed.
-
                     var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                     await IndexRunner.RunAsync(store, solutionPath!, skipAdapters, null, strategyArg, verbose: false, output: sink, skipDiff: false, force: forceFlag, cancellationToken: cts.Token);
@@ -152,25 +142,6 @@ internal sealed class IndexTool
 
                     // If no new snapshot (dedup reuse), latest == previous. Still mark completed.
                     op.Complete(latest, previousSnapshotId);
-
-                    // Try to harvest unrestored projects from the run's output if any warning was emitted
-                    // (not authoritative, but helpful for callers that want structured warning).
-                    // A full load to compute the exact set would be expensive; we rely on IndexRunner's
-                    // WriteErrorLine output already buffered in progress. If future callers need a
-                    // machine-readable list, IndexRunner could be extended to return it — for now we
-                    // expose whatever was written as progress.
-                    try
-                    {
-                        // Best-effort: if the solution file exists, compute the unrestored set for the
-                        // completed run's snapshot by opening the solution once more.
-                        // This is only for the warning field; failure here must not mark the run failed.
-                        var tmpLatest = store.GetLatestSnapshotId();
-                        if (tmpLatest != null)
-                        {
-                            // No additional work needed now — the progress lines already contain the warning.
-                        }
-                    }
-                    catch { }
 
                     sink.WriteLine($"index operation {operationId} completed. snapshot: {latest ?? previousSnapshotId}");
                 }
@@ -203,30 +174,14 @@ internal sealed class IndexTool
                     {
                         reason_code = "workspace_unreadable",
                         message = wue.Message,
-                        solution = solutionPath,
-                        // Include the remediation already in the message; also expose unrestored projects if we can compute them.
-                        unrestored_projects = TryGetUnrestored(solutionPath!)
+                        solution = solutionPath
                     };
                     op.Fail(wue.Message, "workspace_unreadable", data);
                     sink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
                 }
                 catch (Exception ex) when (ex is not McpProtocolException)
                 {
-                    // Check for unrestored gate: if the exception message mentions restore/assets, surface structured list.
-                    List<string>? unrestored = null;
-                    try { unrestored = TryGetUnrestored(solutionPath!); } catch { }
-                    object? data = null;
-                    if (unrestored != null && unrestored.Count > 0)
-                    {
-                        data = new
-                        {
-                            reason_code = "restore_required",
-                            message = ex.Message,
-                            unrestored_projects = unrestored,
-                            remediation = WorkspaceLoadGate.DescribeUnrestored(unrestored)
-                        };
-                    }
-                    op.Fail(ex.Message, "index_failed", data ?? new { message = ex.Message });
+                    op.Fail(ex.Message, "index_failed", new { message = ex.Message });
                     sink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
                 }
                 catch (Exception ex)
@@ -258,22 +213,6 @@ internal sealed class IndexTool
         catch (Exception ex)
         {
             throw McpErrorMapper.Map(ex);
-        }
-    }
-
-    private static List<string>? TryGetUnrestored(string solutionPath)
-    {
-        try
-        {
-            // Lightweight: we cannot load the full Solution without MSBuild, so return null here.
-            // The caller (WorkspaceLoadGate.GetUnrestoredProjectNames) needs a Solution object.
-            // Returning null signals "unknown" rather than an empty list.
-            // The structured error still carries the reason_code and remediation text.
-            return null;
-        }
-        catch
-        {
-            return null;
         }
     }
 
