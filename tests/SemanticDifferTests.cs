@@ -900,4 +900,247 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Contains("\"before\"", change.DetailJson!);
         Assert.Contains("\"after\"", change.DetailJson!);
     }
+
+    // ── Shared-declaration fast path ─────────────────────────────────────────
+
+    private const string FastPathFromSnapshotId = "snap-fastpath-from";
+    private const string FastPathToSnapshotId = "snap-fastpath-to";
+
+    private const string SharedDocumentSource =
+        "public class Shared\n" +
+        "{\n" +
+        "    public void Keep() { }\n" +
+        "    public void Meta() { }\n" +
+        "}\n";
+
+    private const string ChangedDocumentV1Source =
+        "public void BodyOnly() { return; }\n" +
+        "public void SigEdit(int x) { }\n" +
+        "public void Moved() { }\n" +
+        "public void Removed() { }\n";
+
+    private const string ChangedDocumentV2Source =
+        "public void BodyOnly() { return 1; }\n" +
+        "public void SigEdit(ref int x) { }\n" +
+        "public void Added(int x) { }\n";
+
+    private const string MovedDocumentSource = "public void Moved() { }\n";
+
+    private static void SaveFastPathSnapshots(SqliteIndexStore store)
+    {
+        SaveSnapshotWithDocuments(store, FastPathFromSnapshotId,
+            ("doc-shared", "src/Shared.cs", "h1", SharedDocumentSource, "[0,20,22,49,76]"),
+            ("doc-changed", "src/Changed.cs", "h1", ChangedDocumentV1Source, "[0,35,66,90]"));
+
+        SaveSnapshotWithDocuments(store, FastPathToSnapshotId,
+            ("doc-shared", "src/Shared.cs", "h1", SharedDocumentSource, "[0,20,22,49,76]"),
+            ("doc-changed", "src/Changed.cs", "h2", ChangedDocumentV2Source, "[0,37,72]"),
+            ("doc-moved", "src/MovedTo.cs", "h1", MovedDocumentSource, "[0]"));
+    }
+
+    private static void SaveSnapshotWithDocuments(SqliteIndexStore store, string snapshotId,
+        params (string DocumentId, string FilePath, string ContentHash, string Content, string LineStarts)[] documents)
+    {
+        var manifest = new SnapshotRow
+        {
+            SnapshotId = snapshotId,
+            WorkspaceId = "workspace:///root/proj",
+            GitRoot = "/root",
+            SolutionPath = "/root/proj",
+            SdkVersion = "10.0.301",
+            CompilerVersion = "4.12.0.0",
+            CreatedAtUtc = DateTime.UtcNow,
+            Documents = [.. documents.Select(d => new DocumentVersion(StringToBytes(d.Content))
+            {
+                DocumentId = d.DocumentId,
+                FilePath = d.FilePath,
+                ContentHash = d.ContentHash,
+                Encoding = "utf-8",
+                LineStarts = d.LineStarts
+            })]
+        };
+        store.SaveSnapshot(manifest);
+    }
+
+    private static void SaveFastPathDeclarations(SqliteIndexStore store)
+    {
+        store.SaveDeclarations(FastPathFromSnapshotId, [
+            MakeDecl(docCommentId: "M:Ns.Shared.Keep", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-shared:h1", fullS: 22, fullE: 48, sigS: 22, sigE: 44, bodyS: 45, bodyE: 48,
+                nameS: 38, nameE: 42, symbolId: "M:Ns.Shared.Keep|asm1",
+                metadataJson: """{"accessibility": "public"}"""),
+            MakeDecl(docCommentId: "M:Ns.Shared.Meta", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-shared:h1", fullS: 49, fullE: 75, sigS: 49, sigE: 71, bodyS: 72, bodyE: 75,
+                nameS: 65, nameE: 69, symbolId: "M:Ns.Shared.Meta|asm1",
+                metadataJson: """{"accessibility": "public"}"""),
+            MakeDecl(docCommentId: "T:Ns.Partial", assembly: "asm1", kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-shared:h1", fullS: 22, fullE: 48, sigS: 22, sigE: 44, bodyS: 45, bodyE: 48,
+                nameS: 38, nameE: 42, isPartial: true, symbolId: "T:Ns.Partial|asm1",
+                metadataJson: """{"isPartial": true}"""),
+            MakeDecl(docCommentId: "M:Ns.BodyOnly", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h1", fullS: 0, fullE: 34, sigS: 0, sigE: 22, bodyS: 23, bodyE: 34,
+                nameS: 12, nameE: 20, symbolId: "M:Ns.BodyOnly|asm1",
+                metadataJson: """{"signature": "void BodyOnly()"}"""),
+            MakeDecl(docCommentId: "M:Ns.SigEdit", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h1", fullS: 35, fullE: 65, sigS: 35, sigE: 61, bodyS: 62, bodyE: 65,
+                nameS: 47, nameE: 54, symbolId: "M:Ns.SigEdit|asm1",
+                metadataJson: """{"signature": "void SigEdit(int x)"}"""),
+            MakeDecl(docCommentId: "M:Ns.Moved", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h1", fullS: 66, fullE: 89, sigS: 66, sigE: 85, bodyS: 86, bodyE: 89,
+                nameS: 78, nameE: 83, symbolId: "M:Ns.Moved|asm1",
+                metadataJson: """{"signature": "void Moved()"}"""),
+            MakeDecl(docCommentId: "M:Ns.Removed", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h1", fullS: 90, fullE: 115, sigS: 90, sigE: 111, bodyS: 112, bodyE: 115,
+                nameS: 102, nameE: 109, symbolId: "M:Ns.Removed|asm1",
+                metadataJson: """{"signature": "void Removed()"}"""),
+            MakeDecl(docCommentId: "T:Ns.Partial", assembly: "asm1", kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-changed:h1", fullS: 0, fullE: 34, sigS: 0, sigE: 22, bodyS: 23, bodyE: 34,
+                nameS: 12, nameE: 20, isPartial: true, symbolId: "T:Ns.Partial|asm1",
+                metadataJson: """{"isPartial": true}""")
+        ]);
+
+        store.SaveDeclarations(FastPathToSnapshotId, [
+            MakeDecl(docCommentId: "M:Ns.Shared.Keep", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-shared:h1", fullS: 22, fullE: 48, sigS: 22, sigE: 44, bodyS: 45, bodyE: 48,
+                nameS: 38, nameE: 42, symbolId: "M:Ns.Shared.Keep|asm1",
+                metadataJson: """{"accessibility": "public"}"""),
+            MakeDecl(docCommentId: "M:Ns.Shared.Meta", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-shared:h1", fullS: 49, fullE: 75, sigS: 49, sigE: 71, bodyS: 72, bodyE: 75,
+                nameS: 65, nameE: 69, symbolId: "M:Ns.Shared.Meta|asm1",
+                metadataJson: """{"accessibility": "private"}"""),
+            MakeDecl(docCommentId: "T:Ns.Partial", assembly: "asm1", kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-shared:h1", fullS: 22, fullE: 48, sigS: 22, sigE: 44, bodyS: 45, bodyE: 48,
+                nameS: 38, nameE: 42, isPartial: true, symbolId: "T:Ns.Partial|asm1",
+                metadataJson: """{"isPartial": true}"""),
+            MakeDecl(docCommentId: "M:Ns.BodyOnly", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h2", fullS: 0, fullE: 36, sigS: 0, sigE: 22, bodyS: 23, bodyE: 36,
+                nameS: 12, nameE: 20, symbolId: "M:Ns.BodyOnly|asm1",
+                metadataJson: """{"signature": "void BodyOnly()"}"""),
+            MakeDecl(docCommentId: "M:Ns.SigEdit", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h2", fullS: 37, fullE: 71, sigS: 37, sigE: 67, bodyS: 68, bodyE: 71,
+                nameS: 49, nameE: 56, symbolId: "M:Ns.SigEdit|asm1",
+                metadataJson: """{"signature": "void SigEdit(ref int x)"}"""),
+            MakeDecl(docCommentId: "M:Ns.Added", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-changed:h2", fullS: 72, fullE: 100, sigS: 72, sigE: 96, bodyS: 97, bodyE: 100,
+                nameS: 84, nameE: 89, symbolId: "M:Ns.Added|asm1",
+                metadataJson: """{"signature": "void Added(int x)"}"""),
+            MakeDecl(docCommentId: "T:Ns.Partial", assembly: "asm1", kind: IndexedSymbolKind.NamedType,
+                docVersionId: "doc-changed:h2", fullS: 0, fullE: 36, sigS: 0, sigE: 22, bodyS: 23, bodyE: 36,
+                nameS: 12, nameE: 20, isPartial: true, symbolId: "T:Ns.Partial|asm1",
+                metadataJson: """{"isPartial": true}"""),
+            MakeDecl(docCommentId: "M:Ns.Moved", assembly: "asm1", kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-moved:h1", fullS: 0, fullE: 23, sigS: 0, sigE: 19, bodyS: 20, bodyE: 23,
+                nameS: 12, nameE: 17, symbolId: "M:Ns.Moved|asm1",
+                metadataJson: """{"signature": "void Moved()"}""")
+        ]);
+    }
+
+    [Fact]
+    public void FastPath_ParityWithSlowPath_AcrossSharedAndChangedDocuments()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var slowDiffer = new SemanticDiffer(store, store, new CountingDeclarationStore(store, fastPathEnabled: false), store);
+        var fastDiffer = new SemanticDiffer(store, store, new CountingDeclarationStore(store, fastPathEnabled: true), store);
+
+        var (slowChanges, slowSkipped) = slowDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+        var (fastChanges, fastSkipped) = fastDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+
+        Assert.Equal(slowSkipped, fastSkipped);
+        Assert.Equal(slowChanges.Count, fastChanges.Count);
+        for (var i = 0; i < slowChanges.Count; i++)
+        {
+            Assert.Equal(slowChanges[i].ChangeType, fastChanges[i].ChangeType);
+            Assert.Equal(slowChanges[i].SymbolId, fastChanges[i].SymbolId);
+            Assert.Equal(slowChanges[i].DetailJson, fastChanges[i].DetailJson);
+        }
+
+        // The fixture covers each required scenario on both paths.
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.SymbolAdded && c.SymbolId == "M:Ns.Added|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.SymbolRemoved && c.SymbolId == "M:Ns.Removed|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.BodyOnlyChanged && c.SymbolId == "M:Ns.BodyOnly|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.SignatureChanged && c.SymbolId == "M:Ns.SigEdit|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.SymbolRelocated && c.SymbolId == "M:Ns.Moved|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.BodyOnlyChanged && c.SymbolId == "T:Ns.Partial|asm1");
+        Assert.Contains(fastChanges, c => c.ChangeType == ChangeType.AccessibilityChanged && c.SymbolId == "M:Ns.Shared.Meta|asm1");
+        Assert.DoesNotContain(fastChanges, c => c.SymbolId == "M:Ns.Shared.Keep|asm1");
+    }
+
+    [Fact]
+    public void FastPath_SkipsSourceAndLocationReads_WhenDeclarationDocumentsAreShared()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
+        var differ = new SemanticDiffer(store, store, countingStore, store);
+
+        _ = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+
+        // Keep and Meta live in the unchanged document, so their declaration
+        // document-version sets are equal and neither blob read may happen.
+        Assert.Equal(0, countingStore.SymbolSourceCalls("M:Ns.Shared.Keep|asm1"));
+        Assert.Equal(0, countingStore.DeclarationLocationCalls("M:Ns.Shared.Keep|asm1"));
+        Assert.Equal(0, countingStore.SymbolSourceCalls("M:Ns.Shared.Meta|asm1"));
+        Assert.Equal(0, countingStore.DeclarationLocationCalls("M:Ns.Shared.Meta|asm1"));
+
+        // Counter sanity: a symbol in the changed document still takes the slow path.
+        Assert.True(countingStore.SymbolSourceCalls("M:Ns.BodyOnly|asm1") > 0);
+        Assert.True(countingStore.DeclarationLocationCalls("M:Ns.BodyOnly|asm1") > 0);
+    }
+
+    private sealed class CountingDeclarationStore(IDeclarationStore inner, bool fastPathEnabled) : IDeclarationStore
+    {
+        private readonly Dictionary<string, int> _declarationLocationCalls = [];
+        private readonly Dictionary<string, int> _symbolSourceCalls = [];
+
+        public int SymbolSourceCalls(string symbolId) => _symbolSourceCalls.GetValueOrDefault(symbolId);
+        public int DeclarationLocationCalls(string symbolId) => _declarationLocationCalls.GetValueOrDefault(symbolId);
+
+        public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
+        {
+            return fastPathEnabled
+                ? inner.GetDocumentVersionIdsBySymbol(snapshotId)
+                : new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        }
+
+        public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations) =>
+            inner.SaveDeclarations(snapshotId, declarations);
+
+        public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId) =>
+            inner.GetSymbolInfo(symbolId, snapshotId);
+
+        public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
+        {
+            _symbolSourceCalls[symbolId] = _symbolSourceCalls.GetValueOrDefault(symbolId) + 1;
+            return inner.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated);
+        }
+
+        public string? GetContainingTypeSource(string symbolId, string snapshotId) =>
+            inner.GetContainingTypeSource(symbolId, snapshotId);
+
+        public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines) =>
+            inner.GetSurroundingLines(symbolId, snapshotId, contextLines);
+
+        public List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
+        {
+            _declarationLocationCalls[symbolId] = _declarationLocationCalls.GetValueOrDefault(symbolId) + 1;
+            return inner.GetDeclarationLocations(symbolId, snapshotId, includeGenerated);
+        }
+
+        public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds) =>
+            inner.DeleteDeclarationsByDocumentVersionIds(documentVersionIds);
+
+        public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds) =>
+            inner.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds);
+
+        public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
+            inner.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated);
+
+        public NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
+            inner.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);
+    }
 }

@@ -25,6 +25,10 @@ public class SemanticDiffer
         new(SymbolMetadataKeys.Attributes, ChangeType.AttributeChanged, MetadataComparisonKind.Array)
     ];
 
+    // Loading both per-symbol document-version maps is a fixed cost (~30 ms on eNoteV2); each
+    // common symbol they let skip the source/location reads saves ~0.5 ms. Break-even is ~57.
+    private const int DocumentVersionMapPreloadCutoff = 64;
+
     private readonly IDeclarationStore _declarationStore;
     private readonly IEdgeStore _edgeStore;
     private readonly ISemanticDiffReadStore _readStore;
@@ -87,9 +91,21 @@ public class SemanticDiffer
             common = common.Where(changedSymbolIds.Contains);
         var commonList = common.ToList();
 
+        Dictionary<string, List<string>>? fromDocumentVersionsBySymbol = null;
+        Dictionary<string, List<string>>? toDocumentVersionsBySymbol = null;
+        if (changedSymbolIds == null || commonList.Count >= DocumentVersionMapPreloadCutoff)
+        {
+            fromDocumentVersionsBySymbol = _declarationStore.GetDocumentVersionIdsBySymbol(fromSnapshotId);
+            toDocumentVersionsBySymbol = _declarationStore.GetDocumentVersionIdsBySymbol(toSnapshotId);
+        }
+
         foreach (var symbolId in commonList)
         {
-            var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromSnapshotId, toSnapshotId);
+            List<string>? fromDocumentVersionIds = null;
+            List<string>? toDocumentVersionIds = null;
+            fromDocumentVersionsBySymbol?.TryGetValue(symbolId, out fromDocumentVersionIds);
+            toDocumentVersionsBySymbol?.TryGetValue(symbolId, out toDocumentVersionIds);
+            var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromSnapshotId, toSnapshotId, fromDocumentVersionIds, toDocumentVersionIds);
             changes.AddRange(symbolChanges);
             skippedComparisons += symbolSkipped;
         }
@@ -110,7 +126,7 @@ public class SemanticDiffer
         return (changes, skippedComparisons);
     }
 
-    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, string fromSnapshotId, string toSnapshotId)
+    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, string fromSnapshotId, string toSnapshotId, List<string>? fromDocumentVersionIds, List<string>? toDocumentVersionIds)
     {
         var changes = new List<SemanticChange>();
         var skippedComparisons = 0;
@@ -144,27 +160,33 @@ public class SemanticDiffer
         var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
         changes.AddRange(metaChanges);
 
-        var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
-        changes.AddRange(sourceChanges);
-        skippedComparisons += sourceSkipped;
+        // Equal declaration document-version sets mean the same declaration rows are read
+        // for both snapshots (declarations is keyed by symbol_id + document_version_id), so
+        // source text and paths cannot differ. Skip the per-symbol blob reads entirely.
+        var sharedDeclarationDocuments = fromDocumentVersionIds != null && toDocumentVersionIds != null &&
+            fromDocumentVersionIds.SequenceEqual(toDocumentVersionIds, StringComparer.Ordinal);
 
-        var fromLocations = _declarationStore.GetDeclarationLocations(symbolId, fromSnapshotId);
-        var toLocations = _declarationStore.GetDeclarationLocations(symbolId, toSnapshotId);
-
-        if (fromLocations == null || toLocations == null)
-            return (changes, skippedComparisons);
-
-        var fromPaths = fromLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
-        var toPaths = toLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
-
-        if (!fromPaths.SetEquals(toPaths))
+        if (!sharedDeclarationDocuments)
         {
-            var detail = new
+            var (sourceChanges, sourceSkipped) = CompareSource(symbolId, fromSnapshotId, toSnapshotId);
+            changes.AddRange(sourceChanges);
+            skippedComparisons += sourceSkipped;
+
+            var fromLocations = _declarationStore.GetDeclarationLocations(symbolId, fromSnapshotId);
+            var toLocations = _declarationStore.GetDeclarationLocations(symbolId, toSnapshotId);
+
+            var fromPaths = fromLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+            var toPaths = toLocations.Select(l => l.DocumentPath).ToHashSet(StringComparer.Ordinal);
+
+            if (!fromPaths.SetEquals(toPaths))
             {
-                before = fromPaths.OrderBy(p => p, StringComparer.Ordinal).ToList(),
-                after = toPaths.OrderBy(p => p, StringComparer.Ordinal).ToList()
-            };
-            changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRelocated, symbolId, detail));
+                var detail = new
+                {
+                    before = fromPaths.OrderBy(p => p, StringComparer.Ordinal).ToList(),
+                    after = toPaths.OrderBy(p => p, StringComparer.Ordinal).ToList()
+                };
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRelocated, symbolId, detail));
+            }
         }
 
         return (changes, skippedComparisons);

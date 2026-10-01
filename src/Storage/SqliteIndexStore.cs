@@ -426,6 +426,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _declReader!.GetDeclarationLocations(symbolId, snapshotId, includeGenerated);
     }
 
+    public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
+    {
+        EnsureOpen();
+        return _declReader!.GetDocumentVersionIdsBySymbol(snapshotId);
+    }
+
     public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
     {
         EnsureOpen();

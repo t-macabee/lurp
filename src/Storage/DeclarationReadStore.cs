@@ -177,6 +177,35 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return results;
     }
 
+    internal Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.symbol_id, d.document_version_id
+            FROM declarations d
+            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            WHERE sd.snapshot_id = @snapshotId
+            ORDER BY d.symbol_id, d.document_version_id;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var symbolId = reader.GetString(0);
+            if (!result.TryGetValue(symbolId, out var documentVersionIds))
+            {
+                documentVersionIds = [];
+                result[symbolId] = documentVersionIds;
+            }
+
+            documentVersionIds.Add(reader.GetString(1));
+        }
+
+        return result;
+    }
+
     private static int Utf8Column(byte[] content, int lineStart, int offset)
     {
         var safeOffset = Math.Clamp(offset, lineStart, content.Length);
