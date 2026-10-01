@@ -380,9 +380,11 @@ internal sealed class ContextAssembler
         };
     }
 
+    internal const int CharsPerToken = 4;
+
     internal static int EstimateTokens(string? text)
     {
-        return (text ?? string.Empty).Length / 4;
+        return (text ?? string.Empty).Length / CharsPerToken;
     }
 
     /// <summary>
@@ -396,7 +398,7 @@ internal sealed class ContextAssembler
     internal static int EstimateTokens(CapsuleItem item)
     {
         if (!string.IsNullOrEmpty(item.Source))
-            return item.Source!.Length / 4;
+            return item.Source!.Length / CharsPerToken;
 
         // Framing estimate for a path-only item: path + FQN + provenance +
         // edge_kind + coordinates + inclusion_reason, matching the JSON
@@ -404,7 +406,7 @@ internal sealed class ContextAssembler
         // constant conservative so it bounds tier selection without
         // starving low-priority tiers that legitimately carry small sources.
         const int PathOnlyFramingChars = 160; // ~40 tokens
-        return PathOnlyFramingChars / 4;
+        return PathOnlyFramingChars / CharsPerToken;
     }
 
     /// <summary>

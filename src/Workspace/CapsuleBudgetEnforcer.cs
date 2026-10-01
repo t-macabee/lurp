@@ -151,7 +151,7 @@ internal static class CapsuleBudgetEnforcer
     {
         for (var attempt = 0; attempt < 4; attempt++)
         {
-            var estimate = ContextCapsuleJson.Serialize(capsule).Length / 4;
+            var estimate = ContextAssembler.EstimateTokens(ContextCapsuleJson.Serialize(capsule));
             if (estimate == capsule.EstimatedArtifactTokens)
                 return;
             capsule.EstimatedArtifactTokens = estimate;
@@ -165,7 +165,7 @@ internal static class CapsuleBudgetEnforcer
     /// </summary>
     internal static int Measure(ContextCapsule capsule)
     {
-        return MeasureChars(capsule) / 4;
+        return MeasureChars(capsule) / ContextAssembler.CharsPerToken;
     }
 
     private static int MeasureChars(ContextCapsule capsule)
@@ -202,7 +202,7 @@ internal static class CapsuleBudgetEnforcer
     {
         var source = capsule.Anchor.Source;
         var otherChars = MeasureChars(capsule) - source.Length;
-        var allowed = Math.Max(budget * 4 - otherChars, 0);
+        var allowed = Math.Max(budget * ContextAssembler.CharsPerToken - otherChars, 0);
         if (source.Length <= allowed)
             return false;
 
