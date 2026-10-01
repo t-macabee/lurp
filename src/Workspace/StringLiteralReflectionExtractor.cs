@@ -24,51 +24,59 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (IsNoiseString(text))
                 continue;
 
-            string? matchedSymbolId = null;
-            string? matchedName = null;
-
-            if (context.KnownTypeNames.Contains(text))
+            if (!context.TypesByName.TryGetValue(text, out var matchedSymbols) &&
+                !context.MembersByName.TryGetValue(text, out matchedSymbols))
             {
-                matchedName = text;
-                matchedSymbolId = ResolveSymbolIdByName(text, true);
-            }
-            else if (context.KnownMemberNames.Contains(text))
-            {
-                matchedName = text;
-                matchedSymbolId = ResolveSymbolIdByName(text, false);
+                continue;
             }
 
-            if (matchedSymbolId == null)
+            if (matchedSymbols == null || matchedSymbols.Count == 0)
                 continue;
 
             var sourceId = context.GetContainingMemberSymbolId(literal, semanticModel);
             if (sourceId == null)
                 continue;
 
-            if (sourceId == matchedSymbolId)
+            var targetIds = new List<string>(matchedSymbols.Count);
+            foreach (var symbol in matchedSymbols)
+            {
+                var targetId = context.MakeSymbolId(symbol);
+                if (targetId != null)
+                    targetIds.Add(targetId);
+            }
+
+            if (targetIds.Count == 0)
                 continue;
 
-            var key = (sourceId, matchedSymbolId, nameof(EdgeKind.ReflectionNameCandidate));
-            if (!seen.Add(key))
-                continue;
+            targetIds.Sort(StringComparer.Ordinal);
 
             var loc = context.GetLocationInfo(literal.GetLocation());
 
-            edges.Add(new EdgeRecord
+            foreach (var targetId in targetIds)
             {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = matchedSymbolId,
-                Kind = nameof(EdgeKind.ReflectionNameCandidate),
-                Provenance = Provenance.NameCandidate,
-                SnapshotId = context.SnapshotId,
-                ExtractorVersion = ExtractorConstants.ReflectionExtractor,
-                SourceDocumentPath = loc.path,
-                SourceStartLine = loc.startLine,
-                SourceStartColumn = loc.startColumn,
-                SourceEndLine = loc.endLine,
-                SourceEndColumn = loc.endColumn,
-                IsCrossGenerated = context.IsGenerated(loc.path)
-            });
+                if (sourceId == targetId)
+                    continue;
+
+                var key = (sourceId, targetId, nameof(EdgeKind.ReflectionNameCandidate));
+                if (!seen.Add(key))
+                    continue;
+
+                edges.Add(new EdgeRecord
+                {
+                    SourceSymbolId = sourceId,
+                    TargetSymbolId = targetId,
+                    Kind = nameof(EdgeKind.ReflectionNameCandidate),
+                    Provenance = Provenance.NameCandidate,
+                    SnapshotId = context.SnapshotId,
+                    ExtractorVersion = ExtractorConstants.ReflectionExtractor,
+                    SourceDocumentPath = loc.path,
+                    SourceStartLine = loc.startLine,
+                    SourceStartColumn = loc.startColumn,
+                    SourceEndLine = loc.endLine,
+                    SourceEndColumn = loc.endColumn,
+                    IsCrossGenerated = context.IsGenerated(loc.path)
+                });
+            }
         }
 
         return edges;
@@ -91,23 +99,5 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
     private static bool IsCamelCase(string text)
     {
         return text.Length > 0 && char.IsLower(text[0]) && text.Any(char.IsUpper);
-    }
-
-    private string? ResolveSymbolIdByName(string name, bool isType)
-    {
-        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
-            if (isType)
-            {
-                if (string.Equals(typeSymbol.Name, name, StringComparison.OrdinalIgnoreCase))
-                    return context.MakeSymbolId(typeSymbol);
-            }
-            else
-            {
-                foreach (var member in typeSymbol.GetMembers())
-                    if (string.Equals(member.Name, name, StringComparison.OrdinalIgnoreCase))
-                        return context.MakeSymbolId(member);
-            }
-
-        return null;
     }
 }

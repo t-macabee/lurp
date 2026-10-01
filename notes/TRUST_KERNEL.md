@@ -85,7 +85,7 @@ cited below. Evidence cites git commits and named tests directly.
 | String literal matching known name | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` | `StringLiteral_MatchingTypeName_EmitsNameCandidateEdge` |
 | Runtime-unknown reflection | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
 
-All in `src/Workspace/`, registered as `"reflection-v1"`, covered by `GoldenReflectionTests.cs`; integrated with `UncertaintyDetector`.
+All in `src/Workspace/`, registered as `"reflection-v2"`, covered by `GoldenReflectionTests.cs`; integrated with `UncertaintyDetector`.
 
 ### Phase 15 verification: Context Capsules
 

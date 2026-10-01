@@ -19,7 +19,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     {
         Assert.Equal(kind, edge.Kind);
         Assert.Equal(provenance, edge.Provenance);
-        Assert.Equal("reflection-v1", edge.ExtractorVersion);
+        Assert.Equal("reflection-v2", edge.ExtractorVersion);
         Assert.NotNull(edge.SourceDocumentPath);
         Assert.EndsWith(Doc, edge.SourceDocumentPath);
         Assert.Equal(sourceFqn, edge.SourceSymbolId);
@@ -155,7 +155,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
 
         var nameCandidate = extraction.SingleEdge("ReflectionNameCandidate", "global::N.User.Use", "global::N.Target",
             Provenance.NameCandidate);
-        Assert.Equal("reflection-v1", nameCandidate.ExtractorVersion);
+        Assert.Equal("reflection-v2", nameCandidate.ExtractorVersion);
     }
 
     [Fact]
@@ -190,5 +190,46 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
         Assert.DoesNotContain(extraction.Result.Edges,
             e => e.Kind == "ReflectionNameCandidate" && e.Provenance == Provenance.NameCandidate
                  && e.SourceSymbolId == logoutId && e.TargetSymbolId == logoutId);
+    }
+
+    [Fact]
+    public async Task StringLiteral_MatchingMultipleMembers_EmitsAllCandidatesInSymbolIdOrder()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class TypeA
+                                                {
+                                                    public string Name { get; set; }
+                                                }
+                                                public class TypeB
+                                                {
+                                                    public string Name { get; set; }
+                                                }
+                                                public class User
+                                                {
+                                                    public void Use()
+                                                    {
+                                                        var s = "Name";
+                                                    }
+                                                }
+                                                """));
+
+        var userUseId = extraction.ResolveId("global::N.User.Use");
+        var edges = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionNameCandidate" && e.SourceSymbolId == userUseId)
+            .ToList();
+
+        Assert.Equal(2, edges.Count);
+        Assert.All(edges, e =>
+        {
+            AssertReflectionContract(e, "ReflectionNameCandidate", Provenance.NameCandidate, userUseId);
+        });
+
+        var idA = extraction.ResolveId("global::N.TypeA.Name");
+        var idB = extraction.ResolveId("global::N.TypeB.Name");
+
+        var expectedIds = new[] { idA, idB }.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        Assert.Equal(expectedIds[0], edges[0].TargetSymbolId);
+        Assert.Equal(expectedIds[1], edges[1].TargetSymbolId);
     }
 }

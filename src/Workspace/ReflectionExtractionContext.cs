@@ -9,13 +9,13 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
         : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths)
     {
-        KnownTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        KnownMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        CollectKnownNames(compilation.Assembly.GlobalNamespace, KnownTypeNames, KnownMemberNames);
+        TypesByName = new Dictionary<string, List<ISymbol>>(StringComparer.OrdinalIgnoreCase);
+        MembersByName = new Dictionary<string, List<ISymbol>>(StringComparer.OrdinalIgnoreCase);
+        CollectKnownNames(compilation.Assembly.GlobalNamespace, TypesByName, MembersByName);
     }
 
-    internal HashSet<string> KnownTypeNames { get; }
-    internal HashSet<string> KnownMemberNames { get; }
+    internal Dictionary<string, List<ISymbol>> TypesByName { get; }
+    internal Dictionary<string, List<ISymbol>> MembersByName { get; }
 
     internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
     {
@@ -57,14 +57,31 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         return null;
     }
 
-    private static void CollectKnownNames(INamespaceSymbol ns, HashSet<string> typeNames, HashSet<string> memberNames)
+    private static void CollectKnownNames(INamespaceSymbol ns, Dictionary<string, List<ISymbol>> typesByName, Dictionary<string, List<ISymbol>> membersByName)
     {
         foreach (var type in ns.GetTypeMembers())
         {
-            typeNames.Add(type.Name);
-            foreach (var member in type.GetMembers()) memberNames.Add(member.Name);
+            AddSymbol(typesByName, type.Name, type);
+            foreach (var member in type.GetMembers())
+            {
+                AddSymbol(membersByName, member.Name, member);
+            }
         }
 
-        foreach (var childNs in ns.GetNamespaceMembers()) CollectKnownNames(childNs, typeNames, memberNames);
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            CollectKnownNames(childNs, typesByName, membersByName);
+        }
+    }
+
+    private static void AddSymbol(Dictionary<string, List<ISymbol>> dict, string name, ISymbol symbol)
+    {
+        if (!dict.TryGetValue(name, out var list))
+        {
+            list = [];
+            dict.Add(name, list);
+        }
+
+        list.Add(symbol);
     }
 }

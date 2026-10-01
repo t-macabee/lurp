@@ -12,7 +12,7 @@ internal static class ExtractorConstants
     internal const string ReturnsExtractor = "returns-v1";
     internal const string ThrowsExtractor = "throws-v1";
     internal const string ParameterDependenciesExtractor = "parameter-deps-v1";
-    internal const string ReflectionExtractor = "reflection-v1";
+    internal const string ReflectionExtractor = "reflection-v2";
     internal const string StaticallyCallsExtractor = "statically-calls-v1";
     internal const string PolymorphismExtractor = "polymorphism-v1";
 }
