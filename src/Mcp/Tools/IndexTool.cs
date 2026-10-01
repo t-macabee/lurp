@@ -100,102 +100,166 @@ internal sealed class IndexTool
             if (string.IsNullOrEmpty(solutionPath) || !File.Exists(solutionPath))
                 throw new McpProtocolException("solution not found. Provide --solution=path or set LURP_SOLUTION_PATH / --solution on serve.", McpErrorCode.InvalidParams);
 
+            var dbPath = Path.GetFullPath(_session.DbPath);
+
+            // Acquire locks before starting the operation.
+            var solutionLockKey = IndexRunLock.NormalizeKey(solutionPath);
+            var solutionLock = IndexRunLock.TryAcquire(solutionLockKey);
+            if (solutionLock == null)
+                throw new McpProtocolException($"another Lurp index run is using solution {solutionPath}", McpErrorCode.InvalidParams);
+
+            var databaseLockKey = IndexRunLock.NormalizeKey(dbPath);
+            var databaseLock = IndexRunLock.TryAcquire(databaseLockKey);
+            if (databaseLock == null)
+            {
+                solutionLock.Dispose();
+                throw new McpProtocolException($"another Lurp index run is using database {dbPath}", McpErrorCode.InvalidParams);
+            }
+
             var operationId = Guid.NewGuid().ToString("N");
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var op = _indexState.TryStart(operationId, cts);
-            if (op == null)
-                throw new McpProtocolException("an index is already running; wait or cancel it before starting another.", McpErrorCode.InvalidParams);
-
-            var previousSnapshotId = _session.PinnedSnapshotId;
-            var dbPath = _session.DbPath;
-            var strategyArg = strategy;
-            var forceFlag = force ?? false;
-
-            // Link external cancellation (MCP notifications/cancelled) to the operation CTS.
-            var registration = cancellationToken.Register(() =>
+            string? previousSnapshotId = null;
+            string? strategyArg = null;
+            bool forceFlag = false;
+            CancellationTokenSource? cts = null;
+            IndexOperation? op = null;
+            CancellationTokenRegistration registration = default;
+            bool registrationCreated = false;
+            McpIndexOutputSink? sink = null;
+            Task? task = null;
+            try
             {
-                try { cts.Cancel(); } catch { }
-            });
+                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                op = _indexState.TryStart(operationId, cts);
+                if (op == null)
+                    throw new McpProtocolException("an index is already running; wait or cancel it before starting another.", McpErrorCode.InvalidParams);
 
-            var sink = new McpIndexOutputSink(op);
+                previousSnapshotId = _session.PinnedSnapshotId;
+                strategyArg = strategy;
+                forceFlag = force ?? false;
 
-            // Background Task — Option B: in-process IndexRunner.RunAsync.
-            var task = Task.Run(async () =>
-            {
-                using var _ = registration;
-                // Writer store — separate from the session's query_only connection so readers
-                // keep answering from the old pin while the run is active.
-                var store = new SqliteIndexStore(dbPath);
-                try
+                // Link external cancellation (MCP notifications/cancelled) to the operation CTS.
+                registration = cancellationToken.Register(() =>
                 {
-                    store.Open();
-                    store.RunMigrations();
-                    store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
+                    try { cts.Cancel(); } catch { }
+                });
+                registrationCreated = true;
 
-                    var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                sink = new McpIndexOutputSink(op);
 
-                    await IndexRunner.RunAsync(store, solutionPath!, skipAdapters, null, strategyArg, verbose: false, output: sink, skipDiff: false, force: forceFlag, cancellationToken: cts.Token);
-
-                    // On success, detect the new complete snapshot (may be identical to previous when dedup reused).
-                    string? latest = null;
-                    try { latest = store.GetLatestSnapshotId(); } catch { }
-
-                    // If no new snapshot (dedup reuse), latest == previous. Still mark completed.
-                    op.Complete(latest, previousSnapshotId);
-
-                    sink.WriteLine($"index operation {operationId} completed. snapshot: {latest ?? previousSnapshotId}");
-                }
-                catch (OperationCanceledException)
+                // Background Task — Option B: in-process IndexRunner.RunAsync.
+                // Locks, the registration and the CTS are owned by this method until the task
+                // starts, then by the task, which releases them in its finally.
+                var opCts = cts!;
+                var opSink = sink!;
+                var opRef = op!;
+                var opRegistration = registration;
+                task = Task.Run(async () =>
                 {
-                    // IndexRunner already did MarkSnapshotFailed(..., "cancelled", ...). Ensure state reflects it.
-                    // Confirm no partial Complete row is visible: GetLatestSnapshotId still returns the old pin.
-                    // The Failed row is a tombstone with payload_pruned; it must not be returned as latest.
+                    using var _solLock = solutionLock;
+                    using var _dbLock = databaseLock;
+                    // Writer store — separate from the session's query_only connection so readers
+                    // keep answering from the old pin while the run is active.
+                    SqliteIndexStore? store = null;
                     try
                     {
-                        // Best-effort cleanup of payload for the cancelled attempt.
-                        // DeleteIncompleteSnapshots would normally prune on the next successful run;
-                        // we trigger it now so a test that checks "no partial data" sees the old pin unchanged.
-                        // This respects snapshot-immutability: a Failed row is not a Complete snapshot,
-                        // and its payload is unreferenced once cancelled — pruning it does not mutate a
-                        // Complete snapshot.
-                        var tmp = new SqliteIndexStore(dbPath);
-                        tmp.Open();
-                        try { tmp.DeleteIncompleteSnapshots(); } finally { tmp.Close(); }
+                        store = new SqliteIndexStore(dbPath);
+                        store.Open();
+                        store.RunMigrations();
+                        store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
+
+                        var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        await IndexRunner.RunAsync(store, solutionPath!, skipAdapters, null, strategyArg, verbose: false, output: opSink, skipDiff: false, force: forceFlag, cancellationToken: opCts.Token);
+
+                        // On success, detect the new complete snapshot (may be identical to previous when dedup reused).
+                        string? latest = null;
+                        try { latest = store.GetLatestSnapshotId(); } catch { }
+
+                        // If no new snapshot (dedup reuse), latest == previous. Still mark completed.
+                        opRef.Complete(latest, previousSnapshotId);
+
+                        opSink.WriteLine($"index operation {operationId} completed. snapshot: {latest ?? previousSnapshotId}");
                     }
-                    catch { }
-
-                    op.Cancel();
-                    sink.WriteLine($"index operation {operationId} cancelled.");
-                }
-                catch (WorkspaceUnreadableException wue)
-                {
-                    // Return structured data, not a stack trace (4.9).
-                    var data = new
+                    catch (OperationCanceledException)
                     {
-                        reason_code = "workspace_unreadable",
-                        message = wue.Message,
-                        solution = solutionPath
-                    };
-                    op.Fail(wue.Message, "workspace_unreadable", data);
-                    sink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
-                }
-                catch (Exception ex) when (ex is not McpProtocolException)
-                {
-                    op.Fail(ex.Message, "index_failed", new { message = ex.Message });
-                    sink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
-                }
-                catch (Exception ex)
-                {
-                    op.Fail(ex.Message);
-                    sink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
-                }
-                finally
-                {
-                    try { store.Close(); } catch { }
-                }
-            }, CancellationToken.None);
+                        // IndexRunner already did MarkSnapshotFailed(..., "cancelled", ...). Ensure state reflects it.
+                        // Confirm no partial Complete row is visible: GetLatestSnapshotId still returns the old pin.
+                        // The Failed row is a tombstone with payload_pruned; it must not be returned as latest.
+                        try
+                        {
+                            // Best-effort cleanup of payload for the cancelled attempt.
+                            // DeleteIncompleteSnapshots would normally prune on the next successful run;
+                            // we trigger it now so a test that checks "no partial data" sees the old pin unchanged.
+                            // This respects snapshot-immutability: a Failed row is not a Complete snapshot,
+                            // and its payload is unreferenced once cancelled — pruning it does not mutate a
+                            // Complete snapshot.
+                            var tmp = new SqliteIndexStore(dbPath);
+                            tmp.Open();
+                            try { tmp.DeleteIncompleteSnapshots(); } finally { tmp.Close(); }
+                        }
+                        catch { }
 
-            op.BackgroundTask = task;
+                        opRef.Cancel();
+                        opSink.WriteLine($"index operation {operationId} cancelled.");
+                    }
+                    catch (WorkspaceUnreadableException wue)
+                    {
+                        // Return structured data, not a stack trace (4.9).
+                        var data = new
+                        {
+                            reason_code = "workspace_unreadable",
+                            message = wue.Message,
+                            solution = solutionPath
+                        };
+                        opRef.Fail(wue.Message, "workspace_unreadable", data);
+                        opSink.WriteErrorLine($"ERROR: workspace unreadable: {wue.Message}");
+                    }
+                    catch (Exception ex) when (ex is not McpProtocolException)
+                    {
+                        opRef.Fail(ex.Message, "index_failed", new { message = ex.Message });
+                        opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
+                    }
+                    catch (Exception ex)
+                    {
+                        opRef.Fail(ex.Message);
+                        opSink.WriteErrorLine($"ERROR: index failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (store != null)
+                        {
+                            try { store.Close(); } catch { }
+                        }
+
+                        try { opRegistration.Dispose(); } catch { }
+                        try { opCts.Dispose(); } catch { }
+                    }
+                }, CancellationToken.None);
+
+                op.BackgroundTask = task;
+            }
+            catch (Exception ex)
+            {
+                // The task did not start: this method still owns the locks, the registration
+                // and the CTS. Release them, and mark the operation failed so a later call
+                // does not see a stuck "Running".
+                if (task == null)
+                {
+                    if (registrationCreated)
+                    {
+                        try { registration.Dispose(); } catch { }
+                    }
+
+                    solutionLock.Dispose();
+                    databaseLock.Dispose();
+
+                    cts?.Dispose();
+
+                    op?.Fail(ex.Message, "index_failed", new { message = ex.Message });
+                }
+
+                throw;
+            }
 
             var envelope = new
             {

@@ -16,6 +16,7 @@ internal sealed class WorkspaceLoader : IDisposable
 {
     private readonly Func<string, CancellationToken, Task<Solution>> _openSolutionAsync;
     private readonly IOutputSink _output;
+    private IReadOnlyList<WorkspaceDiagnostic> _loadDiagnostics = [];
     private MSBuildWorkspace? _workspace;
 
     public WorkspaceLoader(IOutputSink? output = null)
@@ -35,10 +36,11 @@ internal sealed class WorkspaceLoader : IDisposable
     ///     Test seam: substitutes the solution opener so recovery ordering can be
     ///     verified deterministically without MSBuild. No workspace is created.
     /// </summary>
-    internal WorkspaceLoader(Func<string, CancellationToken, Task<Solution>> openSolutionAsync, IOutputSink? output = null)
+    internal WorkspaceLoader(Func<string, CancellationToken, Task<Solution>> openSolutionAsync, IOutputSink? output = null, IReadOnlyList<WorkspaceDiagnostic>? loadDiagnostics = null)
     {
         _output = output ?? ConsoleOutputSink.Instance;
         _openSolutionAsync = openSolutionAsync ?? throw new ArgumentNullException(nameof(openSolutionAsync));
+        _loadDiagnostics = loadDiagnostics ?? [];
     }
 
     public void Dispose()
@@ -63,6 +65,7 @@ internal sealed class WorkspaceLoader : IDisposable
         var solution = await _openSolutionAsync(solutionPath, cancellationToken);
 
         _output.WriteLine($"done ({solution.Projects.Count()} projects).");
+        ReportLoadDiagnostics();
         sw.Stop();
 
         // Restore compiler fidelity: MSBuildWorkspace can silently fall back to
@@ -77,7 +80,24 @@ internal sealed class WorkspaceLoader : IDisposable
     private async Task<Solution> OpenWithWorkspaceAsync(string solutionPath, CancellationToken cancellationToken)
     {
         _workspace = MSBuildWorkspace.Create();
-        return await _workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
+        var solution = await _workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
+        _loadDiagnostics = _workspace.Diagnostics;
+        return solution;
+    }
+
+    private void ReportLoadDiagnostics()
+    {
+        var failures = _loadDiagnostics
+            .Where(static diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Failure)
+            .ToList();
+        if (failures.Count == 0)
+            return;
+
+        _output.WriteErrorLine();
+        _output.WriteErrorLine($"WARNING: workspace load reported {failures.Count} failure-level diagnostic(s):");
+        foreach (var failure in failures)
+            _output.WriteErrorLine($"  WARNING: {failure.Message}");
+        _output.WriteErrorLine();
     }
 }
 

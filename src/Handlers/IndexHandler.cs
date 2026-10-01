@@ -13,8 +13,19 @@ internal static class IndexHandler
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var outputDir = Path.GetFullPath(outputDirArg);
-        Directory.CreateDirectory(outputDir);
         var dbPath = Path.Combine(outputDir, "index.db");
+
+        var solutionLockKey = IndexRunLock.NormalizeKey(Path.GetFullPath(solutionPathArg));
+        using var solutionLock = IndexRunLock.TryAcquire(solutionLockKey);
+        if (solutionLock == null)
+            HandlerBootstrap.Fail($"another Lurp index run is using solution {Path.GetFullPath(solutionPathArg)}");
+
+        var databaseLockKey = IndexRunLock.NormalizeKey(dbPath);
+        using var databaseLock = IndexRunLock.TryAcquire(databaseLockKey);
+        if (databaseLock == null)
+            HandlerBootstrap.Fail($"another Lurp index run is using database {dbPath}");
+
+        Directory.CreateDirectory(outputDir);
         var jsonExportPath = HandlerBootstrap.GetArgValue(args, "--output-json=");
 
         var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))

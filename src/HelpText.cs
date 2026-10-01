@@ -41,7 +41,7 @@ internal static class HelpText
         ["--skip-adapter="] = "Skip a named framework adapter. Valid: ASP.NET Core, Dependency Injection, MediatR, EF Core, Serialization, Test.",
         ["--skip-diff"] = "Skip computing and persisting the semantic diff against the previous snapshot (--mode=diff still recomputes live).",
         ["--verbose"] = "Emit per-extractor [measure] timing lines to stderr.",
-        ["--force"] = "Force a full reindex even when the deterministic snapshot id already exists as a completed snapshot. Does NOT bypass identity computation — an identical workspace will produce the same snapshot id.",
+        ["--force"] = "Re-extract even when the deterministic snapshot id already exists as a completed snapshot. With the default incremental strategy this re-runs the incremental re-extraction in place (with no changed documents it is a no-op); a full reindex needs --strategy=full --force, which deletes the identical snapshot and reindexes everything. Does NOT bypass identity computation — an identical workspace will produce the same snapshot id.",
 
         // get-source
         ["--document="] = "Relative path of the document to retrieve.",
