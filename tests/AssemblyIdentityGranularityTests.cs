@@ -94,6 +94,64 @@ public sealed class AssemblyIdentityGranularityTests : IDisposable
     }
 
     /// <summary>
+    ///     Two projects in one solution that reference the same dependency DLL (plus the
+    ///     same platform references) must get the same identity token for the shared
+    ///     path. <c>BuildMetadataReferenceIdentities</c> now memoizes the per-path token
+    ///     for the duration of one call; a memo that keyed or returned the wrong entry
+    ///     would give one project a different identity than the other.
+    /// </summary>
+    [Fact]
+    public void TwoProjects_SharingMetadataReference_GetIdenticalIdentityToken()
+    {
+        var dependencyPath = EmitDependency("shared", 7);
+        var dependencyFullName = AssemblyName.GetAssemblyName(dependencyPath).FullName;
+
+        using var workspace = new AdhocWorkspace();
+        var solutionId = SolutionId.CreateNewId();
+        workspace.AddSolution(SolutionInfo.Create(
+            solutionId, VersionStamp.Create(), Path.Combine(_tempDir, "Shared.slnx")));
+
+        var references = _platformReferences
+            .Append(MetadataReference.CreateFromFile(dependencyPath))
+            .ToArray();
+
+        var solution = workspace.CurrentSolution;
+        foreach (var projectName in new[] { "A", "B" })
+        {
+            var projectId = ProjectId.CreateNewId();
+            var docPath = Path.Combine(_tempDir, $"{projectName}.cs");
+            File.WriteAllText(docPath, $"namespace {projectName}; public class Svc {{ }}");
+            solution = solution
+                .AddProject(ProjectInfo.Create(
+                    projectId,
+                    VersionStamp.Create(),
+                    projectName,
+                    projectName,
+                    LanguageNames.CSharp,
+                    compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
+                    metadataReferences: references))
+                .AddDocument(
+                    RoslynDocumentId.CreateNewId(projectId),
+                    $"{projectName}.cs",
+                    SourceText.From(File.ReadAllText(docPath), Encoding.UTF8),
+                    filePath: docPath);
+        }
+
+        workspace.TryApplyChanges(solution);
+
+        var info = new WorkspaceInfo(workspace.CurrentSolution, _tempDir);
+        var projectA = info.MetadataReferenceIdentities["A"];
+        var projectB = info.MetadataReferenceIdentities["B"];
+
+        var onlyA = projectA.Except(projectB, StringComparer.Ordinal).ToList();
+        var onlyB = projectB.Except(projectA, StringComparer.Ordinal).ToList();
+        Assert.True(onlyA.Count == 0 && onlyB.Count == 0,
+            $"OnlyA ({onlyA.Count}): {string.Join("; ", onlyA)}\nOnlyB ({onlyB.Count}): {string.Join("; ", onlyB)}");
+        Assert.Contains(projectA, id =>
+            id.StartsWith($"{dependencyFullName}|sha256=", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     ///     Emits a "Dep" assembly (name + version fixed) whose single method returns
     ///     <paramref name="returnValue" />, guaranteeing different IL between builds
     ///     while keeping the assembly identity constant. Written to a per-build

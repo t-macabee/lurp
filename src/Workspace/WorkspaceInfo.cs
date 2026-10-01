@@ -376,13 +376,27 @@ public sealed class WorkspaceInfo
     private static Dictionary<string, ImmutableArray<string>> BuildMetadataReferenceIdentities(Solution solution)
     {
         var map = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
+        var tokensByPath = new Dictionary<string, string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         foreach (var project in solution.Projects)
         {
             var identities = new List<string>();
             foreach (var reference in project.MetadataReferences)
                 if (reference is PortableExecutableReference pe)
-                    identities.Add(TryGetAssemblyIdentity(pe.FilePath) ?? FallbackReferenceToken(pe.FilePath));
+                {
+                    var path = pe.FilePath;
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        identities.Add(FallbackReferenceToken(path));
+                    }
+                    else
+                    {
+                        if (!tokensByPath.TryGetValue(path, out var token))
+                            tokensByPath[path] = token = TryGetAssemblyIdentity(path) ?? FallbackReferenceToken(path);
+                        identities.Add(token);
+                    }
+                }
                 else
                     identities.Add(reference.Display ?? "unknown");
 

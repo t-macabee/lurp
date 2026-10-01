@@ -158,7 +158,7 @@ public abstract class IntegrationTestBase : IDisposable
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = "dotnet",
-            ArgumentList = { "restore", SolutionPath, "--nologo" },
+            ArgumentList = { "restore", SolutionPath, "--nologo", "-nodeReuse:false" },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false
