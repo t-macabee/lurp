@@ -103,21 +103,39 @@ public sealed class McpImpactTests : IntegrationTestBase
         Assert.True(d1.RootElement.GetProperty("paths").GetArrayLength() <= d10.RootElement.GetProperty("paths").GetArrayLength() || true);
 
         // max_paths + cursor pagination
-        var jsonPage1 = impact.LurpImpact(symbol: barId, direction: "upstream", max_paths: 1);
-        using var docP1 = JsonDocument.Parse(jsonPage1);
-        var truncated = docP1.RootElement.GetProperty("truncated");
-        if (truncated.ValueKind != JsonValueKind.Null)
+        var jsonFull = impact.LurpImpact(symbol: barId, direction: "upstream", max_paths: 50);
+        using var docFull = JsonDocument.Parse(jsonFull);
+        var fullPaths = new List<string>();
+        foreach (var p in docFull.RootElement.GetProperty("paths").EnumerateArray())
         {
-            var cursor = truncated.GetProperty("cursor").GetString()!;
-            Assert.False(string.IsNullOrEmpty(cursor));
-            var jsonPage2 = impact.LurpImpact(symbol: barId, direction: "upstream", max_paths: 1, cursor: cursor);
-            using var docP2 = JsonDocument.Parse(jsonPage2);
-            Assert.True(docP2.RootElement.TryGetProperty("paths", out _));
+            var chain = string.Join(">", p.GetProperty("hops").EnumerateArray().Select(h => $"{h.GetProperty("source_symbol_id").GetString()}-{h.GetProperty("edge_kind").GetString()}->{h.GetProperty("target_symbol_id").GetString()}"));
+            fullPaths.Add(chain);
         }
-        else
+        Assert.True(fullPaths.Count >= 2);
+
+        var pagedPaths = new List<string>();
+        string? cursor = null;
+        while (true)
         {
-            Assert.True(docP1.RootElement.GetProperty("paths").GetArrayLength() <= 1);
+            var jsonPage = impact.LurpImpact(symbol: barId, direction: "upstream", max_paths: 1, cursor: cursor);
+            using var docPage = JsonDocument.Parse(jsonPage);
+            var pageRoot = docPage.RootElement;
+            foreach (var p in pageRoot.GetProperty("paths").EnumerateArray())
+            {
+                var chain = string.Join(">", p.GetProperty("hops").EnumerateArray().Select(h => $"{h.GetProperty("source_symbol_id").GetString()}-{h.GetProperty("edge_kind").GetString()}->{h.GetProperty("target_symbol_id").GetString()}"));
+                pagedPaths.Add(chain);
+            }
+            if (pageRoot.TryGetProperty("truncated", out var trunc) && trunc.ValueKind != JsonValueKind.Null)
+            {
+                cursor = trunc.GetProperty("cursor").GetString();
+                Assert.False(string.IsNullOrEmpty(cursor));
+            }
+            else
+            {
+                break;
+            }
         }
+        Assert.Equal(fullPaths, pagedPaths);
 
         // semantic_causes present on paths (Bar has signature change)
         var jsonUpBar = impact.LurpImpact(symbol: barId, direction: "upstream", max_depth: 3, max_paths: 50);

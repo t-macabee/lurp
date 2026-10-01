@@ -113,40 +113,9 @@ internal sealed class ImpactTool
             var traverser = new ImpactTraverser(_session.Store, snapshotId, _session.Store);
             var traced = traverser.TraceImpact(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth);
 
-            var paths = traced.OrderBy(PathKey, StringComparer.Ordinal).ToList();
-
-            var groups = paths
-                .Where(static path => path.Hops.Count > 0)
-                .GroupBy(static path => (path.Hops[0].SourceSymbolId, path.Hops[0].TargetSymbolId, path.Hops[0].EdgeKind))
-                .Select(group => new
-                {
-                    first_hop_source_symbol_id = group.Key.SourceSymbolId,
-                    first_hop_target_symbol_id = group.Key.TargetSymbolId,
-                    edge_kind = group.Key.EdgeKind,
-                    provenance = group.First().Hops[0].Provenance,
-                    path_count = group.Count(),
-                    max_total_steps = group.Max(static path => path.TotalSteps)
-                })
-                .OrderByDescending(static group => group.path_count)
-                .ThenBy(static group => group.first_hop_target_symbol_id, StringComparer.Ordinal)
-                .ToList();
-
-            var page = paths.Skip(offset).Take(maxPaths).ToList();
-            var remaining = Math.Max(0, paths.Count - (offset + page.Count));
-            object? truncated = remaining > 0
-                ? new
-                {
-                    reason = "max_paths",
-                    returned = page.Count,
-                    total = paths.Count,
-                    remaining,
-                    cursor = new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Count).Encode()
-                }
-                : null;
+            var paged = ImpactPaging.Page(traced, offset, maxPaths, snapshotId, fingerprint, CursorKind);
 
             var freshness = _session.GetFreshnessJson();
-
-            var pathJson = page.Select(ToPathJson).ToList();
 
             var envelope = new
             {
@@ -157,11 +126,11 @@ internal sealed class ImpactTool
                 direction = impactDirection == ImpactDirection.Downstream ? "downstream" : "upstream",
                 max_depth = maxDepth,
                 max_paths = maxPaths,
-                path_count_total = paths.Count,
+                path_count_total = paged.TotalPathCount,
                 offset,
-                groups,
-                truncated,
-                paths = pathJson
+                groups = paged.Groups,
+                truncated = paged.Truncated,
+                paths = paged.PathJson
             };
 
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
@@ -192,42 +161,5 @@ internal sealed class ImpactTool
         }
 
         return result.ToArray();
-    }
-
-    private static object ToPathJson(ImpactPath path)
-    {
-        return new
-        {
-            truncated = path.Truncated,
-            truncation_reason = path.TruncationReason,
-            total_steps = path.TotalSteps,
-            hops = path.Hops.Select(static h => new
-            {
-                source_symbol_id = h.SourceSymbolId,
-                target_symbol_id = h.TargetSymbolId,
-                edge_kind = h.EdgeKind,
-                provenance = h.Provenance,
-                source_document = h.SourceDocument,
-                source_line = h.SourceLine
-            }),
-            semantic_causes = path.SemanticCauses.Select(static c => new
-            {
-                from_snapshot_id = c.FromSnapshotId,
-                to_snapshot_id = c.ToSnapshotId,
-                change_type = c.ChangeType,
-                symbol_id = c.SymbolId,
-                detail = c.DetailJson != null ? JsonSerializer.Deserialize<object>(c.DetailJson) : null
-            })
-        };
-    }
-
-    private static string PathKey(ImpactPath path)
-    {
-        if (path.Hops.Count == 0)
-            return string.Empty;
-
-        var first = path.Hops[0];
-        var chain = string.Join('>', path.Hops.Select(static hop => $"{hop.SourceSymbolId}-{hop.EdgeKind}->{hop.TargetSymbolId}"));
-        return $"{first.SourceSymbolId}\u0001{first.TargetSymbolId}\u0001{first.EdgeKind}\u0001{path.TotalSteps:D4}\u0001{chain}";
     }
 }
