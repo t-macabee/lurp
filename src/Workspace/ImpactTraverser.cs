@@ -6,6 +6,7 @@ public sealed class ImpactTraverser
     private readonly string _snapshotId;
     private readonly IEdgeStore _store;
     private readonly IOutputSink _output;
+    private readonly Dictionary<(ImpactDirection, string), List<EdgeRecord>> _edgeCache = [];
 
     public ImpactTraverser(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null, IOutputSink? output = null)
     {
@@ -69,6 +70,12 @@ public sealed class ImpactTraverser
 
     private bool TryGetEdges(string currentId, ImpactDirection direction, out List<EdgeRecord> edges)
     {
+        if (_edgeCache.TryGetValue((direction, currentId), out var cached))
+        {
+            edges = cached;
+            return true;
+        }
+
         try
         {
             edges = direction switch
@@ -77,6 +84,7 @@ public sealed class ImpactTraverser
                 ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
                 _ => []
             };
+            _edgeCache[(direction, currentId)] = edges;
             return true;
         }
         catch (Exception ex)

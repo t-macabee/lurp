@@ -225,10 +225,43 @@ public sealed class ImpactTraverserTests
                 }
     }
 
+    // ── Edge lookup memoization ─────────────────────────────────────────
+
+    [Fact]
+    public void TraceImpact_DiamondGraph_QueriesSharedNodeOnceAndPreservesPaths()
+    {
+        // Upstream diamond: A ← B, A ← C, B ← D, C ← D.
+        var edges = new List<EdgeRecord>
+        {
+            MakeEdge("B", "A"),
+            MakeEdge("C", "A"),
+            MakeEdge("D", "B"),
+            MakeEdge("D", "C")
+        };
+        var store = new InMemoryEdgeStore(edges);
+        var traverser = new ImpactTraverser(store, SnapshotId);
+
+        var paths = traverser.TraceImpact("A", ImpactDirection.Upstream, maxDepth: 10);
+
+        // D is reached through both B and C; its incoming edges must be queried once.
+        Assert.Equal(1, store.IncomingEdgeQueryCount("D"));
+
+        Assert.Equal(2, paths.Count);
+        var patterns = paths
+            .Select(p => string.Join(",", p.Hops.Select(h => $"{h.SourceSymbolId}->{h.TargetSymbolId}")))
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(["B->A,D->B", "C->A,D->C"], patterns);
+    }
+
     // ── In-memory IEdgeStore implementation ─────────────────────────────
 
     private sealed class InMemoryEdgeStore(List<EdgeRecord> edges) : IEdgeStore
     {
+        private readonly Dictionary<string, int> _incomingEdgeQueries = [];
+
+        public int IncomingEdgeQueryCount(string symbolId) => _incomingEdgeQueries.GetValueOrDefault(symbolId);
+
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
         {
             var filtered = edges.Where(e => e.SnapshotId == snapshotId);
@@ -240,6 +273,7 @@ public sealed class ImpactTraverserTests
 
         public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
         {
+            _incomingEdgeQueries[symbolId] = _incomingEdgeQueries.GetValueOrDefault(symbolId) + 1;
             return [.. edges.Where(e => e.SnapshotId == snapshotId && e.TargetSymbolId == symbolId)];
         }
 
