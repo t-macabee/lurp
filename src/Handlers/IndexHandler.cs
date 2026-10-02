@@ -60,7 +60,7 @@ internal static class IndexHandler
             Console.WriteLine($"JSON export: {jsonExportPath}");
         Console.WriteLine();
 
-        var store = HandlerBootstrap.OpenStore(dbPath);
+        var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         store.RunMigrations();
         store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
 

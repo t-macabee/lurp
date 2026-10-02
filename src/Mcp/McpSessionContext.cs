@@ -115,6 +115,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
             // without requiring the pin to move.
             try
             {
+                HandlerBootstrap.RequireCurrentSchemaVersion(DbPath);
                 var tmp = new SqliteIndexStore(DbPath);
                 tmp.Open();
                 try
@@ -145,13 +146,11 @@ internal sealed class McpSessionContext : IAsyncDisposable
             return;
 
         // Close the old store (query_only connection) and reopen to observe the new snapshot row.
+        HandlerBootstrap.RequireCurrentSchemaVersion(DbPath);
         Store.Close();
         var newStore = new SqliteIndexStore(DbPath);
         newStore.Open();
         newStore.EnableQueryOnly();
-        // Verify the new snapshot exists
-        var verified = newStore.GetLatestSnapshotId();
-        // If verification fails, keep the new store anyway; the pin will be the requested id.
         Store = newStore;
         PinnedSnapshotId = newSnapshotId;
         // Recompute freshness stamp for the new pin

@@ -232,7 +232,28 @@ internal static class HandlerBootstrap
         return dbPath;
     }
 
+    public static void RequireCurrentSchemaVersion(string dbPath)
+    {
+        var actual = new SqliteIndexStore(dbPath).GetCurrentSchemaVersion();
+        var expected = VersionConstants.DatabaseSchemaVersion;
+        if (actual == expected)
+            return;
+
+        if (actual < expected)
+            Fail($"ERROR: Index database at {dbPath} uses schema v{actual}; this Lurp needs v{expected}. Run 'lurp --mode=index' to update it.");
+
+        Fail($"ERROR: Index database at {dbPath} uses schema v{actual}, newer than this Lurp (v{expected}). Update Lurp.");
+    }
+
     public static SqliteIndexStore OpenStore(string dbPath)
+    {
+        RequireCurrentSchemaVersion(dbPath);
+        var store = new SqliteIndexStore(dbPath);
+        store.Open();
+        return store;
+    }
+
+    public static SqliteIndexStore OpenStoreUnchecked(string dbPath)
     {
         var store = new SqliteIndexStore(dbPath);
         store.Open();

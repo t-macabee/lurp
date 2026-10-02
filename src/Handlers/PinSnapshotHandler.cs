@@ -16,7 +16,7 @@ internal static class PinSnapshotHandler
         var clear = args.Contains("--clear");
         var asJson = args.Contains("--json") || string.Equals(HandlerBootstrap.GetArgValue(args, "--output="), "json", StringComparison.OrdinalIgnoreCase);
 
-        var store = HandlerBootstrap.OpenStore(dbPath);
+        var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         try
         {
             store.RunMigrations();

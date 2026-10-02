@@ -35,12 +35,16 @@ internal static class StatusHandler
             return;
         }
 
-        var store = HandlerBootstrap.OpenStore(dbPath);
+        var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
 
         try
         {
-            store.RunMigrations();
             var schemaVersion = store.GetCurrentSchemaVersion();
+            if (schemaVersion != VersionConstants.DatabaseSchemaVersion)
+            {
+                ReportSchemaMismatch(dbPath, schemaVersion, asJson);
+                return;
+            }
 
             var latestSnapshot = store.LoadLatestSnapshot();
             var latestSnapshotId = latestSnapshot?.SnapshotId;
@@ -82,6 +86,34 @@ internal static class StatusHandler
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
         return WorkspaceFreshness.CheckFreshness(workspaceInfo, manifests);
+    }
+
+    private static void ReportSchemaMismatch(string dbPath, int actualVersion, bool asJson)
+    {
+        var expectedVersion = VersionConstants.DatabaseSchemaVersion;
+        var explanation = actualVersion < expectedVersion
+            ? $"Index database at {dbPath} uses schema v{actualVersion}; this Lurp needs v{expectedVersion}. Run 'lurp --mode=index' to update it."
+            : $"Index database at {dbPath} uses schema v{actualVersion}, newer than this Lurp (v{expectedVersion}). Update Lurp.";
+
+        if (asJson)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                database_path = dbPath,
+                database_exists = File.Exists(dbPath),
+                schema_version = actualVersion,
+                schema_version_expected = expectedVersion,
+                schema_version_mismatch = true,
+                contract_version = VersionConstants.CliMcpContractVersion,
+                schema_version_note = explanation
+            }, HandlerBootstrap.IndentedJson));
+            return;
+        }
+
+        Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine($"Schema version: {actualVersion} (expected {expectedVersion})");
+        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
+        Console.WriteLine($"Status: {explanation}");
     }
 
     private static void ReportNeverIndexed(string dbPath, bool asJson, int? schemaVersion = null, SnapshotFailureRow? latestFailure = null)

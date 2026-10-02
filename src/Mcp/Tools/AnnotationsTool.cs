@@ -129,6 +129,7 @@ internal sealed class AnnotationsTool
 
             // MCP session holds a query_only connection; retraction requires a writable connection.
             // Open a short-lived writable store against the same DbPath and pin scope.
+            HandlerBootstrap.RequireCurrentSchemaVersion(_session.DbPath);
             var writable = new SqliteIndexStore(_session.DbPath);
             writable.Open();
             try
