@@ -431,4 +431,64 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(2, summary.CompilerSynthesized);
         Assert.Equal(0, summary.Other);
     }
+
+    [Fact]
+    public void DeleteOrphanEdges_ExternalAssemblyEndpoint_ClassifiedExternal()
+    {
+        using var store = OpenStore();
+        SaveSnapshotSymbol("T:Ns.Foo|asm1");
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("T:Ns.Foo|asm1", "T:System.Console|System.Console", "Calls")
+        ]);
+
+        var summary = store.DeleteOrphanEdges(SnapshotId);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(1, summary.External);
+        Assert.Equal(0, summary.CompilerSynthesized);
+        Assert.Equal(0, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_InScopeEndpointMissing_ClassifiedOther()
+    {
+        using var store = OpenStore();
+        SaveSnapshotSymbol("T:Ns.Foo|asm1");
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("T:Ns.Foo|asm1", "T:Ns.Vanished|asm1", "Calls")
+        ]);
+
+        var summary = store.DeleteOrphanEdges(SnapshotId);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(0, summary.External);
+        Assert.Equal(0, summary.CompilerSynthesized);
+        Assert.Equal(1, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_TotalEqualsSumOfBuckets()
+    {
+        using var store = OpenStore();
+        SaveSnapshotSymbol("T:Ns.Foo|asm1");
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("T:Ns.Foo|asm1", "T:Ns.<>c__DisplayClass0_0|asm1", "Calls"),
+            MakeEdge("T:Ns.Foo|asm1", "T:System.Console|System.Console", "Calls"),
+            MakeEdge("T:Ns.Foo|asm1", "T:Ns.Vanished|asm1", "Calls")
+        ]);
+
+        var summary = store.DeleteOrphanEdges(SnapshotId);
+
+        Assert.Equal(3, summary.Total);
+        Assert.Equal(1, summary.External);
+        Assert.Equal(1, summary.CompilerSynthesized);
+        Assert.Equal(1, summary.Other);
+        Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.Other);
+    }
 }
