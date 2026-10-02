@@ -235,7 +235,17 @@ internal static class ContextHandler
     {
         var json = ContextCapsuleJson.Serialize(capsule);
         var outputPath = GetCapsuleOutputPath(outputDirArg, capsule.Anchor.SymbolId);
-        File.WriteAllText(outputPath, json);
+        var tempPath = outputPath + ".tmp";
+        try
+        {
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, outputPath, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tempPath); } catch { }
+            throw;
+        }
 
         // The capsule file is always written; only the stdout echo is optional. --quiet
         // exists because the default duplicates an 81 KB artifact into the caller's

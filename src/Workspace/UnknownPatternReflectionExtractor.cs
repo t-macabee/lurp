@@ -14,11 +14,8 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
 
         foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
-            if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
-                continue;
-
-            var pattern = ResolveReflectionPattern(memberAccess, invocation, semanticModel);
-            if (pattern == null)
+            var sink = ReflectionSinkPatterns.Resolve(invocation, semanticModel);
+            if (sink == null)
                 continue;
 
             var sourceId = context.GetContainingMemberSymbolId(invocation, semanticModel);
@@ -27,7 +24,7 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
 
             var argumentString = GetFirstStringLiteralArgument(invocation);
 
-            var key = (sourceId, pattern, argumentString ?? "");
+            var key = (sourceId, sink.Value.Pattern, argumentString ?? "");
             if (!seen.Add(key))
                 continue;
 
@@ -52,32 +49,6 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
         return edges;
     }
 
-    private static string? ResolveReflectionPattern(MemberAccessExpressionSyntax memberAccess, InvocationExpressionSyntax invocation, SemanticModel semanticModel)
-    {
-        var memberName = memberAccess.Name.Identifier.Text;
-
-        switch (memberName)
-        {
-            case "GetType" when IsTypeGetType(invocation, semanticModel):
-                return "Type.GetType";
-            case "GetType":
-            case "GetExportedTypes":
-                var receiverType = ModelExtensions.GetTypeInfo(semanticModel, memberAccess.Expression);
-                if (receiverType.Type?.ToDisplayString() is "System.Reflection.Assembly" or "System.Type") return memberName == "GetExportedTypes" ? "Assembly.GetExportedTypes" : "Assembly.GetType";
-                return null;
-            case "CreateInstance":
-                var createReceiver = ModelExtensions.GetSymbolInfo(semanticModel, memberAccess.Expression);
-                if (createReceiver.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Activator") return "Activator.CreateInstance";
-                return null;
-            case "MakeGenericType":
-                return "MakeGenericType";
-            case "MakeGenericMethod":
-                return "MakeGenericMethod";
-            default:
-                return null;
-        }
-    }
-
     private static string? GetFirstStringLiteralArgument(InvocationExpressionSyntax invocation)
     {
         if (invocation.ArgumentList.Arguments.Count == 0)
@@ -88,18 +59,5 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
             return lit.Token.ValueText;
 
         return null;
-    }
-
-    private static bool IsTypeGetType(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
-    {
-        if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
-            return false;
-
-        var symbolInfo = ModelExtensions.GetSymbolInfo(semanticModel, memberAccess.Expression);
-        if (symbolInfo.Symbol is INamedTypeSymbol namedType && namedType.ToDisplayString() == "System.Type") return true;
-
-        if (memberAccess.Expression is IdentifierNameSyntax id && id.Identifier.Text == "Type") return true;
-
-        return false;
     }
 }

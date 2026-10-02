@@ -216,6 +216,33 @@ public sealed class CliExitSmokeTests : IDisposable
         }
     }
 
+    // Regression: --snapshot=latest must resolve like every other read mode, not be
+    // passed to GetTimings as a literal id.
+    [Fact]
+    public void Timings_SnapshotLatest_ResolvesToLatestSnapshot()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            using (var store = new SqliteIndexStore(Path.Combine(dir, "index.db")))
+            {
+                store.Open();
+                store.SaveTimings("s1", [new SnapshotTimingRow("extraction_loop", 42)]);
+            }
+
+            var result = RunTimingsCaptured([$"--output-dir={dir}", "--snapshot=latest", "--json"]);
+
+            Assert.Null(result.Failure);
+            using var doc = JsonDocument.Parse(result.Stdout);
+            Assert.Equal("s1", doc.RootElement.GetProperty("snapshot_id").GetString());
+            Assert.Equal(42, doc.RootElement.GetProperty("steps")[0].GetProperty("elapsed_ms").GetInt64());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     /// <summary>
     ///     Creates a temp directory holding a migrated index.db (with the workspace
     ///     row DiffHandler's metadata join needs), optionally containing one complete
@@ -258,6 +285,28 @@ public sealed class CliExitSmokeTests : IDisposable
         {
             Console.SetOut(stdout);
             await StatusHandler.Run(args);
+        }
+        catch (CliExitException ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        return (stdout.ToString(), failure);
+    }
+
+    private static (string Stdout, CliExitException? Failure) RunTimingsCaptured(string[] args)
+    {
+        var stdout = new StringWriter();
+        var originalOut = Console.Out;
+        CliExitException? failure = null;
+        try
+        {
+            Console.SetOut(stdout);
+            TimingsHandler.Run(args);
         }
         catch (CliExitException ex)
         {

@@ -5,7 +5,7 @@ namespace Lurp.Workspace;
 /// <summary>
 /// Store-backed dead-candidate evaluator. No Roslyn re-analysis: all facts derive from
 /// snapshot_symbols + edges + annotations + binding_incompleteness + snapshot_manifest + document_versions.
-/// Mirrors ImpactTraverser / ContextAssembler by exposing a traverser surface, but delegates to
+/// Mirrors ContextAssembler by exposing a traverser surface, but delegates to
 /// <see cref="DeadCandidateStore"/> for the batched queries and suppression-ladder evaluation.
 /// </summary>
 public sealed class DeadCandidateTraverser

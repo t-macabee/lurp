@@ -136,12 +136,14 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(120, 1);
+            // 160 tokens = 480 chars at CharsPerToken 3: the same character budget
+            // as 120 tokens at the former divisor 4, just above the retained floor.
+            var options = DefaultOptions(160, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.NotNull(capsule);
-            Assert.True(capsule.EstimatedTokens <= 120,
-                $"EstimatedTokens ({capsule.EstimatedTokens}) exceeded small budget (120).");
+            Assert.True(capsule.EstimatedTokens <= 160,
+                $"EstimatedTokens ({capsule.EstimatedTokens}) exceeded small budget (160).");
             Assert.True(capsule.Truncated, "Capsule should be truncated at small budget.");
             Assert.DoesNotContain(capsule.OmittedTiers,
                 e => e is { Category: "anchor", Reason: "budget_exhausted" });
@@ -394,10 +396,99 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
+    // ── A1 ──────────────────────────────────────────────────────────────
+
+    private const string TestTargetSource = """
+                                            namespace TestProject;
+
+                                            public class TestTarget
+                                            {
+                                                public int Run(int x) => x;
+                                            }
+                                            """;
+
+    private static string ManyTestMethodsSource()
+    {
+        var source = new StringBuilder();
+        source.AppendLine("using Xunit;");
+        source.AppendLine();
+        source.AppendLine("public class TestTargetTests");
+        source.AppendLine("{");
+        for (var i = 0; i < 12; i++)
+        {
+            source.AppendLine("    [Fact]");
+            source.AppendLine($"    public void Run_{i}() => new TestProject.TestTarget().Run({i});");
+        }
+
+        source.AppendLine("}");
+        return source.ToString();
+    }
+
+    private async Task<(string SnapshotId, string AnchorId)> IndexTestedAnchorAsync()
+    {
+        CreateProject("TestProject", new Dictionary<string, string> { ["TestTarget.cs"] = TestTargetSource });
+        CreateProject("TestProject.Tests",
+            new Dictionary<string, string> { ["TestTargetTests.cs"] = ManyTestMethodsSource() },
+            projectReferences: ["TestProject"],
+            packageReferences: ["xunit@2.9.3"]);
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var anchorId = ResolveSymbolId(snapshotId, "global::TestProject.TestTarget.Run");
+        return (snapshotId, anchorId);
+    }
+
+    [SkippableFact]
+    public async Task Capsule_TestedByManyTests_GroupsByClassAndArtifactEstimateMatchesFile()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        var (snapshotId, anchorId) = await IndexTestedAnchorAsync();
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1, GitRoot: TestDir);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            var suggestion = Assert.Single(capsule.SuggestedVerification);
+            Assert.Contains("FullyQualifiedName~TestTargetTests", suggestion.Command);
+
+            var serialized = ContextCapsuleJson.Serialize(capsule);
+            Assert.Equal(serialized.Length / ContextAssembler.CharsPerToken, capsule.EstimatedArtifactTokens);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Capsule_TestedByManyTests_VerificationIsBudgetGoverned()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        var (snapshotId, anchorId) = await IndexTestedAnchorAsync();
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 1, 1, GitRoot: TestDir);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            Assert.Empty(capsule.SuggestedVerification);
+            Assert.Contains(capsule.OmittedTiers,
+                entry => entry is { Category: "suggestedVerification", Reason: "budget_exhausted" });
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     // ── Step 4: witness-path capsule paths and topology (output schema 5) ──
 
     /// <summary>
-    ///     REGRESSION test for the capsule's witness-path topology (Step 4).
+    ///     CONTRACT test for the capsule's witness-path topology (Step 4).
     ///     The fixture is 6 layers of 12 static methods; every method calls all
     ///     12 methods of the layer above, and the top layer calls Root. At
     ///     MaxHops = 5 the incoming direction reaches 5 x 12 = 60 synthetic
@@ -507,7 +598,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             "compiler_proved",
             "Calls",
             source);
-        Assert.Equal(source.Length / 4, ContextAssembler.EstimateTokens(withSource));
+        Assert.Equal(source.Length / ContextAssembler.CharsPerToken, ContextAssembler.EstimateTokens(withSource));
 
         // The anchor pass keeps the string overload: a null anchor source stays 0
         // (the anchor carries no JSON framing).
@@ -526,7 +617,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     ///     for free and post-T6 it is truncated while the source tier survives.
     ///     This deliberately does not run the full <c>ResolveAndAssemble</c> pipeline:
     ///     CapsuleBudgetEnforcer's retained floor (the omittedTiers.* recovery
-    ///     instruction, ~110-145 tokens for a capsule with budget_exhausted tiers)
+    ///     instruction, ~150-195 tokens at CharsPerToken 3 for a capsule with budget_exhausted tiers)
     ///     exceeds the budgeter's path-tier exclusion window (anchor + source tier +
     ///     40 at most), so at every budget where the path tier is excluded the
     ///     enforcer also clears the source tier — the selection difference T6 makes is
@@ -551,7 +642,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             new string('b', 100)); // source tier cost = 25 tokens
 
         // Path-only item: no source. Pre-T6 this estimated at 0 tokens; post-T6
-        // it is charged PathOnlyFramingChars / 4 = 40 tokens.
+        // it is charged PathOnlyFramingChars / CharsPerToken = 53 tokens.
         var pathItem = new CapsuleItem(
             "T:System.IDisposable|System.Runtime",
             nameof(IndexedSymbolKind.Type),
@@ -563,9 +654,10 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         var capsule = new ContextCapsule(anchor);
         var anchorCost = ContextAssembler.EstimateTokens(anchor.Source);
         var sourceTierCost = ContextAssembler.EstimateTokens(sourceItem);
-        // Boundary budget: anchor + source tier + half the path-only framing
-        // charge. PathOnlyFramingChars is the deciding factor: the path tier fits
-        // at anchor + source tier + 0 (old estimate) but not at + 40.
+        // Boundary budget: anchor + source tier + 20, less than the 53-token
+        // path-only framing charge. PathOnlyFramingChars is the deciding factor:
+        // the path tier fits at anchor + source tier + 0 (old estimate) but not
+        // at + 53.
         var budget = anchorCost + sourceTierCost + 20;
 
         ContextBudgeter.Apply(

@@ -16,25 +16,18 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void MigrationList_CountMatches_DatabaseSchemaVersion()
+    public void MigrationList_IsExactlyOneToDatabaseSchemaVersion_AndTypeNamesMatch()
     {
-        var versions = MigrationRunner.MigrationVersions;
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, versions.Count);
-    }
+        var versions = MigrationRunner.MigrationVersions.OrderBy(static v => v).ToList();
+        Assert.Equal(Enumerable.Range(1, VersionConstants.DatabaseSchemaVersion), versions);
 
-    [Fact]
-    public void MigrationList_HighestVersionMatches_DatabaseSchemaVersion()
-    {
-        var versions = MigrationRunner.MigrationVersions;
-        Assert.NotEmpty(versions);
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, versions.Max());
-    }
+        var migrations = typeof(MigrationRunner).Assembly
+            .GetTypes()
+            .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+            .Select(static t => (Type: t, Migration: (IMigration)Activator.CreateInstance(t)!));
 
-    [Fact]
-    public void MigrationList_AllVersionsAreUnique()
-    {
-        var versions = MigrationRunner.MigrationVersions;
-        Assert.Equal(versions.Count, versions.Distinct().Count());
+        foreach (var (type, migration) in migrations)
+            Assert.StartsWith($"Migration_{migration.Version:D3}_", type.Name);
     }
 
     [Fact]

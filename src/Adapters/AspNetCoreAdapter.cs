@@ -5,8 +5,10 @@ namespace Lurp.Adapters;
 
 public sealed class AspNetCoreAdapter : IFrameworkAdapter
 {
+    private const string AdapterVersion = "aspnetcore-v2";
+
     public string Name => "ASP.NET Core";
-    public string Version => "aspnetcore-v1";
+    public string Version => AdapterVersion;
     public string Description => "ASP.NET Core framework edges (controller actions, middleware)";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
@@ -34,7 +36,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
             foreach (var member in type.GetMembers())
             {
-                if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method)
+                if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method || !IsAction(type, method))
                     continue;
 
                 ProcessControllerAction(method, controllerId, ctx);
@@ -140,6 +142,32 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return false;
     }
 
+    // Same rule as ASP.NET Core's DefaultApplicationModelProvider.IsAction: an action is a
+    // public, non-static, non-abstract, non-generic method that is not [NonAction] (also
+    // when inherited from the method it overrides), not an object override and not
+    // IDisposable.Dispose. Other methods never receive a route.
+    private static bool IsAction(INamedTypeSymbol controller, IMethodSymbol method)
+    {
+        if (method.DeclaredAccessibility != Accessibility.Public || method.IsStatic || method.IsAbstract || method.IsGenericMethod)
+            return false;
+
+        for (var current = method; current != null; current = current.OverriddenMethod)
+        {
+            if (current.ContainingType.SpecialType == SpecialType.System_Object)
+                return false;
+
+            if (current.GetAttributes().Any(a => a.AttributeClass?.Name is "NonActionAttribute" or "NonAction"))
+                return false;
+        }
+
+        var dispose = controller.AllInterfaces
+            .FirstOrDefault(i => i.SpecialType == SpecialType.System_IDisposable)?
+            .GetMembers(nameof(IDisposable.Dispose))
+            .FirstOrDefault();
+
+        return dispose == null || !SymbolEqualityComparer.Default.Equals(controller.FindImplementationForInterfaceMember(dispose), method);
+    }
+
     private static string? ExtractRouteTemplate(INamedTypeSymbol controller, IMethodSymbol action)
     {
         var parts = new List<string>();
@@ -172,7 +200,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             Kind = kind,
             Provenance = Provenance.FrameworkDerived,
             SnapshotId = snapshotId,
-            ExtractorVersion = "aspnetcore-v1",
+            ExtractorVersion = AdapterVersion,
             SourceDocumentPath = loc.Path,
             SourceStartLine = loc.StartLine,
             SourceStartColumn = loc.StartColumn,

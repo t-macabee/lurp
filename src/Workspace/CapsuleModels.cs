@@ -286,6 +286,13 @@ internal sealed class ContextCapsule
         Anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
     }
 
+    [JsonPropertyName("snapshot_id")] public string SnapshotId => Anchor.SnapshotId;
+
+    [JsonPropertyName("tool_version")] public string ToolVersion => VersionConstants.ToolVersion;
+
+    [JsonPropertyName("output_schema_version")]
+    public int OutputSchemaVersion => VersionConstants.OutputSchemaVersion;
+
     [JsonPropertyName("anchor")] public CapsuleAnchor Anchor { get; init; }
 
     [JsonPropertyName("contracts")] public List<CapsuleItem> Contracts { get; init; } = [];
@@ -340,7 +347,7 @@ internal sealed class ContextCapsule
     public int EstimatedTokens { get; set; }
 
     /// <summary>
-    ///     Estimate of the whole emitted artifact (serialized length ÷ 4),
+    ///     Estimate of the whole emitted artifact (serialized length ÷ 3, a model-neutral size hint),
     ///     including the identity/provenance framing <see cref="EstimatedTokens" />
     ///     excludes. Reported, never budgeted against.
     /// </summary>

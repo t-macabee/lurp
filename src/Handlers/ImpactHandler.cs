@@ -43,8 +43,6 @@ internal static class ImpactHandler
         {
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
-            // The output-shape marker keeps a symbols cursor from being replayed
-            // against the path-listing mode (same Kind, different sequence).
             var fingerprint = SequenceCursor.ComputeFingerprint(
                 resolvedSymbolId,
                 direction.ToString(),
@@ -99,7 +97,7 @@ internal static class ImpactHandler
     }
 
     /// <summary>
-    ///     Maps a symbol ID to a display name, memoized because a page of paths repeats the
+    ///     Maps a symbol ID to a display name, memoized because a page of groups repeats the
     ///     same first-hop endpoints many times over. Falls back to the doc-comment part of the
     ///     ID when a symbol is not in the snapshot (external targets carry no indexed record),
     ///     so a row never degrades to blank.

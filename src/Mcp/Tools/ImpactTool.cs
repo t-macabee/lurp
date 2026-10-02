@@ -84,8 +84,6 @@ internal sealed class ImpactTool
 
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol, snapshotId);
 
-            // The output-shape marker keeps a symbols cursor from being replayed
-            // against the path-listing mode (same Kind, different sequence).
             var fingerprint = SequenceCursor.ComputeFingerprint(
                 resolvedSymbolId,
                 impactDirection.ToString(),

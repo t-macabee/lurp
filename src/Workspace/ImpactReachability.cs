@@ -3,9 +3,9 @@ namespace Lurp.Workspace;
 /// <summary>
 ///     Reachability traversal over the edge graph: visits each symbol once and
 ///     reports its depth, a deterministic witness path and its shortest-path
-///     count. Unlike <see cref="ImpactTraverser" /> it never enumerates one
-///     entry per path, so memory stays O(symbols + edges examined) instead of
-///     growing exponentially with <c>maxDepth</c>.
+///     count. It never enumerates one entry per path, so memory stays
+///     O(symbols + edges examined) instead of growing exponentially with
+///     <c>maxDepth</c>.
 /// </summary>
 public sealed class ImpactReachability
 {

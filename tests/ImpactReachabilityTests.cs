@@ -83,6 +83,29 @@ public sealed class ImpactReachabilityTests
     }
 
     [Fact]
+    public void Trace_TwoCallsOnOneInstance_ShareTheEdgeCacheAcrossTraces()
+    {
+        // Upstream diamond D → {B, C} → {A1, A2}: both anchors reach D, and only
+        // the first Trace queries D's incoming edges.
+        var store = new InMemoryEdgeStore([
+            MakeEdge("B", "A1"),
+            MakeEdge("C", "A1"),
+            MakeEdge("B", "A2"),
+            MakeEdge("C", "A2"),
+            MakeEdge("D", "B"),
+            MakeEdge("D", "C")
+        ]);
+        var reachability = new ImpactReachability(store, SnapshotId);
+
+        var first = reachability.Trace("A1", ImpactDirection.Upstream, maxDepth: 10);
+        var second = reachability.Trace("A2", ImpactDirection.Upstream, maxDepth: 10);
+
+        Assert.Contains(first.Symbols, symbol => symbol.SymbolId == "D");
+        Assert.Contains(second.Symbols, symbol => symbol.SymbolId == "D");
+        Assert.Equal(1, store.IncomingEdgeQueryCount("D"));
+    }
+
+    [Fact]
     public void Trace_Cycle_TerminatesWithEachSymbolOnce()
     {
         var result = CreateReachability([
@@ -243,39 +266,37 @@ public sealed class ImpactReachabilityTests
         Assert.Equal(long.MaxValue, last.ShortestPathCount);
     }
 
-    // Characterization against the old traverser: the reachable set of the core
-    // must equal the hop endpoints the path-enumerating TraceImpact produces.
+    // Frozen characterization: reached sets pinned as literals after the
+    // path-enumerating cross-check that established them was deleted.
     [Fact]
-    public void Trace_RandomGraphs_ReachableSetEqualsTraverserHopEndpoints()
+    public void Trace_RandomGraphs_ReachedSetsMatchFrozenExpectations()
     {
+        var expected = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["1:Downstream"] = "N07,N17,N03,N06,N10,N13,N02,N05,N11,N16,N19,N20,N24,N28,N01,N04,N09,N12,N14,N21,N22,N26,N27,N29",
+            ["1:Upstream"] = "N02,N11,N20,N03,N04,N10,N13,N14,N25,N28,N01,N07,N09,N12,N18,N26,N29,N05,N08,N16,N19,N21,N23,N24,N27",
+            ["2:Downstream"] = "N03,N14,N15,N01,N07,N09,N23,N04,N08,N10,N12,N16,N19,N21,N22,N24,N28,N02,N05,N06,N11,N13,N17,N18,N25,N26,N27,N29",
+            ["2:Upstream"] = "N06,N22,N26,N01,N02,N05,N19,N20,N21,N27,N03,N07,N08,N09,N10,N11,N12,N13,N15,N16,N17,N18,N24,N23,N28",
+            ["3:Downstream"] = "N11,N19,N14,N20,N02,N07,N13,N21,N22,N26,N05,N06,N10,N12,N17,N18,N27,N28",
+            ["3:Upstream"] = "N02,N20,N08,N11,N14,N15,N21,N22,N24,N29,N03,N04,N06,N10,N12,N17,N23,N28,N05,N07,N13,N16,N27"
+        };
+
+        var actual = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var seed in new[] { 1, 2, 3 })
         {
             var edges = GenerateRandomEdges(seed, nodeCount: 30, edgeCount: 90);
             foreach (var direction in new[] { ImpactDirection.Downstream, ImpactDirection.Upstream })
             {
-                var traverserEndpoints = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var path in new ImpactTraverser(new InMemoryEdgeStore(edges), SnapshotId)
-                             .TraceImpact("N00", direction, maxDepth: 4))
-                    foreach (var hop in path.Hops)
-                    {
-                        traverserEndpoints.Add(hop.SourceSymbolId);
-                        traverserEndpoints.Add(hop.TargetSymbolId);
-                    }
-
-                traverserEndpoints.Remove("N00");
-
-                var reached = new HashSet<string>(
-                    new ImpactReachability(new InMemoryEdgeStore(edges), SnapshotId)
-                        .Trace("N00", direction, maxDepth: 4)
-                        .Symbols.Select(symbol => symbol.SymbolId),
-                    StringComparer.Ordinal);
-
-                var missing = traverserEndpoints.Except(reached).OrderBy(id => id, StringComparer.Ordinal).ToList();
-                var extra = reached.Except(traverserEndpoints).OrderBy(id => id, StringComparer.Ordinal).ToList();
-                Assert.True(missing.Count == 0 && extra.Count == 0,
-                    $"seed {seed}, {direction}: traverser-only [{string.Join(", ", missing)}], core-only [{string.Join(", ", extra)}]");
+                var reached = new ImpactReachability(new InMemoryEdgeStore(edges), SnapshotId)
+                    .Trace("N00", direction, maxDepth: 4)
+                    .Symbols.Select(symbol => symbol.SymbolId);
+                actual[$"{seed}:{direction}"] = string.Join(",", reached);
             }
         }
+
+        Assert.Equal(
+            expected.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} => {pair.Value}"),
+            actual.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} => {pair.Value}"));
     }
 
     private static List<EdgeRecord> GenerateRandomEdges(int seed, int nodeCount, int edgeCount)
@@ -333,7 +354,7 @@ public sealed class ImpactReachabilityTests
         });
     }
 
-    // ── In-memory IEdgeStore implementation (copied from ImpactTraverserTests) ──
+    // ── In-memory IEdgeStore implementation ──
 
     private sealed class InMemoryEdgeStore(List<EdgeRecord> edges) : IEdgeStore
     {

@@ -2,7 +2,7 @@ namespace Lurp.Storage;
 
 /// <summary>
 ///     Opaque continuation cursor for a deterministically-ordered result sequence that is
-///     recomputed in memory on every request (impact paths, context-capsule tier items).
+///     recomputed in memory on every request (impact symbols or deprecated impact paths, context-capsule tier items).
 ///     Deliberately NOT the same shape as <see cref="SearchCursor" />. That one is a keyset
 ///     cursor because its sequence comes from a SQL <c>ORDER BY</c> whose sort key can be
 ///     pushed back into the next query. These sequences have no such key: they are produced

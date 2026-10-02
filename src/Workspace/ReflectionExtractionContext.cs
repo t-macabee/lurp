@@ -29,6 +29,13 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
 
     internal string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)
     {
+        return GetContainingMemberSymbol(node, semanticModel) is { } memberSymbol
+            ? MakeSymbolId(memberSymbol)
+            : null;
+    }
+
+    internal ISymbol? GetContainingMemberSymbol(SyntaxNode node, SemanticModel semanticModel)
+    {
         for (var current = node.Parent; current != null; current = current.Parent)
         {
             ISymbol? memberSymbol = null;
@@ -51,7 +58,7 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
             }
 
             if (memberSymbol != null)
-                return MakeSymbolId(memberSymbol);
+                return memberSymbol;
         }
 
         return null;

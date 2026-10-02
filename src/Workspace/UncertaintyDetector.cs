@@ -31,13 +31,7 @@ internal sealed class UncertaintyDetector
         _bindingIncompleteness = bindingIncompleteness ?? [];
     }
 
-    public void Detect(ContextCapsule capsule)
-    {
-        PopulateUncertainties(capsule);
-        PopulateSuggestedVerification(capsule);
-    }
-
-    private void PopulateUncertainties(ContextCapsule capsule)
+    internal void PopulateUncertainties(ContextCapsule capsule)
     {
         var neighborhood = BuildNeighborhood(capsule);
 
@@ -332,11 +326,12 @@ internal sealed class UncertaintyDetector
         }
     }
 
-    private void PopulateSuggestedVerification(ContextCapsule capsule)
+    internal void PopulateSuggestedVerification(ContextCapsule capsule)
     {
         // TestedBy direction is production -> test. Query outgoing edges from the
         // anchor production symbol and collect targets as suggested tests.
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var tests = new List<(string TestId, string? ClassId)>();
         foreach (var productionId in TestSymbolDiscovery.ExpandProductionSymbolIds(_symbolId.Value))
         {
             var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, productionId);
@@ -345,21 +340,26 @@ internal sealed class UncertaintyDetector
                 if (edge.Kind != nameof(EdgeKind.TestedBy) || !seen.Add(edge.TargetSymbolId))
                     continue;
 
-                var testId = edge.TargetSymbolId;
-                var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
-                var testName = testInfo?.FullyQualifiedName ?? testId;
-                var projectPath = ResolveOwningProject(testId);
-                var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
-                var command = projectPath == null
-                    ? $"dotnet test --filter \"FullyQualifiedName={normalizedTestName}\""
-                    : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={normalizedTestName}\"";
-
-                capsule.SuggestedVerification.Add(new VerificationSuggestion(
-                    testId,
-                    testName,
-                    $"Run '{testName}' to verify correctness after modifications.",
-                    command));
+                tests.Add((edge.TargetSymbolId, SymbolId.DeriveContainingTypeSymbolId(edge.TargetSymbolId)));
             }
+        }
+
+        var testsPerClass = tests
+            .Where(static test => test.ClassId != null)
+            .GroupBy(static test => test.ClassId!, StringComparer.Ordinal)
+            .ToDictionary(static group => group.Key, static group => group.Count(), StringComparer.Ordinal);
+
+        var emittedClasses = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (testId, classId) in tests)
+        {
+            if (classId == null || testsPerClass[classId] == 1)
+            {
+                AddTestSuggestion(capsule, testId);
+                continue;
+            }
+
+            if (emittedClasses.Add(classId))
+                AddClassSuggestion(capsule, classId);
         }
 
         var projects = AllCapsuleItems(capsule)
@@ -378,6 +378,49 @@ internal sealed class UncertaintyDetector
                 command,
                 "multi_project_blast_radius"));
         }
+    }
+
+    private void AddTestSuggestion(ContextCapsule capsule, string testId)
+    {
+        var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
+        var testName = testInfo?.FullyQualifiedName ?? testId;
+        var projectPath = ResolveOwningProject(testId);
+        var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
+        var command = projectPath == null
+            ? $"dotnet test --filter \"FullyQualifiedName={normalizedTestName}\""
+            : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={normalizedTestName}\"";
+
+        capsule.SuggestedVerification.Add(new VerificationSuggestion(
+            testId,
+            testName,
+            $"Run '{testName}' to verify correctness after modifications.",
+            command));
+    }
+
+    private void AddClassSuggestion(ContextCapsule capsule, string classId)
+    {
+        var className = _declarationStore.GetSymbolInfo(classId, _snapshotId)?.FullyQualifiedName;
+        if (string.IsNullOrEmpty(className))
+            className = DeriveTypeName(classId);
+        var projectPath = ResolveOwningProject(classId);
+        var normalizedClassName = FqnNormalizer.NormalizeForCommand(className);
+        var command = projectPath == null
+            ? $"dotnet test --filter \"FullyQualifiedName~{normalizedClassName}\""
+            : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName~{normalizedClassName}\"";
+
+        capsule.SuggestedVerification.Add(new VerificationSuggestion(
+            classId,
+            className,
+            $"Run '{className}' to verify correctness after modifications.",
+            command));
+    }
+
+    private static string DeriveTypeName(string classId)
+    {
+        return SymbolId.TryParse(classId, out var parsed)
+               && parsed.DocCommentId.StartsWith("T:", StringComparison.Ordinal)
+            ? parsed.DocCommentId["T:".Length..]
+            : classId;
     }
 
     private static IEnumerable<CapsuleItem> AllCapsuleItems(ContextCapsule capsule)

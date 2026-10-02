@@ -24,10 +24,8 @@ internal static class TimingsHandler
 
         try
         {
-            if (snapshotId != null)
-                ShowTimingsForSnapshot(store, snapshotId, asJson);
-            else
-                ShowLatestTimings(store, asJson);
+            var resolvedSnapshotId = HandlerBootstrap.ResolveSnapshotId(store, snapshotId);
+            ShowTimingsForSnapshot(store, resolvedSnapshotId, asJson);
         }
         finally
         {
@@ -74,19 +72,5 @@ internal static class TimingsHandler
             Console.WriteLine(new string('-', 65));
             Console.WriteLine($"{"Total",-40} {totalMs,12}");
         }
-    }
-
-    private static void ShowLatestTimings(SqliteIndexStore store, bool asJson)
-    {
-        var latestSnapshotId = store.GetLatestSnapshotId();
-        if (latestSnapshotId == null)
-        {
-            Console.WriteLine(asJson
-                ? JsonSerializer.Serialize(new { error = "No snapshots found" }, HandlerBootstrap.IndentedJson)
-                : "No snapshots found. Run --mode=index first.");
-            return;
-        }
-
-        ShowTimingsForSnapshot(store, latestSnapshotId, asJson);
     }
 }

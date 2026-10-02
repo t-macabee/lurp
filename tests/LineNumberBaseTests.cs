@@ -112,10 +112,8 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         Assert.Equal(7, storageEdge.SourceEndLine);
 
         // Output: the impact hop reports the call site's physical line 8.
-        var traverser = new ImpactTraverser(store, snapshotId, store);
-        var hop = traverser.TraceImpact(runId, ImpactDirection.Downstream)
-            .SelectMany(static path => path.Hops)
-            .Single(h => h.EdgeKind == "Calls" && h.TargetSymbolId == doId);
+        var reachability = new ImpactReachability(store, snapshotId, store);
+        var hop = reachability.Trace(runId, ImpactDirection.Downstream).WitnessPath(doId).Single();
         Assert.Equal(8, hop.SourceLine);
         Assert.Equal(8, hop.SourceEndLine);
     }

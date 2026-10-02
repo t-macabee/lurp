@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Lurp.Handlers;
 using Lurp.Mcp;
+using Lurp.Mcp.Tools;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
+using ModelContextProtocol;
 
 namespace Lurp.Tests;
 
@@ -147,5 +149,94 @@ public sealed class SchemaVersionGuardTests : IDisposable
         Assert.Equal(Message(StaleVersion), ex.Message);
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
         Assert.NotNull(session.Store.GetLatestSnapshotId());
+    }
+
+    [Fact]
+    public async Task McpRefresh_OnNewerSchema_FailsWithMessage_AndDoesNotChangeIt()
+    {
+        new MigrationRunner(_dbPath).RunMigrations();
+        var snapshotId = "snap-refresh-guard";
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.Open();
+            store.SaveWorkspace("ws-guard", "gitroot", "solution.sln");
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = snapshotId,
+                WorkspaceId = "ws-guard",
+                GitRoot = "gitroot",
+                SolutionPath = "solution.sln",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            store.MarkSnapshotComplete(snapshotId);
+            store.Close();
+        }
+
+        await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}"]);
+        Assert.Equal(snapshotId, session.PinnedSnapshotId);
+
+        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES (31, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.ExecuteNonQuery();
+        }
+
+        var tool = new RefreshTool(session);
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRefresh());
+
+        Assert.Equal(Message(31), ex.Message);
+        Assert.Equal(31, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        Assert.Equal(snapshotId, session.PinnedSnapshotId);
+    }
+
+    [Fact]
+    public async Task McpRetract_OnStaleSchema_FailsWithMessage_KeepsAnnotationAndSchema()
+    {
+        new MigrationRunner(_dbPath).RunMigrations();
+        var snapshotId = "snap-retract-guard";
+        long annotationId;
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.Open();
+            store.SaveWorkspace("ws-guard", "gitroot", "solution.sln");
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = snapshotId,
+                WorkspaceId = "ws-guard",
+                GitRoot = "gitroot",
+                SolutionPath = "solution.sln",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            store.MarkSnapshotComplete(snapshotId);
+            store.SaveAnnotations(snapshotId, new[] { new AnnotationRecord("sym-guard", "note", "guard-v1") });
+            annotationId = store.GetAnnotations(snapshotId).Single().AnnotationId;
+            store.Close();
+        }
+
+        await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}"]);
+        Assert.Equal(snapshotId, session.PinnedSnapshotId);
+
+        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"DELETE FROM schema_metadata WHERE version > {StaleVersion};";
+            command.ExecuteNonQuery();
+        }
+
+        var tool = new AnnotationsTool(session);
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRetractAnnotation(annotation_id: annotationId));
+
+        Assert.Equal(Message(StaleVersion), ex.Message);
+        Assert.Equal(StaleVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.Open();
+            Assert.Contains(store.GetAnnotations(snapshotId), a => a.AnnotationId == annotationId);
+            store.Close();
+        }
     }
 }

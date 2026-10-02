@@ -45,9 +45,10 @@ public static class Program
         new("diff", "Show semantic changes between two snapshots.",
             ["--from-snapshot=", "--to-snapshot="],
             Sync(DiffHandler.Run)),
-        new("impact", "Trace the impact path of a changed symbol.",
+        new("impact", "List the symbols a changed symbol can reach, each with a witness path.",
             [
-                "--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--limit=", "--cursor=",
+                "--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--limit=",
+                "--cursor=",
                 "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"
             ],
             Sync(ImpactHandler.Run)),

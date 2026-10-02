@@ -83,7 +83,6 @@ internal static class HelpText
                             + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "
                             + "See CLI_REFERENCE.md's impact section for live-observed evidence this filters correctly.",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
-
         // diff
         ["--from-snapshot="] = "Baseline snapshot ID to diff from (required for --mode=diff).",
         ["--to-snapshot="] = "Target snapshot ID to diff to (required for --mode=diff).",

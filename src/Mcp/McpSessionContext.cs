@@ -132,6 +132,10 @@ internal sealed class McpSessionContext : IAsyncDisposable
                     tmp.Close();
                 }
             }
+            catch (CliExitException ex)
+            {
+                throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+            }
             catch
             {
                 // Fall back to the pinned connection's view.

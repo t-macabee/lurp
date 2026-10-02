@@ -50,7 +50,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         var route = Assert.Single(routes);
         Assert.Equal("route://api/[controller]/{id}", route.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.ItemsController.Get"), route.TargetSymbolId);
-        Assert.Equal("aspnetcore-v1", route.ExtractorVersion);
+        Assert.Equal("aspnetcore-v2", route.ExtractorVersion);
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
@@ -79,6 +79,63 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController.Get") &&
             e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.Item") &&
             e.ExtractorVersion == "returns-v1");
+    }
+
+    // Regression: a class-level [Route] used to give every ordinary method a RoutesTo
+    // edge, including private helpers and protected overrides. The expected set follows
+    // ASP.NET Core 10's DefaultApplicationModelProvider.IsAction for the same methods.
+    [SkippableFact]
+    public async Task AspNetCoreAdapter_OnlyActionMethodsGetRoutesTo()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["ProbeController.cs"] = """
+                                         using System;
+                                         using Microsoft.AspNetCore.Mvc;
+
+                                         namespace App;
+
+                                         public abstract class BaseProbe : ControllerBase
+                                         {
+                                             protected abstract int GetId();
+                                             public abstract int AbstractAction();
+                                             [NonAction] public virtual int NonActionOnBase() => 1;
+                                         }
+
+                                         [Route("api/probe")]
+                                         public class ProbeController : BaseProbe, IDisposable
+                                         {
+                                             public int PublicInstance() => 1;
+                                             public static int PublicStatic() => 1;
+                                             private static bool PrivateStatic() => true;
+                                             protected override int GetId() => 1;
+                                             public override int AbstractAction() => 1;
+                                             public override int NonActionOnBase() => 2;
+                                             [NonAction] public int NonActionMethod() => 1;
+                                             public int Generic<T>() => 1;
+                                             public override string ToString() => "";
+                                             public void Dispose() { }
+                                             internal int InternalMethod() => 1;
+                                         }
+                                         """
+            },
+            frameworkReferences: [AspNetCoreFramework]);
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var routed = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived)
+            .Select(e => e.TargetSymbolId)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        var expected = new[] { "global::App.ProbeController.AbstractAction", "global::App.ProbeController.PublicInstance" }
+            .Select(fqn => ResolveSymbolId(snapshotId, fqn))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(expected, routed);
     }
 
     [SkippableFact]

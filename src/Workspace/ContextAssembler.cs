@@ -119,6 +119,9 @@ internal sealed class ContextAssembler
 
         PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete);
 
+        var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness);
+        uncertaintyDetector.PopulateSuggestedVerification(capsule);
+
         // The tier budgeter bounds tier item source; this final pass measures the
         // emitted capsule representation itself and trims/summarizes every
         // consumer-visible section (paths, topology, completeness, constraints,
@@ -127,8 +130,9 @@ internal sealed class ContextAssembler
         // before untiered metadata (uncertainties) is appended.
         CapsuleBudgetEnforcer.Enforce(capsule, Budget, [.. tiers.Select(static tier => tier.Name)]);
 
-        new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness)
-            .Detect(capsule);
+        uncertaintyDetector.PopulateUncertainties(capsule);
+
+        CapsuleBudgetEnforcer.StampArtifactEstimate(capsule);
 
         return capsule;
     }
@@ -384,7 +388,14 @@ internal sealed class ContextAssembler
         };
     }
 
-    internal const int CharsPerToken = 4;
+    /// <summary>
+    ///     Model-neutral size hint: characters per token. Lurp ships no tokenizer.
+    ///     Measured once on eNoteV2 capsules (whole file, 2026-10-02): OpenAI
+    ///     o200k_base 3.82-4.02, cl100k_base 3.86-4.08; DeepSeek V4.1-Flash and V3
+    ///     3.17-3.51. 3 sits below every measured value, so estimates err large,
+    ///     which is the safe side for a context window.
+    /// </summary>
+    internal const int CharsPerToken = 3;
 
     internal static int EstimateTokens(string? text)
     {
@@ -409,7 +420,7 @@ internal sealed class ContextAssembler
         // envelope emitted by CapsuleBudgetEnforcer's serializer. Keep the
         // constant conservative so it bounds tier selection without
         // starving low-priority tiers that legitimately carry small sources.
-        const int PathOnlyFramingChars = 160; // ~40 tokens
+        const int PathOnlyFramingChars = 160; // ~53 tokens
         return PathOnlyFramingChars / CharsPerToken;
     }
 
@@ -514,6 +525,7 @@ internal sealed class ContextAssembler
                 $"No symbol found at {lookup.FileArg}:{lookup.LineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 
             CapsuleBudgetEnforcer.Enforce(gapCapsule, options.Budget, TierNames);
+            CapsuleBudgetEnforcer.StampArtifactEstimate(gapCapsule);
 
             return gapCapsule;
         }

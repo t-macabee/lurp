@@ -4,20 +4,6 @@ using Lurp.Storage;
 
 namespace Lurp.Workspace;
 
-internal sealed record ImpactGroup(
-    string first_hop_source_symbol_id,
-    string first_hop_target_symbol_id,
-    string edge_kind,
-    string provenance,
-    int path_count,
-    int max_total_steps);
-
-internal sealed record ImpactPagingResult(
-    int TotalPathCount,
-    IReadOnlyList<ImpactGroup> Groups,
-    object? Truncated,
-    IReadOnlyList<object> PathJson);
-
 internal sealed record ImpactSymbolGroup(
     string first_hop_source_symbol_id,
     string first_hop_target_symbol_id,
@@ -50,49 +36,6 @@ internal sealed record ImpactResponse(
 
 internal static class ImpactPaging
 {
-    public static ImpactPagingResult Page(
-        IReadOnlyCollection<ImpactPath> traced,
-        int offset,
-        int maxPaths,
-        string snapshotId,
-        string fingerprint,
-        string cursorKind)
-    {
-        var paths = traced.OrderBy(PathKey, StringComparer.Ordinal).ToList();
-
-        var groups = paths
-            .Where(static path => path.Hops.Count > 0)
-            .GroupBy(static path => (path.Hops[0].SourceSymbolId, path.Hops[0].TargetSymbolId, path.Hops[0].EdgeKind))
-            .Select(group => new ImpactGroup(
-                first_hop_source_symbol_id: group.Key.SourceSymbolId,
-                first_hop_target_symbol_id: group.Key.TargetSymbolId,
-                edge_kind: group.Key.EdgeKind,
-                provenance: group.First().Hops[0].Provenance,
-                path_count: group.Count(),
-                max_total_steps: group.Max(static path => path.TotalSteps)
-            ))
-            .OrderByDescending(static group => group.path_count)
-            .ThenBy(static group => group.first_hop_target_symbol_id, StringComparer.Ordinal)
-            .ToList();
-
-        var page = paths.Skip(offset).Take(maxPaths).ToList();
-        var remaining = Math.Max(0, paths.Count - (offset + page.Count));
-        object? truncated = remaining > 0
-            ? new
-            {
-                reason = "max_paths",
-                returned = page.Count,
-                total = paths.Count,
-                remaining,
-                cursor = new SequenceCursor(snapshotId, fingerprint, cursorKind, offset + page.Count).Encode()
-            }
-            : null;
-
-        var pathJson = page.Select(ToPathJson).ToList();
-
-        return new ImpactPagingResult(paths.Count, groups, truncated, pathJson);
-    }
-
     /// <summary>
     ///     Builds the v2 symbols response. One builder for the CLI and the MCP
     ///     tool: page the core's depth-then-symbol-ID order, group every reached
@@ -192,18 +135,6 @@ internal static class ImpactPaging
                 total_steps = witnessPath.Count,
                 hops = witnessPath.Select(ToHopJson)
             }
-        };
-    }
-
-    private static object ToPathJson(ImpactPath path)
-    {
-        return new
-        {
-            truncated = path.Truncated,
-            truncation_reason = path.TruncationReason,
-            total_steps = path.TotalSteps,
-            hops = path.Hops.Select(ToHopJson),
-            semantic_causes = path.SemanticCauses.Select(ToSemanticCauseJson)
         };
     }
 

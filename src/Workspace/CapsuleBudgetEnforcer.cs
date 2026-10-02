@@ -43,7 +43,6 @@ internal static class CapsuleBudgetEnforcer
     internal static void Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
     {
         EnforceContentBudget(capsule, budget, tierPriority);
-        StampArtifactEstimate(capsule);
     }
 
     private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
@@ -147,7 +146,7 @@ internal static class CapsuleBudgetEnforcer
     ///     last value if the length oscillates across a digit boundary (the
     ///     residual error is one character, far below one token).
     /// </summary>
-    private static void StampArtifactEstimate(ContextCapsule capsule)
+    internal static void StampArtifactEstimate(ContextCapsule capsule)
     {
         for (var attempt = 0; attempt < 4; attempt++)
         {
