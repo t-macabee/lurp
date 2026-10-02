@@ -20,7 +20,9 @@ Measured on the eNoteV2 index (402 documents) with a Debug build of 1.4.0:
 | `context SaveChangesAsync`, `--max-hops` 1 / 3 / 4 | ok / ok / `Out of memory.` | 1.3 / 2.5 / 9.9 s | 64 / 568 / 4,348 MB |
 
 2.0.0 visits each symbol once and records its depth, a witness path, a
-shortest-path count and a frontier flag. The same runs:
+shortest-path count and a frontier flag. The same runs (symbol counts measured
+on the pre-T8 `reflection-v2` build; the released 2.0.0 build on the same
+eNoteV2 gives 2,012 / 2,147 / 2,252 and 1,637 / 1,979, see below):
 
 | Run | Result | Wall | Peak working set |
 |---|---|---|---|
