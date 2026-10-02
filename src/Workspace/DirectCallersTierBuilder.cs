@@ -16,7 +16,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
         {
             nameof(EdgeKind.Calls)
         };
-        var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
+        var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
 
         const string directReason =
             "Direct caller that can be affected by changing the anchor.";
@@ -54,37 +54,36 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
 
         void AddCallersOf(string targetSymbolId, string? inclusionReason, string? dispatchProvenance = null)
         {
-            var paths = traverser.TraceImpact(targetSymbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1);
-            foreach (var path in paths)
-                foreach (var hop in path.Hops)
+            var reached = reachability.Trace(targetSymbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1);
+            foreach (var symbol in reached.Symbols)
+            {
+                var callerId = symbol.SymbolId;
+                if (!seen.Add(callerId))
+                    continue;
+
+                if (dispatchProvenance == null)
                 {
-                    var callerId = hop.SourceSymbolId;
-                    if (!seen.Add(callerId))
-                        continue;
-
-                    if (dispatchProvenance == null)
-                    {
-                        // A genuine source-level call directly targeting the
-                        // anchor stays a direct caller with the hop's own
-                        // provenance (compiler_proved for a real call).
-                        var directItem = context.BuildCapsuleItem(callerId, hop.EdgeKind, hop.Provenance,
-                            inclusionReason, CapsuleRelationship.DirectCaller, true);
-                        if (directItem != null) results.Add(directItem);
-                        continue;
-                    }
-
-                    // The caller reaches the anchor through interface/abstract
-                    // dispatch. The composed claim is possible : the compiler
-                    // proves the structural edges, not the runtime dispatch
-                    // target : and the item is presented as an indirect
-                    // dispatch candidate, never as a direct caller.
-                    var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
-                        [hop.Provenance], dispatchProvenance);
-                    var item = context.BuildCapsuleItem(callerId, hop.EdgeKind, provenance,
-                        BuildDispatchReason(dispatchProvenance, hop.Provenance),
-                        CapsuleRelationship.IndirectDispatchCandidate, false);
-                    if (item != null) results.Add(item);
+                    // A genuine source-level call directly targeting the
+                    // anchor stays a direct caller with the hop's own
+                    // provenance (compiler_proved for a real call).
+                    var directItem = context.BuildCapsuleItem(callerId, symbol.ParentHop.EdgeKind, symbol.ParentHop.Provenance,
+                        inclusionReason, CapsuleRelationship.DirectCaller, true);
+                    if (directItem != null) results.Add(directItem);
+                    continue;
                 }
+
+                // The caller reaches the anchor through interface/abstract
+                // dispatch. The composed claim is possible : the compiler
+                // proves the structural edges, not the runtime dispatch
+                // target : and the item is presented as an indirect
+                // dispatch candidate, never as a direct caller.
+                var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
+                    reached.WitnessPath(callerId).Select(static hop => hop.Provenance), dispatchProvenance);
+                var item = context.BuildCapsuleItem(callerId, symbol.ParentHop.EdgeKind, provenance,
+                    BuildDispatchReason(dispatchProvenance, symbol.ParentHop.Provenance),
+                    CapsuleRelationship.IndirectDispatchCandidate, false);
+                if (item != null) results.Add(item);
+            }
         }
     }
 

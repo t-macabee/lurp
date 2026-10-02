@@ -68,7 +68,7 @@ internal static class HelpText
         ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\"). For --mode=grep the query is a literal exact substring (byte-exact, including punctuation); use --ignore-case for case-insensitive.",
         ["--type="] = "Search scope: all | source | symbol (default: all).",
         ["--kind="] = "Filter symbol results by Roslyn SymbolKind (e.g. Type, Method, Field, Property).",
-        ["--limit="] = "Max results per scope (default: 20; for --mode=grep default is 50).",
+        ["--limit="] = "Max results per scope (default: 20; for --mode=grep and --mode=impact default is 50).",
         ["--snippet-tokens="] = "Token window for source snippets (default: 64).",
         ["--ignore-case"] = "For --mode=grep, make the literal search case-insensitive (default: case-sensitive).",
 
@@ -83,7 +83,6 @@ internal static class HelpText
                             + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "
                             + "See CLI_REFERENCE.md's impact section for live-observed evidence this filters correctly.",
         ["--max-depth="] = "Maximum hops per path (default: 3).",
-        ["--max-paths="] = "Paths per page (default: 50); when more exist, the response carries truncated.{reason,total,remaining,cursor}.",
 
         // diff
         ["--from-snapshot="] = "Baseline snapshot ID to diff from (required for --mode=diff).",
@@ -120,8 +119,8 @@ internal static class HelpText
     // drift). Keyed by mode name; printed after that mode's flag list.
     private static readonly Dictionary<string, string> ModeNotes = new(StringComparer.Ordinal)
     {
-        ["impact"] = "Every response also carries `groups`: the paths grouped by first hop, computed over ALL paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated. "
-                     + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
+        ["impact"] = "The response lists reached symbols, each with its depth, `shortest_path_count`, `frontier` flag and a deterministic witness path. It also carries `groups`: the symbols grouped by the first hop of their witness path, computed over ALL symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated. "
+                     + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge, and `shortest_path_count` counts both as separate routes; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
         ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace."
     };
 

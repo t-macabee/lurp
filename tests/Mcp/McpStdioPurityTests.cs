@@ -322,7 +322,7 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
                 var res = await CallTool("lurp_impact", new { symbol = symbolId, direction = "downstream", max_depth = 3 });
                 var innerText = ExtractInnerText(res);
                 using var inner = JsonDocument.Parse(innerText!);
-                Assert.True(inner.RootElement.TryGetProperty("paths", out _));
+                Assert.True(inner.RootElement.TryGetProperty("symbols", out _));
             }
 
             // 9. lurp_diff (from snap1 to snap2)

@@ -1,3 +1,4 @@
+using System.Text;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -391,6 +392,92 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         {
             store.Close();
         }
+    }
+
+    // ── Step 4: witness-path capsule paths and topology (output schema 5) ──
+
+    /// <summary>
+    ///     REGRESSION test for the capsule's witness-path topology (Step 4).
+    ///     The fixture is 6 layers of 12 static methods; every method calls all
+    ///     12 methods of the layer above, and the top layer calls Root. At
+    ///     MaxHops = 5 the incoming direction reaches 5 x 12 = 60 synthetic
+    ///     symbols (plus the containing type), while the old per-path enumerator
+    ///     had about 12^5 ≈ 249k terminal paths.
+    ///     Assembly must complete, and topology must report the reached-symbol
+    ///     and witness-leaf counts, not enumerated path counts.
+    /// </summary>
+    [SkippableFact]
+    public async Task Capsule_LayeredGraph_TopologyCountsWitnessReach()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        CreateProject("Layered", new Dictionary<string, string> { ["Graph.cs"] = LayeredGraphSource() });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var anchorId = ResolveSymbolId(snapshotId, "global::Layered.Graph.Root");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            // Generous budget: the topology counts are taken before the budget
+            // trim, so the assertions must not depend on trim behavior.
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 500_000, 5);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            Assert.NotNull(capsule.Topology);
+            var topology = capsule.Topology!.Current;
+            // 5 reachable layers x 12 nodes, plus the containing Graph type:
+            // the capsule path trace uses no kind filter, so the type is
+            // reached at depth 1 by its Declares edge (type -> member).
+            Assert.Equal(61, topology.IncomingSymbolCount);
+            // Witness tree: the ordinal-first node of each layer (_0) is the
+            // single parent its whole next layer is discovered through, so the
+            // leaves are the Graph type, the 11 siblings per layer above the
+            // depth bound, and all 12 depth-5 nodes: 1 + 4*11 + 12 = 57.
+            Assert.Equal(57, topology.IncomingWitnessPathCount);
+            Assert.True(topology.IncomingWitnessPathCount <= topology.IncomingSymbolCount);
+            // Leaf depths: 1 + 11*1 + 11*2 + 11*3 + 11*4 + 12*5 = 171 hops.
+            Assert.Equal(171, topology.TotalHopCount);
+
+            var leafPaths = capsule.IncomingPaths;
+            Assert.Equal(12, leafPaths.Count(path => path.TotalSteps == 5));
+            Assert.Contains(leafPaths, path => path is { TotalSteps: 1 } &&
+                                               path.Hops[0].EdgeKind == nameof(EdgeKind.Declares) &&
+                                               path.Hops[0].TargetSymbolId == anchorId);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    private static string LayeredGraphSource()
+    {
+        var source = new StringBuilder();
+        source.AppendLine("namespace Layered;");
+        source.AppendLine();
+        source.AppendLine("public static class Graph");
+        source.AppendLine("{");
+        source.AppendLine("    public static void Root() { }");
+        for (var level = 5; level >= 0; level--)
+        {
+            for (var node = 0; node < 12; node++)
+            {
+                if (level == 5)
+                {
+                    source.AppendLine($"    public static void L{level}_{node}() => Root();");
+                    continue;
+                }
+
+                source.AppendLine($"    public static void L{level}_{node}()");
+                source.AppendLine("    {");
+                for (var callee = 0; callee < 12; callee++)
+                    source.AppendLine($"        L{level + 1}_{callee}();");
+                source.AppendLine("    }");
+            }
+        }
+
+        source.AppendLine("}");
+        return source.ToString();
     }
 
     /// <summary>

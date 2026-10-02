@@ -21,7 +21,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
                 AddTestsFor(dispatchEdge.SourceSymbolId);
 
         var allowedKinds = new HashSet<string> { nameof(EdgeKind.Calls) };
-        var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
+        var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
             AddTestsForUpstreamCallers(symbolId);
@@ -40,15 +40,14 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
         void AddTestsForUpstreamCallers(string symbolId)
         {
-            var paths = traverser.TraceImpact(
+            var reached = reachability.Trace(
                 symbolId,
                 ImpactDirection.Upstream,
                 allowedKinds,
                 maxDepth: context.MaxHops);
 
-            foreach (var path in paths)
-                foreach (var hop in path.Hops)
-                    AddTestsFor(hop.SourceSymbolId);
+            foreach (var symbol in reached.Symbols)
+                AddTestsFor(symbol.SymbolId);
         }
 
         void QueryTestedBy(string symbolId)

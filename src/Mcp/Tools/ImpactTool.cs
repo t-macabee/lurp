@@ -14,7 +14,7 @@ internal sealed class ImpactTool
 {
     private const string CursorKind = "impact";
     private const int DefaultMaxDepth = 3;
-    private const int DefaultMaxPaths = 50;
+    private const int DefaultLimit = 50;
 
     private readonly McpSessionContext _session;
 
@@ -24,14 +24,14 @@ internal sealed class ImpactTool
     }
 
     [McpServerTool(Name = "lurp_impact", Title = "Lurp Impact", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Trace impact downstream or upstream for a symbol. Supports kinds/provenance filtering and cursor pagination.")]
+    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination.")]
     public string LurpImpact(
         string? symbol = null,
         string? direction = null,
         string[]? kinds = null,
         string[]? provenance = null,
         int? max_depth = null,
-        int? max_paths = null,
+        int? limit = null,
         string? cursor = null,
         string? snapshot_id = null)
     {
@@ -54,9 +54,9 @@ internal sealed class ImpactTool
             if (maxDepth < 1)
                 throw new McpProtocolException("max-depth must be a positive integer.", McpErrorCode.InvalidParams);
 
-            var maxPaths = max_paths ?? DefaultMaxPaths;
-            if (maxPaths < 1)
-                throw new McpProtocolException("max-paths must be a positive integer.", McpErrorCode.InvalidParams);
+            var limitValue = limit ?? DefaultLimit;
+            if (limitValue < 1)
+                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
 
             HashSet<string>? allowedKinds = null;
             string? kindsRaw = null;
@@ -84,12 +84,15 @@ internal sealed class ImpactTool
 
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol, snapshotId);
 
+            // The output-shape marker keeps a symbols cursor from being replayed
+            // against the path-listing mode (same Kind, different sequence).
             var fingerprint = SequenceCursor.ComputeFingerprint(
                 resolvedSymbolId,
                 impactDirection.ToString(),
                 maxDepth.ToString(CultureInfo.InvariantCulture),
                 kindsRaw,
-                provenanceRaw);
+                provenanceRaw,
+                "symbols");
 
             SequenceCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
@@ -110,30 +113,24 @@ internal sealed class ImpactTool
 
             var offset = cursorObj?.Offset ?? 0;
 
-            var traverser = new ImpactTraverser(_session.Store, snapshotId, _session.Store);
-            var traced = traverser.TraceImpact(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth);
+            var reachability = new ImpactReachability(_session.Store, snapshotId, _session.Store);
+            var traced = reachability.Trace(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth);
 
-            var paged = ImpactPaging.Page(traced, offset, maxPaths, snapshotId, fingerprint, CursorKind);
-
-            var freshness = _session.GetFreshnessJson();
-
-            var envelope = new
-            {
-                snapshot_id = snapshotId,
-                freshness,
-                pinned = true,
-                symbol_id = resolvedSymbolId,
-                direction = impactDirection == ImpactDirection.Downstream ? "downstream" : "upstream",
-                max_depth = maxDepth,
-                max_paths = maxPaths,
-                path_count_total = paged.TotalPathCount,
+            var response = ImpactPaging.BuildSymbolsResponse(
+                snapshotId,
+                _session.GetFreshnessJson(),
+                resolvedSymbolId,
+                impactDirection,
+                maxDepth,
+                traced,
                 offset,
-                groups = paged.Groups,
-                truncated = paged.Truncated,
-                paths = paged.PathJson
-            };
+                limitValue,
+                fingerprint,
+                CursorKind,
+                pinned: true,
+                includeLimitEcho: true);
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
         {

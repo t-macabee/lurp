@@ -125,7 +125,7 @@ public sealed class McpParityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Impact_Parity_WithDirectTraverser()
+    public async Task Impact_Parity_WithDirectReachability()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
         await using var session = CreateSession();
@@ -134,16 +134,16 @@ public sealed class McpParityTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
             symbolId = store.GetSymbolIdsInSnapshot(snapshotId).First(id => store.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName?.Contains("ParityProj.Foo.Caller") == true);
 
-        var json = tool.LurpImpact(symbol: symbolId, direction: "downstream", max_depth: 3, max_paths: 50);
+        var json = tool.LurpImpact(symbol: symbolId, direction: "downstream", max_depth: 3, limit: 50);
         using var doc = JsonDocument.Parse(json);
-        var toolPaths = doc.RootElement.GetProperty("paths").GetArrayLength();
+        var toolSymbols = doc.RootElement.GetProperty("symbols").GetArrayLength();
 
         using var store2 = OpenStore(DbPath);
-        var traverser = new ImpactTraverser(store2, snapshotId, store2);
-        var direct = traverser.TraceImpact(symbolId, ImpactDirection.Downstream, null, null, 3);
-        // parity: counts should match when no filtering and same ordering
-        Assert.Equal(direct.Count, doc.RootElement.GetProperty("path_count_total").GetInt32());
-        Assert.True(toolPaths <= direct.Count);
+        var reachability = new ImpactReachability(store2, snapshotId, store2);
+        var direct = reachability.Trace(symbolId, ImpactDirection.Downstream, null, null, 3);
+        // parity: the reached-symbol count matches the core directly, and the page is a prefix
+        Assert.Equal(direct.Symbols.Count, doc.RootElement.GetProperty("symbol_count_total").GetInt32());
+        Assert.True(toolSymbols <= direct.Symbols.Count);
     }
 
     [Fact]

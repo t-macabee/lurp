@@ -290,7 +290,7 @@ Output is JSON with change records (added, removed, modified symbols and their d
 
 ### `--mode=impact`
 
-Trace the impact path of a changed symbol.
+Trace the impact of a changed symbol as a set of reached symbols.
 
 ```
 --mode=impact --symbol=<id> --output-dir=<path> [options]
@@ -304,13 +304,13 @@ Trace the impact path of a changed symbol.
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
 | `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Live-observed (eNoteV2, `IEntity.Id` pure inherited-only via `BaseEntity`): `all`:1, `compiler_proved`:0, `possible`:1 vs. direct `ICurrentUserService.UserId` 9/9/0 — confirms the filter; eCommerce's `IBaseCRUDService` is mixed (has direct impls) so its 242→186→1 progression is not a filter bug. |
-| `--max-paths=<n>` | No | Paths per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
+| `--limit=<n>` | No | Symbols per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 
 Also accepts the shared [read-command options](#read-command-options).
 
-Every response carries `groups`: the paths grouped by first hop, computed over *all* paths before the page is cut, so the fan-out summary stays complete even when the path list is truncated.
+Every response carries `symbols`: the reached symbols, each with its depth, `shortest_path_count`, a `frontier` flag and a deterministic `witness_path` from the anchor. `groups` buckets those symbols by the first hop of their witness path, computed over *all* symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated; `semantic_causes` sits at the top level because it depends only on the anchor. `shortest_path_count` counts both `Calls` and `StaticallyCalls` edges: a static call site emits both, and each counts as a route.
 
 ---
 

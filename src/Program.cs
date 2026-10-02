@@ -47,7 +47,7 @@ public static class Program
             Sync(DiffHandler.Run)),
         new("impact", "Trace the impact path of a changed symbol.",
             [
-                "--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--max-paths=", "--cursor=",
+                "--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--limit=", "--cursor=",
                 "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"
             ],
             Sync(ImpactHandler.Run)),

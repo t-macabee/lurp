@@ -162,9 +162,11 @@ internal sealed class ContextAssembler
                 + "'unresolved' means the relation could not be observed. It is NOT evidence that "
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
 
-        var traverser = new ImpactTraverser(EdgeStore, SnapshotId);
-        capsule.IncomingPaths.AddRange(traverser.TraceImpact(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops));
-        capsule.OutgoingPaths.AddRange(traverser.TraceImpact(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops));
+        var reachability = new ImpactReachability(EdgeStore, SnapshotId);
+        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops);
+        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops);
+        capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
+        capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
 
         foreach (var annotation in EdgeStore.GetAnnotations(SnapshotId)
                      .Where(annotation =>
@@ -182,6 +184,8 @@ internal sealed class ContextAssembler
             new CapsuleTopologyReference(
                 "see incoming_paths",
                 "see outgoing_paths",
+                incoming.Symbols.Count,
+                outgoing.Symbols.Count,
                 capsule.IncomingPaths.Count,
                 capsule.OutgoingPaths.Count,
                 totalHops));

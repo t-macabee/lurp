@@ -16,7 +16,7 @@ public sealed class CliMcpContractSnapshotTests
     [Fact]
     public void ContractVersion_IsExpected()
     {
-        Assert.Equal(1, VersionConstants.CliMcpContractVersion);
+        Assert.Equal(2, VersionConstants.CliMcpContractVersion);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class CliMcpContractSnapshotTests
             "get-source:--document=,--start-line=,--end-line=,--context-lines=,--snapshot=,--freshness=,--require-fresh,--quiet",
             "get-symbol:--symbol=,--view=,--context-lines=,--include-generated,--snapshot=,--freshness=,--require-fresh,--quiet",
             "grep:--query=,--limit=,--cursor=,--ignore-case,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
-            "impact:--symbol=,--direction=,--kinds=,--provenance=,--max-depth=,--max-paths=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
+            "impact:--symbol=,--direction=,--kinds=,--provenance=,--max-depth=,--limit=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
             "index:--solution=,--strategy=,--output-json=,--skip-adapter=,--skip-diff,--verbose,--force",
             "navigate:--file=,--line=,--include-generated,--snapshot=,--freshness=,--require-fresh,--quiet",
             "outline:--document=,--include-generated,--limit=,--cursor=,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
@@ -114,7 +114,7 @@ public sealed class CliMcpContractSnapshotTests
             "lurp_get_source(document,start_line,end_line,context_lines,snapshot_id,outline)",
             "lurp_get_symbol(symbol,view,context_lines,include_generated,snapshot_id)",
             "lurp_grep(query,limit,cursor,ignore_case,include_generated,snapshot_id)",
-            "lurp_impact(symbol,direction,kinds,provenance,max_depth,max_paths,cursor,snapshot_id)",
+            "lurp_impact(symbol,direction,kinds,provenance,max_depth,limit,cursor,snapshot_id)",
             "lurp_index(solution,strategy,force,operation_id,cancel)",
             "lurp_navigate(file,line,include_generated,snapshot_id)",
             "lurp_outline(document,include_generated,limit,cursor,snapshot_id)",

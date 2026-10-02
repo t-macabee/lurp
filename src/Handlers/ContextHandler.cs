@@ -295,7 +295,7 @@ internal static class ContextHandler
                  })
             Console.WriteLine($"  {name,-28} {count}");
 
-        Console.WriteLine($"  incomingPaths: {capsule.IncomingPaths.Count}  outgoingPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
+        Console.WriteLine($"  incomingWitnessPaths: {capsule.IncomingPaths.Count}  outgoingWitnessPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
 
         foreach (var omitted in capsule.OmittedTiers)
         {

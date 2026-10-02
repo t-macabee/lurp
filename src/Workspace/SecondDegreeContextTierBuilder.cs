@@ -20,7 +20,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
             return results;
 
         var effectiveSymbolIds = context.EffectiveSymbolIds;
-        var traverser = new ImpactTraverser(context.EdgeStore, context.SnapshotId);
+        var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
 
         var seen = new HashSet<string>();
 
@@ -41,38 +41,37 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
 
         void AddUpstreamNeighbors(string symbolId, string? inclusionReason, string? dispatchProvenance = null)
         {
-            var paths = traverser.TraceImpact(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
-            foreach (var path in paths)
-                foreach (var hop in path.Hops)
+            var reached = reachability.Trace(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
+            foreach (var symbol in reached.Symbols)
+            {
+                var neighborId = symbol.SymbolId;
+                if (!seen.Add(neighborId))
+                    continue;
+
+                if (effectiveSymbolIds.Contains(neighborId))
+                    continue;
+
+                if (dispatchProvenance == null)
                 {
-                    var neighborId = hop.SourceSymbolId;
-                    if (!seen.Add(neighborId))
-                        continue;
-
-                    if (effectiveSymbolIds.Contains(neighborId))
-                        continue;
-
-                    if (dispatchProvenance == null)
-                    {
-                        var directItem = context.BuildCapsuleItem(neighborId, hop.EdgeKind, hop.Provenance,
-                            inclusionReason);
-                        if (directItem != null) results.Add(directItem);
-                        continue;
-                    }
-
-                    // The neighbor reaches the anchor through interface/abstract
-                    // dispatch. The composed claim is possible : the compiler
-                    // proves the structural edges, not the runtime dispatch
-                    // target : unless a framework edge participates anywhere in
-                    // the path. The item is never a direct compiler-proved
-                    // dependency of the anchor.
-                    var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
-                        path.Hops.Select(static hop => hop.Provenance), dispatchProvenance);
-                    var item = context.BuildCapsuleItem(neighborId, hop.EdgeKind, provenance,
-                        BuildDispatchReason(dispatchProvenance, hop.Provenance),
-                        CapsuleRelationship.IndirectDispatchCandidate, false);
-                    if (item != null) results.Add(item);
+                    var directItem = context.BuildCapsuleItem(neighborId, symbol.ParentHop.EdgeKind, symbol.ParentHop.Provenance,
+                        inclusionReason);
+                    if (directItem != null) results.Add(directItem);
+                    continue;
                 }
+
+                // The neighbor reaches the anchor through interface/abstract
+                // dispatch. The composed claim is possible : the compiler
+                // proves the structural edges, not the runtime dispatch
+                // target : unless a framework edge participates anywhere in
+                // the path. The item is never a direct compiler-proved
+                // dependency of the anchor.
+                var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
+                    reached.WitnessPath(neighborId).Select(static hop => hop.Provenance), dispatchProvenance);
+                var item = context.BuildCapsuleItem(neighborId, symbol.ParentHop.EdgeKind, provenance,
+                    BuildDispatchReason(dispatchProvenance, symbol.ParentHop.Provenance),
+                    CapsuleRelationship.IndirectDispatchCandidate, false);
+                if (item != null) results.Add(item);
+            }
         }
     }
 

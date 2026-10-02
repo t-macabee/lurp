@@ -7,7 +7,7 @@ namespace Lurp.Handlers;
 internal static class ImpactHandler
 {
     private const string CursorKind = "impact";
-    private const int DefaultMaxPaths = 50;
+    private const int DefaultLimit = 50;
 
     public static void Run(string[] args)
     {
@@ -36,41 +36,41 @@ internal static class ImpactHandler
             ? [.. provenanceArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
             : null;
 
-        var maxPaths = HandlerBootstrap.ParsePositiveIntArg(args, "--max-paths=", DefaultMaxPaths);
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
 
+            // The output-shape marker keeps a symbols cursor from being replayed
+            // against the path-listing mode (same Kind, different sequence).
             var fingerprint = SequenceCursor.ComputeFingerprint(
                 resolvedSymbolId,
                 direction.ToString(),
                 maxDepth.ToString(CultureInfo.InvariantCulture),
                 kindsArg,
-                provenanceArg);
+                provenanceArg,
+                "symbols");
             var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
             var offset = cursor?.Offset ?? 0;
 
-            var traverser = new ImpactTraverser(store, snapshotId, store);
-            var traced = traverser.TraceImpact(resolvedSymbolId, direction, allowedKinds, allowedProvenance, maxDepth);
-
-            var paged = ImpactPaging.Page(traced, offset, maxPaths, snapshotId, fingerprint, CursorKind);
+            var reachability = new ImpactReachability(store, snapshotId, store);
+            var traced = reachability.Trace(resolvedSymbolId, direction, allowedKinds, allowedProvenance, maxDepth);
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
-            var meta = new
-            {
-                snapshot_id = snapshotId,
-                freshness = HandlerBootstrap.FreshnessJson(freshness),
-                symbol_id = resolvedSymbolId,
-                direction = direction == ImpactDirection.Downstream ? "downstream" : "upstream",
-                max_depth = maxDepth,
-                path_count_total = paged.TotalPathCount,
+            var response = ImpactPaging.BuildSymbolsResponse(
+                snapshotId,
+                HandlerBootstrap.FreshnessJson(freshness),
+                resolvedSymbolId,
+                direction,
+                maxDepth,
+                traced,
                 offset,
-                groups = paged.Groups,
-                truncated = paged.Truncated
-            };
+                limit,
+                fingerprint,
+                CursorKind);
 
             switch (outputMode)
             {
@@ -79,32 +79,19 @@ internal static class ImpactHandler
                     // docCommentId|assemblyIdentity strings stay in --output=json, which is
                     // what a consumer feeds back into --symbol=.
                     var displayName = MakeNameResolver(store, snapshotId);
-                    WriteSummary(displayName(meta.symbol_id!), meta.symbol_id!, meta.direction, paged.TotalPathCount, offset, paged.PathJson.Count, paged.Groups.Count,
-                        paged.Groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.path_count)),
-                        paged.Truncated);
+                    WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, offset,
+                        response.groups.Count, response.frontier_count,
+                        response.groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.symbol_count)),
+                        response.truncated);
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var path in paged.PathJson)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "path", path }, HandlerBootstrap.CompactJson));
+                    WriteJsonl(response);
                     break;
 
                 // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(new
-                    {
-                        meta.snapshot_id,
-                        meta.freshness,
-                        meta.symbol_id,
-                        meta.direction,
-                        meta.max_depth,
-                        meta.path_count_total,
-                        meta.offset,
-                        meta.groups,
-                        meta.truncated,
-                        paths = paged.PathJson
-                    }, HandlerBootstrap.IndentedJson));
+                    Console.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
                     break;
             }
 
@@ -144,16 +131,26 @@ internal static class ImpactHandler
         return pipe > 0 ? symbolId[..pipe] : symbolId;
     }
 
-    private static void WriteSummary(string symbolName, string symbolId, string direction, int total, int offset, int returned, int groupCount,
+    private static void WriteSummary(string symbolName, string direction, int total, int returned, int offset, int groupCount, int frontierCount,
         IEnumerable<(string Label, int Count)> groupLines, object? truncated)
     {
         Console.WriteLine($"impact {direction} of {symbolName}");
-        Console.WriteLine($"  symbol: {symbolId}");
-        Console.WriteLine($"  paths: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s)");
+        Console.WriteLine($"  symbols: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s); {frontierCount} at max depth");
         foreach (var (label, count) in groupLines)
             Console.WriteLine($"  {count,5}  {label}");
 
         if (truncated is not null)
             Console.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
+    }
+
+    private static void WriteJsonl(ImpactResponse response)
+    {
+        // The meta line is the response without the per-symbol rows: a streaming
+        // consumer reads the header first and then one symbol per line.
+        var meta = JsonSerializer.SerializeToNode(response, HandlerBootstrap.CompactJson)!.AsObject();
+        meta.Remove("symbols");
+        Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+        foreach (var symbol in response.symbols)
+            Console.WriteLine(JsonSerializer.Serialize(new { type = "symbol", symbol }, HandlerBootstrap.CompactJson));
     }
 }

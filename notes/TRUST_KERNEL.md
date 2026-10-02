@@ -104,7 +104,7 @@ Closed capsule decisions: no occurrence multigraph (one evidence-bearing relatio
 | Edge filtering (`allowedEdgeKinds`) | ✅ verified live: `--kinds=Calls` 8 vs `Calls,MayDispatchTo` 14 |
 | Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ verified live: eNoteV2 `IEntity.Id` pure inherited `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` `9/9/0`; eCommerce `IBaseCRUDService` mixed 242→186→1 is not a bug (79 compiler_proved+5 possible) |
 | Cycle detection (`visited` set) | ✅ |
-| Truncation explanation (`Truncated`, `TruncationReason`) | ✅ verified live: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor |
+| Truncation explanation (`Truncated`, `TruncationReason`) | ✅ verified live: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor. *(Historical v1: the v2 impact output lists symbols and pages with `--limit=`/`limit`.)* |
 | Semantic causes (`SemanticCauses`) | ✅ verified live: impact `semantic_causes` populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run, re-run shows 0 WARNING lines |
 
 Tests: `ImpactTraverserTests.cs`.

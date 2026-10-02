@@ -174,22 +174,29 @@ internal sealed record CapsuleTopology(
     CapsuleTopologyReference Current);
 
 // The capsule's current topology is the union of incomingPaths and
-// outgoingPaths. Those collections are serialized once, in their own
-// sections; this reference summary preserves the topology meaning without
-// duplicating the path data.
+// outgoingPaths. Those collections carry witness leaf paths, not one entry
+// per simple path: each emitted path is the deterministic witness path to a
+// reached symbol that no other emitted path passes through. The symbol,
+// witness-path and hop counts are all taken before the budget trim; this
+// reference summary preserves the topology meaning without duplicating the
+// path data.
 internal sealed record CapsuleTopologyReference(
     [property: JsonPropertyName("incoming_reference")]
     string IncomingReference,
     [property: JsonPropertyName("outgoing_reference")]
     string OutgoingReference,
-    [property: JsonPropertyName("incoming_path_count")]
-    int IncomingPathCount,
-    [property: JsonPropertyName("outgoing_path_count")]
-    int OutgoingPathCount,
+    [property: JsonPropertyName("incoming_symbol_count")]
+    int IncomingSymbolCount,
+    [property: JsonPropertyName("outgoing_symbol_count")]
+    int OutgoingSymbolCount,
+    [property: JsonPropertyName("incoming_witness_path_count")]
+    int IncomingWitnessPathCount,
+    [property: JsonPropertyName("outgoing_witness_path_count")]
+    int OutgoingWitnessPathCount,
     [property: JsonPropertyName("total_hop_count")]
     int TotalHopCount)
 {
-    public static CapsuleTopologyReference Empty { get; } = new("", "", 0, 0, 0);
+    public static CapsuleTopologyReference Empty { get; } = new("", "", 0, 0, 0, 0, 0);
 }
 
 internal sealed class UncertaintyEntry
