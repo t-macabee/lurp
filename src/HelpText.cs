@@ -16,15 +16,23 @@ internal static class HelpText
     // A flag missing from this map is still listed (name only) by its mode.
     private static readonly IReadOnlyDictionary<string, string> FlagHelp = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // Shared across modes
+        // Modes that accept --symbol=: get-symbol, find-symbol, impact, context, annotate, and get-annotations.
         ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
-        ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly). Not honored by --mode=timings, which resolves its own snapshot independently of this flag.",
-        ["--include-generated"] = "Include source-generated code (obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs); default excludes it. See CLI_REFERENCE.md's read-command options for live-observed evidence this isn't a no-op.",
+        // Modes that accept --snapshot=: get-source, outline, get-symbol, search, find-symbol, navigate,
+        // impact, context, timings, pin-snapshot, annotate, retract-annotation, get-annotations,
+        // diagnostics, grep, and dead-candidates.
+        ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly).",
+        // Modes that accept --include-public: dead-candidates.
         ["--include-public"] = "Include public/protected symbols with no internal LIVE incoming edge as uncertain_dead (reason: public_surface). Default excludes them from proved_dead; without this flag a public helper with no callers is not flagged.",
+        // Modes that accept --include-tests: dead-candidates.
         ["--include-tests"] = "Include test-project symbols (project name %.Tests) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
+        // Modes that accept --cursor=: outline, search, impact, context, get-annotations, diagnostics, grep, and dead-candidates.
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
+        // Modes that accept --json: status, timings, and pin-snapshot.
         ["--json"] = "Emit structured JSON instead of plain text.",
+        // Modes that accept --file=: navigate and context.
         ["--file="] = "Source file path (paired with --line=) to anchor by location.",
+        // Modes that accept --line=: navigate and context.
         ["--line="] = "1-based line number, paired with --file=. Every emitted line number (edge source_line, declaration locations) is 1-based too, so a reported start_line feeds straight back into --line=.",
 
         // Read-command output controls (search, find-symbol, impact, context)
@@ -32,6 +40,10 @@ internal static class HelpText
         ["--quiet"] = "Emit only the payload: suppress the freshness stderr line, and for --mode=context print just the written capsule path.",
         ["--freshness="] = "How hard to check the snapshot still matches the working tree: auto (stat only) | hash (re-hash suspect files) | off (default: auto).",
         ["--require-fresh"] = "Exit 2 when the snapshot is not fresh.",
+
+        // Modes that accept --include-generated: outline, get-symbol, search, find-symbol,
+        // navigate, context, diagnostics, grep, and dead-candidates (not index).
+        ["--include-generated"] = "Include source-generated code (obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs); default excludes it. See CLI_REFERENCE.md's read-command options for live-observed evidence this isn't a no-op.",
 
         // index
         ["--solution="] = "Path to the .sln/.slnx to index (--mode=index); for --mode=status, the workspace to compare against the latest snapshot for freshness.",
@@ -47,11 +59,10 @@ internal static class HelpText
         ["--document="] = "Relative path of the document to retrieve.",
         ["--start-line="] = "1-based first line to return (inclusive, requires --document=).",
         ["--end-line="] = "1-based last line to return (inclusive, requires --document=).",
-        ["--context-lines="] = "Extra lines of context around the --start-line/--end-line window (symmetric, 1-based).",
+        ["--context-lines="] = "Extra source lines of context: for get-source, expands the --start-line/--end-line window symmetrically (requires one of those, 1-based); for get-symbol's surrounding view, lines around the symbol (default 3).",
 
         // get-symbol
         ["--view="] = "What to return: metadata | signature | body | declaration | containing-type | surrounding.",
-        ["--context-lines="] = "Extra source lines of context around the symbol.",
 
         // search
         ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\"). For --mode=grep the query is a literal exact substring (byte-exact, including punctuation); use --ignore-case for case-insensitive.",

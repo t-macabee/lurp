@@ -60,7 +60,7 @@ cited below. Evidence cites git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `VersionConstants.DatabaseSchemaVersion`, `MigrationRunner` |
 | 2 | Workspace, snapshot, document, configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 30 migrations; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountIs28`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, 30 migrations; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountMatches_DatabaseSchemaVersion`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6; live-verified (§C) `CourseService.CreateAsync` no longer throws `fts5: syntax error` (phrase-literal quoting), punctuation `"` `*` `:()` `<>` `.` all zero `SqliteException`, `Service` substring fallback 20, `Migrations` 17→21/35→46 with `include-generated` |

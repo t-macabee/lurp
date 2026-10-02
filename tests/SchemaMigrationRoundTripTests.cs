@@ -16,7 +16,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void MigrationList_CountIs28()
+    public void MigrationList_CountMatches_DatabaseSchemaVersion()
     {
         var versions = MigrationRunner.MigrationVersions;
         Assert.Equal(VersionConstants.DatabaseSchemaVersion, versions.Count);

@@ -538,7 +538,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         var store = OpenStore(DbPath);
 
         // Resolve anchor = PingHandler
-        var symbols = store.SearchSymbols(snapshotId, "PingHandler");
+        var symbols = store.SearchSymbols("PingHandler", snapshotId);
         Skip.If(symbols.Count == 0, "PingHandler not found in snapshot.");
         var anchor = symbols.First();
 

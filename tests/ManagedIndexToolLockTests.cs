@@ -167,6 +167,43 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
         Assert.Throws<ObjectDisposedException>(() => current.CancellationTokenSource.Token);
     }
 
+    [Fact]
+    public async Task StoreFactoryThrow_FailsOperationAndReleasesLocksAndCts()
+    {
+        CreateProject("LockMcpA", new Dictionary<string, string> { ["A.cs"] = SourceA });
+        await RunIndexingSuccessfully();
+
+        var indexState = new McpIndexSessionState();
+        var sessionContext = CreateSessionContext();
+        var tool = new IndexTool(sessionContext, indexState,
+            _ => throw new InvalidOperationException("store factory probe"));
+
+        var response = tool.LurpIndex(
+            solution: SolutionPath,
+            strategy: "incremental",
+            cancellationToken: CancellationToken.None);
+
+        var json = JsonDocument.Parse(response);
+        var operationId = json.RootElement.GetProperty("operation_id").GetString()!;
+
+        var current = indexState.Current;
+        Assert.NotNull(current);
+        if (current.BackgroundTask != null)
+            await current.BackgroundTask;
+
+        var snapshot = indexState.Snapshot(operationId);
+        Assert.NotNull(snapshot);
+        Assert.Equal("failed", snapshot!.Status);
+        Assert.Contains("store factory probe", snapshot.ErrorMessage);
+
+        var solutionKey = IndexRunLock.NormalizeKey(Path.GetFullPath(SolutionPath));
+        using var solutionLock = HoldLock(IndexRunLock.GetLockFilePath(solutionKey));
+        var databaseKey = IndexRunLock.NormalizeKey(DbPath);
+        using var databaseLock = HoldLock(IndexRunLock.GetLockFilePath(databaseKey));
+
+        Assert.Throws<ObjectDisposedException>(() => current.CancellationTokenSource.Token);
+    }
+
     private async Task RunIndexingSuccessfully()
     {
         var ex = await Record.ExceptionAsync(() => IndexHandler.Run(

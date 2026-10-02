@@ -7,7 +7,7 @@ namespace Lurp.Tests;
 /// <summary>
 /// Snapshots the CLI mode + flag inventory and the MCP tool + param surface.
 /// Analogous to <c>EveryReadMode_Registry_DeclaresFreshnessFlags</c> and
-/// <c>MigrationList_CountIs28</c>: any change to Program.ModeRegistry or to
+/// <c>MigrationList_CountMatches_DatabaseSchemaVersion</c>: any change to Program.ModeRegistry or to
 /// src/Mcp/Tools/*.cs is a visible, deliberate diff in this file rather than
 /// a silent shape change. See VERSIONING.md for breaking vs non-breaking rules.
 /// </summary>

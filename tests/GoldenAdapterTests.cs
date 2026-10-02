@@ -455,6 +455,54 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal("test-v3", edge.ExtractorVersion);
     }
 
+    /// <summary>
+    ///     Regression: namespace segments of a fully qualified name bind as member
+    ///     accesses and resolve to <see cref="Microsoft.CodeAnalysis.INamespaceSymbol" />.
+    ///     Namespaces are not snapshot symbols and the same-assembly guard does not stop
+    ///     them, so before the fix they produced a TestedBy edge with an <c>N:</c> source
+    ///     that the orphan filter silently dropped afterwards. Pattern B: the external
+    ///     production endpoint never survives to a persisted snapshot, so the adapter
+    ///     contract is pinned at extraction level.
+    /// </summary>
+    [Fact]
+    public async Task TestAdapter_FullyQualifiedNameProducesNoNamespaceTestedBy()
+    {
+        var test = new TestAdapterExtractorTest();
+        try
+        {
+            var extraction = await test.ExtractAsync(
+                new Dictionary<string, string>
+                {
+                    ["FullyQualifiedTests.cs"] = """
+                                                 using Xunit;
+
+                                                 public class FullyQualifiedTests
+                                                 {
+                                                     [Fact]
+                                                     public void UsesFullyQualifiedName()
+                                                     {
+                                                         System.Linq.Enumerable.Range(0, 1);
+                                                     }
+                                                 }
+                                                 """
+                },
+                projectName: "App.Tests",
+                runAdapters: true);
+
+            var testedBy = extraction.EdgesOf("TestedBy", Provenance.FrameworkDerived);
+
+            // Non-vacuous: the external production type still produces an edge.
+            Assert.Contains(testedBy, e => e.SourceSymbolId.StartsWith("T:System.Linq.Enumerable"));
+
+            // Namespace segments must not become TestedBy sources.
+            Assert.DoesNotContain(testedBy, e => e.SourceSymbolId.StartsWith("N:"));
+        }
+        finally
+        {
+            test.Dispose();
+        }
+    }
+
     // ── R5 characterization tests ──────────────────────────────────────
 
     /// <summary>
@@ -587,5 +635,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
 /// <summary>Pattern B host for the Serialization adapter golden test.</summary>
 public sealed class SerializationAdapterExtractorTest : InMemoryTestBase
+{
+}
+
+/// <summary>Pattern B host for the Test adapter regression test.</summary>
+public sealed class TestAdapterExtractorTest : InMemoryTestBase
 {
 }

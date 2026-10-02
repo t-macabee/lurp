@@ -32,6 +32,24 @@ public sealed class EdgeWritePathTests : IDisposable
         return store;
     }
 
+    private void SaveSnapshotSymbol(string symbolId)
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA foreign_keys = OFF;";
+        pragma.ExecuteNonQuery();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            INSERT OR IGNORE INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+            VALUES (@snapshotId, @symbolId, @symbolId, NULL);
+        ";
+        command.Parameters.AddWithValue("@snapshotId", SnapshotId);
+        command.Parameters.AddWithValue("@symbolId", symbolId);
+        command.ExecuteNonQuery();
+    }
+
     private static EdgeRecord MakeEdge(string source, string target, string kind,
         string provenance = "compiler_proved", string? typeArgs = null,
         string? receiverConstraints = null,
@@ -367,5 +385,50 @@ public sealed class EdgeWritePathTests : IDisposable
         var edge = Assert.Single(store.GetEdges(SnapshotId));
         Assert.Equal("compiler_proved", edge.Provenance);
         Assert.Equal(10, edge.SourceStartLine);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_OpenApiGeneratedEndpoint_ClassifiedCompilerSynthesized()
+    {
+        using var store = OpenStore();
+        SaveSnapshotSymbol("T:Ns.Foo|asm1");
+
+        const string generated =
+            "M:Microsoft.AspNetCore.OpenApi.Generated.XmlCommentOperationTransformer.TransformAsync(...)|asm1";
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("T:Ns.Foo|asm1", generated, "Calls"),
+            MakeEdge(generated, "T:Ns.Foo|asm1", "Calls")
+        ]);
+
+        var summary = store.DeleteOrphanEdges(SnapshotId);
+
+        Assert.Equal(2, summary.Total);
+        Assert.Equal(0, summary.External);
+        Assert.Equal(2, summary.CompilerSynthesized);
+        Assert.Equal(0, summary.Other);
+    }
+
+    [Fact]
+    public void DeleteOrphanEdges_InterceptsLocationEndpoint_ClassifiedCompilerSynthesized()
+    {
+        using var store = OpenStore();
+        SaveSnapshotSymbol("T:Ns.Foo|asm1");
+
+        const string generated = "T:System.Runtime.CompilerServices.InterceptsLocationAttribute|asm1";
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("T:Ns.Foo|asm1", generated, "Calls"),
+            MakeEdge(generated, "T:Ns.Foo|asm1", "Calls")
+        ]);
+
+        var summary = store.DeleteOrphanEdges(SnapshotId);
+
+        Assert.Equal(2, summary.Total);
+        Assert.Equal(0, summary.External);
+        Assert.Equal(2, summary.CompilerSynthesized);
+        Assert.Equal(0, summary.Other);
     }
 }

@@ -12,11 +12,13 @@ internal sealed class IndexTool
 {
     private readonly McpSessionContext _session;
     private readonly McpIndexSessionState _indexState;
+    private readonly Func<string, SqliteIndexStore> _storeFactory;
 
-    public IndexTool(McpSessionContext session, McpIndexSessionState indexState)
+    public IndexTool(McpSessionContext session, McpIndexSessionState indexState, Func<string, SqliteIndexStore>? storeFactory = null)
     {
         _session = session;
         _indexState = indexState;
+        _storeFactory = storeFactory ?? (static path => new SqliteIndexStore(path));
     }
 
     [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, OpenWorld = false, UseStructuredContent = true)]
@@ -162,7 +164,7 @@ internal sealed class IndexTool
                     SqliteIndexStore? store = null;
                     try
                     {
-                        store = new SqliteIndexStore(dbPath);
+                        store = _storeFactory(dbPath);
                         store.Open();
                         store.RunMigrations();
                         store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);

@@ -111,6 +111,9 @@ public sealed class TestAdapter : IFrameworkAdapter
         if (productionSymbol == null)
             return;
 
+        if (productionSymbol is INamespaceSymbol)
+            return;
+
         var productionAssembly = productionSymbol.ContainingAssembly;
         if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.AssemblyIdentity)
             return;
