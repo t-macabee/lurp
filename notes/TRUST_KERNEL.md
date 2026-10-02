@@ -1,7 +1,7 @@
 # Trust Kernel: Implementation Status
 
 **Status:** implementation-status reference. The architecture is documented in
-`docs/ARCHITECTURE.md` and `AGENTS.md`; this file records the
+`docs/ARCHITECTURE.md`; this file records the
 evidence-backed status of implementation, verification, and known deviations.
 There is no live task queue in this repository.
 
@@ -71,7 +71,7 @@ cited below. Evidence cites git commits and named tests directly.
 | 11 | Generated-code provenance | ✅ Done | Orders 10, 11 |
 | 12 | ASP.NET, DI, MediatR, EF, serialization, test adapters | ✅ Done | All 6 adapters; `TestedBy` granularity fix `63cfaf4`; `GoldenAdapterTests.TestAdapter_TestProjectProducesTestedBy`, live-verified §G: neither solution uses MediatR, 0 MediatR edges, no null warnings, framework_derived 1466/89 |
 | 13 | Reflection evidence ladder | ✅ Done | See below |
-| 14 | Evidence-backed impact paths | ✅ Done | `ImpactTraverser`, `ImpactHandler`, `semantic_causes`, live-verified §D & §H (see Phase 14) |
+| 14 | Evidence-backed impact reachability (paths until 2.0.0) | ✅ Done | `ImpactReachability`, `ImpactHandler`, `semantic_causes`, live-verified §D & §H (see Phase 14) |
 | 15 | Context capsules with source and token budgets | ✅ Done | See below, live-verified §E (RelevantTestsTierBuilder fix) |
 | 16 | Rebase simulations and audits | ✅ Done → Removed in Aug 2026 cleanup |
 | 17 | Optimize incremental updates from measurements | ✅ Done | `CallsEdgeExtractor` 2051→1944 ms (Lurp) at time of record; member-edge coverage in `GoldenEdgeTests` |
@@ -82,36 +82,40 @@ cited below. Evidence cites git commits and named tests directly.
 |---|---|---|---|
 | `typeof(T)` | `ReflectionTypeRef` | `TypeOfReflectionExtractor` | `TypeOf_EmitsReflectionTypeRefEdge` |
 | `nameof` | `ReflectionMemberRef` | `NameOfReflectionExtractor` | `NameOf_EmitsReflectionMemberRefEdge` |
-| String literal matching known name | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` | `StringLiteral_MatchingTypeName_EmitsNameCandidateEdge` |
+| String literal naming a runtime binding target | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` + `ReflectionSinkPatterns` | `GoldenReflectionTests` (`TypeGetProperty_WithoutKnownType_EmitsAllMatchingMembersInSymbolIdOrder`, `PropertyChangedEventArgs_LimitsCandidateToContainingType`, `ForeignKeyAndInverseProperty_LimitCandidatesToContainingType`; rejections `BareStringLiteral_DoesNotEmitCandidate`, `JsonElementGetProperty_DoesNotEmitCandidate`) |
 | Runtime-unknown reflection | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
 
-All in `src/Workspace/`, registered as `"reflection-v2"`, covered by `GoldenReflectionTests.cs`; integrated with `UncertaintyDetector`.
+All in `src/Workspace/`, registered as `"reflection-v3"`, covered by `GoldenReflectionTests.cs`; integrated with `UncertaintyDetector`. Since 2.0.0 a name literal is recorded only as the name argument of a runtime name-binding API (`System.Type` lookup, `Type.GetType`/`Assembly.GetType`/`Activator.CreateInstance`, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically; other literals are rejected (`ReflectionSinkPatterns`).
 
 ### Phase 15 verification: Context Capsules
 
-All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery`, was build-breaking positional-arg bug, now fixed), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`. Live-verified on both solutions (§E): 3–4 real anchors (controller action, service method, interface method with 2+ impls) all exit 0 with `relevant_tests` tier present, `estimatedTokens` ≤ `content-budget` (eNoteV2 571/283/388 at 1000, 8000 at default), `max-hops 1→3` changes expansion. `RelevantTestsTierBuilder` no longer crashes and tier actually produces results.
+All §6.2 requirements implemented: anchor (`CapsuleAnchor` with full scope/intent/snapshot metadata), `ContractsTierBuilder`, `RegisteredImplementationsTierBuilder`, `RelevantTestsTierBuilder` (shared containing-type expansion in `TestSymbolDiscovery`, was build-breaking positional-arg bug, now fixed), `UncertaintyDetector` (incl. reflection/generated exclusions + binding incompleteness), `IncomingPaths`/`OutgoingPaths` (witness paths since output schema 5) with complete spans, `VerificationSuggestion.Command`, `LikelyChangeSite` ranking, exact spans via `DeclarationReadStore.GetDeclarationLocations`, affected public surfaces, per-item `InclusionReason`. Budgeting is greedy-prefix (higher-priority items cannot be leapfrogged; every omitted tier still evaluated and recorded `budget_exhausted`/`empty`). Covered by `CapsuleCharacterizationTests.cs` (content-budget, empty-tier, unresolved-tier, gap-anchor, budget-exhausted fetch) and `ContextCapsuleAcceptanceTests.SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract`. Live-verified on both solutions (§E): 3–4 real anchors (controller action, service method, interface method with 2+ impls) all exit 0 with `relevant_tests` tier present, `estimatedTokens` ≤ `content-budget` (eNoteV2 571/283/388 at 1000, 8000 at default), `max-hops 1→3` changes expansion. `RelevantTestsTierBuilder` no longer crashes and tier actually produces results. Since 2026-10-02, a capsule also carries top-level `snapshot_id`, `tool_version` and `output_schema_version`, is written atomically (temp file + rename in `ContextHandler.WriteCapsuleOutput`), fills `suggested_verification` before the budget pass — one entry per test class when a class contributes several tests, so the section is measured and droppable — and appends `uncertainties` after that pass; `estimated_artifact_tokens` is stamped last. A1 regression: `CapsuleCharacterizationTests.Capsule_TestedByManyTests_GroupsByClassAndArtifactEstimateMatchesFile` (estimate equals serialized length / `CharsPerToken`) and `Capsule_TestedByManyTests_VerificationIsBudgetGoverned` (budget 1 drops the section with `budget_exhausted`).
 
 Closed capsule decisions: no occurrence multigraph (one evidence-bearing relation edge, not exhaustive call-site storage); no generated anchor narrative; architectural constraints come from snapshot annotations (no second JSON authority).
 
-### Phase 14 verification: Evidence-backed Impact Paths
+### Phase 14 verification: Evidence-backed Impact Reachability
+
+Since 2.0.0 (contract v2), impact returns reached symbols, each with one deterministic witness path, instead of every simple path. The rows marked v1 were verified against the path-enumerating `ImpactTraverser`, which 2.0.0 removes.
 
 | Requirement | Status |
 |---|---|
-| `ImpactPath` with `List<ImpactHop>` | ✅ |
+| `ImpactReachedSymbol` (`SymbolId`, `Depth`, `ShortestPathCount`, `IsFrontier`, `ParentHop`) and witness paths of `ImpactHop` | ✅ `ImpactReachabilityTests` (chain, diamond, cycle, double edge rows, saturation, determinism under reversed edge order) |
 | Hop details (`SourceSymbolId`, `TargetSymbolId`, `EdgeKind`, `Provenance`, `SourceDocument`, `SourceLine`) | ✅ |
-| Direction control (`Upstream`/`Downstream`) | ✅ verified live: `upstream 50 vs downstream 6` on `ENoteContext.SaveChangesAsync`, `IAuthenticatedUserAccessor.GetUserId` 2/50 truncated groups correct |
-| Depth limiting (`maxDepth`) | ✅ verified live: `1→5, 2→6, 3→6` (eNoteV2) and `1→1,2→2,3→2` (eCommerce) |
-| Edge filtering (`allowedEdgeKinds`) | ✅ verified live: `--kinds=Calls` 8 vs `Calls,MayDispatchTo` 14 |
-| Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ verified live: eNoteV2 `IEntity.Id` pure inherited `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` `9/9/0`; eCommerce `IBaseCRUDService` mixed 242→186→1 is not a bug (79 compiler_proved+5 possible) |
-| Cycle detection (`visited` set) | ✅ |
-| Truncation explanation (`Truncated`, `TruncationReason`) | ✅ verified live: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor. *(Historical v1: the v2 impact output lists symbols and pages with `--limit=`/`limit`.)* |
-| Semantic causes (`SemanticCauses`) | ✅ verified live: impact `semantic_causes` populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run, re-run shows 0 WARNING lines |
+| Direction control (`Upstream`/`Downstream`) | ✅ `ImpactReachabilityTests`; v1 live: `upstream 50 vs downstream 6` on `ENoteContext.SaveChangesAsync`, `IAuthenticatedUserAccessor.GetUserId` 2/50 truncated groups correct |
+| Depth limiting (`maxDepth`) and frontier flag | ✅ frontier true/false cases in `ImpactReachabilityTests`; v1 live: `1→5, 2→6, 3→6` (eNoteV2) and `1→1,2→2,3→2` (eCommerce) |
+| Edge filtering (`allowedEdgeKinds`) | ✅ `ImpactReachabilityTests`; v1 live: `--kinds=Calls` 8 vs `Calls,MayDispatchTo` 14 |
+| Provenance filtering (`allowedProvenance`, `--provenance=`, `e5bbaf0`) | ✅ `ImpactReachabilityTests`; v1 live: eNoteV2 `IEntity.Id` pure inherited `all:1, compiler_proved:0, possible:1` vs direct `ICurrentUserService.UserId` `9/9/0`; eCommerce `IBaseCRUDService` mixed 242→186→1 is not a bug (79 compiler_proved+5 possible) |
+| Cycle handling (one shared visited set) | ✅ |
+| Same reached set as v1 | ✅ frozen reached-set characterization test (3 seeded random graphs, both directions; the expected sets are pinned literals); eNoteV2 `SaveChangesAsync` upstream depth 4 = 1,857 symbols and `IStudentContext.GetCurrentStudentIdAsync` depth 5 = 1,517, equal to the v1 distinct-symbol counts without the anchor (2026-10-02) |
+| Paging (`--limit=`/`limit`, cursor over depth-then-ID order) | ✅ `ImpactHandlerPagingTests`, `McpImpactTests`. *(Historical v1: `max-paths=2` → `truncated:{reason:max_paths,total:6,remaining:4,cursor:...}` with page2 cursor.)* |
+| Semantic causes (`SemanticCauses`) | ✅ top-level `semantic_causes` once per response (`McpImpactTests`); v1 live: populated (edge_added `MayDispatchTo`); was `near "=": syntax error` from `SemanticChangesSelect` missing separator, fixed pre-run, re-run shows 0 WARNING lines |
+| Bounded cost | ✅ eNoteV2 depth 4–6: 0.45–0.54 s, 53–60 MB (v1 depth 4: 861,886 paths, 3.4 GB; depth 5 did not finish). |
 
-Tests: `ImpactTraverserTests.cs`.
+Tests: `ImpactReachabilityTests.cs`, `ImpactHandlerPagingTests.cs`, `tests/Mcp/McpImpactTests.cs`, `McpParityTests.cs`.
 
 ### Architecture §10 definitive-version checklist
 
-All criteria ✅ except the removed simulation/audit modes (n/a). One SQLite DB (migrations 1–30); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged: `No changes detected. Skipping incremental index.` counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = paths with reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
+All criteria ✅ except the removed simulation/audit modes (n/a). One SQLite DB (migrations 1–30); source/facts share snapshot identity; symbols link to exact spans; reads avoid Roslyn reload; incremental updates changed docs (dedup when unchanged: `No changes detected. Skipping incremental index.` counts identical); member-level typed edges; polymorphism/framework indirection keeps evidence levels; generated semantics participate without flooding; semantic diffs explain changes; impact = reached symbols with witness paths and reasons; capsules bounded; every fact states provenance + extractor version; indexer never modifies source.
 
 ---
 
@@ -122,7 +126,7 @@ Each item states the resulting current state. Citations name live tests or dated
 - **T1: Schema-version verification authoritative.** `VersionConstants.DatabaseSchemaVersion` sole reference; covered by `SchemaMigrationRoundTripTests.cs`.
 - **T2: Failed snapshot cleanup atomic.** `SnapshotPruner.DeleteSnapshotData` deletes inside a transaction; covered by `SnapshotReuseResolutionTests.IncompleteExistingRow_ResolvesRetry_AndIsDeleted`.
 - **T3: Orphan edges removed on both endpoints.** `EdgeOperationsStore.DeleteOrphanEdges` removes edges when either endpoint absent from `snapshot_symbols`; `OriginalDefinition` normalization keeps in-snapshot edges. Orphan drops bucketed: compiler-synthesized (`<` in id), external (out-of-scope assembly), other (actionable warning). eNoteV2 clean rebuild (402 docs, 3,656 decls, extractor 1.6.0): 0 residual `other` drops; 10,544 edges retained (90.2% `compiler_proved`, 8.9% `framework_derived`). `SymbolIdFactory.Make` normalizes to `OriginalDefinition` + un-reduces `ReducedFrom` (extractor 1.5.0); internal non-synthesized orphan drops fell 1,345→2.
-- **T4: Cross-project edge dedup + merge-on-write.** `EdgeOperationsStore.SaveEdges` pre-merges via `EdgeMerge.CollapseBatch` (provenance priority `compiler_proved` > `framework_derived` > `global_implementation_relation` > `possible` > `convention` > `name_candidate` > `runtime_unknown`), then bulk (`type_arguments_json` null, ~99.95%) vs split paths. `ux_edges_relation` unchanged; `EdgeDedup.Deduplicate` at `IndexRunner.cs:264` a redundant guard. Binding tests in `EdgeWritePathTests.cs`. Known narrow gap: equal-rank tie-break keeps persisted row (not observed on real code; `CleanRebuildEquivalenceTest` backstop). Freshness (`WorkspaceFreshness`) observes file content, compilation inputs, extractor version.
+- **T4: Cross-project edge dedup + merge-on-write.** `EdgeOperationsStore.SaveEdges` pre-merges via `EdgeMerge.CollapseBatch` (provenance priority `compiler_proved` > `framework_derived` > `global_implementation_relation` > `possible` > `convention` > `name_candidate` > `runtime_unknown`), then bulk (`type_arguments_json` null, ~99.95%) vs split paths. `ux_edges_relation` unchanged; `EdgeDedup.Deduplicate` at `IndexRunner.cs:273` a redundant guard. Binding tests in `EdgeWritePathTests.cs`. Known narrow gap: equal-rank tie-break keeps persisted row (not observed on real code; `CleanRebuildEquivalenceTest` backstop). Freshness (`WorkspaceFreshness`) observes file content, compilation inputs, extractor version.
 - **T5–T8: Semantic-diff metadata producer/consumer contract.** `BuildMetadataJson` writes `base_type`, canonical `signature`, sorted `attributes`; `CompareMetadata` consumes all. Attributes stay in `metadata_json` (not the unimplemented `facts` table).
 - **T9: Generated-output absence declared.** `MSBuildWorkspace` does not expose source-generator output; completeness persists `generated_trees_included`, TFMs, skipped adapters, extractor version, surfaced via `status --json`.
 - **T10: Incremental-vs-full equivalence coverage.** Snapshot comparison covers FQNs, metadata JSON, declaration paths/spans/flags, FTS records; cases: signature, body-only, document-move, partial-class, base/interface, DI, new-overload-in-new-file. Covered by `IncrementalParityTests.cs`, `CleanRebuildEquivalenceTest.cs`, `MultiCycleConvergenceTests.cs`.
@@ -137,7 +141,7 @@ Each item states the resulting current state. Citations name live tests or dated
 
 Already covered by `SignatureFormat` (`IncludeNullableReferenceTypeModifier`, `IncludeParamsRefOut`, `IncludeExplicitInterface`, `IncludeTypeConstraints`), locked by `SemanticDifferTests.cs`: S1 `S1_NullableAnnotationChanged`, S2 `S2_RefParameterModifierChanged`, S5 `S5_OperatorOverloadSignatureChanged`, S6 `S6_ConversionOperatorSignatureChanged`.
 
-Remaining gaps, all closed: S8 interfaces key (`interfaces_changed`); S9 `isRecord` (`record_changed`); S10 persisted-but-uncompared modifiers (`metadata_changed` + field); S11 `semantic_changes` invalidation (`semantic_causes` on impact paths); S12 declaration move to another file (`symbol_relocated`, covered by `SemanticDifferTests.cs` relocation tests).
+Remaining gaps, all closed: S8 interfaces key (`interfaces_changed`); S9 `isRecord` (`record_changed`); S10 persisted-but-uncompared modifiers (`metadata_changed` + field); S11 `semantic_changes` invalidation (`semantic_causes` on the impact response); S12 declaration move to another file (`symbol_relocated`, covered by `SemanticDifferTests.cs` relocation tests).
 
 ### Phase 9 (polymorphism/dispatch)
 
@@ -168,7 +172,7 @@ Remaining gaps, all closed: S8 interfaces key (`interfaces_changed`); S9 `isReco
 | Gap | Implemented behavior | Status |
 |---|---|---|
 | G1 metadata producer/consumer | `BuildMetadataJson` persists sorted `interfaces`; `CompareMetadata` emits `interfaces_changed`, `record_changed`, `metadata_changed` (typeKind + modifiers) | Done 2026-07-27 |
-| G2 semantic cause in impact | `ISemanticDiffStore` + `ImpactHandler` → `semantic_causes` per path; `ImpactTraverserTests.cs` | Done 2026-07-27 |
+| G2 semantic cause in impact | `ISemanticDiffStore` + `ImpactHandler` → `semantic_causes` once per response (top level); `McpImpactTests.cs` | Done 2026-07-27 |
 | G3 `Hides` edge | `OverridesEdgeExtractor` emits distinct `Hides`; `GoldenEdgeTests.HidesEdge_MethodHidesBaseMember` | Done 2026-07-27 |
 | G5 indexer Reads/Writes | `CallsEdgeExtractor` resolves `ElementAccessExpressionSyntax` to indexer; `GoldenEdgeTests.ReadsEdge_*`/`WritesEdge_*` | Done 2026-07-27 |
 | G6 extension receiver | `AddCallEdge` emits `ExtensionReceiver` for instance-style call; `GoldenEdgeTests.ExtensionReceiverEdge_*` | Done 2026-07-27 |
@@ -188,7 +192,7 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 
 ---
 
-## Fix log (Aug 2026; full narratives in commit history / `LIVE_TEST_FIXES.md`)
+## Fix log (Aug–Oct 2026; full narratives in commit history)
 
 | Date | Area | Fix | Evidence |
 |---|---|---|---|
@@ -208,24 +212,27 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | 08-13 | T1: read-mode freshness signal | `get-source`/`get-symbol`/`navigate` wired to freshness; `--require-fresh` exit 2 | `ReadModeFreshnessTests.cs` |
 | 08-13 | T4: 1-based line numbers on emit | `LineNumbers.ToOneBased` single choke point; storage stays 0-based | `LineNumberBaseTests.cs` |
 | 08-13 | T3: lightweight "where is X defined?" | `find-symbol`/`get-symbol --view=metadata` gain `locations[]`; `navigate` gains 1-based lines | `SymbolLocationRetrievalTests.cs` |
-| 08-14 | R8 (3 live-test defects) | (1) full-index diff after orphan cleanup; (2) `--snapshot=latest` resolved; (3) punctuation-only search returns 0 | `LIVE_TEST_FIXES.md` Tasks 1–3; `SemanticDifferTests`, `CliExitSmokeTests.ResolveSnapshotId_Latest_*`, `StoreReadPathTests`/`CapsuleCharacterizationTests` |
+| 08-14 | R8 (3 live-test defects) | (1) full-index diff after orphan cleanup; (2) `--snapshot=latest` resolved; (3) punctuation-only search returns 0 | `SemanticDifferTests`, `CliExitSmokeTests.ResolveSnapshotId_Latest_*`, `StoreReadPathTests`/`CapsuleCharacterizationTests` |
 | 08-17 | MCP stdout-purity + `lurp_status` freshness + `lurp_timings` (13th tool) | Stdout leak: `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` (`src/Mcp/McpServeHandler.cs`) + `IOutputSink` plumbing for `Console.*` in `src/Workspace/`, every stdout line now JSON (`tests/Mcp/McpStdioPurityTests.cs`). `lurp_status` full-method freshness: pinned snapshot now loaded with documents (was metadata-only, mis-reported 397/402 stale). `lurp_timings` 13th MCP tool added. | `McpStdioPurityTests` Passed 1/1; MCP tool presence and stdout behavior are covered by the MCP test suite. |
+| 10-02 | Read commands refuse old database schemas | Read modes and the MCP session check `DatabaseSchemaVersion` and fail with an `--mode=index` hint; only `index`/`pin-snapshot`/`lurp_index` migrate; `status` reports without migrating | `897db0e`; `SchemaVersionGuardTests` |
+| 10-02 | 2.0.0: impact reachability | `ImpactReachability` replaces path enumeration in impact, capsule paths and three tiers; contract v2, output schema 5; the deprecated `--enumerate-paths` shim and `ImpactTraverser` removed before the release; `--mode=context --max-hops=4` no longer runs out of memory | `1649a31` + 2.0.0 commit; `docs/RELEASE_NOTES_2.0.0.md`; full suite 439/439 |
+| 10-02 | ASP.NET Core: routes only on actions | With a class-level `[Route]`, every ordinary controller method got `RoutesTo` (eNoteV2: 9 of 159, on private helpers and `protected override GetId`; a reindex with the fix removes exactly these 9 edges and no other). `AspNetCoreAdapter.IsAction` now applies ASP.NET Core's `DefaultApplicationModelProvider.IsAction` rule (public, not static/abstract/generic, not `[NonAction]` incl. inherited, not an `object` override or `Dispose`), checked against ASP.NET Core 10.0 by calling that method on the same cases; adapter `aspnetcore-v2` | `GoldenAdapterTests.AspNetCoreAdapter_OnlyActionMethodsGetRoutesTo` |
 
 ---
 
 ## Open findings for follow-up
 
 1. **`search` → `context`/`impact` round-trip.** Resolved 2026-08-07 (`d63d251`): bare FQN/doc-comment ID accepted; `FormatException` guarded by `ContextHandler.ValidateSymbolIdFormat`.
-2. **`impact --output=summary` names symbol IDs, not human-readable names.** Low severity; `--output=json` richer.
+2. **`impact --output=summary` names symbol IDs, not human-readable names.** Resolved: the summary resolves each ID to its fully-qualified name (`ImpactHandler.MakeNameResolver`), with the doc-comment ID as fallback for symbols outside the snapshot.
 3. **`ContextBudgeter` tier costing source-only.** Low severity; `CapsuleBudgetEnforcer` re-measures and is authoritative.
-4. **Capsule budget defaults exhaust quickly on type-level anchors.** `--content-budget=4000` zeroes `directCallers`/`relevantTests` on a 12-method service. Decide whether default should scale with anchor kind.
-5. **`estimatedTokens` vs `estimatedArtifactTokens` differ ~2×.** Documented design choice; not reopened.
+4. **Capsule budget defaults exhaust quickly on type-level anchors.** `--content-budget=4000` zeroes `directCallers`/`relevantTests` on a 12-method service. Resolved: the default is kind-aware (8000, or 16000 for a type anchor when `--content-budget=` is omitted; `ContextHandler.DefaultTypeAnchorBudget`, `ContextTool`), and `--tier=` refetches any `budget_exhausted` tier unbudgeted.
+5. **`estimatedTokens` vs `estimatedArtifactTokens` differ ~2×.** Documented design choice; not reopened. Both are a model-neutral size hint (characters ÷ 3), not a token count for any model. The divisor was set once from OpenAI (3.82–4.08) and DeepSeek (3.17–3.51) measurements on eNoteV2 capsules; Lurp ships no tokenizer (T10, 2026-10-02).
 6. **Temporary capsule-output artifacts stale/pre-fix.** Regenerate before judging output quality.
-7. **`EffectiveSymbolIds` design question.** Whether dispatch-interface members should be included; recorded, not acted on.
+7. **`EffectiveSymbolIds` design question.** Resolved 2026-10-02: no. Dispatch is already modeled separately in all three upstream tiers through `GetDispatchSourceEdges` (`DirectCallersTierBuilder`, `RelevantTestsTierBuilder`, `SecondDegreeContextTierBuilder`) with composed `possible` provenance and the `indirect_dispatch_candidate` relationship, and the contracts tier already shows the implemented interface member. Including interface members in `EffectiveSymbolIds` would make `AddCallersOf` treat callers of the interface as direct, compiler-proved callers of the anchor, which the tier code forbids.
 8. **MusicLibrary dispatch reproduction deferred.** Externally blocked; recorded.
 9. **`impact` default `--max-depth=10` unbounded BFS.** Resolved 2026-08-07 (default→3).
 10. **Incremental `binding_incompleteness.occurrence_count` undercount (REAL parity bug).** CLOSED 2026-08-11 (R6); regression `ScenarioR6_BindingIncompleteness_IncrementalCarryForward`.
-11. **`--mode=timings` does not honor `--snapshot=latest`.** `TimingsHandler.Run` bypasses `ResolveSnapshotId`; deferred by explicit decision to keep the fix single-site.
+11. **`--mode=timings` does not honor `--snapshot=latest`.** Resolved 2026-10-02: `TimingsHandler.Run` resolves through `HandlerBootstrap.ResolveSnapshotId` for both branches; regression `CliExitSmokeTests.Timings_SnapshotLatest_ResolvesToLatestSnapshot`.
 
 ---
 

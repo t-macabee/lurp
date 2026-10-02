@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. `--output-dir=` and `--solution=` are otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)); a bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
 
-**This document describes the CLI as of schema v30 / tool `1.4.0`.** Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of schema v30 / CLI-MCP contract v2 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -83,6 +83,8 @@ Index a solution and store facts in the database.
 | `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. |
 
 `--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
+
+Lurp loads projects through MSBuild design-time builds. These create `bin/` and `obj/` output folders and regenerate `obj/` intermediates, as an IDE does. Lurp itself writes only to `--output-dir`.
 
 ---
 
@@ -312,6 +314,10 @@ Also accepts the shared [read-command options](#read-command-options).
 
 Every response carries `symbols`: the reached symbols, each with its depth, `shortest_path_count`, a `frontier` flag and a deterministic `witness_path` from the anchor. `groups` buckets those symbols by the first hop of their witness path, computed over *all* symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated; `semantic_causes` sits at the top level because it depends only on the anchor. `shortest_path_count` counts both `Calls` and `StaticallyCalls` edges: a static call site emits both, and each counts as a route.
 
+Top-level fields: `snapshot_id`, `freshness`, `symbol_id`, `direction`, `max_depth`, `symbol_count_total` (reached symbols on all pages; the anchor is not included), `frontier_count` (reached symbols at `--max-depth` that have followable edges beyond their witness path), `offset`, `groups`, `semantic_causes`, `truncated` (`null`, or `{reason:"limit",returned,total,remaining,cursor}`) and `symbols`. Symbols come in depth order, then symbol ID, and the cursor pages over that order. A cursor from a 1.x build is rejected.
+
+`--output=summary` prints a header line, then `symbols: <total> total, <returned> in this page (offset N); <groups> distinct first hop(s); <frontier> at max depth`, one row per group with display names, and the truncation hint. `--output=jsonl` prints one `{"type":"meta", …}` record (the response without `symbols`), then one `{"type":"symbol", …}` record per symbol on the page.
+
 ---
 
 ### `--mode=context`
@@ -329,7 +335,7 @@ Assemble a context capsule for a symbol or source location.
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, uncertainties, verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
@@ -342,7 +348,15 @@ Assemble a context capsule for a symbol or source location.
 
 Also accepts the shared [read-command options](#read-command-options).
 
-The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout. Long symbol IDs are shortened with a stable hash suffix so the path remains valid on Windows; `--quiet` and `--output=summary` replace the stdout copy, never the file.
+The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and also printed to stdout. Long symbol IDs are shortened with a stable hash suffix so the path remains valid on Windows; `--quiet` and `--output=summary` replace the stdout copy, never the file. The top-level JSON records its origin (`snapshot_id`, `tool_version`, `output_schema_version`), so a file found on disk can be checked against `status`. The write is atomic (a sibling `.tmp` file is moved over the target), so a failed run leaves the previous file intact and a reader never sees a partial one.
+
+#### Paths, topology and tier order
+
+`incoming_paths` and `outgoing_paths` hold **witness paths**, not every simple path. Lurp visits each symbol within `--max-hops` once and keeps one deterministic path to it. A capsule emits the witness path of each reached symbol that no other emitted path passes through, so no emitted path is a prefix of another. A path that ends at `--max-hops` with followable edges beyond it carries `truncated: true` and `truncation_reason: "max depth reached"`. The budget step can then keep only a few of these paths (`summarized`).
+
+`topology.current` reports the reach before the budget trim: `incoming_symbol_count` and `outgoing_symbol_count` (reached symbols), `incoming_witness_path_count` and `outgoing_witness_path_count` (witness paths), and `total_hop_count` (hops over those witness paths). `--output=summary` prints the trimmed counts as `incomingWitnessPaths` / `outgoingWitnessPaths`.
+
+Items in `direct_callers`, `second_degree_context` and `relevant_tests` come in depth order, then symbol ID. `--tier=` pages over that order, so a `--tier=` cursor from a 1.x build is not valid.
 
 #### Capsule token estimates
 
@@ -351,13 +365,35 @@ A capsule reports two different numbers, and they are not interchangeable:
 | Field | What it measures | Use it for |
 |---|---|---|
 | `estimated_tokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
-| `estimated_artifact_tokens` | The **whole emitted file** (serialized length ÷ 4), framing included. | Sizing a context window. |
+| `estimated_artifact_tokens` | The **whole emitted file** (serialized length ÷ 3), framing included. | Sizing a context window. |
+
+Both numbers are a model-neutral, character-based size hint (characters ÷ 3).
+They are not a token count for any model: Lurp does not know which model reads
+the capsule and ships no tokenizer. The divisor 3 was chosen once, from
+measurements on eNoteV2 capsules (whole file, characters per token): OpenAI
+`o200k_base` 3.82–4.02, OpenAI `cl100k_base` 3.86–4.08, DeepSeek V4.1-Flash
+3.17–3.51. Claude was not measured. 3 is below every measured value, so the
+hint errs large, which is the safe side when you size a context window. The
+model provider counts the real tokens.
 
 `estimated_artifact_tokens` is always the larger of the two, typically by a wide
 margin on capsules with many small items. It is reported, never budgeted
 against: budgeting on the whole serialization was measured to force dropping
 whole tiers (`direct_callees`, `registered_implementations`, `surrounding_source`)
 at realistic budgets, which is a worse capsule for the same context cost.
+
+Population order decides what the budget sees. `suggested_verification` is
+assembled before the budget pass, so it counts toward `estimated_tokens` and
+can be dropped to fit (`omitted_tiers`, category `suggestedVerification`,
+reason `budget_exhausted`). When one test class contributes more than one
+covering test, the section carries one entry per class with a
+`dotnet test --filter "FullyQualifiedName~<Class>"` command instead of one
+entry per test; a class with a single test keeps its exact
+`FullyQualifiedName=<Test>` entry, and running the class filter runs every
+test it holds. `uncertainties` is assembled after the budget pass: it is
+neither counted against `--content-budget` nor trimmed.
+`estimated_artifact_tokens` is stamped last, over the emitted file, so it
+includes both sections.
 
 The same two numbers are restated under an advisory `token_estimate` block:
 `budget_basis` mirrors `estimated_tokens` and `delivery` mirrors
@@ -417,6 +453,8 @@ Show the current database status.
 | `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. |
 | `--max-documents=<n>` | No | Accepted and validated (default: 50; positive integer), but **inert in the CLI**: the status JSON reports `mismatches`, not a changed-documents sample. The MCP `lurp_status` `max_documents` parameter is the effective cap. |
 | `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
+
+`status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
 
 The manifest always carries a completeness block (`binding_incompleteness_summary`
 plus `binding_incompleteness_total`); `--detail=completeness` (or `all`) adds the
@@ -584,6 +622,10 @@ Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
 ```
 
 (402 docs; eCommerce likewise 162 unchanged, snapshot reused). The last 3 snapshots are retained; older ones are pruned automatically.
+
+### Schema version of the database
+
+Read commands never write to `index.db`. Every read mode, and the MCP server (at session start, on every `lurp_refresh` call, and before `lurp_retract_annotation`), first checks the database schema version. It must equal the version this build needs (`lurp --version` prints it as `schema vN`). When the database is older, the command fails with `ERROR: Index database at <path> uses schema v<n>; this Lurp needs v<m>. Run 'lurp --mode=index' to update it.` When it is newer, the error says to update Lurp instead. Only `--mode=index`, `--mode=pin-snapshot` and MCP `lurp_index` migrate the database. `--mode=status` reports the mismatch and does not fail (see [`--mode=status`](#--mode=status)).
 
 ## Environment Variables
 

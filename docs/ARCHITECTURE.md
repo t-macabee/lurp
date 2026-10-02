@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v30, extractor 1.6.0, tool 1.4.0
+**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v2, output schema v5, tool 2.0.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -98,7 +98,7 @@ reused via content-addressed dedup.
 | `global_implementation_relation` | Implementation relationship across the graph |
 | `possible` | Possible target (e.g. `MayDispatchTo` inherited-only) |
 | `convention` | Convention-based inference |
-| `name_candidate` | Matched by name/string literal |
+| `name_candidate` | Name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically |
 | `runtime_unknown` | Runtime target not observable statically |
 
 ## 5. Read Path (Handlers)
@@ -117,6 +117,23 @@ pin-snapshot, annotations (attach/retrieve/retract), and dead-candidates. MCP su
 which starts a background (re-)index through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
 
+Read commands never migrate `index.db`. They refuse a database whose schema
+version differs from `VersionConstants.DatabaseSchemaVersion` and name the fix
+(`--mode=index`, or a newer Lurp). Only `index`, `pin-snapshot` and `lurp_index`
+migrate.
+
+### 5.1 Impact reachability
+
+`ImpactReachability` answers "what can this change reach?". It runs a
+level-by-level BFS from the anchor with one shared visited set, so memory grows
+with symbols and edges, not with paths. For each reached symbol it records the
+depth, one witness path, a shortest-path count (edge rows, saturating at
+`long.MaxValue`) and a frontier flag. Edges are sorted by neighbor ID, kind,
+provenance and source location before expansion, and each level is expanded in
+symbol-ID order, so the witness paths and the output are the same on every run.
+`--mode=impact`, `lurp_impact`, the capsule paths and the `direct_callers`,
+`second_degree_context` and `relevant_tests` tiers all use it.
+
 ## 6. Context Capsules
 
 A context capsule is a bounded, evidence-backed package of relevant code
@@ -129,6 +146,14 @@ Budgeting: `--content-budget` bounds content tokens; tiers are included in
 priority order (greedy-prefix) until the budget is exhausted; omitted tiers
 are reported with reason (`budget_exhausted`, `empty`, `unresolved`,
 `summarized`). Individual tiers can be refetched with `--tier=<name>`.
+
+Every capsule records its origin at the top level (`snapshot_id`,
+`tool_version`, `output_schema_version`) and is written atomically, so a
+capsule found on disk can be checked against `status` and never shows a
+partial write. `UncertaintyDetector` fills `suggested_verification` before the
+budget pass, so it is measured and droppable; `uncertainties` is appended
+after it and is never trimmed; the artifact estimate is stamped last over the
+emitted file.
 
 ### 6.1 Declared boundaries
 
@@ -158,7 +183,7 @@ entry, not a new extractor.
 
 ## 8. Non-Negotiable Design Rules
 
-1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes or modify the working tree.
+1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes. Lurp loads projects through MSBuild design-time builds. These create `bin/` and `obj/` output folders and regenerate `obj/` intermediates, as an IDE does. Lurp itself writes only to `--output-dir`.
 2. **C#/.NET specialization**: remain Roslyn-native; do not weaken the semantic model for multiple languages.
 3. **Fact before interpretation**: record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
 4. **Unknown is a valid result**: make each blind spot the strongest honest form available.

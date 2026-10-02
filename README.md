@@ -11,15 +11,17 @@ Lurp indexes a .NET solution into SQLite with Roslyn, so an agent gets a small,
 sufficient code neighborhood instead of re-grepping and re-parsing the whole
 thing for every question. It loads the solution through the compiler and stores
 symbols, typed relationships, source spans, and provenance in one database, then
-serves retrieval, semantic diffs, impact paths, and token-bounded context
+serves retrieval, semantic diffs, impact reachability, and token-bounded context
 capsules. Index once, query as many times as you want, and get back exact
 source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-An interactive map of how Lurp structures an eCommerce codebase for agent
-consumption: symbols, relationships, evidence levels, and capsule boundaries
-as the model receives them.
+A point-in-time map of one Lurp 2.0.0 index of
+[eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln`, 7 projects):
+the evidence level of every edge, the DI, routing and EF Core surfaces, and the
+full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
+regenerates it.
 
 ## Why this exists
 
@@ -40,7 +42,7 @@ separately.
 | Command | What it does |
 |---|---|
 | `context` | Assemble a bounded capsule of relevant code from a symbol or source location. |
-| `impact` | Follow typed relationships outward and explain each path. |
+| `impact` | Follow typed relationships outward and list the affected symbols with a witness path. |
 | `diff` | Show semantic changes between two snapshots. |
 | `search` | Full-text search over source and symbols. |
 | `grep` | Literal/exact-text search over source content with line numbers. |
@@ -87,7 +89,7 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 ## Install
 
 ```bash
-dotnet tool install --global lurp --version 1.4.0
+dotnet tool install --global lurp --version 2.0.0
 lurp --mode=index --solution=path/to/Your.slnx --output-dir=./out
 ```
 
@@ -168,8 +170,11 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-1.4.0. Schema v30, extractor
-1.6.0. `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
+2.0.0. Schema v30, extractor
+1.6.0, CLI/MCP contract v2, output schema v5. 2.0.0 is a breaking release for
+`impact` and the capsule topology, and an index built by 1.4.0 needs one
+`--mode=index` run before read commands accept it: see
+[RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
 eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
 parameter-type matching are postponed by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
@@ -178,6 +183,8 @@ parameter-type matching are postponed by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md): breaking changes from 1.x and how to migrate.
+- [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.
 - MIT license, see [LICENSE](LICENSE).
 
 Also MCP: `--mode=serve` exposes 18 tools (`lurp_context`, `lurp_get_source`,

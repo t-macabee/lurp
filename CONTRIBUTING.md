@@ -20,22 +20,19 @@ dotnet test Lurp.slnx
 
 - `src/`: the tool. `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/, Migrations/).
 - `tests/`: the `Lurp.Tests` project (xunit).
-- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
+- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes ([RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
 - `notes/`: internal evidence log ([TRUST_KERNEL.md](notes/TRUST_KERNEL.md)).
-- `scripts/`: convergence verification scripts (`r1-*`).
+- `scripts/`: convergence verification scripts (`r1-*`) and the `MODEL_VIEW.html` generator (`model-view/`).
 
 ## Conventions
 
-- Read [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-  for the project's evidence-before-conclusions rules and architectural
-  invariants before changing behavior.
 - Handlers consume persisted facts; they must not create a second semantic-analysis engine.
 - Snapshots are immutable. Do not alter persisted snapshots merely to make a test pass.
 - Prefer narrow validation (the directly affected test, then its class, then the project).
 
 ## CLI/MCP contract versioning
 
-Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (28+ migrations,
+Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (30 migrations,
 enforced by `SchemaMigrationRoundTripTests`). The equivalent for the CLI/MCP surface that
 other agents integrate against is `VersionConstants.CliMcpContractVersion`
 (`src/Workspace/VersionConstants.cs`), exposed in `status --json` as `contract_version`
