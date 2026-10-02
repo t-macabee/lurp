@@ -12,18 +12,18 @@ name: Real Parity
 # the actual build/test signal.
 #
 # Fires on:
-#   - every push to main (the post-merge regression backstop), and
+#   - manual dispatch (`gh workflow run real-parity.yml`), run it before a
+#     release while the self-hosted runner is online, and
 #   - pull requests carrying the `real-parity` label (opt-in pre-merge gate
 #     for changes touching incremental indexing, storage, or extractors).
 #
+# It does not run on push to main. With the runner offline, every push run
+# ended cancelled and left a red mark on the commit.
+#
 # The label gate preserves the self-hosted runner as a scarce resource: a
 # maintainer adds `real-parity` only when the change class warrants it.
-#
-# Note: this no longer waits on ci.yml's `build` job to pass first (cross-
-# workflow job dependencies aren't a thing) — it runs in parallel instead.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
   pull_request:
     branches: [main]
 
@@ -36,7 +36,7 @@ jobs:
     runs-on: [self-hosted, real-parity]
     timeout-minutes: 30
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'real-parity'))
 
     steps:
