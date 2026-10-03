@@ -20,7 +20,7 @@ public sealed class McpPinningTests : IntegrationTestBase
 
         // Open a long-lived session (pinned snapshot)
         var outputDir = Path.GetDirectoryName(SolutionPath)!;
-        var sessionArgs = new[] { $"--solution={SolutionPath}" };
+        var sessionArgs = new[] { $"--solution={SolutionPath}", $"--output-dir={outputDir}" };
 
         await using var session = McpSessionContext.Create(sessionArgs);
         var pinned = session.PinnedSnapshotId;
@@ -57,7 +57,7 @@ public sealed class McpPinningTests : IntegrationTestBase
             ["A.cs"] = "namespace PinnedMismatchProj { public class A { public void Foo() {} } }"
         });
         var snapshot1 = await RunFullIndexAsync(DbPath);
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
         // Every tool that accepts snapshot_id must reject mismatch with -32602
@@ -87,7 +87,7 @@ public sealed class McpPinningTests : IntegrationTestBase
             ["A.cs"] = "namespace PinnedStaleProj { public class A { public void Foo() {} } }"
         });
         var snapshot1 = await RunFullIndexAsync(DbPath);
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
         // Make file stale
@@ -127,7 +127,7 @@ public sealed class McpPinningTests : IntegrationTestBase
         await RunFullIndexNoDeleteAsync(DbPath);
         // Now session pinned to snapshot1, but many docs exist in latest; for cheap check,
         // changed docs are those whose mtime > builtAtUtc. Touch each file.
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         // Session currently pinned to latest (snapshot2); create a new session pinned to snapshot1 manually?
         // Instead test the capping via direct freshness call: ensure sample never exceeds 10.

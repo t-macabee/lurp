@@ -35,7 +35,7 @@ internal static class StatusHandler
             return;
         }
 
-        var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
+        var store = HandlerBootstrap.OpenReadStoreUnchecked(dbPath);
 
         try
         {
@@ -79,7 +79,7 @@ internal static class StatusHandler
     {
         if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
 
-        using var workspace = MSBuildWorkspace.Create();
+        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(solutionPath));
         var solution = await workspace.OpenSolutionAsync(solutionPath);
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);

@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v3, output schema v5, tool 2.0.0
+**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v4, output schema v5, tool 2.0.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -202,7 +202,7 @@ entry, not a new extractor.
 
 ## 8. Non-Negotiable Design Rules
 
-1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes. Lurp loads projects through MSBuild design-time builds. These create `bin/` and `obj/` output folders and regenerate `obj/` intermediates, as an IDE does. Lurp itself writes only to `--output-dir`.
+1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes. Lurp loads projects through MSBuild design-time builds, but redirects their intermediates into `%LOCALAPPDATA%\lurp\<hash>\obj\<project>\` (through `CustomBeforeMicrosoftCommonTargets` global properties on `MSBuildWorkspace`), so an index run does not create or change `bin/` or `obj/` files in the target tree; restore assets are still read from the real `obj/`. The only locations Lurp writes are its own cache/output directory, the lock directory under `%TEMP%\lurp-locks`, and any explicit `--output-dir=`/`--output-json=` path the caller names.
 2. **C#/.NET specialization**: remain Roslyn-native; do not weaken the semantic model for multiple languages.
 3. **Fact before interpretation**: record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
 4. **Unknown is a valid result**: make each blind spot the strongest honest form available.

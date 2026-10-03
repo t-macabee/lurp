@@ -46,7 +46,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     public async Task Status_FullTrue_ReturnsFullMethod()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus(full: true);
@@ -63,7 +63,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     public async Task Status_Default_WithSolution_IsCheap()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus();
@@ -79,7 +79,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     public async Task Status_SnapshotMismatch_ReturnsInvalidParams()
     {
         await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(snapshot_id: "mismatch"));
@@ -131,7 +131,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     public async Task Status_Full_AfterIndex_IsFresh_NoFalseStale()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus(full: true);
@@ -158,7 +158,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var projFile = Path.Combine(Path.GetDirectoryName(SolutionPath)!, "src", "StatusProj", "Models.cs");
         File.WriteAllText(projFile, "namespace StatusProj { public class Foo { public void Bar(int x) {} } }");
         // Ensure hash change is detected (content differs) — WorkspaceFreshness full check uses hash, not mtime
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus(full: true);
@@ -190,7 +190,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         {
             if (!Microsoft.Build.Locator.MSBuildLocator.IsRegistered)
                 try { Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults(); } catch { }
-            using var workspace = Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.Create();
+            using var workspace = Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.Create(
+                Lurp.Workspace.LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
             var solution = await workspace.OpenSolutionAsync(SolutionPath);
             var gitRoot = Path.GetDirectoryName(Path.GetFullPath(SolutionPath))!;
             var workspaceInfo = new Lurp.Workspace.WorkspaceInfo(solution, gitRoot);
@@ -204,7 +205,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         }
 
         // Also verify MCP full path now agrees (no false stale regression)
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus(full: true);
@@ -217,7 +218,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     public async Task Status_ServesStaleData_WithFlag_StillReturnsPayload()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var statusTool = new StatusTool(session);
         var getSourceTool = new GetSourceTool(session);
@@ -392,7 +393,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
             var p = Path.Combine(Path.GetDirectoryName(SolutionPath)!, "src", $"StatusCapMis{i}", "Extra.cs");
             File.WriteAllText(p, $"namespace StatusCapMis{i} {{ public class C{i} {{ public void M(int x) {{}} }} }}");
         }
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
         var json = await tool.LurpStatus(sections: "manifest", max_mismatches: 3, full: true);
@@ -637,7 +638,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var cheapDocState = cheapDoc.RootElement.GetProperty("document_freshness")[0].GetProperty("state").GetString();
 
         // Full scope
-        var fullArgs = new[] { $"--solution={SolutionPath}" };
+        var fullArgs = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var fullSession = McpSessionContext.Create(fullArgs);
         var fullTool = new StatusTool(fullSession);
         var fullJson = await fullTool.LurpStatus(documents: new[] { docA }, full: true);

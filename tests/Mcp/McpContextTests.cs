@@ -31,7 +31,7 @@ public sealed class McpContextTests : IntegrationTestBase
     private (McpSessionContext session, ContextTool tool) CreateSessionTool()
     {
         var outputDir = Path.GetDirectoryName(SolutionPath)!;
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         var session = McpSessionContext.Create(args);
         var tool = new ContextTool(session);
         return (session, tool);

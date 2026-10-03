@@ -1,5 +1,6 @@
 using Lurp.Handlers;
 using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
 
@@ -80,6 +81,68 @@ public sealed class CliExitSmokeTests : IDisposable
     public void ResolveOutputDir_NoSource_Throws()
     {
         Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveOutputDir([]));
+    }
+
+    [Fact]
+    public void ResolveOutputDir_SolutionOnly_UsesDefaultCache()
+    {
+        var solution = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}", "Test.slnx");
+
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}"]);
+
+        Assert.Equal(LurpCache.ResolveSolutionCacheDir(solution), resolved);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        Assert.StartsWith(Path.Combine(localAppData, "lurp"), resolved, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveOutputDir_ExplicitInsideSolution_WarnsOnStderr()
+    {
+        var solutionDir = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}");
+        var solution = Path.Combine(solutionDir, "Test.slnx");
+
+        string warning;
+        string resolved;
+        var writer = new StringWriter();
+        var original = Console.Error;
+        try
+        {
+            Console.SetError(writer);
+            resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={solutionDir}"]);
+        }
+        finally
+        {
+            Console.SetError(original);
+            warning = writer.ToString();
+        }
+
+        Assert.Equal(solutionDir, resolved);
+        Assert.Contains("is inside the solution directory", warning);
+    }
+
+    [Fact]
+    public void ResolveOutputDir_ExplicitOutsideSolution_DoesNotWarn()
+    {
+        var solutionDir = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}");
+        var solution = Path.Combine(solutionDir, "Test.slnx");
+        var outputDir = solutionDir + "-out";
+
+        string warning;
+        var writer = new StringWriter();
+        var original = Console.Error;
+        try
+        {
+            Console.SetError(writer);
+            var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={outputDir}"]);
+            Assert.Equal(outputDir, resolved);
+        }
+        finally
+        {
+            Console.SetError(original);
+            warning = writer.ToString();
+        }
+
+        Assert.DoesNotContain("is inside the solution directory", warning);
     }
 
     [Fact]
@@ -196,6 +259,7 @@ public sealed class CliExitSmokeTests : IDisposable
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, true);
         }
     }
@@ -212,6 +276,7 @@ public sealed class CliExitSmokeTests : IDisposable
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, true);
         }
     }
@@ -239,6 +304,7 @@ public sealed class CliExitSmokeTests : IDisposable
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, true);
         }
     }

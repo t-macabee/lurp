@@ -138,10 +138,11 @@ internal static class HelpText
         Console.WriteLine("lurp : Roslyn-native semantic context engine for C#");
         Console.WriteLine();
         Console.WriteLine("USAGE");
-        Console.WriteLine("  lurp --mode=<mode> --output-dir=<path> [options]");
+        Console.WriteLine("  lurp --mode=<mode> [--solution=<path> | --output-dir=<path>] [options]");
         Console.WriteLine();
-        Console.WriteLine("  --output-dir=<path>  Directory where index.db is stored. --solution= may");
-        Console.WriteLine("                       stand in for it when it points at a solution directory.");
+        Console.WriteLine("  --output-dir=<path>  Directory where index.db is stored. When omitted,");
+        Console.WriteLine("                       --solution= resolves the default cache location");
+        Console.WriteLine("                       %LOCALAPPDATA%\\lurp\\<hash of the solution path>.");
         Console.WriteLine("                       (LURP_OUTPUT_DIR / LURP_SOLUTION_PATH set these too.)");
         Console.WriteLine();
         Console.WriteLine("MODES");

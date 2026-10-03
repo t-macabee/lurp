@@ -58,7 +58,7 @@ public sealed class McpImpactTests : IntegrationTestBase
         return await RunIncrementalIndexAsync();
     }
 
-    private McpSessionContext CreateSession() => McpSessionContext.Create(new[] { $"--solution={SolutionPath}" });
+    private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     // Contract/acceptance: pins the v2 lurp_impact response shape.
     [Fact]

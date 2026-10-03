@@ -26,7 +26,7 @@ public sealed class McpParityTests : IntegrationTestBase
 
     private McpSessionContext CreateSession()
     {
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         return McpSessionContext.Create(args);
     }
 

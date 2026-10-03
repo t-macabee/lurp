@@ -39,7 +39,7 @@ public sealed class McpDiffTests : IntegrationTestBase
         return await RunIncrementalIndexAsync();
     }
 
-    private McpSessionContext CreateSession() => McpSessionContext.Create(new[] { $"--solution={SolutionPath}" });
+    private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     [Fact]
     public async Task Diff_FromTo_Parity_WithDirectDiffer()

@@ -17,9 +17,9 @@ lurp --mode=index --solution=MySolution.sln --output-dir=./out
 
 This creates `./out/index.db` containing all indexed symbols, edges, and source facts.
 
-**Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. `--output-dir=` and `--solution=` are otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)); a bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
+**Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--mode=index). A bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
 
-**This document describes the CLI as of schema v30 / CLI-MCP contract v3 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of schema v30 / CLI-MCP contract v4 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -71,13 +71,13 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 Index a solution and store facts in the database.
 
 ```
---mode=index --solution=<path> --output-dir=<path> [options]
+--mode=index --solution=<path> [--output-dir=<path>] [options]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `--solution=<path>` | Yes, or `LURP_SOLUTION_PATH` | Path to the `.sln` or `.slnx` file. |
-| `--output-dir=<path>` | No | Directory where `index.db` is stored. Defaults to the solution's directory. Also accepted via `LURP_OUTPUT_DIR`. |
+| `--output-dir=<path>` | No | Directory where `index.db` is stored. When omitted, `--solution=` (or `LURP_SOLUTION_PATH`) resolves the default cache location `%LOCALAPPDATA%\lurp\<sha256-12 of the canonical solution path>\`. Also accepted via `LURP_OUTPUT_DIR`. |
 | `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON. |
 | `--skip-adapter=<name>` | No | Skip a named framework adapter. Valid: `ASP.NET Core`, `Dependency Injection`, `MediatR`, `EF Core`, `Serialization`, `Test`. |
@@ -87,7 +87,9 @@ Index a solution and store facts in the database.
 
 `--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
 
-Lurp loads projects through MSBuild design-time builds. These create `bin/` and `obj/` output folders and regenerate `obj/` intermediates, as an IDE does. Lurp itself writes only to `--output-dir`.
+Lurp loads projects through MSBuild design-time builds. Those builds regenerate intermediate files, so Lurp redirects them out of the target tree into `%LOCALAPPDATA%\lurp\<hash>\obj\<project>\` (per project). An index run does not create or change `bin/` or `obj/` files in the target tree; restore assets are still read from the real `obj/`. By default the database and capsules are written to the same cache (`%LOCALAPPDATA%\lurp\<hash>\`). If an explicit `--output-dir=` lies inside the solution directory, Lurp warns on stderr and proceeds. The guarantee is enforced for the packed tool by `TargetTreeIntegrityTests`, which hashes the fixture tree before and after all 20 CLI modes and 18 MCP tools.
+
+**Migrating from the solution-directory default (2.0.0 and earlier):** an old `index.db` next to the solution is no longer found automatically. Point reads at it explicitly with `--output-dir=<old directory>` (or `LURP_OUTPUT_DIR`), or re-index with the new default and delete the old file when convenient.
 
 ---
 

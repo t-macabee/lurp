@@ -208,7 +208,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         using var store = new SqliteIndexStore(_dbPath);
         store.Open();
 
-        using var workspace = MSBuildWorkspace.Create();
+        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(_solutionPath));
         var solution = await workspace.OpenSolutionAsync(_solutionPath);
         var workspaceInfo = new WorkspaceInfo(solution, _testDir);
 

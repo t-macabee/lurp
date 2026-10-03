@@ -79,7 +79,7 @@ internal sealed class WorkspaceLoader : IDisposable
 
     private async Task<Solution> OpenWithWorkspaceAsync(string solutionPath, CancellationToken cancellationToken)
     {
-        _workspace = MSBuildWorkspace.Create();
+        _workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(solutionPath));
         var solution = await _workspace.OpenSolutionAsync(solutionPath, cancellationToken: cancellationToken);
         _loadDiagnostics = _workspace.Diagnostics;
         return solution;

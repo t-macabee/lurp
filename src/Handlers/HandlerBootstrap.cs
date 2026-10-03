@@ -206,22 +206,68 @@ internal static class HandlerBootstrap
 
     public static string ResolveOutputDir(string[] args)
     {
+        var solutionArg = GetArgValue(args, "--solution=")
+                          ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
+
         var outputDirArg = GetArgValue(args, "--output-dir=")
                            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
         if (!string.IsNullOrEmpty(outputDirArg))
-            return outputDirArg;
-
-        var solutionArg = GetArgValue(args, "--solution=")
-                          ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
-        if (!string.IsNullOrEmpty(solutionArg))
         {
-            var derived = Path.GetDirectoryName(Path.GetFullPath(solutionArg));
-            if (!string.IsNullOrEmpty(derived))
-                return derived;
+            WarnIfOutputInsideSolution(outputDirArg, solutionArg);
+            return outputDirArg;
         }
+
+        // No explicit output directory: keep --solution= as the only flag a user
+        // needs, and write outside the analyzed tree (audit B2/Q8).
+        if (!string.IsNullOrEmpty(solutionArg))
+            return LurpCache.ResolveSolutionCacheDir(solutionArg);
 
         Fail("ERROR: --output-dir=path, LURP_OUTPUT_DIR, or --solution=path is required.");
         return string.Empty;
+    }
+
+    /// <summary>
+    ///     Observability for the read-only guarantee: an explicit output directory
+    ///     inside the solution tree is where the old default wrote <c>index.db</c>
+    ///     and capsules, and a user who runs <c>git add .</c> commits it. The run
+    ///     proceeds, but the caller is told to move it out.
+    /// </summary>
+    private static void WarnIfOutputInsideSolution(string outputDirArg, string? solutionArg)
+    {
+        if (string.IsNullOrEmpty(solutionArg))
+            return;
+
+        string solutionDir;
+        string outputDir;
+        try
+        {
+            solutionDir = Path.GetFullPath(Path.GetDirectoryName(Path.GetFullPath(solutionArg)) ?? "");
+            outputDir = Path.GetFullPath(outputDirArg);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (solutionDir.Length == 0 || !IsSameOrSubdirectory(outputDir, solutionDir))
+            return;
+
+        // stderr: stdout stays payload/JSON on every surface, including MCP stdio.
+        Console.Error.WriteLine(
+            $"WARNING: --output-dir '{outputDir}' is inside the solution directory '{solutionDir}'. " +
+            "Lurp writes index.db and capsule files there. Pass a directory outside the tree, or omit " +
+            $"--output-dir to use the default cache at {LurpCache.ResolveSolutionCacheDir(solutionArg)}.");
+    }
+
+    private static bool IsSameOrSubdirectory(string path, string directory)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var trimmedPath = Path.TrimEndingDirectorySeparator(path);
+        var trimmedDirectory = Path.TrimEndingDirectorySeparator(directory);
+        if (string.Equals(trimmedPath, trimmedDirectory, comparison))
+            return true;
+
+        return trimmedPath.StartsWith(trimmedDirectory + Path.DirectorySeparatorChar, comparison);
     }
 
     public static string ResolveDbPath(string outputDir)
@@ -245,11 +291,37 @@ internal static class HandlerBootstrap
         Fail($"ERROR: Index database at {dbPath} uses schema v{actual}, newer than this Lurp (v{expected}). Update Lurp.");
     }
 
+    /// <summary>
+    ///     Opens a schema-checked store for the CLI read modes. Read-only by
+    ///     contract: reads must not create journal files or open a writable handle.
+    /// </summary>
     public static SqliteIndexStore OpenStore(string dbPath)
     {
         RequireCurrentSchemaVersion(dbPath);
         var store = new SqliteIndexStore(dbPath);
+        store.OpenReadOnly();
+        return store;
+    }
+
+    /// <summary>
+    ///     Opens a schema-checked writable store for the annotation write modes.
+    /// </summary>
+    public static SqliteIndexStore OpenWritableStore(string dbPath)
+    {
+        RequireCurrentSchemaVersion(dbPath);
+        var store = new SqliteIndexStore(dbPath);
         store.Open();
+        return store;
+    }
+
+    /// <summary>
+    ///     Opens a read-only store without the schema check, for <c>--mode=status</c>,
+    ///     which reports a mismatched schema instead of failing on it.
+    /// </summary>
+    public static SqliteIndexStore OpenReadStoreUnchecked(string dbPath)
+    {
+        var store = new SqliteIndexStore(dbPath);
+        store.OpenReadOnly();
         return store;
     }
 
@@ -282,6 +354,26 @@ internal static class HandlerBootstrap
         var outputDir = ResolveOutputDir(args);
         var dbPath = ResolveDbPath(outputDir);
         var store = OpenStore(dbPath);
+        try
+        {
+            var snapshotId = ResolveSnapshotId(store, snapshotArg);
+            body(store, snapshotId);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    /// <summary>
+    ///     Same contract as <see cref="WithStore" /> with a writable connection, for the
+    ///     two annotation write modes (annotate, retract-annotation).
+    /// </summary>
+    public static void WithWritableStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body)
+    {
+        var outputDir = ResolveOutputDir(args);
+        var dbPath = ResolveDbPath(outputDir);
+        var store = OpenWritableStore(dbPath);
         try
         {
             var snapshotId = ResolveSnapshotId(store, snapshotArg);

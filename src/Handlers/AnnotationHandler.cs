@@ -14,7 +14,7 @@ internal static class AnnotationHandler
         var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
         var valueArg = HandlerBootstrap.RequireArg(args, "--value=", "ERROR: --value=<text> is required for --mode=annotate.");
 
-        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithWritableStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             // Resolve to the canonical docCommentId|assemblyIdentity form, same as every
             // other --symbol= consumer (get-annotations, find-symbol, get-symbol, impact,
@@ -48,7 +48,7 @@ internal static class AnnotationHandler
         if (!long.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var annotationId) || annotationId < 1)
             HandlerBootstrap.Fail("ERROR: --annotation-id must be a positive integer.");
 
-        HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
+        HandlerBootstrap.WithWritableStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             bool deleted;
             try

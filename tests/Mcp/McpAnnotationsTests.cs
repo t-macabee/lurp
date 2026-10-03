@@ -36,7 +36,7 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
         return await RunIncrementalIndexAsync();
     }
 
-    private McpSessionContext CreateSession() => McpSessionContext.Create(new[] { $"--solution={SolutionPath}" });
+    private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     [Fact]
     public async Task GetAnnotations_ReadIsolation_PerSnapshot()

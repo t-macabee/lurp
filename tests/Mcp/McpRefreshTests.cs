@@ -21,7 +21,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task Refresh_NoAck_DoesNotMovePin()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         Assert.Equal(snapshot1, session.PinnedSnapshotId);
 
@@ -50,7 +50,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task Refresh_WithAck_AdvancesPin()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
         CreateProject("RefreshProj2", new Dictionary<string, string>
@@ -85,7 +85,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task Refresh_WithMismatchedAck_ReturnsInvalidParams()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
         CreateProject("RefreshProj2", new Dictionary<string, string>
@@ -103,7 +103,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task Refresh_WhenNoNewSnapshot_ReturnsNotChanged()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new RefreshTool(session);
         var json = tool.LurpRefresh();
@@ -124,7 +124,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task ToolCall_OnStaleData_ReturnsStaleFlag_AndPayload()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var contextTool = new ContextTool(session);
 
@@ -162,7 +162,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     public async Task Pin_DoesNotMove_WhileServingOldData_AfterReindex()
     {
         var snapshot1 = await IndexInitialAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var pinned = session.PinnedSnapshotId;
         Assert.Equal(snapshot1, pinned);

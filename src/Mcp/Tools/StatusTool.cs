@@ -399,7 +399,7 @@ internal sealed class StatusTool
     {
         if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
 
-        using var workspace = MSBuildWorkspace.Create();
+        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(_session.SolutionPath!));
         var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!, cancellationToken: cancellationToken);
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(_session.SolutionPath!))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);

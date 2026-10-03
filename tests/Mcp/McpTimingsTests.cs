@@ -20,7 +20,7 @@ public sealed class McpTimingsTests : IntegrationTestBase
     public async Task Timings_ReturnsSteps_ForPinnedSnapshot()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new TimingsTool(session);
 
@@ -56,7 +56,7 @@ public sealed class McpTimingsTests : IntegrationTestBase
     public async Task Timings_SnapshotMismatch_ReturnsInvalidParams()
     {
         await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new TimingsTool(session);
 
@@ -70,7 +70,7 @@ public sealed class McpTimingsTests : IntegrationTestBase
     public async Task Timings_ExplicitPinnedId_Succeeds()
     {
         var snapshotId = await IndexAsync();
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new TimingsTool(session);
 

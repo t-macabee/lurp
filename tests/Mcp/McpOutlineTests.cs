@@ -70,7 +70,7 @@ public sealed class McpOutlineTests : IntegrationTestBase
         return (snapshotId, docPath);
     }
 
-    private McpSessionContext CreateSession() => McpSessionContext.Create(new[] { $"--solution={SolutionPath}" });
+    private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     [Fact]
     public async Task Outline_Basic_ReturnsOrderedDeclarationsWithCorrectLines()

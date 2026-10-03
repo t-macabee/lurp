@@ -120,6 +120,14 @@ jobs:
           $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
           ./scripts/smoke/packed-tool-smoke.ps1 -Lurp ./t/lurp.exe -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -WorkDir "$env:RUNNER_TEMP/lurp-smoke-work"
 
+      # Audit Phase 6 / B2: the packed tool must leave the analyzed tree
+      # byte-identical after every CLI mode and MCP tool runs against it.
+      - name: Target-tree integrity (packed tool)
+        shell: pwsh
+        env:
+          LURP_TOOL_PATH: ${{ github.workspace }}\t\lurp.exe
+        run: dotnet test tests/Lurp.Tests.csproj --configuration Release --filter "FullyQualifiedName~TargetTreeIntegrity"
+
       - name: Install .NET runtime only
         shell: pwsh
         run: |

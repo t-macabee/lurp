@@ -369,7 +369,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 
     private async Task<WorkspaceInfo> LoadWorkspaceInfoAsync()
     {
-        using var workspace = MSBuildWorkspace.Create();
+        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
         var solution = await workspace.OpenSolutionAsync(SolutionPath);
         return new WorkspaceInfo(solution, TestDir);
     }

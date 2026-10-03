@@ -207,7 +207,7 @@ public abstract class IntegrationTestBase : IDisposable
     {
         using var store = OpenStore(DbPath);
 
-        using var workspace = MSBuildWorkspace.Create();
+        using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
         var solution = await workspace.OpenSolutionAsync(SolutionPath);
         var workspaceInfo = new WorkspaceInfo(solution, TestDir);
 

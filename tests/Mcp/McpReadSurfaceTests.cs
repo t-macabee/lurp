@@ -39,7 +39,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
 
     private (McpSessionContext session, GetSourceTool getSource, NavigateTool navigate, FindSymbolTool findSymbol, SearchTool search) CreateTools()
     {
-        var args = new[] { $"--solution={SolutionPath}" };
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         var session = McpSessionContext.Create(args);
         return (session, new GetSourceTool(session), new NavigateTool(session), new FindSymbolTool(session), new SearchTool(session));
     }

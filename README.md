@@ -99,8 +99,12 @@ solution must be restored.
 
 ```bash
 dotnet tool install --global lurp --version 2.0.0
-lurp --mode=index --solution=path/to/Your.slnx --output-dir=./out
+lurp --mode=index --solution=path/to/Your.slnx
 ```
+
+Without `--output-dir`, the database and MSBuild design-time intermediates go to
+`%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`; pass `--output-dir=./out`
+to choose a location instead.
 
 <details>
 <summary>Build from source & environment variables</summary>
@@ -182,7 +186,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
 2.0.0. Schema v30, extractor
-1.6.0, CLI/MCP contract v3, output schema v5. 2.0.0 is a breaking release for
+1.6.0, CLI/MCP contract v4, output schema v5. 2.0.0 is a breaking release for
 `impact` and the capsule topology, and an index built by 1.4.0 needs one
 `--mode=index` run before read commands accept it: see
 [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a manual real-parity gate on
