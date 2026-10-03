@@ -4,21 +4,29 @@ on:
   push:
     tags: ['v*.*.*']
 
-permissions:
-  contents: write
-  id-token: write
-
 jobs:
   publish:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
+
+      - name: Check tag matches <Version>
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          if ($version -ne $tagVersion) {
+            throw "Tag $env:GITHUB_REF_NAME does not match <Version>$version</Version> in src/Lurp.csproj."
+          }
+          Write-Host "Tag $env:GITHUB_REF_NAME matches <Version>$version</Version>."
 
       - name: Restore dependencies
         run: dotnet restore
@@ -32,8 +40,31 @@ jobs:
       - name: Pack global tool
         run: dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
 
+      - name: Verify nupkg repository.commit matches the tag SHA
+        run: |
+          $tagSha = (git rev-parse HEAD).Trim()
+          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+          try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -like '*.nuspec' } | Select-Object -First 1
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            try {
+              [xml]$nuspec = $reader.ReadToEnd()
+            } finally {
+              $reader.Dispose()
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $commit = [string]$nuspec.package.metadata.repository.commit
+          if ($commit -ne $tagSha) {
+            throw "nupkg repository.commit '$commit' does not match tag SHA '$tagSha'."
+          }
+          Write-Host "nupkg repository.commit $commit matches tag SHA."
+
       - name: NuGet login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
@@ -41,10 +72,33 @@ jobs:
       - name: Push to NuGet
         run: |
           $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
-          dotnet nuget push $pkg.FullName --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push $pkg.FullName --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+      - name: Verify published catalog entry
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          $tagSha = (git rev-parse HEAD).Trim()
+          $leafUrl = "https://api.nuget.org/v3/registration5-semver1/lurp/$version.json"
+          $deadline = (Get-Date).AddMinutes(15)
+          while ($true) {
+            try {
+              $leaf = Invoke-RestMethod -Uri $leafUrl -TimeoutSec 30
+              $catalog = Invoke-RestMethod -Uri $leaf.catalogEntry -TimeoutSec 30
+              $commit = [string]$catalog.repository.commit
+              if ($commit -eq $tagSha) {
+                Write-Host "nuget.org catalog repository.commit $commit matches tag SHA."
+                break
+              }
+              throw "nuget.org catalog repository.commit '$commit' does not match tag SHA '$tagSha'."
+            } catch {
+              if ((Get-Date) -ge $deadline) { throw }
+              Write-Host "Catalog entry not ready or mismatched ($($_.Exception.Message)); retrying in 20s."
+              Start-Sleep -Seconds 20
+            }
+          }
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: ./artifacts/*.nupkg
           generate_release_notes: true

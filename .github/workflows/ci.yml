@@ -16,12 +16,14 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -34,7 +36,7 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release
 
-  # The real-solution parity gate (self-hosted runner, FIT-RS2-2026 +
-  # eNoteV2) moved to real-parity.yml: a missing/offline self-hosted runner
+  # The real-solution parity gate (self-hosted runner, eNoteV2) moved to
+  # real-parity.yml: a missing/offline self-hosted runner
   # always cancelled that job, which dragged this workflow's — and the
   # README badge's — conclusion red even when build/test passed cleanly.
