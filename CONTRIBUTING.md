@@ -2,8 +2,9 @@
 
 ## Prerequisites
 
-- .NET 10 SDK 10.0.301 (preview), pinned at `src/global.json`
-  `rollForward=latestMajor`. Roslyn 5.6 requires `net10.0`.
+- .NET 10 SDK. `src/global.json` pins `10.0.301` with `rollForward=latestMajor`,
+  so it governs `dotnet` commands run under `src/`; CI installs the latest
+  `10.0.x` (`setup-dotnet`) and builds from the repo root. Roslyn 5.6 requires `net10.0`.
 - Familiarity with C# and Roslyn is helpful but not required.
 
 ## Build and test

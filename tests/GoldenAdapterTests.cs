@@ -671,16 +671,30 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     {
         var expectedIds = new[]
         {
+            "constructor_initializers",
+            "di_external_extension",
             "di_hosted_service",
             "di_options",
-            "di_external_extension",
-            "masstransit_consumer",
             "ef_convention",
+            "event_subscriptions",
+            "expression_bodied_properties",
+            "field_property_initializers",
+            "implicit_calls",
+            "masstransit_consumer",
             "mediatr_exception_handler",
             "mediatr_pipeline_behavior",
             "mediatr_pre_post_processor",
             "mediatr_stream_handler",
-            "shape_similarity"
+            "method_group_delegates",
+            "minimal_api_endpoints",
+            "multi_target_union",
+            "non_csharp_projects",
+            "partial_method_implementation",
+            "razor_blazor",
+            "shape_similarity",
+            "source_generators",
+            "top_level_statements",
+            "user_defined_operators"
         };
 
         var actualIds = DeclaredBoundaries.Known.Select(e => e.Id).OrderBy(id => id).ToList();

@@ -57,7 +57,6 @@ internal static class StatusHandler
             var includeDocuments = WantsDetail(args, "documents");
             var includeReferences = WantsDetail(args, "references");
             var includeCompleteness = WantsDetail(args, "completeness");
-            var maxDocuments = ParseMaxArg(args, "--max-documents=", 50);
             var maxMismatches = ParseMaxArg(args, "--max-mismatches=", 50);
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
                                   ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");

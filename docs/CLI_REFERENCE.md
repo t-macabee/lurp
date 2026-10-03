@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. `--output-dir=` and `--solution=` are otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)); a bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
 
-**This document describes the CLI as of schema v30 / CLI-MCP contract v2 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of schema v30 / CLI-MCP contract v3 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -83,6 +83,7 @@ Index a solution and store facts in the database.
 | `--skip-adapter=<name>` | No | Skip a named framework adapter. Valid: `ASP.NET Core`, `Dependency Injection`, `MediatR`, `EF Core`, `Serialization`, `Test`. |
 | `--verbose` | No | Emit per-extractor timing lines to stderr. |
 | `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. |
+| `--force` | No | Re-extract even when the deterministic snapshot id already exists as a completed snapshot; a full reindex needs `--strategy=full --force`. Does not bypass identity computation: an identical workspace produces the same snapshot id. |
 
 `--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
 
@@ -304,7 +305,7 @@ Trace the impact of a changed symbol as a set of reached symbols.
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
+| `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all modeled references to a symbol. |
 | `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
 | `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Live-observed (eNoteV2, `IEntity.Id` pure inherited-only via `BaseEntity`): `all`:1, `compiler_proved`:0, `possible`:1 vs. direct `ICurrentUserService.UserId` 9/9/0 — confirms the filter; eCommerce's `IBaseCRUDService` is mixed (has direct impls) so its 242→186→1 progression is not a filter bug. |
@@ -339,6 +340,8 @@ Assemble a context capsule for a symbol or source location.
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
 | `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
+| `--scope=<label>` | No | Logical scope label recorded on the anchor (default: the symbol ID). |
+| `--affected-project=<name>` | No | Repeatable. A project affected by the change. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
 | `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
@@ -453,7 +456,6 @@ Show the current database status.
 | `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
 | `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. |
-| `--max-documents=<n>` | No | Accepted and validated (default: 50; positive integer), but **inert in the CLI**: the status JSON reports `mismatches`, not a changed-documents sample. The MCP `lurp_status` `max_documents` parameter is the effective cap. |
 | `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
 
 `status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
@@ -617,13 +619,13 @@ Behavior:
 Snapshots are immutable: an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
 
 ```
-Hashing documents and detecting changes... done (0 changed, 402 unchanged).
+Hashing documents and detecting changes... done (0 changed, 531 unchanged).
 No changes detected. Skipping incremental index.
 Incremental index complete. Snapshot: f3bff523b103462be239655c9b753be3
   Previous snapshot: f3bff523b103462be239655c9b753be3
 ```
 
-(402 docs; eCommerce likewise 162 unchanged, snapshot reused). The last 3 snapshots are retained; older ones are pruned automatically.
+(531 docs). The last 3 snapshots are retained; older ones are pruned automatically.
 
 ### Schema version of the database
 
@@ -683,7 +685,9 @@ and framework logs are routed to stderr.
 
 `--mode=serve` requires an existing indexed snapshot at startup. It throws
 `ERROR: No snapshots found in the database` if no snapshot exists. Index first
-via CLI (`--mode=index`) or MCP `lurp_index`, then serve:
+via CLI (`--mode=index`), then serve. (`lurp_index` cannot perform the first
+index: it is a background re-index tool available only inside a session whose
+database already has a snapshot.)
 
 ```bash
 # 1. Index once (creates index.db with a snapshot)

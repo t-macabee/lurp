@@ -79,7 +79,7 @@ public sealed class CliMcpContractSnapshotTests
             "retract-annotation:--annotation-id=,--snapshot=",
             "search:--query=,--type=,--kind=,--limit=,--snippet-tokens=,--cursor=,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
             "serve:--solution=,--enable-write-tools",
-            "status:--solution=,--detail=,--json,--output=",
+            "status:--solution=,--detail=,--json,--output=,--max-mismatches=",
             "timings:--snapshot=,--json",
         };
 

@@ -60,7 +60,7 @@ public static class Program
             ],
             Sync(ContextHandler.Run)),
         new("status", "Show the current database status.",
-            ["--solution=", "--detail=", "--json", "--output="],
+            ["--solution=", "--detail=", "--json", "--output=", "--max-mismatches="],
             StatusHandler.Run),
         new("timings", "Show step-by-step timing data for a snapshot.",
             ["--snapshot=", "--json"],

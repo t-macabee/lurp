@@ -50,7 +50,7 @@ cited below. Evidence cites git commits and named tests directly.
 | MCP Phase | Description | Status | Evidence |
 |---|---|---|---|
 | 1 | Read surface (`lurp_context` via MCP) | ✅ COMPLETE | `McpServeHandler`, `ContextTool`, `tests/Mcp/McpContextTests.cs` |
-| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | 13 MCP tools via `tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations, lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` (13th `lurp_timings` added 2026-08-17, no `lurp_annotate` by design). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP session is read-only, `PRAGMA query_only=ON` (`src/Storage/SqliteIndexStore.cs:74`, `src/Mcp/McpSessionContext.cs:Create` → `EnableQueryOnly()`); annotation writes remain CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`). Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs`. |
+| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | 13 MCP tools via `tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations, lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` (13th `lurp_timings` added 2026-08-17, no `lurp_annotate` by design). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP reads open read-only connections (`Mode=ReadOnly` plus `PRAGMA query_only=ON`, `src/Storage/SqliteIndexStore.cs:OpenReadOnly`); annotation *creation* remains CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`), while retraction is available as `lurp_retract_annotation` when serve runs with `--enable-write-tools`. Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs`. |
 | 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs`. `--mode=serve` requires existing snapshot at startup, `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`) throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is null; it does not bootstrap a fresh index |
 | 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 of commit `175e52d` |
 
@@ -255,6 +255,24 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | `masstransit_consumer` | MassTransit consumer registration | No adapter; wiring edges never emitted |
 | `ef_convention` | EF Core model conventions beyond query filters/indexes | Fluent API model building not modeled |
 | `shape_similarity` | Semantic sibling similarity | No compiler oracle; deliberately not modeled |
+| `mediatr_stream_handler` | `IStreamRequestHandler` / `IAsyncStreamHandler` | Implementing type detected, no `Handles` edge |
+| `mediatr_pipeline_behavior` | `IPipelineBehavior` | Implementing type detected, no edge |
+| `mediatr_exception_handler` | `IRequestExceptionHandler` | Implementing type detected, no edge |
+| `mediatr_pre_post_processor` | `IRequestPreProcessor` / `IRequestPostProcessor` | Implementing type detected, no edge |
+| `top_level_statements` | Top-level statements | Calls in a top-level program emit no edge |
+| `field_property_initializers` | Field and property initializers | Calls in initializers emit no edge |
+| `expression_bodied_properties` | Expression-bodied properties and indexers | `=>` getter has no accessor syntax to walk |
+| `constructor_initializers` | Constructor initializers and primary-constructor base arguments | `: base(...)` / `: this(...)` arguments emit no edge |
+| `method_group_delegates` | Method groups and delegate references | Referenced method emits no edge |
+| `event_subscriptions` | Event subscriptions (`+=`) | Handler emits no edge |
+| `user_defined_operators` | Compound-assignment and unary operators | Operator method resolved but not scanned |
+| `implicit_calls` | `foreach`, `using`, `await`, deconstruction, collection initializers, implicit conversions | Implicit invocations emit no edge |
+| `partial_method_implementation` | Partial method implementation part | Implementation body is not scanned |
+| `source_generators` | Source generators | Generated code never executed or indexed |
+| `razor_blazor` | Razor / Blazor components | Not parsed; only C# documents are indexed |
+| `minimal_api_endpoints` | Minimal APIs and non-controller endpoints | Adapter recognizes only `Controller`-derived types |
+| `multi_target_union` | Multi-target projects | One union snapshot; no per-symbol TFM attribution |
+| `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
 
 ## Reclassified as done
 

@@ -873,7 +873,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeRuntimeUnknownUncertainty(EdgeRecord edge)
     {
-        var desc = $"Unmodeled construct: a '{edge.Kind}' edge carries 'runtime_unknown' provenance because the construct is listed in DeclaredBoundaries.Known as deliberately not fully modeled. The concrete type was resolved but the runtime activation/registration semantics are not captured. See DeclaredBoundaries.Known for the full, closed list of declared boundaries (10 entries).";
+        var desc = $"Unmodeled construct: a '{edge.Kind}' edge carries 'runtime_unknown' provenance because the construct is listed in DeclaredBoundaries.Known as deliberately not fully modeled. The concrete type was resolved but the runtime activation/registration semantics are not captured. See DeclaredBoundaries.Known for the full, closed list of declared boundaries (24 entries).";
         // For ReflectionTargetUnknown the more specific wording is:
         if (string.Equals(edge.Kind, nameof(EdgeKind.ReflectionTargetUnknown), StringComparison.Ordinal))
             desc = "Unknown reflection target: the runtime target of this reflection call cannot be statically determined.";

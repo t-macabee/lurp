@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v2, output schema v5, tool 2.0.0
+**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v3, output schema v5, tool 2.0.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -104,17 +104,18 @@ reused via content-addressed dedup.
 ## 5. Read Path (Handlers)
 
 Handlers consume persisted facts through `IIndexStore` and related store
-interfaces. They do not re-run Roslyn analysis (except `--mode=status
---solution=`, which performs a storage-backed freshness check).
+interfaces. They do not re-run Roslyn analysis, except `--mode=status
+--solution=` (CLI) and MCP `lurp_status` with `full:true`, which load the
+workspace through MSBuild to compare it against the stored snapshot.
 
 Seventeen handlers cover: index, search, grep, find-symbol, get-symbol, get-source,
 navigate, outline, diagnostics, diff, impact, context, status, timings,
-pin-snapshot, annotations (attach/retrieve/retract), and dead-candidates. MCP surface (`--mode=serve`): 18 tools over stdio
+pin-snapshot, annotations (attach/retrieve/retract), and dead-candidates. MCP surface (`--mode=serve`): 16 read-only tools over stdio
 (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`,
 `lurp_find_symbol`, `lurp_search`, `lurp_grep`, `lurp_impact`, `lurp_diff`,
-`lurp_get_symbol`, `lurp_get_annotations`, `lurp_retract_annotation`, `lurp_diagnostics`, `lurp_status`,
-`lurp_timings`, `lurp_refresh`, `lurp_index`, `lurp_dead_candidates`) — 16 read-only plus `lurp_index` and `lurp_retract_annotation` (write),
-which starts a background (re-)index through a separate writer connection (see
+`lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
+`lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`); `--enable-write-tools` additionally registers `lurp_index` and `lurp_retract_annotation` (write),
+which start a background (re-)index or a retraction through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
 
 Read commands never migrate `index.db`. They refuse a database whose schema
@@ -169,6 +170,24 @@ entry, not a new extractor.
 | `masstransit_consumer` | MassTransit consumer registration | No adapter; wiring edges never emitted |
 | `ef_convention` | EF Core model conventions beyond query filters/indexes | Fluent API model building not modeled |
 | `shape_similarity` | Semantic sibling similarity | No compiler oracle; deliberately not modeled |
+| `mediatr_stream_handler` | `IStreamRequestHandler` / `IAsyncStreamHandler` | Implementing type detected, no `Handles` edge |
+| `mediatr_pipeline_behavior` | `IPipelineBehavior` | Implementing type detected, no edge |
+| `mediatr_exception_handler` | `IRequestExceptionHandler` | Implementing type detected, no edge |
+| `mediatr_pre_post_processor` | `IRequestPreProcessor` / `IRequestPostProcessor` | Implementing type detected, no edge |
+| `top_level_statements` | Top-level statements | Calls in a top-level program emit no edge |
+| `field_property_initializers` | Field and property initializers | Calls in initializers emit no edge |
+| `expression_bodied_properties` | Expression-bodied properties and indexers | `=>` getter has no accessor syntax to walk |
+| `constructor_initializers` | Constructor initializers and primary-constructor base arguments | `: base(...)` / `: this(...)` arguments emit no edge |
+| `method_group_delegates` | Method groups and delegate references | Referenced method emits no edge |
+| `event_subscriptions` | Event subscriptions (`+=`) | Handler emits no edge |
+| `user_defined_operators` | Compound-assignment and unary operators | Operator method resolved but not scanned |
+| `implicit_calls` | `foreach`, `using`, `await`, deconstruction, collection initializers, implicit conversions | Implicit invocations emit no edge |
+| `partial_method_implementation` | Partial method implementation part | Implementation body is not scanned |
+| `source_generators` | Source generators | Generated code never executed or indexed |
+| `razor_blazor` | Razor / Blazor components | Not parsed; only C# documents are indexed |
+| `minimal_api_endpoints` | Minimal APIs and non-controller endpoints | Adapter recognizes only `Controller`-derived types |
+| `multi_target_union` | Multi-target projects | One union snapshot; no per-symbol TFM attribution |
+| `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
 
 ## 7. Glossary
 

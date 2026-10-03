@@ -88,6 +88,13 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 ## Install
 
+Supported platform: Windows. Lurp 2.x is not tested on Linux or macOS.
+
+Requires the .NET 10 runtime to run any mode. Indexing and solution-backed status
+(`--mode=index`, `status --solution=`, MCP `lurp_index`, and MCP `lurp_status` with
+`full:true`) also require a .NET SDK that can build the target solution, and the
+solution must be restored.
+
 ```bash
 dotnet tool install --global lurp --version 2.0.0
 lurp --mode=index --solution=path/to/Your.slnx --output-dir=./out
@@ -133,7 +140,7 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 | Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
 | See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
 | Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
-| Find every caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
+| Find every modeled caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
 
 ## Framework adapters
 
@@ -152,7 +159,9 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Limitations
 
-- **Single active TFM/configuration**: one snapshot per index run.
+- **Windows only**: 2.x supports Windows; Linux and macOS are not tested.
+- **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project, but symbols are not attributed to an individual TFM, so a member present in only one target framework cannot be told apart from one present in all of them.
+- **Caller coverage is limited to modeled call shapes**: `impact` (upstream), the direct-caller tiers, and `dead-candidates` follow extracted edges only. Calls inside top-level statements, field/property initializers, expression-bodied properties and indexers, constructor initializers, method groups and delegates, event subscriptions (`+=`), user-defined operators, and implicit calls (`foreach`, `using`, `await`, deconstruction, collection initializers) are not extracted yet; each is registered in `DeclaredBoundaries` (see [TRUST_KERNEL.md](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)) until the extractor covers it.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
 - **3-snapshot retention**: older snapshots and their document versions are pruned automatically, except a snapshot pinned via `pin-snapshot`, which pruning always skips.
@@ -162,7 +171,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 | Measurement | Value |
 |---|---|
-| eNoteV2 (402 docs) full index | ~48 s |
+| eNoteV2 (531 docs) full index | ~48 s |
 | eNoteV2 incremental (no changes) | ~11 s |
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 | Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
@@ -171,12 +180,12 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
 2.0.0. Schema v30, extractor
-1.6.0, CLI/MCP contract v2, output schema v5. 2.0.0 is a breaking release for
+1.6.0, CLI/MCP contract v3, output schema v5. 2.0.0 is a breaking release for
 `impact` and the capsule topology, and an index built by 1.4.0 needs one
 `--mode=index` run before read commands accept it: see
-[RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a self-hosted real-parity gate on FIT-RS2-2026 +
-eNoteV2 (opt-in via `real-parity` PR label). Roadmap: multi-TFM and richer DI
-parameter-type matching are postponed by design (see
+[RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a manual real-parity gate on
+eNoteV2 (self-hosted runner, `workflow_dispatch`). Roadmap: per-symbol TFM
+attribution and richer DI parameter-type matching are postponed by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
 
 ## Documentation & license
@@ -187,10 +196,10 @@ parameter-type matching are postponed by design (see
 - [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes 18 tools (`lurp_context`, `lurp_get_source`,
+Also MCP: `--mode=serve` exposes 16 read tools (`lurp_context`, `lurp_get_source`,
 `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_grep`,
-`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_retract_annotation`,
-`lurp_diagnostics`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_index`,
-`lurp_dead_candidates`) over stdio; all are read-only except `lurp_index` and `lurp_retract_annotation`
-(background re-index). Index first, then serve. See
-[CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
+`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`,
+`lurp_diagnostics`, `lurp_status`, `lurp_timings`, `lurp_refresh`,
+`lurp_dead_candidates`) over stdio; `--enable-write-tools` additionally registers
+`lurp_index` and `lurp_retract_annotation` (background re-index and annotation
+retraction). Index first via CLI, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).

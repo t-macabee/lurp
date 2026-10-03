@@ -82,7 +82,7 @@ internal static class HelpText
                             + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
                             + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "
                             + "See CLI_REFERENCE.md's impact section for live-observed evidence this filters correctly.",
-        ["--max-depth="] = "Maximum hops per path (default: 3).",
+        ["--max-depth="] = "Maximum traversal depth in hops (default: 3).",
         // diff
         ["--from-snapshot="] = "Baseline snapshot ID to diff from (required for --mode=diff).",
         ["--to-snapshot="] = "Target snapshot ID to diff to (required for --mode=diff).",
@@ -101,6 +101,7 @@ internal static class HelpText
 
         // status
         ["--detail="] = "Comma-separated JSON sections to expand: 'documents' (per-document version map), 'completeness' (per-document binding rows), or 'all'. Both are summarized by default.",
+        ["--max-mismatches="] = "Cap on the mismatch list in --json output (default: 50; positive integer).",
 
         // dead-candidates
         ["--project="] = "Filter to this project (assembly name, e.g. eNote.API). For --mode=dead-candidates the candidate's owning project is its assembly identity's simple name.",

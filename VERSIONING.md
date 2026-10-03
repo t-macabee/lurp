@@ -21,7 +21,7 @@ It is surfaced programmatically so callers can check it without scraping help te
 - Making an optional flag/param required, or tightening its accepted values (e.g. rejecting a previously accepted enum value).
 - Changing the semantics of an existing flag/param without renaming it.
 
-Breaking changes must bump `CliMcpContractVersion` by `+1`, update `tests/CliMcpContractSnapshotTests.cs` to reflect the new surface, and be noted in the commit/PR description. The test snapshot is the review gate — a silent shape change fails the build.
+Breaking changes must bump `CliMcpContractVersion` by `+1`, update `tests/CliMcpContractSnapshotTests.cs` to reflect the new surface, and be noted in the commit/PR description. The test snapshot is the review gate for the **named** surface: a mode, flag, tool, or parameter that is silently added, removed, or renamed fails the build. It does not yet cover JSON field names or types, parameter types, or default values; changes of those kinds rely on review until an output-contract snapshot lands.
 
 ### Non-breaking (does not bump the contract version, but still updates the snapshot)
 
