@@ -6,5 +6,5 @@ internal static class VersionConstants
     internal const int OutputSchemaVersion = 5;
     internal const string ExtractorVersion = "1.6.0";
     internal const string ToolVersion = "2.0.0";
-    internal const int CliMcpContractVersion = 2;
+    internal const int CliMcpContractVersion = 3;
 }

@@ -27,11 +27,14 @@ internal sealed class SearchTool
         int? snippet_tokens = null,
         string? cursor = null,
         bool? include_generated = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (string.IsNullOrEmpty(query))
                 throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
@@ -44,10 +47,12 @@ internal sealed class SearchTool
             var limitVal = limit ?? 20;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             var snippetTokens = snippet_tokens ?? 64;
             if (snippetTokens < 1)
                 throw new McpProtocolException("snippet-tokens must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(snippet_tokens, McpLimits.MaxSnippetTokens, "snippet_tokens");
 
             if (!string.IsNullOrEmpty(cursor) && typeArg != "symbol")
                 throw new McpProtocolException("cursor is only supported with type=symbol.", McpErrorCode.InvalidParams);
@@ -59,7 +64,7 @@ internal sealed class SearchTool
 
             if (typeArg is "source" or "all")
             {
-                var sourceResults = _session.Store.SearchSource(query, snapshotId, limitVal, includeGenerated, snippetTokens);
+                var sourceResults = store.SearchSource(query, snapshotId, limitVal, includeGenerated, snippetTokens);
                 foreach (var r in sourceResults)
                 {
                     results.Add(new { type = "source", document_path = r.DocumentPath, snippet = r.Snippet });
@@ -81,7 +86,7 @@ internal sealed class SearchTool
                     SymbolSearchPage page;
                     try
                     {
-                        page = _session.Store.SearchSymbolsPage(query, snapshotId, limitVal, includeGenerated, kind, cursorObj);
+                        page = store.SearchSymbolsPage(query, snapshotId, limitVal, includeGenerated, kind, cursorObj);
                     }
                     catch (ArgumentException ex)
                     {
@@ -97,7 +102,7 @@ internal sealed class SearchTool
                 }
                 else
                 {
-                    var symbolResults = _session.Store.SearchSymbols(query, snapshotId, limitVal, includeGenerated, kind);
+                    var symbolResults = store.SearchSymbols(query, snapshotId, limitVal, includeGenerated, kind);
                     foreach (var r in symbolResults)
                     {
                         results.Add(new { type = "symbol", symbol_id = r.SymbolId, fully_qualified_name = r.FullyQualifiedName, kind = r.Kind, doc_comment_id = r.DocCommentId });
@@ -119,6 +124,10 @@ internal sealed class SearchTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

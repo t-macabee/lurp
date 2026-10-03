@@ -235,7 +235,9 @@ internal static class ContextHandler
     {
         var json = ContextCapsuleJson.Serialize(capsule);
         var outputPath = GetCapsuleOutputPath(outputDirArg, capsule.Anchor.SymbolId);
-        var tempPath = outputPath + ".tmp";
+        // Unique per-write temp name: two concurrent capsule runs for the same
+        // symbol must not overwrite each other's scratch file before the move.
+        var tempPath = outputPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             File.WriteAllText(tempPath, json);

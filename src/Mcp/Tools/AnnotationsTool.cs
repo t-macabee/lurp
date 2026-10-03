@@ -25,11 +25,14 @@ internal sealed class AnnotationsTool
         string? kind = null,
         int? limit = null,
         string? cursor = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             var hasSymbol = !string.IsNullOrEmpty(symbol);
             var hasDocument = !string.IsNullOrEmpty(document);
@@ -42,6 +45,7 @@ internal sealed class AnnotationsTool
             var limitVal = limit ?? 100;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             AnnotationCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
@@ -56,7 +60,7 @@ internal sealed class AnnotationsTool
 
             if (hasSymbol)
             {
-                resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol!, snapshotId);
+                resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId);
             }
             else if (hasDocument)
             {
@@ -65,7 +69,7 @@ internal sealed class AnnotationsTool
                     throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
                 // Distinguish "no annotations here" from "no such document"
-                var docs = _session.Store.GetDocumentVersionIdsByPath(snapshotId);
+                var docs = store.GetDocumentVersionIdsByPath(snapshotId);
                 if (!docs.ContainsKey(normalizedDocument))
                     throw new McpProtocolException($"Document '{normalizedDocument}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
             }
@@ -73,7 +77,7 @@ internal sealed class AnnotationsTool
             AnnotationPage page;
             try
             {
-                page = _session.Store.GetAnnotationsPage(snapshotId, resolvedSymbol, normalizedDocument, kindFilter, limitVal, cursorObj);
+                page = store.GetAnnotationsPage(snapshotId, resolvedSymbol, normalizedDocument, kindFilter, limitVal, cursorObj);
             }
             catch (ArgumentException ex)
             {
@@ -108,63 +112,7 @@ internal sealed class AnnotationsTool
         {
             throw;
         }
-        catch (Exception ex)
-        {
-            throw McpErrorMapper.Map(ex);
-        }
-    }
-
-    [McpServerTool(Name = "lurp_retract_annotation", Title = "Lurp Retract Annotation", ReadOnly = false, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Retract (hard-delete) one annotation by annotation_id, scoped to the pinned snapshot — any provenance, not limited to user-authored (lurp_annotate) rows; extractor-derived rows can be removed the same way. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone.")]
-    public string LurpRetractAnnotation(
-        long annotation_id,
-        string? snapshot_id = null)
-    {
-        try
-        {
-            if (annotation_id <= 0)
-                throw new McpProtocolException("annotation_id must be a positive integer.", McpErrorCode.InvalidParams);
-
-            var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-
-            // MCP session holds a query_only connection; retraction requires a writable connection.
-            // Open a short-lived writable store against the same DbPath and pin scope.
-            HandlerBootstrap.RequireCurrentSchemaVersion(_session.DbPath);
-            var writable = new SqliteIndexStore(_session.DbPath);
-            writable.Open();
-            try
-            {
-                bool deleted;
-                try
-                {
-                    deleted = writable.TryRetractAnnotation(snapshotId, annotation_id);
-                }
-                catch (ArgumentException ex)
-                {
-                    throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-                }
-
-                if (!deleted)
-                    throw new McpProtocolException($"annotation_id {annotation_id} not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
-
-                var freshness = _session.GetFreshnessJson();
-                var envelope = new
-                {
-                    status = "ok",
-                    snapshot_id = snapshotId,
-                    annotation_id,
-                    retracted = true,
-                    freshness,
-                    pinned = true
-                };
-                return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
-            }
-            finally
-            {
-                writable.Close();
-            }
-        }
-        catch (McpProtocolException)
+        catch (OperationCanceledException)
         {
             throw;
         }

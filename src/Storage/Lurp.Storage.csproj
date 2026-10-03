@@ -7,6 +7,12 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Same source-path mapping as src/Lurp.csproj: this PDB also ships in the tool package. -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />

@@ -19,10 +19,12 @@ internal sealed class RefreshTool
     [Description("Check for a newer snapshot and optionally advance the pin. Without ack, reports old/new without moving. With ack equal to latest, closes and reopens store and re-pins. `changed` always reflects old_snapshot_id vs new_snapshot_id at the moment of the response, not whether this call just advanced the pin: after a successful ack advances the pin, new_snapshot_id catches up to the (now-current) pin so changed is reported as false, meaning 'no further pending change' — check the `pinned` field, not `changed`, to see whether this call advanced the pin.")]
     public string LurpRefresh(
         string? ack = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Validate snapshot_id param against pin if provided (hardened pin validation)
             if (!string.IsNullOrEmpty(snapshot_id))
                 _session.RequirePinnedSnapshot(snapshot_id);
@@ -81,6 +83,10 @@ internal sealed class RefreshTool
             return JsonSerializer.Serialize(envelopeAdv, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

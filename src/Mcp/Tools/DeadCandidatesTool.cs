@@ -62,11 +62,14 @@ internal sealed class DeadCandidatesTool
         string? kind = null,
         bool? include_public = null,
         bool? include_generated = null,
-        bool? include_tests = null)
+        bool? include_tests = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (!string.IsNullOrEmpty(kind) && !DeadCandidateKinds.IsValidKind(kind!))
                 throw new McpProtocolException($"kind must be one of: Type, Method, Property, Field, Event. Got '{kind}'.", McpErrorCode.InvalidParams);
@@ -100,7 +103,7 @@ internal sealed class DeadCandidatesTool
             DeadCandidatePage page;
             try
             {
-                page = _session.Store.GetDeadCandidatesPage(snapshotId, projectFilter, normalizedDocument, kindFilter, includePublic, includeGenerated, includeTests, limitVal, cursorObj);
+                page = store.GetDeadCandidatesPage(snapshotId, projectFilter, normalizedDocument, kindFilter, includePublic, includeGenerated, includeTests, limitVal, cursorObj);
             }
             catch (ArgumentException ex)
             {
@@ -174,6 +177,10 @@ internal sealed class DeadCandidatesTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

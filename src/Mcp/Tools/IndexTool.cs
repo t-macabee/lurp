@@ -22,9 +22,8 @@ internal sealed class IndexTool
     }
 
     [McpServerTool(Name = "lurp_index", Title = "Lurp Index", ReadOnly = false, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Index or re-index the solution. Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
+    [Description("Index or re-index the solution the serve session was started with (`--solution=`). Starts a background run (`strategy` full|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin.")]
     public string LurpIndex(
-        string? solution = null,
         string? strategy = null,
         bool? force = null,
         string? operation_id = null,
@@ -33,6 +32,7 @@ internal sealed class IndexTool
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Poll / cancel path when operation_id is supplied.
             if (!string.IsNullOrEmpty(operation_id))
             {
@@ -95,12 +95,10 @@ internal sealed class IndexTool
                     throw new McpProtocolException("strategy must be 'full' or 'incremental'.", McpErrorCode.InvalidParams);
             }
 
-            var solutionPath = string.IsNullOrWhiteSpace(solution)
-                ? _session.SolutionPath
-                : Path.GetFullPath(solution!);
+            var solutionPath = _session.SolutionPath;
 
             if (string.IsNullOrEmpty(solutionPath) || !File.Exists(solutionPath))
-                throw new McpProtocolException("solution not found. Provide --solution=path or set LURP_SOLUTION_PATH / --solution on serve.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("no solution configured. Start --mode=serve with --solution=path (or set LURP_SOLUTION_PATH), then index.", McpErrorCode.InvalidParams);
 
             var dbPath = Path.GetFullPath(_session.DbPath);
 
@@ -273,6 +271,10 @@ internal sealed class IndexTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

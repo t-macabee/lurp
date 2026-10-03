@@ -18,12 +18,15 @@ internal sealed class TimingsTool
     [McpServerTool(Name = "lurp_timings", Title = "Lurp Timings", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Show step-by-step timing data for the pinned snapshot.")]
     public string LurpTimings(
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
-            var timings = _session.Store.GetTimings(snapshotId);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
+            var timings = store.GetTimings(snapshotId);
             var freshness = _session.GetFreshnessJson();
 
             var totalMs = timings.Sum(t => t.ElapsedMs);
@@ -46,6 +49,10 @@ internal sealed class TimingsTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

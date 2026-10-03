@@ -7,18 +7,21 @@ namespace Lurp.Mcp;
 
 internal sealed class McpSessionContext : IAsyncDisposable
 {
-    public SqliteIndexStore Store { get; private set; }
-    public string PinnedSnapshotId { get; private set; }
-    public FreshnessStamp FreshnessStamp { get; private set; }
+    private readonly object _pinLock = new();
+    private string _pinnedSnapshotId;
+
+    public string PinnedSnapshotId
+    {
+        get { lock (_pinLock) return _pinnedSnapshotId; }
+    }
+
     public string DbPath { get; }
     public string OutputDir { get; }
     public string? SolutionPath { get; }
 
-    private McpSessionContext(SqliteIndexStore store, string pinnedSnapshotId, FreshnessStamp freshnessStamp, string dbPath, string outputDir, string? solutionPath)
+    private McpSessionContext(string pinnedSnapshotId, string dbPath, string outputDir, string? solutionPath)
     {
-        Store = store;
-        PinnedSnapshotId = pinnedSnapshotId;
-        FreshnessStamp = freshnessStamp;
+        _pinnedSnapshotId = pinnedSnapshotId;
         DbPath = dbPath;
         OutputDir = outputDir;
         SolutionPath = solutionPath;
@@ -39,20 +42,45 @@ internal sealed class McpSessionContext : IAsyncDisposable
             solutionPath = null;
         }
 
-        var store = HandlerBootstrap.OpenStore(dbPath);
-        store.EnableQueryOnly();
+        HandlerBootstrap.RequireCurrentSchemaVersion(dbPath);
 
-        var snapshotId = store.GetLatestSnapshotId();
-        if (snapshotId == null)
-            throw new CliExitException("ERROR: No snapshots found in the database.", 1);
+        string snapshotId;
+        FreshnessStamp stamp;
+        using (var store = new SqliteIndexStore(dbPath))
+        {
+            store.OpenReadOnly();
+            try
+            {
+                var latest = store.GetLatestSnapshotId();
+                if (latest == null)
+                    throw new CliExitException("ERROR: No snapshots found in the database.", 1);
 
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId!, FreshnessMode.Auto);
+                snapshotId = latest;
+                stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Auto);
+            }
+            finally
+            {
+                store.Close();
+            }
+        }
 
         // Only sanctioned console call in src/Mcp/** — before stdio handshake.
         var shortId = snapshotId.Length > 12 ? snapshotId[..12] : snapshotId;
         Console.Error.WriteLine($"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}");
 
-        return new McpSessionContext(store, snapshotId, stamp, dbPath, outputDir, solutionPath);
+        return new McpSessionContext(snapshotId, dbPath, outputDir, solutionPath);
+    }
+
+    /// <summary>
+    ///     Opens a fresh read-only connection for one tool call. Snapshots are
+    ///     immutable, so every concurrent call can read its own pinned snapshot
+    ///     without sharing — or closing — another call's connection.
+    /// </summary>
+    public SqliteIndexStore OpenReadStore()
+    {
+        var store = new SqliteIndexStore(DbPath);
+        store.OpenReadOnly();
+        return store;
     }
 
     /// <summary>
@@ -70,12 +98,24 @@ internal sealed class McpSessionContext : IAsyncDisposable
 
     public FreshnessStamp GetFreshness()
     {
-        return WorkspaceFreshness.CheckFreshnessCheap(Store, Store, PinnedSnapshotId, FreshnessMode.Auto);
+        using var store = OpenReadStore();
+        return GetFreshness(store, PinnedSnapshotId);
+    }
+
+    public FreshnessStamp GetFreshness(SqliteIndexStore store, string snapshotId)
+    {
+        return WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Auto);
     }
 
     public object GetFreshnessJson(int maxDocuments = 10)
     {
-        return GetFreshnessJsonInternal(GetFreshness(), maxDocuments);
+        using var store = OpenReadStore();
+        return GetFreshnessJson(store, PinnedSnapshotId, maxDocuments);
+    }
+
+    public object GetFreshnessJson(SqliteIndexStore store, string snapshotId, int maxDocuments = 10)
+    {
+        return GetFreshnessJsonInternal(GetFreshness(store, snapshotId), maxDocuments);
     }
 
     internal object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
@@ -103,45 +143,18 @@ internal sealed class McpSessionContext : IAsyncDisposable
 
     public string? GetLatestSnapshotId()
     {
-        // Query the current store; if a concurrent writer added a snapshot, we should see it.
-        // If the single connection is stale due to WAL snapshot isolation, the caller (RefreshTool)
-        // will handle reopening on ack. For the no-ack path we attempt a fresh temporary connection
-        // to ensure we observe the latest committed snapshot without moving the pin.
-        var latest = Store.GetLatestSnapshotId();
-        if (latest != null)
+        // Read the newest committed snapshot through a fresh connection: the session
+        // owns no store, and a WAL reader observes the latest committed state.
+        try
         {
-            // Also probe via a temporary store to detect a newer snapshot that the pinned
-            // connection hasn't observed yet (WAL). This keeps lurp_refresh {} accurate
-            // without requiring the pin to move.
-            try
-            {
-                HandlerBootstrap.RequireCurrentSchemaVersion(DbPath);
-                var tmp = new SqliteIndexStore(DbPath);
-                tmp.Open();
-                try
-                {
-                    var tmpLatest = tmp.GetLatestSnapshotId();
-                    if (tmpLatest != null && !string.Equals(tmpLatest, latest, StringComparison.Ordinal))
-                    {
-                        // Prefer the fresher value from the new connection.
-                        latest = tmpLatest;
-                    }
-                }
-                finally
-                {
-                    tmp.Close();
-                }
-            }
-            catch (CliExitException ex)
-            {
-                throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-            }
-            catch
-            {
-                // Fall back to the pinned connection's view.
-            }
+            HandlerBootstrap.RequireCurrentSchemaVersion(DbPath);
+            using var store = OpenReadStore();
+            return store.GetLatestSnapshotId();
         }
-        return latest;
+        catch (CliExitException ex)
+        {
+            throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
+        }
     }
 
     public void AdvancePin(string newSnapshotId)
@@ -149,21 +162,20 @@ internal sealed class McpSessionContext : IAsyncDisposable
         if (string.Equals(newSnapshotId, PinnedSnapshotId, StringComparison.Ordinal))
             return;
 
-        // Close the old store (query_only connection) and reopen to observe the new snapshot row.
+        // Guard against advancing into a database whose schema was swapped out
+        // under this session: the pinned id must never point into a store this
+        // build cannot read.
         HandlerBootstrap.RequireCurrentSchemaVersion(DbPath);
-        Store.Close();
-        var newStore = new SqliteIndexStore(DbPath);
-        newStore.Open();
-        newStore.EnableQueryOnly();
-        Store = newStore;
-        PinnedSnapshotId = newSnapshotId;
-        // Recompute freshness stamp for the new pin
-        FreshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(Store, Store, PinnedSnapshotId, FreshnessMode.Auto);
+
+        lock (_pinLock)
+        {
+            _pinnedSnapshotId = newSnapshotId;
+        }
     }
 
     public ValueTask DisposeAsync()
     {
-        Store.Close();
+        // Every tool call opens and closes its own connection; the session owns none.
         return ValueTask.CompletedTask;
     }
 }

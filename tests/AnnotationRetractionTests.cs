@@ -142,6 +142,7 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
 
         await using var session = CreateSession();
         var tool = new AnnotationsTool(session);
+        var retractTool = new RetractAnnotationTool(session);
 
         // id via get
         var json = tool.LurpGetAnnotations(symbol: stableId);
@@ -152,7 +153,7 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
         var idToRetract = anns[0].GetProperty("annotation_id").GetInt64();
         var otherId = anns[1].GetProperty("annotation_id").GetInt64();
 
-        var retractJson = tool.LurpRetractAnnotation(annotation_id: idToRetract);
+        var retractJson = retractTool.LurpRetractAnnotation(annotation_id: idToRetract);
         using var rdoc = JsonDocument.Parse(retractJson);
         Assert.Equal("ok", rdoc.RootElement.GetProperty("status").GetString());
 
@@ -164,11 +165,11 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
         Assert.Contains(docAfter.RootElement.GetProperty("annotations").EnumerateArray(), e => e.GetProperty("annotation_id").GetInt64() == otherId);
 
         // second retract of same id must be InvalidParams
-        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRetractAnnotation(annotation_id: idToRetract));
+        var ex = Assert.Throws<McpProtocolException>(() => retractTool.LurpRetractAnnotation(annotation_id: idToRetract));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
 
         // cross-snapshot mismatch
-        var ex2 = Assert.Throws<McpProtocolException>(() => tool.LurpRetractAnnotation(annotation_id: otherId, snapshot_id: "mismatch"));
+        var ex2 = Assert.Throws<McpProtocolException>(() => retractTool.LurpRetractAnnotation(annotation_id: otherId, snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
     }
 

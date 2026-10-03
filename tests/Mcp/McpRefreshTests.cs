@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -72,8 +73,12 @@ public sealed class McpRefreshTests : IntegrationTestBase
         Assert.True(docAck.RootElement.GetProperty("pinned").GetBoolean());
         Assert.Equal(latest, session.PinnedSnapshotId);
         // New snapshot should be readable
-        var ids = session.Store.GetSymbolIdsInSnapshot(latest);
-        Assert.NotEmpty(ids);
+        using (var store = new SqliteIndexStore(DbPath))
+        {
+            store.OpenReadOnly();
+            var ids = store.GetSymbolIdsInSnapshot(latest);
+            Assert.NotEmpty(ids);
+        }
     }
 
     [Fact]

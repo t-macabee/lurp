@@ -27,11 +27,14 @@ internal sealed class DiagnosticsTool
         int? limit = null,
         string? cursor = null,
         bool include_generated = false,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             string? normalizedDocument = null;
             if (!string.IsNullOrEmpty(document))
@@ -48,6 +51,7 @@ internal sealed class DiagnosticsTool
             var limitVal = limit ?? 100;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             DiagnosticsCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
@@ -60,7 +64,7 @@ internal sealed class DiagnosticsTool
             DiagnosticsPage page;
             try
             {
-                page = _session.Store.GetDiagnosticsPage(
+                page = store.GetDiagnosticsPage(
                     snapshotId, projectFilter, normalizedDocument,
                     severityFilter, excludeHidden: severityFilter == null,
                     idFilter, limitVal, cursorObj, include_generated);
@@ -104,6 +108,10 @@ internal sealed class DiagnosticsTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

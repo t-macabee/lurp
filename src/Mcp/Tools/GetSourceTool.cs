@@ -25,11 +25,14 @@ internal sealed class GetSourceTool
         int? end_line = null,
         int? context_lines = null,
         string? snapshot_id = null,
-        bool? outline = null)
+        bool? outline = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             var normalized = HandlerBootstrap.NormalizeDocumentPath(document);
             if (string.IsNullOrEmpty(normalized))
@@ -49,7 +52,7 @@ internal sealed class GetSourceTool
             SourceSlice? slice;
             try
             {
-                slice = _session.Store.GetSourceSlice(normalized, snapshotId, start_line, end_line, context_lines);
+                slice = store.GetSourceSlice(normalized, snapshotId, start_line, end_line, context_lines);
             }
             catch (ArgumentOutOfRangeException ex)
             {
@@ -72,7 +75,7 @@ internal sealed class GetSourceTool
             {
                 try
                 {
-                    var outlinePage = _session.Store.GetDeclarationsOutline(normalized, snapshotId, false, 100, null);
+                    var outlinePage = store.GetDeclarationsOutline(normalized, snapshotId, false, 100, null);
                     if (outlinePage != null)
                     {
                         outlinePayload = outlinePage.Items.Select(e => new
@@ -116,6 +119,10 @@ internal sealed class GetSourceTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

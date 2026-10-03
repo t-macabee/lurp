@@ -23,11 +23,14 @@ internal sealed class NavigateTool
         string? file = null,
         int? line = null,
         bool? include_generated = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             var normalized = HandlerBootstrap.NormalizeDocumentPath(file);
             if (string.IsNullOrEmpty(normalized) || !line.HasValue)
@@ -38,7 +41,7 @@ internal sealed class NavigateTool
 
             var includeGenerated = include_generated ?? false;
 
-            var queries = new FastTravelQueries(_session.Store);
+            var queries = new FastTravelQueries(store);
             var target = queries.Navigate(normalized, line.Value, snapshotId, includeGenerated);
 
             var freshness = _session.GetFreshnessJson();
@@ -54,6 +57,10 @@ internal sealed class NavigateTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

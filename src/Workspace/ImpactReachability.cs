@@ -34,11 +34,13 @@ public sealed class ImpactReachability
     ///     </para>
     /// </summary>
     public ImpactReachabilityResult Trace(string symbolId, ImpactDirection direction, HashSet<string>? allowedEdgeKinds = null,
-        HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true)
+        HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(symbolId))
             throw new ArgumentException("Symbol id is required.", nameof(symbolId));
 
+        cancellationToken.ThrowIfCancellationRequested();
         var semanticCauses = GetSemanticCauses(symbolId);
         var depth = new Dictionary<string, int>(StringComparer.Ordinal) { [symbolId] = 0 };
         var parentHops = new Dictionary<string, ImpactHop>(StringComparer.Ordinal);
@@ -48,6 +50,7 @@ public sealed class ImpactReachability
 
         for (var currentDepth = 0; currentDepth < maxDepth && level.Count > 0; currentDepth++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // One level is expanded at a time, in ordinal symbol order, so the
             // witness parent of a symbol never depends on discovery order.
             level.Sort(StringComparer.Ordinal);

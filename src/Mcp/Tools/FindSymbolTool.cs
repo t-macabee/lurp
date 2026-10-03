@@ -21,22 +21,25 @@ internal sealed class FindSymbolTool
     public string LurpFindSymbol(
         string? symbol = null,
         bool? include_generated = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
 
-            var info = HandlerBootstrap.ResolveSymbolInfo(_session.Store, symbol, snapshotId, includeGenerated);
+            var info = HandlerBootstrap.ResolveSymbolInfo(store, symbol, snapshotId, includeGenerated);
             if (info == null)
                 throw McpErrorMapper.Map(new CliExitException($"ERROR: Symbol '{symbol}' not found in snapshot '{snapshotId}'. Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), or a fully-qualified name (e.g. Some.Namespace.Type).", 1));
 
-            var locations = _session.Store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
             var freshness = _session.GetFreshnessJson();
 
             var envelope = new
@@ -58,6 +61,10 @@ internal sealed class FindSymbolTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

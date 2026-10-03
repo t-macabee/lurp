@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Lurp.Handlers;
+using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -21,19 +22,22 @@ internal sealed class DiffTool
     [Description("Compute semantic diff between two snapshots. Both from_snapshot and to_snapshot are required.")]
     public string LurpDiff(
         string? from_snapshot = null,
-        string? to_snapshot = null)
+        string? to_snapshot = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
             if (string.IsNullOrEmpty(from_snapshot))
                 throw new McpProtocolException("from-snapshot is required.", McpErrorCode.InvalidParams);
             if (string.IsNullOrEmpty(to_snapshot))
                 throw new McpProtocolException("to-snapshot is required.", McpErrorCode.InvalidParams);
 
-            ValidateSnapshotExists(from_snapshot);
-            ValidateSnapshotExists(to_snapshot);
+            ValidateSnapshotExists(store, from_snapshot);
+            ValidateSnapshotExists(store, to_snapshot);
 
-            var differ = new SemanticDiffer(_session.Store, _session.Store, _session.Store, _session.Store);
+            var differ = new SemanticDiffer(store, store, store, store);
             var (changes, skippedComparisons) = differ.ComputeDiff(from_snapshot, to_snapshot);
 
             var payload = new
@@ -52,7 +56,7 @@ internal sealed class DiffTool
                 }).ToList()
             };
 
-            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(_session.Store, _session.Store, to_snapshot, FreshnessMode.Auto);
+            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, to_snapshot, FreshnessMode.Auto);
             var freshness = HandlerBootstrap.FreshnessJson(freshnessStamp);
             var isPinned = string.Equals(to_snapshot, _session.PinnedSnapshotId, StringComparison.Ordinal);
 
@@ -74,15 +78,19 @@ internal sealed class DiffTool
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw McpErrorMapper.Map(ex);
         }
     }
 
-    private void ValidateSnapshotExists(string snapshotId)
+    private static void ValidateSnapshotExists(SqliteIndexStore store, string snapshotId)
     {
-        var meta = _session.Store.LoadSnapshotMetadata(snapshotId);
+        var meta = store.LoadSnapshotMetadata(snapshotId);
         if (meta == null)
             throw new McpProtocolException($"snapshot '{snapshotId}' not found.", McpErrorCode.InvalidParams);
     }

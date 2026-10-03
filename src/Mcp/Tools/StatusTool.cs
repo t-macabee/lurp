@@ -25,18 +25,22 @@ internal sealed class StatusTool
     }
 
     [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Show pinned snapshot status and freshness. Uses full workspace check when --solution= was given, otherwise cheap stat check. Supports sections and caps to bound payload.")]
+    [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). Supports sections and caps to bound payload.")]
     public async Task<string> LurpStatus(
         string? snapshot_id = null,
         object? detail = null,
         string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
-        object? documents = null)
+        object? documents = null,
+        bool? full = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
             var maxDocs = max_documents ?? DefaultMaxDocuments;
             var maxMism = max_mismatches ?? DefaultMaxMismatches;
             if (maxDocs < 1)
@@ -74,11 +78,11 @@ internal sealed class StatusTool
             WorkspaceFreshness.FreshnessResult? fullResultForDoc = null;
             string freshnessScope = "documents_only";
 
-            if (!string.IsNullOrEmpty(_session.SolutionPath) && File.Exists(_session.SolutionPath))
+            if (full == true && !string.IsNullOrEmpty(_session.SolutionPath) && File.Exists(_session.SolutionPath))
             {
                 try
                 {
-                    var result = await CheckFullFreshnessAsync(snapshotId);
+                    var result = await CheckFullFreshnessAsync(store, snapshotId, cancellationToken);
                     fullResultForDoc = result;
                     var state = result.IsFresh ? "fresh" : "stale";
                     var count = result.Mismatches.Count;
@@ -143,9 +147,13 @@ internal sealed class StatusTool
                     freshness = freshnessDict;
                     freshnessScope = "full";
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch
                 {
-                    var stamp = _session.GetFreshness();
+                    var stamp = _session.GetFreshness(store, snapshotId);
                     cheapStampForDoc = stamp;
                     freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
                     freshnessScope = stamp.Scope;
@@ -153,7 +161,7 @@ internal sealed class StatusTool
             }
             else
             {
-                var stamp = _session.GetFreshness();
+                var stamp = _session.GetFreshness(store, snapshotId);
                 cheapStampForDoc = stamp;
                 freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
                 freshnessScope = stamp.Scope;
@@ -164,8 +172,8 @@ internal sealed class StatusTool
             {
                 try
                 {
-                    var latestRow = _session.Store.LoadSnapshot(snapshotId);
-                    var schemaVersion = _session.Store.GetCurrentSchemaVersion();
+                    var latestRow = store.LoadSnapshot(snapshotId);
+                    var schemaVersion = store.GetCurrentSchemaVersion();
                     var dbPath = _session.DbPath;
                     detailObj = new
                     {
@@ -174,7 +182,7 @@ internal sealed class StatusTool
                         contract_version = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                         latest_snapshot_id = snapshotId,
                         manifest = latestRow != null
-                            ? ManifestJson(WithBindingCompleteness(_session.Store, latestRow, includeCompleteness), includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences)
+                            ? ManifestJson(WithBindingCompleteness(store, latestRow, includeCompleteness), includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences)
                             : null,
                         git_root = latestRow?.GitRoot,
                         solution_path = latestRow?.SolutionPath
@@ -195,7 +203,7 @@ internal sealed class StatusTool
             List<object>? documentFreshness = null;
             if (normalizedRequested != null && normalizedRequested.Count > 0)
             {
-                documentFreshness = ComputeDocumentFreshness(snapshotId, cheapStampForDoc, fullResultForDoc, normalizedRequested);
+                documentFreshness = ComputeDocumentFreshness(store, snapshotId, cheapStampForDoc, fullResultForDoc, normalizedRequested);
             }
 
             var envelope = new Dictionary<string, object?>
@@ -239,15 +247,19 @@ internal sealed class StatusTool
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw McpErrorMapper.Map(ex);
         }
     }
 
-    private List<object> ComputeDocumentFreshness(string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
+    private List<object> ComputeDocumentFreshness(SqliteIndexStore store, string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
     {
-        var snapshotDocs = _session.Store.GetDocumentVersionIdsByPath(snapshotId);
+        var snapshotDocs = store.GetDocumentVersionIdsByPath(snapshotId);
         var snapshotSet = new HashSet<string>(snapshotDocs.Keys, StringComparer.Ordinal);
         HashSet<string> changedSet;
         if (fullResult != null)
@@ -264,7 +276,7 @@ internal sealed class StatusTool
         }
         else
         {
-            var fallback = _session.GetFreshness();
+            var fallback = _session.GetFreshness(store, snapshotId);
             changedSet = new HashSet<string>(fallback.ChangedDocumentsSample, StringComparer.Ordinal);
         }
 
@@ -383,7 +395,7 @@ internal sealed class StatusTool
         return null;
     }
 
-    private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(string snapshotId)
+    private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(SqliteIndexStore store, string snapshotId, CancellationToken cancellationToken)
     {
         if (!MSBuildLocator.IsRegistered)
         {
@@ -391,10 +403,10 @@ internal sealed class StatusTool
         }
 
         using var workspace = MSBuildWorkspace.Create();
-        var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!);
+        var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!, cancellationToken: cancellationToken);
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(_session.SolutionPath!))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
-        var metadata = _session.Store.LoadSnapshot(snapshotId);
+        var metadata = store.LoadSnapshot(snapshotId);
         if (metadata == null)
             return new WorkspaceFreshness.FreshnessResult(false, [new SnapshotMismatch(MismatchKind.VersionChanged, "Snapshot not found.", null, snapshotId)]);
 

@@ -48,36 +48,90 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         if (_connection != null)
             return;
 
-        _connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        _connection.Open();
+        _connection = CreateConnection(SqliteOpenMode.ReadWriteCreate);
+        AttachStores();
+    }
 
-        _lifecycle = new SnapshotLifecycleStore(_connection);
-        _pinStore = new SnapshotPinStore(_connection);
-        _documents = new SnapshotDocumentStore(_connection);
-        _symbols = new SnapshotSymbolStore(_connection);
-        _pruner = new SnapshotPruner(_connection);
-        _timings = new SnapshotTimingStore(_connection);
-        _declWriter = new DeclarationWriteStore(_connection);
-        _declReader = new DeclarationReadStore(_connection);
-        _declMaintenance = new DeclarationMaintenanceStore(_connection);
-        _edgeOps = new EdgeOperationsStore(_connection);
-        _diagnostics = new DiagnosticStore(_connection);
-        _annotations = new AnnotationStore(_connection);
-        _extractors = new ExtractorRegistryStore(_connection);
-        _searchSource = new SearchSourceStore(_connection);
-        _searchSymbols = new SearchSymbolStore(_connection);
-        _searchMaintenance = new SearchIndexMaintenance(_connection);
-        _textSearch = new TextSearchStore(_connection);
-        _semanticDiffStore = new SemanticDiffStore(_connection);
-        _bindingIncompletenessStore = new BindingIncompletenessStore(_connection);
-        _deadCandidates = new DeadCandidateStore(_connection);
+    /// <summary>
+    ///     Opens the database for reads only: the connection is opened with SQLite
+    ///     <c>ReadOnly</c> mode and pinned with <c>query_only=ON</c>, so a read path
+    ///     can neither write nor migrate, even if the file permissions would allow
+    ///     it. <c>trusted_schema=OFF</c> stops a crafted database schema from
+    ///     invoking SQL functions; Lurp registers none, so nothing legitimate is lost.
+    /// </summary>
+    public void OpenReadOnly()
+    {
+        if (_connection != null)
+            return;
+
+        _connection = CreateConnection(SqliteOpenMode.ReadOnly);
+        ExecutePragma("PRAGMA query_only=ON;");
+        ExecutePragma("PRAGMA trusted_schema=OFF;");
+        AttachStores();
+    }
+
+    private SqliteConnection CreateConnection(SqliteOpenMode mode)
+    {
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = mode,
+            // Read connections are short-lived per MCP tool call, so pooling keeps their
+            // open cost low. Writer connections are long-lived for the run (or one-shot
+            // writes) and are closed for real, so the database file is released when the
+            // caller closes the store.
+            Pooling = mode == SqliteOpenMode.ReadOnly
+        };
+
+        var connection = new SqliteConnection(builder.ConnectionString);
+        connection.Open();
+
+        // Explicit busy handling for every connection: WAL lets readers proceed
+        // while a writer commits, but writer-vs-writer still has to wait its turn
+        // instead of failing with SQLITE_BUSY.
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA busy_timeout=30000;";
+            command.ExecuteNonQuery();
+        }
+
+        return connection;
+    }
+
+    private void AttachStores()
+    {
+        _lifecycle = new SnapshotLifecycleStore(_connection!);
+        _pinStore = new SnapshotPinStore(_connection!);
+        _documents = new SnapshotDocumentStore(_connection!);
+        _symbols = new SnapshotSymbolStore(_connection!);
+        _pruner = new SnapshotPruner(_connection!);
+        _timings = new SnapshotTimingStore(_connection!);
+        _declWriter = new DeclarationWriteStore(_connection!);
+        _declReader = new DeclarationReadStore(_connection!);
+        _declMaintenance = new DeclarationMaintenanceStore(_connection!);
+        _edgeOps = new EdgeOperationsStore(_connection!);
+        _diagnostics = new DiagnosticStore(_connection!);
+        _annotations = new AnnotationStore(_connection!);
+        _extractors = new ExtractorRegistryStore(_connection!);
+        _searchSource = new SearchSourceStore(_connection!);
+        _searchSymbols = new SearchSymbolStore(_connection!);
+        _searchMaintenance = new SearchIndexMaintenance(_connection!);
+        _textSearch = new TextSearchStore(_connection!);
+        _semanticDiffStore = new SemanticDiffStore(_connection!);
+        _bindingIncompletenessStore = new BindingIncompletenessStore(_connection!);
+        _deadCandidates = new DeadCandidateStore(_connection!);
     }
 
     public void EnableQueryOnly()
     {
         EnsureOpen();
+        ExecutePragma("PRAGMA query_only=ON;");
+    }
+
+    private void ExecutePragma(string sql)
+    {
         using var command = _connection!.CreateCommand();
-        command.CommandText = "PRAGMA query_only=ON;";
+        command.CommandText = sql;
         command.ExecuteNonQuery();
     }
 

@@ -23,11 +23,14 @@ internal sealed class OutlineTool
         bool? include_generated = null,
         int? limit = null,
         string? cursor = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             var normalized = Lurp.Handlers.HandlerBootstrap.NormalizeDocumentPath(document);
             if (string.IsNullOrEmpty(normalized))
@@ -37,6 +40,7 @@ internal sealed class OutlineTool
             var limitVal = limit ?? 100;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             OutlineCursor? cursorObj = null;
             if (!string.IsNullOrEmpty(cursor))
@@ -49,7 +53,7 @@ internal sealed class OutlineTool
             DeclarationOutlinePage? page;
             try
             {
-                page = _session.Store.GetDeclarationsOutline(normalized, snapshotId, includeGenerated, limitVal, cursorObj);
+                page = store.GetDeclarationsOutline(normalized, snapshotId, includeGenerated, limitVal, cursorObj);
             }
             catch (ArgumentException ex)
             {
@@ -88,6 +92,10 @@ internal sealed class OutlineTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

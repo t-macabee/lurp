@@ -24,11 +24,14 @@ internal sealed class GrepTool
         string? cursor = null,
         bool? ignore_case = null,
         bool? include_generated = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (string.IsNullOrEmpty(query))
                 throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
@@ -36,6 +39,7 @@ internal sealed class GrepTool
             var limitVal = limit ?? 50;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             var ignoreCase = ignore_case ?? false;
             var includeGenerated = include_generated ?? false;
@@ -51,7 +55,7 @@ internal sealed class GrepTool
             TextSearchPage page;
             try
             {
-                page = _session.Store.SearchTextPage(query, snapshotId, limitVal, includeGenerated, ignoreCase, cursorObj);
+                page = store.SearchTextPage(query, snapshotId, limitVal, includeGenerated, ignoreCase, cursorObj);
             }
             catch (ArgumentException ex)
             {
@@ -89,6 +93,10 @@ internal sealed class GrepTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

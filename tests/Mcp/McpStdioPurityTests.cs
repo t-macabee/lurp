@@ -200,6 +200,7 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
         };
         psi.ArgumentList.Add(lurpDll);
         psi.ArgumentList.Add("--mode=serve");
+        psi.ArgumentList.Add("--enable-write-tools");
         psi.ArgumentList.Add($"--output-dir={outputDir}");
         psi.ArgumentList.Add($"--solution={SolutionPath}");
 

@@ -54,6 +54,8 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 - **Modes whose payload is JSON additionally embed a `freshness` block** in the payload: `search`, `grep`, `find-symbol`, `impact`, `context`, `navigate`, `get-symbol --view=metadata`, `outline`, `diagnostics`, `get-annotations`, and `dead-candidates`.
 - **Raw-source modes cannot carry a block**: `get-source`, and the `signature`/`body`/`declaration`/`containing-type`/`surrounding` views of `get-symbol`, write source bytes to stdout verbatim by contract (consumers pipe them to files or compilers). Their signal is the stderr line plus the exit code; `--quiet` suppresses the line, never the exit code.
 
+**Exit codes:** a diagnosed command failure prints one `ERROR:` line to stderr and exits `1`; `--require-fresh` exits `2`; a workspace that cannot be loaded exits `2`. An unexpected internal failure also prints one line and exits `1` — a full stack trace is printed only with `--verbose` or `LURP_DEBUG=1`.
+
 **Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
 
 **Column-number base:** unlike line numbers, column numbers are **not** converted to 1-based. `diagnostics`' `start_column`/`end_column` are the raw Roslyn `LinePosition.Character` values and are **0-based**. There is no CLI or MCP input that takes a column, so this only affects how you read the output.
@@ -638,21 +640,34 @@ Set once (e.g. in the shell profile an agent's session inherits) and every mode 
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 18 tools via `tools/list`:
+Lurp runs as an MCP server over stdio, exposing 16 read tools via `tools/list`:
 `lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
 lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
-lurp_retract_annotation, lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh, lurp_index,
-lurp_dead_candidates`. All are read-only except `lurp_index` and `lurp_retract_annotation`. There
+lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh,
+lurp_dead_candidates`. Passing `--enable-write-tools` additionally registers
+`lurp_index` and `lurp_retract_annotation` (18 tools total). There
 is no `lurp_annotate` tool by design, and no `lurp_pin_snapshot` tool either —
-[`--mode=pin-snapshot`](#--mode=pin-snapshot) is CLI-only. The MCP session's SQLite
-connection opens with `PRAGMA query_only=ON`, so read tools never mutate the
-session's pinned snapshot; `lurp_index` writes through a separate writer
-connection while reads keep answering from the old pin, and
-`lurp_retract_annotation` opens its own short-lived writable connection the
-same way, scoped to a single `DELETE` (see
-[`--mode=retract-annotation`](#--mode=retract-annotation)). Annotation *creation*
-remains CLI-only (`--mode=annotate`); *retraction* is available from both
-surfaces (`--mode=retract-annotation` and `lurp_retract_annotation`).
+[`--mode=pin-snapshot`](#--mode=pin-snapshot) is CLI-only. Each tool call opens its
+own short-lived read-only connection (`Mode=ReadOnly` plus `PRAGMA query_only=ON`),
+so parallel calls cannot corrupt one shared connection and read tools never mutate
+the session's pinned snapshot; `lurp_index` and `lurp_retract_annotation` write
+through separate short-lived writable connections. `lurp_index` indexes the
+solution the session was started with (`--solution=`); it has no per-call solution
+parameter. See
+[`--mode=retract-annotation`](#--mode=retract-annotation) for the retract semantics.
+Annotation *creation* remains CLI-only (`--mode=annotate`); *retraction* is
+available from both surfaces (`--mode=retract-annotation` and
+`lurp_retract_annotation`).
+
+`lurp_status` defaults to the cheap stat-based freshness check; pass
+`full:true` to run the MSBuild workspace check (which requires serve
+`--solution=`). This keeps an agent's frequent status polls from loading the
+workspace on every call.
+
+Traversal and paging inputs are bounded: `limit`/`tier_limit` ≤ 500,
+`content_budget` ≤ 200000, `max_hops`/`max_depth` ≤ 20, `snippet_tokens` ≤ 2000.
+A larger value is rejected with an invalid-params error instead of producing a
+response whose size and latency the caller did not anticipate.
 
 **MCP callers, note:** `view` is **not** shared vocabulary between the CLI and
 MCP surfaces. The CLI's `--mode=get-symbol --view=` accepts

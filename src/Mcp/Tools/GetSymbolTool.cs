@@ -24,11 +24,14 @@ internal sealed class GetSymbolTool
         string? view = null,
         int? context_lines = null,
         bool? include_generated = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
@@ -43,26 +46,26 @@ internal sealed class GetSymbolTool
             var includeGenerated = include_generated ?? false;
             var contextLines = context_lines ?? 3;
 
-            var info = HandlerBootstrap.ResolveSymbolInfo(_session.Store, symbol, snapshotId, includeGenerated);
+            var info = HandlerBootstrap.ResolveSymbolInfo(store, symbol, snapshotId, includeGenerated);
             if (info == null)
                 throw new McpProtocolException($"Symbol '{symbol}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
 
             var freshness = _session.GetFreshnessJson();
-            var locations = _session.Store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
-            var annotations = _session.Store.GetAnnotations(snapshotId, info.SymbolId.Value);
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+            var annotations = store.GetAnnotations(snapshotId, info.SymbolId.Value);
 
             string? source = null;
             if (viewArg is "source" or "all")
             {
                 if (context_lines.HasValue)
                 {
-                    source = _session.Store.GetSurroundingLines(info.SymbolId.Value, snapshotId, contextLines);
+                    source = store.GetSurroundingLines(info.SymbolId.Value, snapshotId, contextLines);
                     if (source == null)
-                        source = _session.Store.GetSymbolSource(info.SymbolId.Value, snapshotId, ViewKind.Declaration, includeGenerated);
+                        source = store.GetSymbolSource(info.SymbolId.Value, snapshotId, ViewKind.Declaration, includeGenerated);
                 }
                 else
                 {
-                    source = _session.Store.GetSymbolSource(info.SymbolId.Value, snapshotId, ViewKind.Declaration, includeGenerated);
+                    source = store.GetSymbolSource(info.SymbolId.Value, snapshotId, ViewKind.Declaration, includeGenerated);
                 }
             }
 
@@ -93,6 +96,10 @@ internal sealed class GetSymbolTool
             return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

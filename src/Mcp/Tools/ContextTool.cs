@@ -66,11 +66,14 @@ internal sealed class ContextTool
         string? tier = null,
         int? tier_limit = null,
         string? cursor = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             var normalizedFile = HandlerBootstrap.NormalizeDocumentPath(file);
             var hasSymbol = !string.IsNullOrEmpty(symbol);
@@ -92,14 +95,17 @@ internal sealed class ContextTool
             var budget = content_budget ?? DefaultBudget;
             if (budget < 1)
                 throw new McpProtocolException("content_budget must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(content_budget, McpLimits.MaxContentBudget, "content_budget");
 
             var maxHops = max_hops ?? 3;
             if (maxHops < 1)
                 throw new McpProtocolException("max_hops must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(max_hops, McpLimits.MaxMaxHops, "max_hops");
 
             var tierLimit = tier_limit ?? DefaultTierLimit;
             if (tierLimit < 1)
                 throw new McpProtocolException("tier_limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(tier_limit, McpLimits.MaxLimit, "tier_limit");
 
             var includeGenerated = include_generated ?? false;
             var completenessDetail = completeness_detail ?? false;
@@ -116,11 +122,11 @@ internal sealed class ContextTool
                 string resolvedSymbol;
                 if (hasSymbol)
                 {
-                    resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol!, snapshotId, includeGenerated);
+                    resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated);
                 }
                 else
                 {
-                    resolvedSymbol = _session.Store.ResolveSymbolByLocation(normalizedFile!, line!.Value, snapshotId, includeGenerated)
+                    resolvedSymbol = store.ResolveSymbolByLocation(normalizedFile!, line!.Value, snapshotId, includeGenerated)
                         ?? throw new McpProtocolException($"no symbol found at {normalizedFile}:{line}; tier needs an anchor symbol.", McpErrorCode.InvalidParams);
                 }
 
@@ -146,9 +152,10 @@ internal sealed class ContextTool
                     }
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
                 var offset = cursorObj?.Offset ?? 0;
                 var page = ContextAssembler.BuildTierPage(
-                    _session.Store, _session.Store, snapshotId, SymbolId.Parse(resolvedSymbol), tier,
+                    store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tier,
                     maxHops, includeGenerated, offset, tierLimit);
 
                 var nextCursor = page.HasMore
@@ -185,17 +192,18 @@ internal sealed class ContextTool
             // Non-tier path
             string? symbolArg = symbol;
             if (hasSymbol)
-                symbolArg = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol!, snapshotId, includeGenerated);
+                symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated);
             if (content_budget is null && hasSymbol)
                 budget = DefaultBudgetFor(symbolArg);
 
             var lookup = new ContextLookup(snapshotId, symbolArg, normalizedFile, line);
-            var gitRoot = _session.Store.GetSnapshotGitRoot(snapshotId);
+            var gitRoot = store.GetSnapshotGitRoot(snapshotId);
             var assemblyOptions = new ContextAssemblyOptions(
                 intentParsed, budget, maxHops, includeGenerated,
                 scope, affectedProjects, gitRoot, completenessDetail);
 
-            var capsule = ContextAssembler.ResolveAndAssemble(_session.Store, _session.Store, lookup, assemblyOptions, _session.Store, _session.Store);
+            cancellationToken.ThrowIfCancellationRequested();
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
 
             var capsuleJson = ContextCapsuleJson.Serialize(capsule);
             using var capsuleDoc = JsonDocument.Parse(capsuleJson);
@@ -214,6 +222,10 @@ internal sealed class ContextTool
             return JsonSerializer.Serialize(capsuleEnvelope, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

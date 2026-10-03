@@ -241,7 +241,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         var tool = new DiagnosticsTool(session);
 
         // Get all diagnostics at once (unpaginated)
-        var jsonAll = tool.LurpDiagnostics(limit: 1000);
+        var jsonAll = tool.LurpDiagnostics(limit: 500);
         using var docAll = JsonDocument.Parse(jsonAll);
         var totalCount = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
         var allDiags = docAll.RootElement.GetProperty("diagnostics").EnumerateArray().ToList();
@@ -297,7 +297,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         var tool = new DiagnosticsTool(session);
 
         // Ensure fixture has enough diagnostics for a cursor (limit=2 over 5 => 3 pages)
-        var jsonAll = tool.LurpDiagnostics(limit: 1000);
+        var jsonAll = tool.LurpDiagnostics(limit: 500);
         using var docAll = JsonDocument.Parse(jsonAll);
         var total = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
         Assert.True(total >= 3, $"Need >=3 diagnostics for cursor test, got {total}");
@@ -415,7 +415,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
-        var json = tool.LurpDiagnostics(project: "UnusedUsingProj", severity: "all", limit: 1000);
+        var json = tool.LurpDiagnostics(project: "UnusedUsingProj", severity: "all", limit: 500);
         using var doc = JsonDocument.Parse(json);
 
         var diags = doc.RootElement.GetProperty("diagnostics").EnumerateArray().ToList();
@@ -462,7 +462,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
-        var allJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", severity: "all", limit: 1000);
+        var allJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", severity: "all", limit: 500);
         using var allDoc = JsonDocument.Parse(allJson);
         var ideId = allDoc.RootElement.GetProperty("diagnostics").EnumerateArray()
             .Select(d => d.GetProperty("id").GetString())
@@ -471,7 +471,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         if (ideId == null)
             return; // No IDE-family diagnostic fired on this fixture; nothing further to check.
 
-        var filteredJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", id: ideId, severity: "all", limit: 1000);
+        var filteredJson = tool.LurpDiagnostics(project: "AnalyzerCheckProj", id: ideId, severity: "all", limit: 500);
         using var filteredDoc = JsonDocument.Parse(filteredJson);
         Assert.True(filteredDoc.RootElement.GetProperty("diagnostics").EnumerateArray().Any(),
             $"Expected id filter '{ideId}' to retrieve at least the row seen in the unfiltered view.");
@@ -507,7 +507,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
-        var defaultJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 1000);
+        var defaultJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 500);
         using var defaultDoc = JsonDocument.Parse(defaultJson);
         Assert.False(defaultDoc.RootElement.GetProperty("include_generated").GetBoolean());
         var defaultDocs = defaultDoc.RootElement.GetProperty("diagnostics").EnumerateArray()
@@ -516,7 +516,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         Assert.DoesNotContain(defaultDocs, p => p != null && p.EndsWith("ModelSnapshot.cs", StringComparison.Ordinal));
         Assert.Contains(defaultDocs, p => p != null && p.EndsWith("Models.cs", StringComparison.Ordinal));
 
-        var includedJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 1000, include_generated: true);
+        var includedJson = tool.LurpDiagnostics(project: "GenDiagProj", id: "CS8019", severity: "all", limit: 500, include_generated: true);
         using var includedDoc = JsonDocument.Parse(includedJson);
         Assert.True(includedDoc.RootElement.GetProperty("include_generated").GetBoolean());
         var includedDocs = includedDoc.RootElement.GetProperty("diagnostics").EnumerateArray()

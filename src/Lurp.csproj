@@ -19,6 +19,13 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Map build-machine source paths out of the shipped PDB: a crash report
+         (or the opt-in stack trace) must not expose C:\Users\... paths. -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Lurp.Tests" />
   </ItemGroup>

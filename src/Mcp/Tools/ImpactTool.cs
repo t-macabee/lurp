@@ -33,11 +33,14 @@ internal sealed class ImpactTool
         int? max_depth = null,
         int? limit = null,
         string? cursor = null,
-        string? snapshot_id = null)
+        string? snapshot_id = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var store = _session.OpenReadStore();
 
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
@@ -53,10 +56,12 @@ internal sealed class ImpactTool
             var maxDepth = max_depth ?? DefaultMaxDepth;
             if (maxDepth < 1)
                 throw new McpProtocolException("max-depth must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(max_depth, McpLimits.MaxMaxDepth, "max_depth");
 
             var limitValue = limit ?? DefaultLimit;
             if (limitValue < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
             HashSet<string>? allowedKinds = null;
             string? kindsRaw = null;
@@ -82,7 +87,7 @@ internal sealed class ImpactTool
                 }
             }
 
-            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(_session.Store, symbol, snapshotId);
+            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbol, snapshotId);
 
             var fingerprint = SequenceCursor.ComputeFingerprint(
                 resolvedSymbolId,
@@ -111,8 +116,8 @@ internal sealed class ImpactTool
 
             var offset = cursorObj?.Offset ?? 0;
 
-            var reachability = new ImpactReachability(_session.Store, snapshotId, _session.Store);
-            var traced = reachability.Trace(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth);
+            var reachability = new ImpactReachability(store, snapshotId, store);
+            var traced = reachability.Trace(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth, includeSource: true, cancellationToken: cancellationToken);
 
             var response = ImpactPaging.BuildSymbolsResponse(
                 snapshotId,
@@ -131,6 +136,10 @@ internal sealed class ImpactTool
             return JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (McpProtocolException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

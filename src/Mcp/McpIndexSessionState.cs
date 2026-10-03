@@ -42,6 +42,18 @@ internal sealed class McpIndexSessionState
         }
     }
 
+    /// <summary>
+    ///     Cancels the currently tracked run, if any, without requiring its id.
+    ///     Used by host shutdown to stop an in-flight run before the process exits.
+    /// </summary>
+    public void CancelCurrent()
+    {
+        lock (_lock)
+        {
+            try { _current?.CancellationTokenSource.Cancel(); } catch { }
+        }
+    }
+
     /// <summary>Snapshot for JSON serialization.</summary>
     public IndexOperationSnapshot? Snapshot(string? operationId = null)
     {

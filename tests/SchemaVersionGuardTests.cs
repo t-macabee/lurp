@@ -148,7 +148,11 @@ public sealed class SchemaVersionGuardTests : IDisposable
 
         Assert.Equal(Message(StaleVersion), ex.Message);
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
-        Assert.NotNull(session.Store.GetLatestSnapshotId());
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.OpenReadOnly();
+            Assert.NotNull(store.GetLatestSnapshotId());
+        }
     }
 
     [Fact]
@@ -226,7 +230,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
             command.ExecuteNonQuery();
         }
 
-        var tool = new AnnotationsTool(session);
+        var tool = new RetractAnnotationTool(session);
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRetractAnnotation(annotation_id: annotationId));
 
         Assert.Equal(Message(StaleVersion), ex.Message);

@@ -43,7 +43,24 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
-    public async Task Status_Full_WhenSolutionProvided_ReturnsFullMethod()
+    public async Task Status_FullTrue_ReturnsFullMethod()
+    {
+        var snapshotId = await IndexAsync();
+        var args = new[] { $"--solution={SolutionPath}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus(full: true);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
+        var freshness = doc.RootElement.GetProperty("freshness");
+        var method = freshness.GetProperty("method").GetString();
+        Assert.Equal("full", method);
+        var scope = freshness.GetProperty("scope").GetString();
+        Assert.Equal("full", scope);
+    }
+
+    [Fact]
+    public async Task Status_Default_WithSolution_IsCheap()
     {
         var snapshotId = await IndexAsync();
         var args = new[] { $"--solution={SolutionPath}" };
@@ -54,9 +71,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
         var freshness = doc.RootElement.GetProperty("freshness");
         var method = freshness.GetProperty("method").GetString();
-        Assert.Equal("full", method);
-        var scope = freshness.GetProperty("scope").GetString();
-        Assert.Equal("full", scope);
+        Assert.True(method == "stat" || method == "stat+hash");
+        Assert.Equal("documents_only", freshness.GetProperty("scope").GetString());
     }
 
     [Fact]
@@ -118,7 +134,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var args = new[] { $"--solution={SolutionPath}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
-        var json = await tool.LurpStatus();
+        var json = await tool.LurpStatus(full: true);
         using var doc = JsonDocument.Parse(json);
         var freshness = doc.RootElement.GetProperty("freshness");
         Assert.Equal("fresh", freshness.GetProperty("state").GetString());
@@ -127,7 +143,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var sample = freshness.GetProperty("changed_documents_sample");
         Assert.Equal(0, sample.GetArrayLength());
         // Also check that the fresh result has empty mismatches when detail requested
-        var jsonDetail = await tool.LurpStatus(detail: true);
+        var jsonDetail = await tool.LurpStatus(detail: true, full: true);
         using var docDetail = JsonDocument.Parse(jsonDetail);
         var freshnessDetail = docDetail.RootElement.GetProperty("freshness");
         Assert.Equal("fresh", freshnessDetail.GetProperty("state").GetString());
@@ -145,7 +161,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var args = new[] { $"--solution={SolutionPath}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
-        var json = await tool.LurpStatus();
+        var json = await tool.LurpStatus(full: true);
         using var doc = JsonDocument.Parse(json);
         var freshness = doc.RootElement.GetProperty("freshness");
         Assert.Equal("stale", freshness.GetProperty("state").GetString());
@@ -155,7 +171,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var samplePath = sample[0].GetString();
         Assert.Contains("Models.cs", samplePath);
         // Mismatches detail should contain one DocumentModified/Added entry
-        var jsonDetail = await tool.LurpStatus(detail: true);
+        var jsonDetail = await tool.LurpStatus(detail: true, full: true);
         using var docDetail = JsonDocument.Parse(jsonDetail);
         var freshnessDetail = docDetail.RootElement.GetProperty("freshness");
         Assert.True(freshnessDetail.TryGetProperty("mismatches", out var mismatches));
@@ -191,7 +207,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var args = new[] { $"--solution={SolutionPath}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
-        var json = await tool.LurpStatus();
+        var json = await tool.LurpStatus(full: true);
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("fresh", doc.RootElement.GetProperty("freshness").GetProperty("state").GetString());
         Assert.Equal(0, doc.RootElement.GetProperty("freshness").GetProperty("changed_document_count").GetInt32());
@@ -379,7 +395,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var args = new[] { $"--solution={SolutionPath}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
-        var json = await tool.LurpStatus(sections: "manifest", max_mismatches: 3);
+        var json = await tool.LurpStatus(sections: "manifest", max_mismatches: 3, full: true);
         using var doc = JsonDocument.Parse(json);
         var freshness = doc.RootElement.GetProperty("freshness");
         Assert.True(freshness.TryGetProperty("mismatches", out var mismatches));
@@ -624,7 +640,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var fullArgs = new[] { $"--solution={SolutionPath}" };
         await using var fullSession = McpSessionContext.Create(fullArgs);
         var fullTool = new StatusTool(fullSession);
-        var fullJson = await fullTool.LurpStatus(documents: new[] { docA });
+        var fullJson = await fullTool.LurpStatus(documents: new[] { docA }, full: true);
         using var fullDoc = JsonDocument.Parse(fullJson);
         var fullFreshness = fullDoc.RootElement.GetProperty("freshness");
         Assert.Equal("full", fullFreshness.GetProperty("scope").GetString());

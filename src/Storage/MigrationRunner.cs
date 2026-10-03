@@ -17,8 +17,29 @@ public class MigrationRunner
 
     public void RunMigrations()
     {
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false
+        }.ConnectionString);
         connection.Open();
+
+        // WAL is a database property, so setting it once here (index start is the
+        // only migration entry point) lets readers run concurrently with the writer
+        // instead of contending on the rollback journal. busy_timeout keeps a
+        // concurrent writer waiting instead of failing with SQLITE_BUSY.
+        using (var setup = connection.CreateCommand())
+        {
+            setup.CommandText = "PRAGMA busy_timeout=30000;";
+            setup.ExecuteNonQuery();
+        }
+
+        using (var journal = connection.CreateCommand())
+        {
+            journal.CommandText = "PRAGMA journal_mode=WAL;";
+            journal.ExecuteNonQuery();
+        }
 
         var currentVersion = GetCurrentSchemaVersion(connection);
         var migrations = GetMigrations().OrderBy(m => m.Version).ToList();
@@ -46,8 +67,25 @@ public class MigrationRunner
 
     public int GetCurrentSchemaVersion()
     {
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        // Reading the schema marker must also work when index.db is read-only
+        // (e.g. a shared or archived database), so this probe never opens for
+        // write. A missing file simply has no schema.
+        if (!File.Exists(_dbPath))
+            return 0;
+
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ConnectionString);
         connection.Open();
+        using (var timeout = connection.CreateCommand())
+        {
+            timeout.CommandText = "PRAGMA busy_timeout=30000;";
+            timeout.ExecuteNonQuery();
+        }
+
         return GetCurrentSchemaVersion(connection);
     }
 

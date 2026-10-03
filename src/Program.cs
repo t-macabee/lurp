@@ -87,7 +87,7 @@ public static class Program
             ["--project=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet", "--include-public", "--include-generated", "--include-tests"],
             Sync(DeadCandidatesHandler.Run)),
         new("serve", "Run an MCP server over the index (stdio).",
-            ["--solution="],
+            ["--solution=", "--enable-write-tools"],
             McpServeHandler.Run)
     ];
 
@@ -169,6 +169,24 @@ public static class Program
                 // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine($"ERROR: {ex.Message}");
                 Environment.Exit(2);
+            }
+            catch (Exception ex)
+            {
+                // Last-resort crash path. Diagnosed failures throw CliExitException
+                // above; anything reaching this catch is a bug or an unexpected
+                // environment failure. Report one line and exit with the documented
+                // general-failure code (1) instead of the runtime's unhandled-
+                // exception dump, whose stack frames carry build-machine source
+                // paths from the shipped PDB. The full trace is opt-in.
+                // ReSharper disable once MethodHasAsyncOverload
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                if (args.Contains("--verbose") || Environment.GetEnvironmentVariable("LURP_DEBUG") == "1")
+                {
+                    // ReSharper disable once MethodHasAsyncOverload
+                    Console.Error.WriteLine(ex.ToString());
+                }
+
+                Environment.Exit(1);
             }
         }
         else

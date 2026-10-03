@@ -16,7 +16,7 @@ public sealed class CliMcpContractSnapshotTests
     [Fact]
     public void ContractVersion_IsExpected()
     {
-        Assert.Equal(2, VersionConstants.CliMcpContractVersion);
+        Assert.Equal(3, VersionConstants.CliMcpContractVersion);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class CliMcpContractSnapshotTests
             "pin-snapshot:--snapshot=,--clear,--json,--output=",
             "retract-annotation:--annotation-id=,--snapshot=",
             "search:--query=,--type=,--kind=,--limit=,--snippet-tokens=,--cursor=,--include-generated,--snapshot=,--output=,--freshness=,--require-fresh,--quiet",
-            "serve:--solution=",
+            "serve:--solution=,--enable-write-tools",
             "status:--solution=,--detail=,--json,--output=",
             "timings:--snapshot=,--json",
         };
@@ -115,13 +115,13 @@ public sealed class CliMcpContractSnapshotTests
             "lurp_get_symbol(symbol,view,context_lines,include_generated,snapshot_id)",
             "lurp_grep(query,limit,cursor,ignore_case,include_generated,snapshot_id)",
             "lurp_impact(symbol,direction,kinds,provenance,max_depth,limit,cursor,snapshot_id)",
-            "lurp_index(solution,strategy,force,operation_id,cancel)",
+            "lurp_index(strategy,force,operation_id,cancel)",
             "lurp_navigate(file,line,include_generated,snapshot_id)",
             "lurp_outline(document,include_generated,limit,cursor,snapshot_id)",
             "lurp_refresh(ack,snapshot_id)",
             "lurp_retract_annotation(annotation_id,snapshot_id)",
             "lurp_search(query,type,kind,limit,snippet_tokens,cursor,include_generated,snapshot_id)",
-            "lurp_status(snapshot_id,detail,sections,max_documents,max_mismatches,documents)",
+            "lurp_status(snapshot_id,detail,sections,max_documents,max_mismatches,documents,full)",
             "lurp_timings(snapshot_id)",
         };
 

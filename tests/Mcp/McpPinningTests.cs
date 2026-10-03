@@ -40,9 +40,13 @@ public sealed class McpPinningTests : IntegrationTestBase
         Assert.Equal(snapshot1, session.PinnedSnapshotId);
         Assert.Equal(pinned, session.PinnedSnapshotId);
 
-        // Verify store still readable via pinned snapshot (query_only=ON must allow reads).
-        var result = session.Store.GetSymbolIdsInSnapshot(pinned);
-        Assert.NotEmpty(result);
+        // Verify the pinned snapshot is still readable through a fresh read-only store.
+        using (var store = new SqliteIndexStore(DbPath))
+        {
+            store.OpenReadOnly();
+            var result = store.GetSymbolIdsInSnapshot(pinned);
+            Assert.NotEmpty(result);
+        }
     }
 
     [Fact]

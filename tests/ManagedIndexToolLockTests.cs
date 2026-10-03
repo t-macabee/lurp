@@ -31,7 +31,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
 
             var ex = await Record.ExceptionAsync(() =>
                 Task.FromResult(tool.LurpIndex(
-                    solution: SolutionPath,
                     strategy: "incremental",
                     cancellationToken: CancellationToken.None)));
 
@@ -59,7 +58,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
 
             var ex = await Record.ExceptionAsync(() =>
                 Task.FromResult(tool.LurpIndex(
-                    solution: SolutionPath,
                     strategy: "incremental",
                     cancellationToken: CancellationToken.None)));
 
@@ -88,7 +86,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
 
         var ex = await Record.ExceptionAsync(() =>
             Task.FromResult(tool.LurpIndex(
-                solution: SolutionPath,
                 strategy: "incremental",
                 cancellationToken: CancellationToken.None)));
 
@@ -118,7 +115,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
         var tool = new IndexTool(sessionContext, indexState);
 
         var response = tool.LurpIndex(
-            solution: SolutionPath,
             strategy: "incremental",
             cancellationToken: CancellationToken.None);
 
@@ -154,7 +150,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
         var tool = new IndexTool(sessionContext, indexState);
 
         tool.LurpIndex(
-            solution: SolutionPath,
             strategy: "incremental",
             cancellationToken: CancellationToken.None);
 
@@ -179,7 +174,6 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
             _ => throw new InvalidOperationException("store factory probe"));
 
         var response = tool.LurpIndex(
-            solution: SolutionPath,
             strategy: "incremental",
             cancellationToken: CancellationToken.None);
 
