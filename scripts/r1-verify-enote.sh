@@ -21,18 +21,23 @@ WIN_INCR_DIR="$(cygpath -w "$INCR_DIR")"
 WIN_FULL_DIR="$(cygpath -w "$FULL_DIR")"
 WIN_SOLUTION_PATH="$(cygpath -w "$SOLUTION_PATH")"
 LURP_PROJ="$REPO_ROOT/src/Lurp.csproj"
+# Set LURP_CMD to run the packed tool instead of the local build, for example:
+#   LURP_CMD='/c/tools/lurp/lurp.exe' ./scripts/r1-verify-enote.sh <dir> <sln>
+LURP_CMD="${LURP_CMD:-dotnet run --no-build --project $LURP_PROJ --}"
 
 run_full() {
     local outdir_win="$1"
     echo "  [full] -> $outdir_win"
-    dotnet run --no-build --project "$LURP_PROJ" -- \
+    # shellcheck disable=SC2086 # LURP_CMD is a command plus arguments.
+    $LURP_CMD \
         --mode=index --solution="$WIN_SOLUTION_PATH" --output-dir="$outdir_win" \
         --strategy=full 2>&1 | tail -5
 }
 
 run_incr() {
     echo "  [incr] -> $WIN_INCR_DIR"
-    dotnet run --no-build --project "$LURP_PROJ" -- \
+    # shellcheck disable=SC2086 # LURP_CMD is a command plus arguments.
+    $LURP_CMD \
         --mode=index --solution="$WIN_SOLUTION_PATH" --output-dir="$WIN_INCR_DIR" \
         2>&1 | tail -5
 }

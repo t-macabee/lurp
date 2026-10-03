@@ -397,10 +397,7 @@ internal sealed class StatusTool
 
     private async Task<WorkspaceFreshness.FreshnessResult> CheckFullFreshnessAsync(SqliteIndexStore store, string snapshotId, CancellationToken cancellationToken)
     {
-        if (!MSBuildLocator.IsRegistered)
-        {
-            try { MSBuildLocator.RegisterDefaults(); } catch { }
-        }
+        if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
 
         using var workspace = MSBuildWorkspace.Create();
         var solution = await workspace.OpenSolutionAsync(_session.SolutionPath!, cancellationToken: cancellationToken);

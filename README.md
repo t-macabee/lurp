@@ -90,7 +90,9 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 Supported platform: Windows. Lurp 2.x is not tested on Linux or macOS.
 
-Requires the .NET 10 runtime to run any mode. Indexing and solution-backed status
+Requires a .NET 10 runtime to run any mode; the package declares
+`RollForward=Major`, so a later major runtime (11, 12, …) also works, while an
+older runtime does not. Indexing and solution-backed status
 (`--mode=index`, `status --solution=`, MCP `lurp_index`, and MCP `lurp_status` with
 `full:true`) also require a .NET SDK that can build the target solution, and the
 solution must be restored.

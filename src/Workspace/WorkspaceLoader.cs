@@ -24,9 +24,9 @@ internal sealed class WorkspaceLoader : IDisposable
         _output = output ?? ConsoleOutputSink.Instance;
         if (!MSBuildLocator.IsRegistered)
         {
-            var instances = MSBuildLocator.RegisterDefaults();
+            var instance = MSBuildRegistration.RegisterOrThrow();
 
-            _output.WriteLine($"MSBuild: {instances?.MSBuildPath ?? "default"}");
+            _output.WriteLine($"MSBuild: {instance?.MSBuildPath ?? "default"}");
         }
 
         _openSolutionAsync = OpenWithWorkspaceAsync;

@@ -29,4 +29,9 @@
     <ProjectReference Include="..\src\Lurp.csproj" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 
+  <!-- Fixtures are indexed, not compiled into the test assembly. -->
+  <ItemGroup>
+    <Compile Remove="Fixtures\**\*.cs" />
+  </ItemGroup>
+
 </Project>

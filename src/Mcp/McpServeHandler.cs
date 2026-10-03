@@ -59,13 +59,17 @@ internal static class McpServeHandler
         }
 
         var host = builder.Build();
+
+        // Resolve before RunAsync: RunAsync disposes the host, so the service
+        // provider is unusable once it returns.
+        var indexState = host.Services.GetRequiredService<McpIndexSessionState>();
+
         await host.RunAsync();
 
         // The stdio transport returns when the client disconnects. Do not let the
         // process exit while a background index run still writes: cancel it and
         // wait a bounded time. A run that outlives the wait leaves an incomplete
         // snapshot that the next successful index run prunes.
-        var indexState = host.Services.GetRequiredService<McpIndexSessionState>();
         var backgroundTask = indexState.Current?.BackgroundTask;
         if (backgroundTask != null)
         {

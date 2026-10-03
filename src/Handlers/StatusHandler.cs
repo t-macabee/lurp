@@ -77,7 +77,7 @@ internal static class StatusHandler
 
     private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(ISnapshotManifestStore manifests, string solutionPath)
     {
-        if (!MSBuildLocator.IsRegistered) MSBuildLocator.RegisterDefaults();
+        if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
 
         using var workspace = MSBuildWorkspace.Create();
         var solution = await workspace.OpenSolutionAsync(solutionPath);

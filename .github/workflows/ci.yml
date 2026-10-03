@@ -51,6 +51,87 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release
 
+      - name: Pack global tool
+        run: dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
+
+      - name: Write nupkg SHA-256
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
+          if (-not $pkg) { throw "no nupkg found in ./artifacts." }
+          $hash = (Get-FileHash $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($pkg.Name)" | Set-Content -Encoding ascii ./artifacts/SHA256SUMS.txt
+          Get-Content ./artifacts/SHA256SUMS.txt
+
+      - name: Upload nupkg
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lurp-nupkg
+          path: ./artifacts/
+          if-no-files-found: error
+
+  # Consumes the nupkg the build job produced and exercises the packed tool end
+  # to end (audit Phase 4: B4 packed-tool smoke, A3 runtime-only install check).
+  install-smoke:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download nupkg
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lurp-nupkg
+          path: ./artifacts
+
+      - name: Verify nupkg SHA-256
+        shell: pwsh
+        run: |
+          $fields = (Get-Content ./artifacts/SHA256SUMS.txt) -split '\s+' | Where-Object { $_ }
+          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
+          if (-not $pkg) { throw "no nupkg downloaded." }
+          $actual = (Get-FileHash $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $fields[0]) { throw "SHA-256 mismatch: expected $($fields[0]), got $actual." }
+          if ($pkg.Name -ne $fields[1]) { throw "artifact name mismatch: $($pkg.Name) vs $($fields[1])." }
+          Write-Host "SHA-256 verified: $actual"
+
+      # The tool itself is installed with the SDK; the runtime-only step below
+      # then runs the installed tool with DOTNET_ROOT/PATH pointed at a runtime
+      # that has no SDK, which is what the audit's A3 check must prove.
+      - name: Install packed tool
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
+          ./t/lurp.exe --version
+
+      - name: Packed-tool smoke (SDK)
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          ./scripts/smoke/packed-tool-smoke.ps1 -Lurp ./t/lurp.exe -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -WorkDir "$env:RUNNER_TEMP/lurp-smoke-work"
+
+      - name: Install .NET runtime only
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile "$env:RUNNER_TEMP/dotnet-install.ps1"
+          & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -InstallDir "$env:RUNNER_TEMP/dotnet-runtime" -NoPath
+
+      - name: Runtime-only smoke
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          ./scripts/smoke/runtime-only-smoke.ps1 -Lurp ./t/lurp.exe -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -RuntimeDir "$env:RUNNER_TEMP/dotnet-runtime" -SolutionPath "$env:RUNNER_TEMP/lurp-smoke-work/src/Smoke.slnx"
+
   # The real-solution parity gate (self-hosted runner, eNoteV2) moved to
   # real-parity.yml: a missing/offline self-hosted runner
   # always cancelled that job, which dragged this workflow's — and the
