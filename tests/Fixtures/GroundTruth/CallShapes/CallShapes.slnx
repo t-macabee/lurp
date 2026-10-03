@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Core/CallShapes.Core.csproj" />
+  <Project Path="App/CallShapes.App.csproj" />
+</Solution>

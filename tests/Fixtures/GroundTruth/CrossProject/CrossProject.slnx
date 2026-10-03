@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Lib/CrossProject.Lib.csproj" />
+  <Project Path="App/CrossProject.App.csproj" />
+  <Project Path="VbLib/VbLib.vbproj" />
+</Solution>

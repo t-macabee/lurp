@@ -1,0 +1,1027 @@
+{
+  "schema_version": 1,
+  "oracle": "C",
+  "description": "Human-reviewed ground truth for tests/Fixtures/GroundTruth/CallShapes (audit B1 Oracle C). Each fact is an edge that must be present once the B1 extractor work lands: CallShapes.App is the caller project, CallShapes.Core declares every target. Adapter-emitted edges (Registers, RoutesTo, Handles) and non-compared kinds (Returns, Throws, MayDispatchTo, StaticallyCalls, Implements, Inherits, ExtensionReceiver, Declares) are out of scope for this oracle; GoldenAdapterTests and the Phase 7 exact-set test cover them separately.",
+  "fixture_solution": "tests/Fixtures/GroundTruth/CallShapes/CallShapes.slnx",
+  "projects": [
+    {
+      "assembly_name": "CallShapes.App",
+      "project": "App/CallShapes.App.csproj"
+    },
+    {
+      "assembly_name": "CallShapes.Core",
+      "project": "Core/CallShapes.Core.csproj"
+    }
+  ],
+  "symbol_id_format": "Facts carry the Roslyn documentation-comment id only. The snapshot id is 'docCommentId|assemblyDisplayName' (SymbolIdFactory.Make); append the assembly from the projects list, or resolve the doc id against the snapshot. Doc ids are unique across the two projects in this fixture.",
+  "mapping": [
+    "Invocations in a body (including implicit ones: foreach GetEnumerator/MoveNext, using Dispose, await GetAwaiter/GetResult, deconstruction Deconstruct, collection-initializer Add, operator and conversion methods, interpolated-string-handler appends) are 'Calls' to the resolved method.",
+    "Object creation and attribute construction are 'Constructs' to the constructed type.",
+    "Constructor initializers and primary-constructor base arguments invoke the other/base constructor: 'Calls' to the constructor symbol (the constructor is a declared method; this is more precise than the type-level 'Constructs' used for 'new' syntax).",
+    "Method groups, delegate conversions and event += handlers are 'MethodGroupRef' (B1 decision: new kind, provenance compiler_proved).",
+    "Field and property initializers are owned by the field/property symbol; expression-bodied property getters are owned by the accessor method symbol (accessors are declared symbols).",
+    "Static member-access invocations additionally emit 'References' to the receiver type; parameter-type and member-type references come from the existing parameter/structural extractors."
+  ],
+  "facts": [
+    {
+      "source": "F:CallShapes.App.ShapeCallers.FieldInitializerValue",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.FieldInitializerTarget",
+      "reason": "Static field initializer: calls M:CallShapes.Core.CoreApi.FieldInitializerTarget.",
+      "id": "gt-001"
+    },
+    {
+      "source": "F:CallShapes.App.ShapeCallers.FieldInitializerValue",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Static field initializer: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-002"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeCallers.#ctor(System.Int32)",
+      "reason": "Parameterless constructor (this-initializer): calls M:CallShapes.App.ShapeCallers.#ctor(System.Int32).",
+      "id": "gt-003"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.ConstructorInitializerTarget",
+      "reason": "Parameterless constructor (this-initializer): calls M:CallShapes.Core.CoreApi.ConstructorInitializerTarget.",
+      "id": "gt-004"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.#ctor",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Parameterless constructor (this-initializer): references T:CallShapes.Core.CoreApi.",
+      "id": "gt-005"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.#ctor(System.Int32)",
+      "kind": "Writes",
+      "target": "P:CallShapes.App.ShapeCallers.ConstructorValue",
+      "reason": "Value constructor body: writes P:CallShapes.App.ShapeCallers.ConstructorValue.",
+      "id": "gt-006"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAsyncIterator",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.AsyncIteratorTarget",
+      "reason": "Async iterator body: calls M:CallShapes.Core.CoreApi.AsyncIteratorTarget.",
+      "id": "gt-007"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAsyncIterator",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Async iterator body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-008"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAttribute",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeMarkerAttribute",
+      "reason": "Attribute application: constructs T:CallShapes.Core.ShapeMarkerAttribute.",
+      "id": "gt-009"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAwait",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeAwaitable.GetAwaiter",
+      "reason": "Await expression: calls M:CallShapes.Core.ShapeAwaitable.GetAwaiter.",
+      "id": "gt-010"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAwait",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeAwaiter.GetResult",
+      "reason": "Await expression: calls M:CallShapes.Core.ShapeAwaiter.GetResult.",
+      "id": "gt-011"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAwait",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeAwaitable",
+      "reason": "Await expression: constructs T:CallShapes.Core.ShapeAwaitable.",
+      "id": "gt-012"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAwait",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeAwaiter.IsCompleted",
+      "reason": "Await expression: reads P:CallShapes.Core.ShapeAwaiter.IsCompleted.",
+      "id": "gt-013"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromBlockExtension(CallShapes.Core.ShapeText)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText)",
+      "reason": "C# 14 extension block call: calls M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText).",
+      "id": "gt-014"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromBlockExtension(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "C# 14 extension block call: references T:CallShapes.Core.ShapeText.",
+      "id": "gt-015"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromClassicExtension(CallShapes.Core.ShapeText)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTextExtensions.ClassicWordCount(CallShapes.Core.ShapeText)",
+      "reason": "Classic extension call: calls M:CallShapes.Core.ShapeTextExtensions.ClassicWordCount(CallShapes.Core.ShapeText).",
+      "id": "gt-016"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromClassicExtension(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Classic extension call: references T:CallShapes.Core.ShapeText.",
+      "id": "gt-017"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromCollectionInitializer",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBag.Add(System.Int32)",
+      "reason": "Collection initializer: calls M:CallShapes.Core.ShapeBag.Add(System.Int32).",
+      "id": "gt-018"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromCollectionInitializer",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeBag",
+      "reason": "Collection initializer: constructs T:CallShapes.Core.ShapeBag.",
+      "id": "gt-019"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromContract(CallShapes.Core.IShapeContract)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.IShapeContract.ContractValue",
+      "reason": "Interface method call: calls M:CallShapes.Core.IShapeContract.ContractValue.",
+      "id": "gt-020"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromContract(CallShapes.Core.IShapeContract)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.IShapeContract",
+      "reason": "Interface method call: references T:CallShapes.Core.IShapeContract.",
+      "id": "gt-021"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDeconstruction",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapePair.Deconstruct(System.Int32@,System.Int32@)",
+      "reason": "Deconstruction statement: calls M:CallShapes.Core.ShapePair.Deconstruct(System.Int32@,System.Int32@).",
+      "id": "gt-022"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDeconstruction",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapePair",
+      "reason": "Deconstruction statement: constructs T:CallShapes.Core.ShapePair.",
+      "id": "gt-023"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDefaultInterface(CallShapes.Core.IShapeDefault)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.IShapeDefault.DefaultValue",
+      "reason": "Default interface method call: calls M:CallShapes.Core.IShapeDefault.DefaultValue.",
+      "id": "gt-024"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDefaultInterface(CallShapes.Core.IShapeDefault)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.IShapeDefault",
+      "reason": "Default interface method call: references T:CallShapes.Core.IShapeDefault.",
+      "id": "gt-025"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDynamic",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.DynamicTarget",
+      "reason": "Dynamic binding: calls M:CallShapes.Core.CoreApi.DynamicTarget.",
+      "id": "gt-026"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromDynamic",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Dynamic binding: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-027"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromEventSubscription(CallShapes.Core.ShapePublisher)",
+      "kind": "MethodGroupRef",
+      "target": "M:CallShapes.Core.CoreApi.EventHandlerTarget",
+      "reason": "Event += subscription: references as a method group M:CallShapes.Core.CoreApi.EventHandlerTarget.",
+      "id": "gt-028"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromEventSubscription(CallShapes.Core.ShapePublisher)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapePublisher",
+      "reason": "Event += subscription: references T:CallShapes.Core.ShapePublisher.",
+      "id": "gt-029"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromExplicitConversion",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeNumber.op_Explicit(System.Int32)~CallShapes.Core.ShapeNumber",
+      "reason": "Explicit user-defined conversion: calls M:CallShapes.Core.ShapeNumber.op_Explicit(System.Int32)~CallShapes.Core.ShapeNumber.",
+      "id": "gt-030"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromForeach(CallShapes.Core.ShapeSequence)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeEnumerator.MoveNext",
+      "reason": "Foreach enumeration: calls M:CallShapes.Core.ShapeEnumerator.MoveNext.",
+      "id": "gt-031"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromForeach(CallShapes.Core.ShapeSequence)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeSequence.GetEnumerator",
+      "reason": "Foreach enumeration: calls M:CallShapes.Core.ShapeSequence.GetEnumerator.",
+      "id": "gt-032"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromForeach(CallShapes.Core.ShapeSequence)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeEnumerator.Current",
+      "reason": "Foreach enumeration: reads P:CallShapes.Core.ShapeEnumerator.Current.",
+      "id": "gt-033"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromForeach(CallShapes.Core.ShapeSequence)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeSequence",
+      "reason": "Foreach enumeration: references T:CallShapes.Core.ShapeSequence.",
+      "id": "gt-034"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromImplicitConversion",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeNumber.op_Implicit(CallShapes.Core.ShapeNumber)~System.Int32",
+      "reason": "Implicit user-defined conversion: calls M:CallShapes.Core.ShapeNumber.op_Implicit(CallShapes.Core.ShapeNumber)~System.Int32.",
+      "id": "gt-035"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromImplicitConversion",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Implicit user-defined conversion: constructs T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-036"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromImplicitConversion",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Implicit user-defined conversion: writes P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-037"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.InterpolatedHandlerTarget",
+      "reason": "Interpolated string handler call: calls M:CallShapes.Core.CoreApi.InterpolatedHandlerTarget.",
+      "id": "gt-038"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeLog.Write(CallShapes.Core.ShapeLogHandler)",
+      "reason": "Interpolated string handler call: calls M:CallShapes.Core.ShapeLog.Write(CallShapes.Core.ShapeLogHandler).",
+      "id": "gt-039"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeLogHandler.AppendFormatted``1(``0)",
+      "reason": "Interpolated string handler call: calls M:CallShapes.Core.ShapeLogHandler.AppendFormatted``1(``0).",
+      "id": "gt-040"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeLogHandler.AppendLiteral(System.String)",
+      "reason": "Interpolated string handler call: calls M:CallShapes.Core.ShapeLogHandler.AppendLiteral(System.String).",
+      "id": "gt-041"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Interpolated string handler call: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-042"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromInterpolatedHandler(System.Int32)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLog",
+      "reason": "Interpolated string handler call: references T:CallShapes.Core.ShapeLog.",
+      "id": "gt-043"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromLocalFunction",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.LocalFunctionTarget",
+      "reason": "Local function call: calls M:CallShapes.Core.CoreApi.LocalFunctionTarget.",
+      "id": "gt-044"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromLocalFunction",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Local function call: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-045"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromMethodGroup(System.Int32[])",
+      "kind": "MethodGroupRef",
+      "target": "M:CallShapes.Core.CoreApi.MethodGroupTarget(System.Int32)",
+      "reason": "Method-group argument: references as a method group M:CallShapes.Core.CoreApi.MethodGroupTarget(System.Int32).",
+      "id": "gt-046"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromOmittedArgument",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.OmittedArgumentTarget(System.Int32)",
+      "reason": "Omitted optional argument call: calls M:CallShapes.Core.CoreApi.OmittedArgumentTarget(System.Int32).",
+      "id": "gt-047"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromOmittedArgument",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Omitted optional argument call: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-048"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromOperators(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "reason": "Compound-assignment operator call: calls M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber).",
+      "id": "gt-049"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromOperators(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Compound-assignment operator call: reads P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-050"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromOperators(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Compound-assignment operator call: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-051"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPartialMethod",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeCallers.OnShapePartial(System.Int32)",
+      "reason": "Partial method invocation: calls M:CallShapes.App.ShapeCallers.OnShapePartial(System.Int32).",
+      "id": "gt-052"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPartialMethod",
+      "kind": "Constructs",
+      "target": "T:CallShapes.App.ShapeCallers",
+      "reason": "Partial method invocation: constructs T:CallShapes.App.ShapeCallers.",
+      "id": "gt-053"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPartialMethod",
+      "kind": "Reads",
+      "target": "P:CallShapes.App.ShapeCallers.PartialResult",
+      "reason": "Partial method invocation: reads P:CallShapes.App.ShapeCallers.PartialResult.",
+      "id": "gt-054"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPropertyPattern(CallShapes.Core.ShapePattern)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapePattern.Number",
+      "reason": "Property pattern match: reads P:CallShapes.Core.ShapePattern.Number.",
+      "id": "gt-055"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPropertyPattern(CallShapes.Core.ShapePattern)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapePattern",
+      "reason": "Property pattern match: references T:CallShapes.Core.ShapePattern.",
+      "id": "gt-056"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromQueryLambda(System.Int32[])",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.QueryLambdaTarget(System.Int32)",
+      "reason": "LINQ query lambda body: calls M:CallShapes.Core.CoreApi.QueryLambdaTarget(System.Int32).",
+      "id": "gt-057"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromQueryLambda(System.Int32[])",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "LINQ query lambda body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-058"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromRefStruct",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeRefStruct.Read",
+      "reason": "Ref struct usage: calls M:CallShapes.Core.ShapeRefStruct.Read.",
+      "id": "gt-059"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromRefStruct",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeRefStruct",
+      "reason": "Ref struct usage: constructs T:CallShapes.Core.ShapeRefStruct.",
+      "id": "gt-060"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromRefStruct",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeRefStruct.Value",
+      "reason": "Ref struct usage: writes F:CallShapes.Core.ShapeRefStruct.Value.",
+      "id": "gt-061"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromStaticAbstract",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeFactoryUser.CreateShape``1",
+      "reason": "Static abstract interface member call: calls M:CallShapes.Core.ShapeFactoryUser.CreateShape``1.",
+      "id": "gt-062"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromStaticAbstract",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeFactoryUser",
+      "reason": "Static abstract interface member call: references T:CallShapes.Core.ShapeFactoryUser.",
+      "id": "gt-063"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUnaryOperator(CallShapes.Core.ShapeNumber)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber)",
+      "reason": "Unary operator call: calls M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber).",
+      "id": "gt-064"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUnaryOperator(CallShapes.Core.ShapeNumber)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Unary operator call: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-065"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUnsafe",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeUnsafe.Read(System.Int32*)",
+      "reason": "Unsafe pointer call: calls M:CallShapes.Core.ShapeUnsafe.Read(System.Int32*).",
+      "id": "gt-066"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUnsafe",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeUnsafe",
+      "reason": "Unsafe pointer call: references T:CallShapes.Core.ShapeUnsafe.",
+      "id": "gt-067"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUsing",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeResource.Dispose",
+      "reason": "Using statement: calls M:CallShapes.Core.ShapeResource.Dispose.",
+      "id": "gt-068"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromUsing",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeResource",
+      "reason": "Using statement: constructs T:CallShapes.Core.ShapeResource.",
+      "id": "gt-069"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromWith(CallShapes.Core.ShapeRecord)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.RecordTarget",
+      "reason": "With expression: calls M:CallShapes.Core.CoreApi.RecordTarget.",
+      "id": "gt-070"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromWith(CallShapes.Core.ShapeRecord)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "With expression: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-071"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromWith(CallShapes.Core.ShapeRecord)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeRecord",
+      "reason": "With expression: references T:CallShapes.Core.ShapeRecord.",
+      "id": "gt-072"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromWith(CallShapes.Core.ShapeRecord)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeRecord.Id",
+      "reason": "With expression: writes P:CallShapes.Core.ShapeRecord.Id.",
+      "id": "gt-073"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.OnShapePartial(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.PartialMethodTarget",
+      "reason": "Partial method implementation body: calls M:CallShapes.Core.CoreApi.PartialMethodTarget.",
+      "id": "gt-074"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.OnShapePartial(System.Int32)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Partial method implementation body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-075"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.OnShapePartial(System.Int32)",
+      "kind": "Writes",
+      "target": "P:CallShapes.App.ShapeCallers.PartialResult",
+      "reason": "Partial method implementation body: writes P:CallShapes.App.ShapeCallers.PartialResult.",
+      "id": "gt-076"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.get_ExpressionBodiedProperty",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.ExpressionBodiedPropertyTarget",
+      "reason": "Expression-bodied property getter: calls M:CallShapes.Core.CoreApi.ExpressionBodiedPropertyTarget.",
+      "id": "gt-077"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.get_ExpressionBodiedProperty",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Expression-bodied property getter: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-078"
+    },
+    {
+      "source": "M:CallShapes.Core.DerivedShape.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.BaseConstructorArgument",
+      "reason": "Base-constructor initializer: calls M:CallShapes.Core.CoreApi.BaseConstructorArgument.",
+      "id": "gt-079"
+    },
+    {
+      "source": "M:CallShapes.Core.DerivedShape.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBase.#ctor(System.Int32)",
+      "reason": "Base-constructor initializer: calls M:CallShapes.Core.ShapeBase.#ctor(System.Int32).",
+      "id": "gt-080"
+    },
+    {
+      "source": "M:CallShapes.Core.DerivedShape.#ctor",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Base-constructor initializer: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-081"
+    },
+    {
+      "source": "M:CallShapes.Core.IShapeDefault.DefaultValue",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.DefaultInterfaceTarget",
+      "reason": "Default interface member body: calls M:CallShapes.Core.CoreApi.DefaultInterfaceTarget.",
+      "id": "gt-082"
+    },
+    {
+      "source": "M:CallShapes.Core.IShapeDefault.DefaultValue",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Default interface member body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-083"
+    },
+    {
+      "source": "M:CallShapes.Core.PrimaryShape.#ctor(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.PrimaryConstructorBaseArgument",
+      "reason": "Primary-constructor base arguments: calls M:CallShapes.Core.CoreApi.PrimaryConstructorBaseArgument.",
+      "id": "gt-084"
+    },
+    {
+      "source": "M:CallShapes.Core.PrimaryShape.#ctor(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.PrimaryShapeBase.#ctor(System.Int32)",
+      "reason": "Primary-constructor base arguments: calls M:CallShapes.Core.PrimaryShapeBase.#ctor(System.Int32).",
+      "id": "gt-085"
+    },
+    {
+      "source": "M:CallShapes.Core.PrimaryShape.#ctor(System.Int32)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Primary-constructor base arguments: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-086"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeBag.Add(System.Int32)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeBag._items",
+      "reason": "Collection Add body: reads F:CallShapes.Core.ShapeBag._items.",
+      "id": "gt-087"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeBag.GetEnumerator",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeBag._items",
+      "reason": "Collection enumerator body: reads F:CallShapes.Core.ShapeBag._items.",
+      "id": "gt-088"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeBase.#ctor(System.Int32)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeBase.Value",
+      "reason": "Base constructor body: writes P:CallShapes.Core.ShapeBase.Value.",
+      "id": "gt-089"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeContractImpl.CallShapes#Core#IShapeContract#ContractValue",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.ExplicitInterfaceTarget",
+      "reason": "Explicit interface implementation body: calls M:CallShapes.Core.CoreApi.ExplicitInterfaceTarget.",
+      "id": "gt-090"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeContractImpl.CallShapes#Core#IShapeContract#ContractValue",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Explicit interface implementation body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-091"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeEnumerator.MoveNext",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeEnumerator.Current",
+      "reason": "Enumerator MoveNext body: reads P:CallShapes.Core.ShapeEnumerator.Current.",
+      "id": "gt-092"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeEnumerator.MoveNext",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeEnumerator.Current",
+      "reason": "Enumerator MoveNext body: writes P:CallShapes.Core.ShapeEnumerator.Current.",
+      "id": "gt-093"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeFactoryUser.CreateShape``1",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.IShapeFactory`1.CreateShape",
+      "reason": "Generic static abstract dispatch: calls M:CallShapes.Core.IShapeFactory`1.CreateShape.",
+      "id": "gt-094"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.#cctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.StaticConstructorTarget",
+      "reason": "Static constructor body: calls M:CallShapes.Core.CoreApi.StaticConstructorTarget.",
+      "id": "gt-095"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.#cctor",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Static constructor body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-096"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.Finalize",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.FinalizerTarget",
+      "reason": "Finalizer body: calls M:CallShapes.Core.CoreApi.FinalizerTarget.",
+      "id": "gt-097"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.Finalize",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Finalizer body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-098"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.get_BlockAccessed",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.AccessorBodyTarget",
+      "reason": "Accessor-bodied getter: calls M:CallShapes.Core.CoreApi.AccessorBodyTarget.",
+      "id": "gt-099"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.get_BlockAccessed",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Accessor-bodied getter: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-100"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.get_InitAccessed",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeLifecycle._value",
+      "reason": "Init-accessor expression body: reads F:CallShapes.Core.ShapeLifecycle._value.",
+      "id": "gt-101"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.set_InitAccessed(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.InitAccessorTarget",
+      "reason": "Init-accessor setter body: calls M:CallShapes.Core.CoreApi.InitAccessorTarget.",
+      "id": "gt-102"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.set_InitAccessed(System.Int32)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Init-accessor setter body: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-103"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLifecycle.set_InitAccessed(System.Int32)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeLifecycle._value",
+      "reason": "Init-accessor setter body: writes F:CallShapes.Core.ShapeLifecycle._value.",
+      "id": "gt-104"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeLog.Write(CallShapes.Core.ShapeLogHandler)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLogHandler",
+      "reason": "Handler-consuming method signature: references T:CallShapes.Core.ShapeLogHandler.",
+      "id": "gt-105"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeMarkerAttribute.#ctor(System.Int32)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeMarkerAttribute.Value",
+      "reason": "Attribute constructor body: writes P:CallShapes.Core.ShapeMarkerAttribute.Value.",
+      "id": "gt-106"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Addition operator body: constructs T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-107"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Addition operator body: reads P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-108"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Addition operator body: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-109"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Addition(CallShapes.Core.ShapeNumber,CallShapes.Core.ShapeNumber)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Addition operator body: writes P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-110"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Explicit(System.Int32)~CallShapes.Core.ShapeNumber",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Explicit conversion operator body: constructs T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-111"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Explicit(System.Int32)~CallShapes.Core.ShapeNumber",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Explicit conversion operator body: writes P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-112"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Implicit(CallShapes.Core.ShapeNumber)~System.Int32",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Implicit conversion operator body: reads P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-113"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_Implicit(CallShapes.Core.ShapeNumber)~System.Int32",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Implicit conversion operator body: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-114"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber)",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Unary negation operator body: constructs T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-115"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Unary negation operator body: reads P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-116"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Unary negation operator body: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-117"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeNumber.op_UnaryNegation(CallShapes.Core.ShapeNumber)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeNumber.Value",
+      "reason": "Unary negation operator body: writes P:CallShapes.Core.ShapeNumber.Value.",
+      "id": "gt-118"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeRefStruct.Read",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRefStruct.Value",
+      "reason": "Ref struct method body: reads F:CallShapes.Core.ShapeRefStruct.Value.",
+      "id": "gt-119"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeText.Value",
+      "reason": "Extension block body: reads P:CallShapes.Core.ShapeText.Value.",
+      "id": "gt-120"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.ClassicWordCount(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeText.Value",
+      "reason": "Classic extension body: reads P:CallShapes.Core.ShapeText.Value.",
+      "id": "gt-121"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.ClassicWordCount(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Classic extension body: references T:CallShapes.Core.ShapeText.",
+      "id": "gt-122"
+    },
+    {
+      "source": "M:Program.{Main}$(System.String[])",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.MinimalApiTarget",
+      "reason": "Top-level statements entry point: calls M:CallShapes.Core.CoreApi.MinimalApiTarget.",
+      "id": "gt-123"
+    },
+    {
+      "source": "M:Program.{Main}$(System.String[])",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.OptionsTarget",
+      "reason": "Top-level statements entry point: calls M:CallShapes.Core.CoreApi.OptionsTarget.",
+      "id": "gt-124"
+    },
+    {
+      "source": "M:Program.{Main}$(System.String[])",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.TopLevelTarget",
+      "reason": "Top-level statements entry point: calls M:CallShapes.Core.CoreApi.TopLevelTarget.",
+      "id": "gt-125"
+    },
+    {
+      "source": "M:Program.{Main}$(System.String[])",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Top-level statements entry point: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-126"
+    },
+    {
+      "source": "M:Program.{Main}$(System.String[])",
+      "kind": "Writes",
+      "target": "P:CallShapes.App.ShapeOptions.Value",
+      "reason": "Top-level statements entry point: writes P:CallShapes.App.ShapeOptions.Value.",
+      "id": "gt-127"
+    },
+    {
+      "source": "P:CallShapes.App.ShapeCallers.PropertyInitializerValue",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.PropertyInitializerTarget",
+      "reason": "Static property initializer: calls M:CallShapes.Core.CoreApi.PropertyInitializerTarget.",
+      "id": "gt-128"
+    },
+    {
+      "source": "P:CallShapes.App.ShapeCallers.PropertyInitializerValue",
+      "kind": "References",
+      "target": "T:CallShapes.Core.CoreApi",
+      "reason": "Static property initializer: references T:CallShapes.Core.CoreApi.",
+      "id": "gt-129"
+    },
+    {
+      "source": "T:CallShapes.App.ShapeCallers",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeBag",
+      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeBag.",
+      "id": "gt-130"
+    },
+    {
+      "source": "T:CallShapes.App.ShapeCallers",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeFactory",
+      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeFactory.",
+      "id": "gt-131"
+    },
+    {
+      "source": "T:CallShapes.App.ShapeCallers",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeNumber.",
+      "id": "gt-132"
+    },
+    {
+      "source": "T:CallShapes.App.ShapeCallers",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeRecord",
+      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeRecord.",
+      "id": "gt-133"
+    },
+    {
+      "source": "T:CallShapes.Core.ShapeAwaitable",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeAwaiter",
+      "reason": "Type ShapeAwaitable member surface: references T:CallShapes.Core.ShapeAwaiter.",
+      "id": "gt-134"
+    },
+    {
+      "source": "T:CallShapes.Core.ShapeSequence",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeEnumerator",
+      "reason": "Type ShapeSequence member surface: references T:CallShapes.Core.ShapeEnumerator.",
+      "id": "gt-135"
+    }
+  ],
+  "excluded": [
+    {
+      "id": "excluded-minimal-api-endpoint",
+      "boundary": "minimal_api_endpoints",
+      "reason": "Program.cs app.MapGet(\"/shape\", ...) wires an endpoint to a handler; the ASP.NET Core adapter recognizes only Controller-derived types, so the route-to-handler edge is not modeled. The handler body's call to CoreApi.MinimalApiTarget is still a fact."
+    },
+    {
+      "id": "excluded-hosted-service-lifecycle",
+      "boundary": "di_hosted_service",
+      "reason": "AddHostedService<ShapeHostedService> resolves the concrete type (Registers edge, runtime_unknown provenance) but the hosted-service activation lifecycle is not captured."
+    },
+    {
+      "id": "excluded-options-binding",
+      "boundary": "di_options",
+      "reason": "AddOptions<ShapeOptions>().Configure(...) resolves the options type (Registers edge, runtime_unknown provenance) but configuration-binding semantics are not captured."
+    }
+  ],
+  "notes": [
+    {
+      "id": "note-dynamic-invocation",
+      "reason": "FromDynamic binds a dynamic receiver; a dynamic invocation has no statically resolved symbol, so it must surface as binding incompleteness rather than an edge. The CoreApi.DynamicTarget() call in the same body is a normal Calls fact."
+    },
+    {
+      "id": "note-with-clone",
+      "reason": "'original with { Id = ... }' is lowered to the synthesized copy constructor/clone on ShapeRecord; the fixture records the property write (Writes -> ShapeRecord.Id) and the initializer call (Calls -> CoreApi.RecordTarget). Whether the lowered clone call also emits a fact is left to the Phase 7 mapping decision; the clone symbol is declared as M:CallShapes.Core.ShapeRecord.{Clone}$."
+    },
+    {
+      "id": "note-collection-expression",
+      "reason": "FromCollectionExpression returns [1, 2, 3]. Array types have no persisted symbol (no T:System.Int32[] row in the snapshot), so the array construction cannot be a persistable edge target; the construct is present for crash/incompleteness coverage."
+    },
+    {
+      "id": "note-attribute-arguments",
+      "reason": "C# requires attribute constructor arguments to be compile-time constants, so the only extractable fact in [ShapeMarker(19)] is the construction of ShapeMarkerAttribute."
+    },
+    {
+      "id": "note-default-parameters",
+      "reason": "C# requires default parameter values to be compile-time constants, so no call can occur in one. The fixture exercises the omitted-argument call shape instead (FromOmittedArgument calls OmittedArgumentTarget without passing its constant default)."
+    },
+    {
+      "id": "note-csharp14-extension-block",
+      "reason": "The call to the C# 14 extension block binds, in the current extractor, to a compiler-generated nested symbol (M:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockWordCount); the fact above records the callable extension member M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText) as the intended target. The classic extension also gets an ExtensionReceiver edge today; the block form does not."
+    },
+    {
+      "id": "note-partial-method-proof",
+      "reason": "Measured on the committed fixture with the local Release build: the implementation part of a partial method is never walked, so no edge from OnShapePartial exists in the snapshot. The facts for OnShapePartial are the intended ones; the audit's Phase 7 extractor fix must make them appear."
+    },
+    {
+      "id": "note-interpolated-handler-creation",
+      "reason": "The interpolated-string-handler construction itself is compiler-lowered. Oracle C records the append calls (AppendLiteral/AppendFormatted) and the ShapeLog.Write call; it does not record a Constructs edge for the synthesized handler creation."
+    },
+    {
+      "id": "note-measured-baseline",
+      "reason": "Facts whose source is a body the current extractor already walks (classic extension, interface calls, local function, query lambda, async iterator, ref struct, unsafe, accessor bodies, static constructor, operator reads, type-level References) are copied from the measured snapshot; the C# 14 block-extension call is the one normalised exception. They are included so the Phase 7 exact-set test can diff the whole corpus rather than a subset."
+    }
+  ]
+}

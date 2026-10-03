@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- The ground-truth fixtures are deliberately unusual C#: instance members
+       that a consumer pattern requires (GetEnumerator, Deconstruct, handlers),
+       public fields on ref structs, non-generic IEnumerable implementations.
+       They are test data, not product code, so the repo-wide analyzer rule set
+       does not apply to them and Release builds must not fail on style. -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
