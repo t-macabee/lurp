@@ -28,7 +28,7 @@ internal static class IndexHandler
         Directory.CreateDirectory(outputDir);
         var jsonExportPath = HandlerBootstrap.GetArgValue(args, "--output-json=");
 
-        var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter="))
+        var skipAdapters = args.Where(a => a.StartsWith("--skip-adapter=", StringComparison.Ordinal))
             .Select(a => a.Split('=', 2)[1])
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 

@@ -1,5 +1,6 @@
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using System.Reflection;
 
 namespace Lurp.Tests;
@@ -337,10 +338,10 @@ internal static class SnapshotAssertions
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM source_fts WHERE snapshot_id = @id;";
         cmd.Parameters.AddWithValue("@id", snapshotId);
-        var sourceRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+        var sourceRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
 
         cmd.CommandText = "SELECT COUNT(*) FROM symbol_fts WHERE snapshot_id = @id;";
-        var symbolRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+        var symbolRows = Convert.ToInt32(cmd.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
 
         return (sourceRows, symbolRows);
     }

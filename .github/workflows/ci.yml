@@ -25,10 +25,25 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Restore dependencies
         run: dotnet restore
+
+      - name: Check for vulnerable packages
+        shell: pwsh
+        run: |
+          $json = dotnet package list --vulnerable --include-transitive --format json
+          if ($LASTEXITCODE -ne 0) { throw "dotnet package list failed with exit code $LASTEXITCODE." }
+          $list = $json | ConvertFrom-Json
+          $hits = @($list.projects | ForEach-Object { $_.frameworks } | ForEach-Object {
+            @($_.topLevelPackages) + @($_.transitivePackages) } |
+            Where-Object { $_ -and $_.vulnerabilities -and $_.vulnerabilities.Count -gt 0 })
+          if ($hits.Count -gt 0) {
+            $hits | ForEach-Object { Write-Host "::error::$($_.id) $($_.resolvedVersion) has known vulnerabilities." }
+            exit 1
+          }
+          Write-Host "No vulnerable packages."
 
       - name: Build
         run: dotnet build --no-restore --configuration Release

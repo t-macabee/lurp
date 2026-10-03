@@ -122,7 +122,7 @@ internal static class ImpactPaging
             .ToList();
     }
 
-    private static object ToSymbolJson(ImpactReachedSymbol symbol, IReadOnlyList<ImpactHop> witnessPath)
+    private static object ToSymbolJson(ImpactReachedSymbol symbol, List<ImpactHop> witnessPath)
     {
         return new
         {

@@ -15,6 +15,12 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 {
     private const string AspNetCoreFramework = "Microsoft.AspNetCore.App";
 
+    private static readonly string[] RouteTargetFqns =
+    [
+        "global::App.ProbeController.AbstractAction",
+        "global::App.ProbeController.PublicInstance"
+    ];
+
     [SkippableFact]
     public async Task AspNetCoreAdapter_ControllerActionProducesRoutesToDeclaresReturns()
     {
@@ -131,7 +137,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             .Select(e => e.TargetSymbolId)
             .Order(StringComparer.Ordinal)
             .ToList();
-        var expected = new[] { "global::App.ProbeController.AbstractAction", "global::App.ProbeController.PublicInstance" }
+        var expected = RouteTargetFqns
             .Select(fqn => ResolveSymbolId(snapshotId, fqn))
             .Order(StringComparer.Ordinal)
             .ToList();
@@ -549,10 +555,10 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             var testedBy = extraction.EdgesOf("TestedBy", Provenance.FrameworkDerived);
 
             // Non-vacuous: the external production type still produces an edge.
-            Assert.Contains(testedBy, e => e.SourceSymbolId.StartsWith("T:System.Linq.Enumerable"));
+            Assert.Contains(testedBy, e => e.SourceSymbolId.StartsWith("T:System.Linq.Enumerable", StringComparison.Ordinal));
 
             // Namespace segments must not become TestedBy sources.
-            Assert.DoesNotContain(testedBy, e => e.SourceSymbolId.StartsWith("N:"));
+            Assert.DoesNotContain(testedBy, e => e.SourceSymbolId.StartsWith("N:", StringComparison.Ordinal));
         }
         finally
         {

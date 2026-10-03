@@ -67,7 +67,7 @@ internal sealed class RetractAnnotationTool
                     freshness,
                     pinned = true
                 };
-                return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+                return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
             finally
             {

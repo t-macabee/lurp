@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace Lurp.Storage;
 
@@ -111,6 +112,6 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM snapshot_symbols WHERE snapshot_id = @snapshotId;";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        return Convert.ToInt32(command.ExecuteScalar());
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 }

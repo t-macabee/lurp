@@ -46,7 +46,7 @@ internal sealed class RefreshTool
                     freshness,
                     requires_ack = requiresAck
                 };
-                return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+                return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 
             // Ack provided: must equal latest
@@ -66,7 +66,7 @@ internal sealed class RefreshTool
                     requires_ack = false,
                     pinned = true
                 };
-                return JsonSerializer.Serialize(envelopeSame, new JsonSerializerOptions { WriteIndented = true });
+                return JsonSerializer.Serialize(envelopeSame, LurpJsonOptions.Indented);
             }
 
             // Ack equals latest and differs from old: advance pin
@@ -80,7 +80,7 @@ internal sealed class RefreshTool
                 freshness = newFreshness,
                 pinned = true
             };
-            return JsonSerializer.Serialize(envelopeAdv, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelopeAdv, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

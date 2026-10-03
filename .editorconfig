@@ -1,0 +1,24 @@
+# Severity triage for the `latest-recommended` analyzer set enabled by
+# Directory.Build.props. Keep every entry scoped and justified; a rule is
+# never disabled repo-wide here.
+root = true
+
+# MCP wire names are snake_case by protocol (snapshot_id, max_depth, ...); the
+# C# parameter names mirror them so the generated schema needs no rename.
+[src/Mcp/Tools/**]
+dotnet_diagnostic.CA1707.severity = none
+
+# Migration type names carry the schema sequence (Migration_001_..., sorted and
+# discovered by interface, never by name).
+[src/Storage/Migrations/**]
+dotnet_diagnostic.CA1707.severity = none
+
+# xUnit names encode the scenario with underscores; renaming them would lose
+# the convention without changing behavior.
+[tests/**]
+dotnet_diagnostic.CA1707.severity = none
+
+# 'Shared' is a Visual Basic keyword; this is a C# namespace and part of the
+# public surface, so CA1716 is a false positive here.
+[src/Shared/**]
+dotnet_diagnostic.CA1716.severity = none

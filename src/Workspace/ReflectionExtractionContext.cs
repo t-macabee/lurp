@@ -34,7 +34,7 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
             : null;
     }
 
-    internal ISymbol? GetContainingMemberSymbol(SyntaxNode node, SemanticModel semanticModel)
+    internal static ISymbol? GetContainingMemberSymbol(SyntaxNode node, SemanticModel semanticModel)
     {
         for (var current = node.Parent; current != null; current = current.Parent)
         {

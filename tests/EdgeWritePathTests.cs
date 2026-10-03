@@ -1,5 +1,6 @@
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace Lurp.Tests;
 
@@ -309,13 +310,13 @@ public sealed class EdgeWritePathTests : IDisposable
             cmd.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id = @n;";
             cmd.Parameters.AddWithValue("@s", SnapshotId);
             cmd.Parameters.AddWithValue("@n", "stale::synthetic::route");
-            staleCount = Convert.ToInt64(cmd.ExecuteScalar());
+            staleCount = Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
 
             using var cmd2 = conn.CreateCommand();
             cmd2.CommandText =
                 "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @s AND node_id IN ('src','tgt');";
             cmd2.Parameters.AddWithValue("@s", SnapshotId);
-            edgeNodeCount = Convert.ToInt64(cmd2.ExecuteScalar());
+            edgeNodeCount = Convert.ToInt64(cmd2.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
         Assert.Equal(0, staleCount);

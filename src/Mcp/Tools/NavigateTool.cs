@@ -54,7 +54,7 @@ internal sealed class NavigateTool
                 target
             };
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

@@ -72,7 +72,7 @@ internal sealed class DiffTool
                 changes = payload.changes
             };
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

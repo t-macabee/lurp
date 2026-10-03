@@ -127,7 +127,7 @@ public static class Program
             return;
         }
 
-        var modeArg = args.FirstOrDefault(a => a.StartsWith("--mode="));
+        var modeArg = args.FirstOrDefault(a => a.StartsWith("--mode=", StringComparison.Ordinal));
         if (modeArg is null)
         {
             HelpText.PrintUnknownModeError();

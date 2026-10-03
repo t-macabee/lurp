@@ -288,8 +288,10 @@ internal sealed class ContextCapsule
 
     [JsonPropertyName("snapshot_id")] public string SnapshotId => Anchor.SnapshotId;
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "System.Text.Json serializes instance members only; a static property would drop this field from the capsule JSON.")]
     [JsonPropertyName("tool_version")] public string ToolVersion => VersionConstants.ToolVersion;
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "System.Text.Json serializes instance members only; a static property would drop this field from the capsule JSON.")]
     [JsonPropertyName("output_schema_version")]
     public int OutputSchemaVersion => VersionConstants.OutputSchemaVersion;
 

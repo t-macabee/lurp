@@ -6,7 +6,7 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpStdioPurityTests : IntegrationTestBase
 {
-    private string FindLurpDll()
+    private static string FindLurpDll()
     {
         var dir = AppContext.BaseDirectory;
         while (dir != null)
@@ -32,7 +32,7 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
         throw new InvalidOperationException("Could not locate Lurp.dll for stdio purity test.");
     }
 
-    private string FindDotnet()
+    private static string FindDotnet()
     {
         var winPath = "/mnt/c/Program Files/dotnet/dotnet.exe";
         if (File.Exists(winPath)) return winPath;

@@ -6,7 +6,7 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpStdioTransportTests : IntegrationTestBase
 {
-    private string FindLurpDll()
+    private static string FindLurpDll()
     {
         // Locate compiled Lurp.dll: from test assembly dir walk up to repo, then src/bin/Debug/net* / Lurp.dll
         var dir = AppContext.BaseDirectory;

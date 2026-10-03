@@ -44,7 +44,7 @@ public sealed class PinSnapshotTests : IDisposable
         };
     }
 
-    private void InsertSnapshot(SqliteIndexStore store, string id, string workspaceId, DateTime builtAt)
+    private static void InsertSnapshot(SqliteIndexStore store, string id, string workspaceId, DateTime builtAt)
     {
         var row = MakeSnapshot(id, workspaceId, builtAt);
         store.SaveSnapshot(row);

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace Lurp.Storage;
 
@@ -149,7 +150,7 @@ internal sealed class AnnotationStore
             if (symbolId != null) countCmd.Parameters.AddWithValue("@symbolId", symbolId);
             if (documentPath != null) countCmd.Parameters.AddWithValue("@documentPath", documentPath);
             if (kind != null) countCmd.Parameters.AddWithValue("@kind", kind);
-            totalCount = Convert.ToInt32(countCmd.ExecuteScalar());
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
         using var cmd = _connection.CreateCommand();

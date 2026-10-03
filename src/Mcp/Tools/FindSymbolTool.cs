@@ -58,7 +58,7 @@ internal sealed class FindSymbolTool
                 locations
             };
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

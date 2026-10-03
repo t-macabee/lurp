@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Lurp.Helpers;
@@ -48,7 +49,7 @@ internal static class CompilationHelper
                 DocumentPath = documentPath,
                 Severity = diag.Severity.ToString(),
                 Id = diag.Id,
-                Message = diag.GetMessage(),
+                Message = diag.GetMessage(CultureInfo.InvariantCulture),
                 StartLine = startLine,
                 StartColumn = startColumn,
                 EndLine = endLine,
@@ -99,7 +100,7 @@ internal static class CompilationHelper
                     DocumentPath = documentPath,
                     Severity = diag.Severity.ToString(),
                     Id = diag.Id,
-                    Message = diag.GetMessage(),
+                    Message = diag.GetMessage(CultureInfo.InvariantCulture),
                     StartLine = startLine,
                     StartColumn = startColumn,
                     EndLine = endLine,

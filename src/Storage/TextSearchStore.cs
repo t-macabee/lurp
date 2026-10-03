@@ -211,7 +211,7 @@ internal sealed class TextSearchStore
 
         var line = content[lineStart..lineEnd];
         // Strip trailing '\r' from \r\n sequences
-        if (line.EndsWith("\r", StringComparison.Ordinal))
+        if (line.EndsWith('\r'))
             line = line[..^1];
         return line;
     }

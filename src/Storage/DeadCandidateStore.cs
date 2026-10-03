@@ -437,7 +437,7 @@ internal sealed class DeadCandidateStore
         return dict;
     }
 
-    private HashSet<string> BuildUnobservableByDocument(List<BindingIncompletenessRecord> records)
+    private static HashSet<string> BuildUnobservableByDocument(List<BindingIncompletenessRecord> records)
     {
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (var r in records)
@@ -449,7 +449,7 @@ internal sealed class DeadCandidateStore
         return set;
     }
 
-    private HashSet<string> BuildUnobservableProjects(List<BindingIncompletenessRecord> records)
+    private static HashSet<string> BuildUnobservableProjects(List<BindingIncompletenessRecord> records)
     {
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (var r in records)
@@ -463,7 +463,7 @@ internal sealed class DeadCandidateStore
         return reason is "ambiguous_overload" or "compiler_error" or "unresolved_metadata" or "unsupported_syntax" or "extractor_failure" or "project_unreadable" or "convention_scan";
     }
 
-    private bool OverlapsBindingIncompleteness(List<string> docPaths, string assemblyName, HashSet<string> byDoc, HashSet<string> byProject)
+    private static bool OverlapsBindingIncompleteness(List<string> docPaths, string assemblyName, HashSet<string> byDoc, HashSet<string> byProject)
     {
         foreach (var dp in docPaths)
             if (byDoc.Contains(dp))
@@ -730,7 +730,7 @@ internal sealed class DeadCandidateStore
         catch { return false; }
     }
 
-    private bool IsEfPrivateMember(CandidateRow cand, string? accessibility, HashSet<string> mapsToTargets)
+    private static bool IsEfPrivateMember(CandidateRow cand, string? accessibility, HashSet<string> mapsToTargets)
     {
         if (cand.Kind is not (nameof(IndexedSymbolKind.Method) or nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
             return false;
@@ -741,7 +741,7 @@ internal sealed class DeadCandidateStore
         return mapsToTargets.Contains(enclosing);
     }
 
-    private bool IsSerializationConvention(CandidateRow cand, string? accessibility, bool hasSystemTextJson, DeclInfo decl)
+    private static bool IsSerializationConvention(CandidateRow cand, string? accessibility, bool hasSystemTextJson, DeclInfo decl)
     {
         if (cand.Kind != nameof(IndexedSymbolKind.Property)) return false;
         if (accessibility is not ("Public" or "Internal")) return false;
@@ -769,7 +769,7 @@ internal sealed class DeadCandidateStore
         catch { return true; }
     }
 
-    private DeadCandidateIncomingSummary BuildIncomingSummary(List<EdgeRecord> incoming)
+    private static DeadCandidateIncomingSummary BuildIncomingSummary(List<EdgeRecord> incoming)
     {
         var prov = new Dictionary<string,int>(StringComparer.Ordinal);
         var kind = new Dictionary<string,int>(StringComparer.Ordinal);
@@ -784,7 +784,7 @@ internal sealed class DeadCandidateStore
         return new DeadCandidateIncomingSummary(strong, weak, prov, kind);
     }
 
-    private EdgeRecord? GetStrongestWeak(List<EdgeRecord> incoming)
+    private static EdgeRecord? GetStrongestWeak(List<EdgeRecord> incoming)
     {
         EdgeRecord? best = null;
         var bestRank = -2;

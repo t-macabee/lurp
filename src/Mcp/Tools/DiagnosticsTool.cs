@@ -105,7 +105,7 @@ internal sealed class DiagnosticsTool
                 next_cursor = page.NextCursor
             };
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

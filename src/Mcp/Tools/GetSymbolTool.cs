@@ -93,7 +93,7 @@ internal sealed class GetSymbolTool
                 annotations = annotations.Select(static a => new { annotation_id = a.AnnotationId, symbol_id = a.SymbolId, kind = a.Kind, value = a.Value, document_path = a.DocumentPath }).ToList()
             };
 
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

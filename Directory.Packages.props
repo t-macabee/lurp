@@ -1,0 +1,32 @@
+<Project>
+
+  <!-- One version per package for the whole repo (src, tests, scripts).
+       Every pin states why it exists; a pin without a reason is how the
+       removed System.Security.Cryptography.Xml override survived unnoticed. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- src/Lurp + src/Storage -->
+    <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" /> <!-- Compile-only surface of the workspace loader; runtime assets are excluded in src/Lurp.csproj so MSBuildLocator loads the SDK's own MSBuild assemblies. -->
+    <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" /> <!-- Binds the process to the installed MSBuild the target solution needs; the only MSBuild source allowed in the tool package. -->
+    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.8.2" /> <!-- Transitive MSBuild dependency pulled in by Microsoft.Build.Framework; runtime copy is excluded in src/Lurp.csproj so MSBuildLocator's SDK copy is the only one loaded. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" /> <!-- C# syntax and semantic analysis used by extraction. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" /> <!-- Workspace-level C# services required by MSBuildWorkspace. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.6.0" /> <!-- Loads .sln/.slnx through MSBuild design-time builds. -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" /> <!-- SQLite ADO.NET provider used by the index and every read path. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" /> <!-- Generic host for the serve mode (MCP over stdio). -->
+    <PackageVersion Include="ModelContextProtocol" Version="2.2.0" /> <!-- MCP server SDK: stdio transport, tool registration, error mapping. -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" /> <!-- Native e_sqlite3; tool and tests must run the same SQLite build. -->
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.10" /> <!-- XxHash64 for document and identity hashing. -->
+
+    <!-- tests/Lurp.Tests -->
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" /> <!-- Coverage collector consumed by dotnet test. -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" /> <!-- VSTest host behind `dotnet test`. -->
+    <PackageVersion Include="xunit" Version="2.9.3" /> <!-- Test framework (v2; the move to xunit.v3 is planned, see CONTRIBUTING.md). -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" /> <!-- xunit runner adapter for VSTest. -->
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" /> <!-- Runtime Skip.If used across the suite. -->
+  </ItemGroup>
+
+</Project>

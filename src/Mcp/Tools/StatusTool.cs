@@ -153,17 +153,17 @@ internal sealed class StatusTool
                 }
                 catch
                 {
-                    var stamp = _session.GetFreshness(store, snapshotId);
+                    var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                     cheapStampForDoc = stamp;
-                    freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
+                    freshness = McpSessionContext.GetFreshnessJsonWithStamp(stamp, maxDocs);
                     freshnessScope = stamp.Scope;
                 }
             }
             else
             {
-                var stamp = _session.GetFreshness(store, snapshotId);
+                var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                 cheapStampForDoc = stamp;
-                freshness = _session.GetFreshnessJsonWithStamp(stamp, maxDocs);
+                freshness = McpSessionContext.GetFreshnessJsonWithStamp(stamp, maxDocs);
                 freshnessScope = stamp.Scope;
             }
 
@@ -217,7 +217,7 @@ internal sealed class StatusTool
             if (documentFreshness != null)
                 envelope["document_freshness"] = documentFreshness;
 
-            var json = JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
 
             // Hard envelope cap per Gap1 step 5
             if (json.Length > EnvelopeCapBytes)
@@ -238,7 +238,7 @@ internal sealed class StatusTool
                 };
                 if (documentFreshness != null)
                     truncatedEnvelope["document_freshness"] = documentFreshness;
-                json = JsonSerializer.Serialize(truncatedEnvelope, new JsonSerializerOptions { WriteIndented = true });
+                json = JsonSerializer.Serialize(truncatedEnvelope, LurpJsonOptions.Indented);
             }
 
             return json;
@@ -257,7 +257,7 @@ internal sealed class StatusTool
         }
     }
 
-    private List<object> ComputeDocumentFreshness(SqliteIndexStore store, string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
+    private static List<object> ComputeDocumentFreshness(SqliteIndexStore store, string snapshotId, FreshnessStamp? cheapStamp, WorkspaceFreshness.FreshnessResult? fullResult, List<string> requested)
     {
         var snapshotDocs = store.GetDocumentVersionIdsByPath(snapshotId);
         var snapshotSet = new HashSet<string>(snapshotDocs.Keys, StringComparer.Ordinal);
@@ -276,7 +276,7 @@ internal sealed class StatusTool
         }
         else
         {
-            var fallback = _session.GetFreshness(store, snapshotId);
+            var fallback = McpSessionContext.GetFreshness(store, snapshotId);
             changedSet = new HashSet<string>(fallback.ChangedDocumentsSample, StringComparer.Ordinal);
         }
 
@@ -464,11 +464,11 @@ internal sealed class StatusTool
         return manifest;
     }
 
-    private static object? ManifestJson(SnapshotManifest manifest, bool includeDocuments, bool includeReferences)
+    private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments, bool includeReferences)
     {
         try
         {
-            var node = JsonSerializer.SerializeToNode(manifest, new JsonSerializerOptions { WriteIndented = false, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+            var node = JsonSerializer.SerializeToNode(manifest, LurpJsonOptions.CompactIgnoreNull);
             if (node is not JsonObject obj)
                 return node;
 
@@ -503,13 +503,13 @@ internal sealed class StatusTool
         }
     }
 
-    private static object? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
+    private static JsonNode? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
     {
         return ManifestJson(SnapshotManifest.FromStorageManifest(row), includeDocuments, includeReferences);
     }
 
     // Back-compat overload for callers that still use single bool
-    private static object? ManifestJson(SnapshotRow row, bool includeDocuments)
+    private static JsonNode? ManifestJson(SnapshotRow row, bool includeDocuments)
     {
         return ManifestJson(row, includeDocuments, includeReferences: false);
     }

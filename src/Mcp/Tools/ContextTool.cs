@@ -186,7 +186,7 @@ internal sealed class ContextTool
                     }
                 };
 
-                return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+                return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 
             // Non-tier path
@@ -219,7 +219,7 @@ internal sealed class ContextTool
                 capsule = capsuleElement
             };
 
-            return JsonSerializer.Serialize(capsuleEnvelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(capsuleEnvelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

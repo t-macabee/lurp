@@ -102,7 +102,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
         return GetFreshness(store, PinnedSnapshotId);
     }
 
-    public FreshnessStamp GetFreshness(SqliteIndexStore store, string snapshotId)
+    public static FreshnessStamp GetFreshness(SqliteIndexStore store, string snapshotId)
     {
         return WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Auto);
     }
@@ -113,12 +113,12 @@ internal sealed class McpSessionContext : IAsyncDisposable
         return GetFreshnessJson(store, PinnedSnapshotId, maxDocuments);
     }
 
-    public object GetFreshnessJson(SqliteIndexStore store, string snapshotId, int maxDocuments = 10)
+    public static object GetFreshnessJson(SqliteIndexStore store, string snapshotId, int maxDocuments = 10)
     {
         return GetFreshnessJsonInternal(GetFreshness(store, snapshotId), maxDocuments);
     }
 
-    internal object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
+    internal static object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
     {
         return GetFreshnessJsonInternal(stamp, maxDocuments);
     }

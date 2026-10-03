@@ -46,7 +46,7 @@ internal static class HandlerBootstrap
 
     public static string? GetArgValue(string[] args, string prefix)
     {
-        return args.FirstOrDefault(a => a.StartsWith(prefix))?.Split('=', 2)[1];
+        return args.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.Ordinal))?.Split('=', 2)[1];
     }
 
     /// <summary>

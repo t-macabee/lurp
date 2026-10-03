@@ -97,7 +97,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return edges;
     }
 
-    private bool TryResolveBinding(LiteralExpressionSyntax literal, SemanticModel semanticModel, out LiteralBinding binding)
+    private static bool TryResolveBinding(LiteralExpressionSyntax literal, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -118,7 +118,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         }
     }
 
-    private bool TryResolveInvocationBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
+    private static bool TryResolveInvocationBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -164,7 +164,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return arguments.Count > 0 && ReferenceEquals(arguments[0], argument);
     }
 
-    private bool TryResolveCallerMemberNameBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, IMethodSymbol method, SemanticModel semanticModel, out LiteralBinding binding)
+    private static bool TryResolveCallerMemberNameBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, IMethodSymbol method, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -177,7 +177,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         if (!isCallerMemberName)
             return false;
 
-        var containingType = context.GetContainingMemberSymbol(invocation, semanticModel)?.ContainingType;
+        var containingType = ReflectionExtractionContext.GetContainingMemberSymbol(invocation, semanticModel)?.ContainingType;
         if (containingType is null)
             return false;
 
@@ -246,7 +246,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return false;
     }
 
-    private bool TryResolvePropertyChangedBinding(ArgumentSyntax argument, ObjectCreationExpressionSyntax creation, SemanticModel semanticModel, out LiteralBinding binding)
+    private static bool TryResolvePropertyChangedBinding(ArgumentSyntax argument, ObjectCreationExpressionSyntax creation, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -256,7 +256,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         if (semanticModel.GetTypeInfo(creation).Type?.ToDisplayString() != "System.ComponentModel.PropertyChangedEventArgs")
             return false;
 
-        var containingType = context.GetContainingMemberSymbol(creation, semanticModel)?.ContainingType;
+        var containingType = ReflectionExtractionContext.GetContainingMemberSymbol(creation, semanticModel)?.ContainingType;
         if (containingType is null)
             return false;
 
@@ -379,7 +379,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         };
     }
 
-    private IReadOnlyList<ISymbol> ResolveCandidates(string text, LiteralBinding binding)
+    private List<ISymbol> ResolveCandidates(string text, LiteralBinding binding)
     {
         List<ISymbol>? candidates = binding.TargetKind switch
         {

@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- One analyzer and audit rule set for every project in the repo.
+       Release is the CI and release configuration (src projects already set
+       ContinuousIntegrationBuild there); warnings are errors there and
+       warning-only in local Debug builds. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1902;NU1903;NU1904</WarningsAsErrors>
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

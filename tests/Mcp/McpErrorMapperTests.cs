@@ -54,10 +54,15 @@ public sealed class McpErrorMapperTests
     [Fact]
     public void Map_NeverIncludesStackTraceText()
     {
-        var ex = new Exception("hello");
+        var ex = new TestOnlyException("hello");
         var mapped = Lurp.Mcp.McpErrorMapper.Map(ex);
         var combined = mapped.Message + " " + (mapped.ToString() ?? string.Empty);
         // The mapped exception's Message must not contain stack frames.
         Assert.DoesNotContain(" at ", combined);
+    }
+
+    private sealed class TestOnlyException : Exception
+    {
+        public TestOnlyException(string message) : base(message) { }
     }
 }

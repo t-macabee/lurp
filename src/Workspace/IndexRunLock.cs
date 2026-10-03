@@ -27,7 +27,7 @@ internal static class IndexRunLock
         IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
 
     [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetFinalPathNameByHandle(SafeFileHandle hFile, StringBuilder lpszFilePath,
+    private static extern uint GetFinalPathNameByHandle(SafeFileHandle hFile, [Out] char[] lpszFilePath,
         uint cchFilePath, uint dwFlags);
 
     /// <summary>
@@ -132,12 +132,12 @@ internal static class IndexRunLock
         if (handle.IsInvalid)
             return null;
 
-        var buffer = new StringBuilder(1024);
-        var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, VOLUME_NAME_DOS);
-        if (length == 0 || length >= buffer.Capacity)
+        var buffer = new char[1024];
+        var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Length, VOLUME_NAME_DOS);
+        if (length == 0 || length >= (uint)buffer.Length)
             return null;
 
-        var result = buffer.ToString();
+        var result = new string(buffer, 0, (int)length);
         // Strip the extended-length prefix: \\?\C:\... or \\?\UNC\server\share\...
         if (result.StartsWith(@"\\?\UNC\", StringComparison.Ordinal))
             return @"\\" + result[8..];

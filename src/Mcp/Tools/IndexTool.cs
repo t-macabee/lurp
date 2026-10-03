@@ -52,7 +52,7 @@ internal sealed class IndexTool
                             finished_at_utc = snap.FinishedAtUtc,
                             error = snap.ErrorMessage,
                             result_snapshot_id = snap.ResultSnapshotId
-                        }, new JsonSerializerOptions { WriteIndented = true });
+                        }, LurpJsonOptions.Indented);
                     }
 
                     return JsonSerializer.Serialize(new
@@ -60,7 +60,7 @@ internal sealed class IndexTool
                         operation_id = operation_id,
                         status = "cancelled",
                         message = "cancellation requested"
-                    }, new JsonSerializerOptions { WriteIndented = true });
+                    }, LurpJsonOptions.Indented);
                 }
 
                 // Poll status.
@@ -80,7 +80,7 @@ internal sealed class IndexTool
                     error_data = snapshot.ErrorData,
                     result_snapshot_id = snapshot.ResultSnapshotId,
                     previous_snapshot_id = snapshot.PreviousSnapshotId
-                }, new JsonSerializerOptions { WriteIndented = true });
+                }, LurpJsonOptions.Indented);
             }
 
             // Start new run — validate single-flight.
@@ -268,7 +268,7 @@ internal sealed class IndexTool
                 started_at_utc = op.StartedAtUtc,
                 previous_snapshot_id = previousSnapshotId
             };
-            return JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

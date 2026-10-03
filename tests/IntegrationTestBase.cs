@@ -3,6 +3,7 @@ using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 
 namespace Lurp.Tests;
@@ -13,9 +14,9 @@ namespace Lurp.Tests;
 /// </summary>
 public abstract class IntegrationTestBase : IDisposable
 {
-    public readonly string DbPath;
-    public readonly string SolutionPath;
-    public readonly string TestDir;
+    public string DbPath { get; }
+    public string SolutionPath { get; }
+    public string TestDir { get; }
 
     static IntegrationTestBase()
     {
@@ -69,12 +70,12 @@ public abstract class IntegrationTestBase : IDisposable
         var sb = new StringBuilder();
         sb.AppendLine("""<Project Sdk="Microsoft.NET.Sdk">""");
         sb.AppendLine("  <PropertyGroup>");
-        sb.AppendLine($"    <TargetFramework>{targetFramework}</TargetFramework>");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFramework>{targetFramework}</TargetFramework>");
         sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
         sb.AppendLine("    <Nullable>enable</Nullable>");
         if (msbuildProperties is { Count: > 0 })
             foreach (var (name, value) in msbuildProperties)
-                sb.AppendLine($"    <{name}>{value}</{name}>");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <{name}>{value}</{name}>");
         sb.AppendLine("  </PropertyGroup>");
         if (packageReferences is { Length: > 0 })
         {
@@ -94,7 +95,7 @@ public abstract class IntegrationTestBase : IDisposable
         {
             sb.AppendLine("  <ItemGroup>");
             foreach (var reference in frameworkReferences)
-                sb.AppendLine($"    <FrameworkReference Include=\"{reference}\" />");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <FrameworkReference Include=\"{reference}\" />");
             sb.AppendLine("  </ItemGroup>");
         }
 
@@ -102,7 +103,7 @@ public abstract class IntegrationTestBase : IDisposable
         {
             sb.AppendLine("  <ItemGroup>");
             foreach (var reference in projectReferences)
-                sb.AppendLine($"    <ProjectReference Include=\"..\\{reference}\\{reference}.csproj\" />");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <ProjectReference Include=\"..\\{reference}\\{reference}.csproj\" />");
             sb.AppendLine("  </ItemGroup>");
         }
 

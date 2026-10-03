@@ -249,7 +249,7 @@ public sealed class CliExitSmokeTests : IDisposable
     ///     snapshot 's1', so <see cref="DiffHandler.Run" /> can resolve the database
     ///     through its own <c>--output-dir</c> path.
     /// </summary>
-    private string CreateIndexedDir(bool withSnapshot)
+    private static string CreateIndexedDir(bool withSnapshot)
     {
         var dir = Path.Combine(Path.GetTempPath(), $"lurp-diff-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);

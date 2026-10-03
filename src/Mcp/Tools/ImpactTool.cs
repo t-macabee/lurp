@@ -133,7 +133,7 @@ internal sealed class ImpactTool
                 pinned: true,
                 includeLimitEcho: true);
 
-            return JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(response, LurpJsonOptions.Indented);
         }
         catch (McpProtocolException)
         {

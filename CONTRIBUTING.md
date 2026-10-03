@@ -2,9 +2,9 @@
 
 ## Prerequisites
 
-- .NET 10 SDK. `src/global.json` pins `10.0.301` with `rollForward=latestMajor`,
-  so it governs `dotnet` commands run under `src/`; CI installs the latest
-  `10.0.x` (`setup-dotnet`) and builds from the repo root. Roslyn 5.6 requires `net10.0`.
+- .NET 10 SDK. `global.json` pins `10.0.301` with `rollForward=latestMajor`, and
+  CI installs the SDK from that same file (`setup-dotnet` `global-json-file`),
+  so local and CI builds follow one selection rule. Roslyn 5.6 requires `net10.0`.
 - Familiarity with C# and Roslyn is helpful but not required.
 
 ## Build and test
@@ -16,6 +16,12 @@ Lurp is shipped as a .NET global tool (`PackAsTool`); run from source via
 dotnet build Lurp.slnx
 dotnet test Lurp.slnx
 ```
+
+Tests run on xunit 2.9.3 today. Moving to xunit.v3 is planned, not scheduled: it
+swaps the `xunit` and runner packages in `tests/Lurp.Tests.csproj` and needs a v3
+replacement for the v2-only skip helper, plus an audit of v2-only assertion and
+attribute APIs. NuGet and GitHub Actions updates are watched by
+`.github/dependabot.yml`.
 
 ## Repository layout
 

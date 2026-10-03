@@ -252,9 +252,9 @@ static void NormalizeEdges(List<EdgeRecord> edges)
         if (c != 0) return c;
         c = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "", b.ReceiverTypeConstraintsJson ?? "");
         if (c != 0) return c;
-        c = (a.SourceNodeKind?.ToString() ?? "").CompareTo(b.SourceNodeKind?.ToString() ?? "");
+        c = string.Compare(a.SourceNodeKind?.ToString() ?? "", b.SourceNodeKind?.ToString() ?? "", StringComparison.Ordinal);
         if (c != 0) return c;
-        return (a.TargetNodeKind?.ToString() ?? "").CompareTo(b.TargetNodeKind?.ToString() ?? "");
+        return string.Compare(a.TargetNodeKind?.ToString() ?? "", b.TargetNodeKind?.ToString() ?? "", StringComparison.Ordinal);
     });
 }
 

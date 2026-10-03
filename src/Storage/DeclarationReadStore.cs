@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -468,7 +469,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 countCmd.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
             countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             countCmd.Parameters.AddWithValue("@relativePath", relativePath);
-            totalCount = Convert.ToInt32(countCmd.ExecuteScalar());
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
         // Fetch page (limit+1 to detect hasMore).

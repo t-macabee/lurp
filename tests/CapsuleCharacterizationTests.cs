@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -417,7 +418,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         for (var i = 0; i < 12; i++)
         {
             source.AppendLine("    [Fact]");
-            source.AppendLine($"    public void Run_{i}() => new TestProject.TestTarget().Run({i});");
+            source.AppendLine(CultureInfo.InvariantCulture, $"    public void Run_{i}() => new TestProject.TestTarget().Run({i});");
         }
 
         source.AppendLine("}");
@@ -555,14 +556,14 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             {
                 if (level == 5)
                 {
-                    source.AppendLine($"    public static void L{level}_{node}() => Root();");
+                    source.AppendLine(CultureInfo.InvariantCulture, $"    public static void L{level}_{node}() => Root();");
                     continue;
                 }
 
-                source.AppendLine($"    public static void L{level}_{node}()");
+                source.AppendLine(CultureInfo.InvariantCulture, $"    public static void L{level}_{node}()");
                 source.AppendLine("    {");
                 for (var callee = 0; callee < 12; callee++)
-                    source.AppendLine($"        L{level + 1}_{callee}();");
+                    source.AppendLine(CultureInfo.InvariantCulture, $"        L{level + 1}_{callee}();");
                 source.AppendLine("    }");
             }
         }

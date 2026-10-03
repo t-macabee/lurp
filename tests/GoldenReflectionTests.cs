@@ -97,7 +97,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
         // binding-incompleteness region (which would falsely mark the document's
         // binding region unobservable and flip its empty tiers to "unresolved").
         Assert.DoesNotContain(extraction.Result.BindingIncompleteness,
-            r => r.Reason == "unsupported_syntax" && r.DocumentPath?.EndsWith(Doc) == true);
+            r => r.Reason == "unsupported_syntax" && r.DocumentPath?.EndsWith(Doc, StringComparison.Ordinal) == true);
 
         // The reflection member-reference edge is still emitted for the nameof.
         var edge = extraction.SingleEdge("ReflectionMemberRef", "global::N.User.Use", "global::N.Target.Name");
@@ -121,7 +121,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
         // unsupported_syntax — proving the nameof skip does not over-broaden
         // to every invocation without a method symbol.
         Assert.Contains(extraction.Result.BindingIncompleteness,
-            r => r.DocumentPath?.EndsWith(Doc) == true && r.Reason == "compiler_error");
+            r => r.DocumentPath?.EndsWith(Doc, StringComparison.Ordinal) == true && r.Reason == "compiler_error");
     }
 
     [Fact]

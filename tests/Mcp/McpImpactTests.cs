@@ -9,6 +9,10 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpImpactTests : IntegrationTestBase
 {
+    private static readonly string[] CallsKind = ["Calls"];
+    private static readonly string[] InheritsKind = ["Inherits"];
+    private static readonly string[] ResolvedProvenance = ["resolved"];
+
     private async Task<string> IndexInitialAsync()
     {
         CreateProject("ImpactProj", new Dictionary<string, string>
@@ -88,15 +92,15 @@ public sealed class McpImpactTests : IntegrationTestBase
         Assert.True(docDown.RootElement.TryGetProperty("frontier_count", out _));
 
         // kinds filtering: Calls keeps symbols, Inherits filters to 0
-        var jsonCalls = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: new[] { "Calls" });
+        var jsonCalls = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: CallsKind);
         using var docCalls = JsonDocument.Parse(jsonCalls);
         Assert.True(docCalls.RootElement.GetProperty("symbols").GetArrayLength() >= 1);
-        var jsonInherits = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: new[] { "Inherits" });
+        var jsonInherits = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: InheritsKind);
         using var docInherits = JsonDocument.Parse(jsonInherits);
         Assert.Equal(0, docInherits.RootElement.GetProperty("symbols").GetArrayLength());
 
         // provenance filtering does not throw
-        var jsonProv = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: new[] { "resolved" });
+        var jsonProv = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: ResolvedProvenance);
         using var docProv = JsonDocument.Parse(jsonProv);
         Assert.True(docProv.RootElement.TryGetProperty("symbols", out _));
 
@@ -183,7 +187,7 @@ public sealed class McpImpactTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
             callerId = store.GetSymbolIdsInSnapshot(snap).First(id => store.GetSymbolInfo(id, snap)?.FullyQualifiedName?.Contains("ImpactProj.Foo.Caller") == true);
 
-        var mcpJson = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: new[] { "Calls" }, max_depth: 3, limit: 50);
+        var mcpJson = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: CallsKind, max_depth: 3, limit: 50);
         using var mcpDoc = JsonDocument.Parse(mcpJson);
 
         // Contract/acceptance: the CLI and MCP documents come from the same

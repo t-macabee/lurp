@@ -100,7 +100,7 @@ public class MigrationRunner
 
         command.CommandText = "SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1;";
         var result = command.ExecuteScalar();
-        return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result);
+        return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result, CultureInfo.InvariantCulture);
     }
 
     private static void UpdateSchemaVersion(SqliteConnection connection, int version, string migrationId, SqliteTransaction transaction)

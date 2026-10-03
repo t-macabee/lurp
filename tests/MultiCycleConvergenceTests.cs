@@ -226,7 +226,7 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         foreach (var id in beforeSymbolIds)
         {
             var info = storeBefore.GetSymbolInfo(id, beforeSnapshotId);
-            if (info?.FullyQualifiedName?.StartsWith("global::App.Service") == true)
+            if (info?.FullyQualifiedName?.StartsWith("global::App.Service", StringComparison.Ordinal) == true)
                 serviceFqns.Add(info.FullyQualifiedName);
         }
 
@@ -252,7 +252,7 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         foreach (var id in afterSymbolIds)
         {
             var info = storeAfter.GetSymbolInfo(id, afterMoveSnapshotId);
-            if (info?.FullyQualifiedName?.StartsWith("global::Lib.Service") == true)
+            if (info?.FullyQualifiedName?.StartsWith("global::Lib.Service", StringComparison.Ordinal) == true)
                 afterServiceFqns.Add(info.FullyQualifiedName);
         }
 
