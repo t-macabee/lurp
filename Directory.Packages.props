@@ -22,7 +22,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="10.0.10" /> <!-- XxHash64 for document and identity hashing. -->
 
     <!-- tests/Lurp.Tests -->
-    <PackageVersion Include="coverlet.collector" Version="10.0.1" /> <!-- Coverage collector consumed by dotnet test. -->
+    <PackageVersion Include="coverlet.collector" Version="10.1.0" /> <!-- Coverage collector consumed by dotnet test. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" /> <!-- VSTest host behind `dotnet test`. -->
     <PackageVersion Include="xunit" Version="2.9.3" /> <!-- Test framework (v2; the move to xunit.v3 is planned, see CONTRIBUTING.md). -->
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" /> <!-- xunit runner adapter for VSTest. -->
