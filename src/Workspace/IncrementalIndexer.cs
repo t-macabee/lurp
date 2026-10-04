@@ -19,12 +19,15 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
     //   7. Refresh cross-document edges for documents that reference changed symbols.
     //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
-    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, CancellationToken cancellationToken = default)
+    public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, long solutionLoadMs = 0, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
-        var timings = new List<SnapshotTimingRow>();
+        var timings = new List<SnapshotTimingRow>
+        {
+            new("solution_load", solutionLoadMs)
+        };
 
         // Step 0: Configuration freshness check : must run before document change
         // detection so that config-only changes (SDK, compiler, TFM, project graph,
@@ -292,6 +295,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Persist all timings
         try
         {
+            _store.SaveMetrics(newSnapshotIdStr, new Dictionary<string, long>
+            {
+                [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+            });
             _store.SaveTimings(newSnapshotIdStr, timings);
         }
         catch (Exception ex)
@@ -318,6 +325,12 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
         return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped);
+    }
+
+    private static long GetPeakWorkingSetMb()
+    {
+        using var process = Process.GetCurrentProcess();
+        return (process.PeakWorkingSet64 + (1024 * 1024 - 1)) / (1024 * 1024);
     }
 
     private async Task<Dictionary<string, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)

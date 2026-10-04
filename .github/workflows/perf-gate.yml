@@ -1,0 +1,101 @@
+name: Perf gate
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Scheduled workflows run on the default branch only.
+    - cron: "0 2 * * *" # 02:00 UTC, once per night
+
+# One run per ref. Superseded runs are cancelled deliberately. The gate takes 60
+# to 80 minutes and wall time is noisy, so it runs by hand and nightly, not on
+# every pull request.
+concurrency:
+  group: perf-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf-gate:
+    runs-on: windows-latest
+    # Runtime estimate (~65-80 min): local harness runs took 7.3 min (4x) and 22.4 min
+    # (16x), about 30 min total, measured from started_at_utc to finished_at_utc in the
+    # result files. Hosted runners may be 2x slower (up to 60 min), plus restore, build,
+    # pack, tool install, two fixture generations and two fixture restores (~12 min).
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Pack global tool
+        run: dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
+
+      - name: Install packed tool
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
+
+      - name: Generate 4x fixture
+        run: dotnet run --project scripts/perf/gen -c Release -- --size=4 --out=${{ runner.temp }}/perf/4x
+
+      - name: Restore 4x fixture
+        run: dotnet restore "${{ runner.temp }}/perf/4x/Perf.slnx"
+
+      - name: Generate 16x fixture
+        run: dotnet run --project scripts/perf/gen -c Release -- --size=16 --out=${{ runner.temp }}/perf/16x
+
+      - name: Restore 16x fixture
+        run: dotnet restore "${{ runner.temp }}/perf/16x/Perf.slnx"
+
+      # Both sizes run in the same job: time ratios compare wall times, and wall
+      # time swings 4-5x between sessions on this machine.
+      - name: Run harness at 4x
+        shell: pwsh
+        env:
+          LURP_CMD: ${{ github.workspace }}/t/lurp.exe
+        run: |
+          dotnet run --project scripts/perf/harness -c Release -- --fixture="${{ runner.temp }}/perf/4x" --work="${{ runner.temp }}/perf/work-4x" --out="${{ runner.temp }}/perf/results/4x.json" --protocol=gate
+
+      - name: Run harness at 16x
+        shell: pwsh
+        env:
+          LURP_CMD: ${{ github.workspace }}/t/lurp.exe
+        run: |
+          dotnet run --project scripts/perf/harness -c Release -- --fixture="${{ runner.temp }}/perf/16x" --work="${{ runner.temp }}/perf/work-16x" --out="${{ runner.temp }}/perf/results/16x.json" --protocol=gate
+
+      - name: Evaluate growth gate
+        shell: pwsh
+        run: |
+          $results = "${{ runner.temp }}/perf/results"
+          dotnet run --project scripts/perf/harness -c Release -- --evaluate="$results/4x.json,$results/16x.json" --summary="$results/gate-summary.md"
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { throw "gate evaluator exited $code; the summary holds the per-operation verdicts." }
+
+      - name: Append gate summary
+        if: always()
+        shell: pwsh
+        run: |
+          $summary = "${{ runner.temp }}/perf/results/gate-summary.md"
+          if (Test-Path $summary) {
+            Get-Content $summary -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload gate results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-gate-results
+          path: ${{ runner.temp }}/perf/results/
+          if-no-files-found: warn

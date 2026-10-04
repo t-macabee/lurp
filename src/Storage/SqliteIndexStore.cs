@@ -28,6 +28,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     private SemanticDiffStore? _semanticDiffStore;
     private SnapshotSymbolStore? _symbols;
     private SnapshotTimingStore? _timings;
+    private SnapshotMetricStore? _metrics;
     private DeadCandidateStore? _deadCandidates;
 
     public SqliteIndexStore(string dbPath)
@@ -106,6 +107,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _symbols = new SnapshotSymbolStore(_connection!);
         _pruner = new SnapshotPruner(_connection!);
         _timings = new SnapshotTimingStore(_connection!);
+        _metrics = new SnapshotMetricStore(_connection!);
         _declWriter = new DeclarationWriteStore(_connection!);
         _declReader = new DeclarationReadStore(_connection!);
         _declMaintenance = new DeclarationMaintenanceStore(_connection!);
@@ -154,6 +156,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _symbols = null;
         _pruner = null;
         _timings = null;
+        _metrics = null;
         _declWriter = null;
         _declReader = null;
         _declMaintenance = null;
@@ -428,6 +431,18 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     {
         EnsureOpen();
         return _timings!.GetTimings(snapshotId);
+    }
+
+    public void SaveMetrics(string snapshotId, IReadOnlyDictionary<string, long> metrics)
+    {
+        EnsureOpen();
+        _metrics!.SaveMetrics(snapshotId, metrics);
+    }
+
+    public Dictionary<string, long> GetMetrics(string snapshotId)
+    {
+        EnsureOpen();
+        return _metrics!.GetMetrics(snapshotId);
     }
 
     public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records)

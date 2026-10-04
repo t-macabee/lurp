@@ -36,6 +36,7 @@ internal static class TimingsHandler
     private static void ShowTimingsForSnapshot(SqliteIndexStore store, string snapshotId, bool asJson)
     {
         var timings = store.GetTimings(snapshotId);
+        var metrics = store.GetMetrics(snapshotId);
 
         if (timings.Count == 0)
         {
@@ -51,7 +52,8 @@ internal static class TimingsHandler
             {
                 snapshot_id = snapshotId,
                 total_ms = timings.Sum(t => t.ElapsedMs),
-                steps = timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs, percent = timings.Sum(x => x.ElapsedMs) > 0 ? Math.Round((double)t.ElapsedMs / timings.Sum(x => x.ElapsedMs) * 100, 1) : 0 })
+                steps = timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs, percent = timings.Sum(x => x.ElapsedMs) > 0 ? Math.Round((double)t.ElapsedMs / timings.Sum(x => x.ElapsedMs) * 100, 1) : 0 }),
+                metrics
             };
             Console.WriteLine(JsonSerializer.Serialize(output, HandlerBootstrap.IndentedJson));
         }
@@ -71,6 +73,15 @@ internal static class TimingsHandler
 
             Console.WriteLine(new string('-', 65));
             Console.WriteLine($"{"Total",-40} {totalMs,12}");
+
+            if (metrics.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Metrics");
+                Console.WriteLine(new string('-', 65));
+                foreach (var (name, value) in metrics)
+                    Console.WriteLine($"{name,-40} {value,12}");
+            }
         }
     }
 }

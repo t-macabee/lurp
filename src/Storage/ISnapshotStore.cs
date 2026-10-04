@@ -96,6 +96,13 @@ public interface ISnapshotTimingStore
     List<SnapshotTimingRow> GetTimings(string snapshotId);
 }
 
+/// <summary>Per-snapshot index-run metrics (metric name → integer value).</summary>
+public interface ISnapshotMetricStore
+{
+    void SaveMetrics(string snapshotId, IReadOnlyDictionary<string, long> metrics);
+    Dictionary<string, long> GetMetrics(string snapshotId);
+}
+
 /// <summary>
 ///     Composite of the snapshot-side seams. Kept as the single type implemented by
 ///     <c>SqliteIndexStore</c> and inherited by <see cref="IIndexStore" />; consumers
@@ -108,7 +115,8 @@ public interface ISnapshotStore
         ISnapshotDocumentStore,
         ISnapshotSymbolStore,
         ISnapshotPruner,
-        ISnapshotTimingStore
+        ISnapshotTimingStore,
+        ISnapshotMetricStore
 {
     /// <summary>
     ///     Deterministic-identity guard shared by the full and incremental indexing

@@ -11,3 +11,13 @@
   dotnet build src/Lurp.csproj -c Release
   python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution ../eNoteV2/eNote/eNote.sln --work-dir <empty folder>
   ```
+- `perf/gen/`: deterministic generator of synthetic C# solutions for performance measurement. `--size=<1|4|16>` (5, 20, or 80 projects; 50 `.cs` files each) and `--out=<dir>` are required; `--seed=<int>` defaults to 1. `--out` must be outside the Lurp repository; the generator refuses an in-repo path and never deletes. The same size and seed always write byte-identical files.
+
+  ```bash
+  dotnet run --project scripts/perf/gen -c Release -- --size=<1|4|16> --out=<outside-repo-dir>
+  ```
+- `perf/harness/`: performance measurement harness (audit B3). Runs the tool under test as a child process and records wall time, peak working set and the index-time `peak_working_set_mb` metric for full/incremental index, edit, impact, context, search/grep/find-symbol, diff, freshness, dead-candidate and MCP `lurp_status` runs. It measures only: it does not gate and does not compare against baselines. A fixture run may edit a generated tree (`.lurp-perf-gen` marker only); a `--solution` run never edits and says so. Tool resolution: `--lurp-cmd`, else `LURP_CMD`, else the local Release build. Command lines, JSON schema and peak-measurement limits: `scripts/perf/README.md`.
+
+  ```powershell
+  dotnet run --project scripts/perf/harness -c Release -- --fixture=<generated dir> --work=<outside-repo-dir> --out=<result.json> --runs=5 --warmup=1
+  ```

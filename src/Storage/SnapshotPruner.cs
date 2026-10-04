@@ -151,7 +151,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         [
             "edges", "diagnostics", "annotations", "snapshot_symbols", "symbol_target_frameworks",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
-            "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness"
+            "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
         ];
 
         // project_references point at projects by row id, so this snapshot's

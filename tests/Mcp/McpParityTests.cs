@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using Lurp.Storage;
@@ -237,6 +238,37 @@ public sealed class McpParityTests : IntegrationTestBase
             var expectedPct = expectedTotal > 0 ? Math.Round((double)direct[idx].ElapsedMs / expectedTotal * 100, 1) : 0;
             Assert.Equal(expectedPct, el.GetProperty("percent").GetDouble());
             idx++;
+        }
+
+        // `metrics` parity: run the CLI handler for the same snapshot (`--mode=timings --json`)
+        // and require an equal metrics object in both outputs. Indexing a real fixture records
+        // at least peak_working_set_mb (see SnapshotMetricsTests).
+        var stdout = new StringWriter();
+        var originalOut = Console.Out;
+        try
+        {
+            Console.SetOut(stdout);
+            TimingsHandler.Run([
+                "--mode=timings", "--json",
+                $"--output-dir={Path.GetDirectoryName(DbPath)!}",
+                $"--snapshot={snapshotId}"
+            ]);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        using var cliDoc = JsonDocument.Parse(stdout.ToString());
+        var cliMetrics = cliDoc.RootElement.GetProperty("metrics");
+        var toolMetrics = doc.RootElement.GetProperty("metrics");
+        Assert.True(cliMetrics.EnumerateObject().Any(), "CLI metrics should contain at least one metric.");
+        Assert.Equal(cliMetrics.EnumerateObject().Count(), toolMetrics.EnumerateObject().Count());
+        foreach (var metric in cliMetrics.EnumerateObject())
+        {
+            Assert.True(toolMetrics.TryGetProperty(metric.Name, out var toolValue),
+                $"MCP metrics missing '{metric.Name}'.");
+            Assert.Equal(metric.Value.GetInt64(), toolValue.GetInt64());
         }
     }
 }

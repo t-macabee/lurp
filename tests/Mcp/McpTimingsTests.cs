@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
+using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -50,6 +51,16 @@ public sealed class McpTimingsTests : IntegrationTestBase
             Assert.Equal(expectedPct, stepEl.GetProperty("percent").GetDouble());
             idx++;
         }
+
+        Assert.True(doc.RootElement.TryGetProperty("metrics", out var metricsEl));
+        Assert.Equal(JsonValueKind.Object, metricsEl.ValueKind);
+
+        var directMetrics = store.GetMetrics(snapshotId);
+        Assert.True(directMetrics.ContainsKey(SnapshotMetricNames.PeakWorkingSetMb),
+            $"Expected {SnapshotMetricNames.PeakWorkingSetMb} in snapshot metrics.");
+        Assert.Equal(directMetrics.Count, metricsEl.EnumerateObject().Count());
+        foreach (var (name, value) in directMetrics)
+            Assert.Equal(value, metricsEl.GetProperty(name).GetInt64());
     }
 
     [Fact]

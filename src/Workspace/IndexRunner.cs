@@ -85,7 +85,7 @@ public static class IndexRunner
                 try
                 {
                     var incrementalIndexer = new IncrementalIndexer(store, gitRoot, skipAdapters, jsonExportPath, verbose, sink, skipDiff, force);
-                    var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, cancellationToken);
+                    var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, loadElapsed, cancellationToken);
 
                     WriteIncrementalSummary(store, sink, result);
 
@@ -349,6 +349,10 @@ public static class IndexRunner
             // Persist all timings
             try
             {
+                store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
+                {
+                    [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+                });
                 store.SaveTimings(snapshotIdStr, timings);
             }
             catch (Exception ex)
@@ -378,6 +382,10 @@ public static class IndexRunner
             // Try to save whatever timings we have
             try
             {
+                store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
+                {
+                    [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+                });
                 store.SaveTimings(snapshotIdStr, timings);
             }
             catch (Exception tex)
@@ -387,6 +395,12 @@ public static class IndexRunner
 
             throw;
         }
+    }
+
+    private static long GetPeakWorkingSetMb()
+    {
+        using var process = Process.GetCurrentProcess();
+        return (process.PeakWorkingSet64 + (1024 * 1024 - 1)) / (1024 * 1024);
     }
 
     private static string ResolveStrategy(IIndexStore store, string? strategyArg, IOutputSink sink)

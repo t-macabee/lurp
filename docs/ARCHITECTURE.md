@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v32, extractor 1.7.0, CLI/MCP contract v4, output schema v5, tool 2.0.0
+**Current:** schema v33, extractor 1.7.0, CLI/MCP contract v4, output schema v5, tool 2.0.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -56,8 +56,12 @@ Logical boundaries:
 5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
-copied method bodies the canonical representation. Schema migrations: 30
+copied method bodies the canonical representation. Schema migrations: 33
 sequential migrations managed by `MigrationRunner`.
+
+Per-snapshot index cost is recorded in `snapshot_timings` (step → elapsed ms)
+and `snapshot_metrics` (metric name → integer value). `peak_working_set_mb`
+covers the Lurp process only; MSBuild BuildHost child processes are not counted.
 
 ## 4. Indexing Pipeline
 
