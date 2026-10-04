@@ -15,4 +15,5 @@ internal static class ExtractorConstants
     internal const string ReflectionExtractor = "reflection-v3";
     internal const string StaticallyCallsExtractor = "statically-calls-v1";
     internal const string PolymorphismExtractor = "polymorphism-v1";
+    internal const string OperationShapesExtractor = "operation-shapes-v1";
 }

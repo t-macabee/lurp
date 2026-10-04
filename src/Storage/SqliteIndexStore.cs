@@ -370,10 +370,22 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _symbols!.CopySnapshotSymbols(fromSnapshotId, toSnapshotId);
     }
 
+    public void CopySymbolTargetFrameworks(string fromSnapshotId, string toSnapshotId)
+    {
+        EnsureOpen();
+        _symbols!.CopySymbolTargetFrameworks(fromSnapshotId, toSnapshotId);
+    }
+
     public void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
     {
         EnsureOpen();
         _symbols!.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds);
+    }
+
+    public void DeleteSymbolTargetFrameworksBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        EnsureOpen();
+        _symbols!.DeleteSymbolTargetFrameworksBySymbolIds(snapshotId, symbolIds);
     }
 
     public List<string> GetSymbolIdsInSnapshot(string snapshotId)
@@ -436,10 +448,10 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         _bindingIncompletenessStore!.CopyBindingIncompleteness(fromSnapshotId, toSnapshotId);
     }
 
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null)
     {
         EnsureOpen();
-        _bindingIncompletenessStore!.DeleteBindingIncompletenessByDocumentPaths(snapshotId, documentPaths);
+        _bindingIncompletenessStore!.DeleteBindingIncompletenessByDocumentPaths(snapshotId, documentPaths, projectName);
     }
 
     // ── IDeclarationStore ──────────────────────────────────────────────

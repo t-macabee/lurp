@@ -1,4 +1,5 @@
 using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
@@ -57,7 +58,7 @@ public sealed class KnownCorrectnessSeamTests : InMemoryTestBase
         // an unmatched generic instantiation.
         var edge = extraction.SingleEdge("Inherits", "global::N.Derived", "global::N.Base<T>");
         Assert.Equal(Provenance.CompilerProved, edge.Provenance);
-        Assert.Equal("1.6.0", edge.ExtractorVersion);
+        Assert.Equal(VersionConstants.ExtractorVersion, edge.ExtractorVersion);
         Assert.NotNull(edge.SourceDocumentPath);
         Assert.EndsWith("Generic.cs", edge.SourceDocumentPath);
     }

@@ -98,7 +98,18 @@ public static class CompilationFactExtractor
         var incompleteness = new BindingIncompletenessCollector(projectName, workspaceInfo.Id.GitRoot);
         var ctx = new StageContext(projectName, failures, incompleteness);
 
-        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, scopeDocuments, incompleteness);
+        var targetFramework = WorkspaceInfo.UnknownValue;
+        var open = projectName.LastIndexOf('(');
+        if (open >= 0 && projectName.EndsWith(')') && open < projectName.Length - 2)
+        {
+            targetFramework = projectName[(open + 1)..^1];
+        }
+        else if (workspaceInfo.TargetFrameworks.TryGetValue(projectName, out var mappedTfm) && !mappedTfm.Contains(';'))
+        {
+            targetFramework = mappedTfm;
+        }
+
+        var symbolExtractor = new SymbolExtractor(compilation, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, snapshotId, targetFramework, scopeDocuments, incompleteness);
 
         var declarations = RunStage(
             ctx, "SymbolDeclaration", null, logError,

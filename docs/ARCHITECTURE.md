@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** schema v30, extractor 1.6.0, CLI/MCP contract v4, output schema v5, tool 2.0.0
+**Current:** schema v32, extractor 1.7.0, CLI/MCP contract v4, output schema v5, tool 2.0.0
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -174,20 +174,12 @@ entry, not a new extractor.
 | `mediatr_pipeline_behavior` | `IPipelineBehavior` | Implementing type detected, no edge |
 | `mediatr_exception_handler` | `IRequestExceptionHandler` | Implementing type detected, no edge |
 | `mediatr_pre_post_processor` | `IRequestPreProcessor` / `IRequestPostProcessor` | Implementing type detected, no edge |
-| `top_level_statements` | Top-level statements | Calls in a top-level program emit no edge |
-| `field_property_initializers` | Field and property initializers | Calls in initializers emit no edge |
-| `expression_bodied_properties` | Expression-bodied properties and indexers | `=>` getter has no accessor syntax to walk |
-| `constructor_initializers` | Constructor initializers and primary-constructor base arguments | `: base(...)` / `: this(...)` arguments emit no edge |
-| `method_group_delegates` | Method groups and delegate references | Referenced method emits no edge |
-| `event_subscriptions` | Event subscriptions (`+=`) | Handler emits no edge |
-| `user_defined_operators` | Compound-assignment and unary operators | Operator method resolved but not scanned |
-| `implicit_calls` | `foreach`, `using`, `await`, deconstruction, collection initializers, implicit conversions | Implicit invocations emit no edge |
-| `partial_method_implementation` | Partial method implementation part | Implementation body is not scanned |
 | `source_generators` | Source generators | Generated code never executed or indexed |
 | `razor_blazor` | Razor / Blazor components | Not parsed; only C# documents are indexed |
 | `minimal_api_endpoints` | Minimal APIs and non-controller endpoints | Adapter recognizes only `Controller`-derived types |
-| `multi_target_union` | Multi-target projects | One union snapshot; no per-symbol TFM attribution |
+| `multi_target_union` | Multi-target projects | One union snapshot; per-symbol TFM set recorded, not surfaced in reads |
 | `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
+| `static_abstract_dispatch` | Static abstract interface dispatch | Interface-member `Calls` extracted; implementation dispatch not emitted |
 
 ## 7. Glossary
 

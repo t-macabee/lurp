@@ -12,7 +12,7 @@ namespace Lurp.Workspace;
 
 public sealed class WorkspaceInfo
 {
-    private const string UnknownValue = "unknown";
+    internal const string UnknownValue = "unknown";
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(false, true);
     private static readonly Encoding Utf16Le = new UnicodeEncoding(false, false, true);
     private static readonly Encoding Utf16Be = new UnicodeEncoding(true, false, true);
@@ -31,7 +31,7 @@ public sealed class WorkspaceInfo
         var sink = output ?? ConsoleOutputSink.Instance;
         Id = WorkspaceId.Create(gitRoot, solution.FilePath ?? "");
 
-        var (documents, contents, generatedDocs) = BuildDocumentMap(solution, gitRoot, sink);
+        var (documents, contents, generatedDocs, projectDocuments) = BuildDocumentMap(solution, gitRoot, sink);
         Documents = documents;
         DocumentContents = contents;
         GeneratedDocuments = generatedDocs;
@@ -41,6 +41,11 @@ public sealed class WorkspaceInfo
         CompilerVersion = CurrentCompilerVersion;
 
         TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot, sink);
+
+        ProjectDocuments = projectDocuments.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlyList<string>)[.. kvp.Value.OrderBy(static path => path, StringComparer.Ordinal)],
+            StringComparer.Ordinal);
 
         ProjectGraph = BuildProjectGraph(solution);
 
@@ -73,19 +78,24 @@ public sealed class WorkspaceInfo
 
     public IReadOnlySet<DocumentId> GeneratedDocuments { get; }
 
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; }
+
     private static (Dictionary<DocumentId, DocumentVersionId> Hashes, Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
-        IReadOnlySet<DocumentId> GeneratedDocuments)
+        IReadOnlySet<DocumentId> GeneratedDocuments, Dictionary<string, List<string>> ProjectDocuments)
         BuildDocumentMap(Solution solution, string gitRoot, IOutputSink sink)
     {
         var map = new Dictionary<DocumentId, DocumentVersionId>();
         var contentMap = new Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>();
         var generatedDocs = new HashSet<DocumentId>(DocumentIdComparer.Instance);
+        var projectDocuments = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
 
         var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
         var skipped = new List<string>();
 
         foreach (var project in solution.Projects)
+        {
+            var documentPaths = new List<string>();
             foreach (var document in project.Documents)
             {
                 if (document.FilePath == null) continue;
@@ -116,16 +126,20 @@ public sealed class WorkspaceInfo
 
                 map[docId] = hash;
                 contentMap[docId] = (normalized, "utf-8", lineStarts);
+                documentPaths.Add(relPath);
 
                 if (IsGeneratedDocument(normalized, relPath)) generatedDocs.Add(docId);
             }
+
+            projectDocuments[project.Name] = documentPaths;
+        }
 
         if (skipped.Count > 0)
             sink.WriteErrorLine(
                 $"WARNING: Skipped {skipped.Count} document(s) that are not valid UTF-8/UTF-16 text (excluded from indexing): "
                 + string.Join(", ", skipped.Take(10)) + (skipped.Count > 10 ? $", … +{skipped.Count - 10} more" : ""));
 
-        return (map, contentMap, generatedDocs);
+        return (map, contentMap, generatedDocs, projectDocuments);
     }
 
     internal static bool IsBuildOutputPath(string relPath)

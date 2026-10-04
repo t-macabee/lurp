@@ -39,6 +39,9 @@ internal static class ExtractorRegistry
         // -- Polymorphism extractor --
         ("Polymorphism", ExtractorConstants.PolymorphismExtractor, "Polymorphic (virtual) dispatch edges"),
 
+        // -- Lowered-operation extractor (initializers, top-level statements, implicit + operator calls) --
+        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Initializer, top-level, method-group, operator, and implicit-invocation edges"),
+
         // -- Structural type-relationship extractor (uses VersionConstants.ExtractorVersion) --
         ("Structural", VersionConstants.ExtractorVersion, "Structural type edges (inherits, implements, contains, references)")
     ];

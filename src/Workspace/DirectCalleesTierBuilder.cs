@@ -15,7 +15,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         var allowedKinds = new HashSet<string>
         {
             nameof(EdgeKind.Calls),
-            nameof(EdgeKind.Constructs)
+            nameof(EdgeKind.Constructs),
+            nameof(EdgeKind.MethodGroupRef)
         };
 
         foreach (var symbolId in context.EffectiveSymbolIds)

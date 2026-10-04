@@ -58,6 +58,20 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
+    internal void CopySymbolTargetFrameworks(string fromSnapshotId, string toSnapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            INSERT OR IGNORE INTO symbol_target_frameworks (snapshot_id, symbol_id, tfm)
+            SELECT @toSnapshotId, symbol_id, tfm
+            FROM symbol_target_frameworks
+            WHERE snapshot_id = @fromSnapshotId;
+            """;
+        command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+        command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        command.ExecuteNonQuery();
+    }
+
     internal void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
     {
         var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];
@@ -71,6 +85,47 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
             command.Transaction = transaction;
             command.CommandText = """
                 DELETE FROM snapshot_symbols
+                WHERE snapshot_id = @snapshotId
+                  AND symbol_id IN (
+                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+            );
+            """;
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            var i = 0;
+            foreach (var id in idList)
+                command.Parameters.AddWithValue($"@p{i++}", id);
+            command.ExecuteNonQuery();
+
+            command.CommandText = """
+                DELETE FROM symbol_target_frameworks
+                WHERE snapshot_id = @snapshotId
+                  AND symbol_id IN (
+                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+            );
+            """;
+            command.ExecuteNonQuery();
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    internal void DeleteSymbolTargetFrameworksBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];
+        if (idList.Count == 0)
+            return;
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                DELETE FROM symbol_target_frameworks
                 WHERE snapshot_id = @snapshotId
                   AND symbol_id IN (
                 """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """

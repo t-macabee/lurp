@@ -23,6 +23,7 @@ public sealed class DeadCandidateTraverser
     public static IReadOnlySet<string> LiveEdgeKinds { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         nameof(EdgeKind.Calls),
+        nameof(EdgeKind.MethodGroupRef),
         nameof(EdgeKind.Constructs),
         nameof(EdgeKind.Reads),
         nameof(EdgeKind.Writes),

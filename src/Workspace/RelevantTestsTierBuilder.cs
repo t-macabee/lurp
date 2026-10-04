@@ -20,7 +20,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
             foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
                 AddTestsFor(dispatchEdge.SourceSymbolId);
 
-        var allowedKinds = new HashSet<string> { nameof(EdgeKind.Calls) };
+        var allowedKinds = new HashSet<string> { nameof(EdgeKind.Calls), nameof(EdgeKind.MethodGroupRef) };
         var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
 
         foreach (var symbolId in context.EffectiveSymbolIds)

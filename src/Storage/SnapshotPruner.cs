@@ -149,7 +149,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     {
         string[] tables =
         [
-            "edges", "diagnostics", "annotations", "snapshot_symbols",
+            "edges", "diagnostics", "annotations", "snapshot_symbols", "symbol_target_frameworks",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
             "snapshot_timings", "snapshot_graph_nodes", "binding_incompleteness"
         ];

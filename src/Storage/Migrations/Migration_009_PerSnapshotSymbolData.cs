@@ -10,15 +10,33 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            command.CommandText = @"
-                ALTER TABLE snapshot_symbols ADD COLUMN fqn TEXT;
-            ";
-            command.ExecuteNonQuery();
+            var existingColumns = GetColumnNames(command, "snapshot_symbols");
 
-            command.CommandText = @"
-                ALTER TABLE snapshot_symbols ADD COLUMN metadata_json TEXT;
-            ";
-            command.ExecuteNonQuery();
+            if (!existingColumns.Contains("fqn"))
+            {
+                command.CommandText = @"
+                    ALTER TABLE snapshot_symbols ADD COLUMN fqn TEXT;
+                ";
+                command.ExecuteNonQuery();
+            }
+
+            if (!existingColumns.Contains("metadata_json"))
+            {
+                command.CommandText = @"
+                    ALTER TABLE snapshot_symbols ADD COLUMN metadata_json TEXT;
+                ";
+                command.ExecuteNonQuery();
+            }
+        }
+
+        private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
+        {
+            command.CommandText = $"PRAGMA table_info({tableName});";
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(1));
+            return columns;
         }
     }
 }

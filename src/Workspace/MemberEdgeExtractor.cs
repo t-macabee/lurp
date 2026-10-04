@@ -21,7 +21,8 @@ public sealed class MemberEdgeExtractor
             new ReadsWritesEdgeExtractor(context),
             new ReturnsEdgeExtractor(context),
             new ParameterDependencyEdgeExtractor(context),
-            new ThrowsEdgeExtractor(context)
+            new ThrowsEdgeExtractor(context),
+            new OperationShapeExtractor(context)
         ];
     }
 
@@ -43,6 +44,6 @@ public sealed class MemberEdgeExtractor
                 GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
         }
 
-        return allEdges;
+        return EdgeDedup.Deduplicate(allEdges);
     }
 }

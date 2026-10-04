@@ -61,6 +61,16 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
         command.ExecuteNonQuery();
 
         command.CommandText = """
+            INSERT OR IGNORE INTO symbol_target_frameworks (snapshot_id, symbol_id, tfm)
+            VALUES (@snapshotId, @symbolId, @tfm);
+            """;
+        command.Parameters.Clear();
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
+        command.Parameters.AddWithValue("@tfm", decl.TargetFramework);
+        command.ExecuteNonQuery();
+
+        command.CommandText = """
             INSERT INTO declarations (symbol_id, document_version_id,full_start, full_end,signature_start, signature_end,body_start, body_end,name_start, name_end,is_partial,is_generated,generator_identity) VALUES (@symbolId, @documentVersionId,@fullStart, @fullEnd,@signatureStart, @signatureEnd,@bodyStart, @bodyEnd,@nameStart, @nameEnd,@isPartial,@isGenerated,@generatorIdentity)
             ON CONFLICT(symbol_id, document_version_id)
             DO UPDATE SET

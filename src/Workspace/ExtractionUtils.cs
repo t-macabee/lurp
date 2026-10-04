@@ -46,10 +46,12 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
-    ///     Every method-like declaration (methods, constructors, accessors) owned by
-    ///     the given types, paired with its syntax node. When <paramref name="inScope" />
-    ///     is provided, declarations whose declaring syntax tree is out of scope are
-    ///     skipped; a null predicate leaves every declaration in.
+    ///     Every method-like declaration (methods, constructors, accessors, operators,
+    ///     conversion operators, destructors) owned by the given types, paired with its
+    ///     syntax node. When <paramref name="inScope" /> is provided, declarations whose
+    ///     declaring syntax tree is out of scope are skipped; a null predicate leaves
+    ///     every declaration in. A partial method is yielded for both its definition and
+    ///     its implementation part.
     /// </summary>
     internal static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(
         IEnumerable<INamedTypeSymbol> types,
@@ -61,7 +63,8 @@ internal static class ExtractionUtils
                 switch (member)
                 {
                     case IMethodSymbol method:
-                        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                        foreach (var part in MethodParts(method))
+                        foreach (var syntaxRef in part.DeclaringSyntaxReferences)
                         {
                             if (inScope != null && !inScope(syntaxRef.SyntaxTree))
                                 continue;
@@ -69,13 +72,23 @@ internal static class ExtractionUtils
                             switch (syntax)
                             {
                                 case MethodDeclarationSyntax methodSyntax:
-                                    yield return (method, methodSyntax);
+                                    yield return (part, methodSyntax);
                                     break;
                                 case ConstructorDeclarationSyntax ctorSyntax:
-                                    yield return (method, ctorSyntax);
+                                    yield return (part, ctorSyntax);
+                                    break;
+                                case OperatorDeclarationSyntax operatorSyntax:
+                                    yield return (part, operatorSyntax);
+                                    break;
+                                case ConversionOperatorDeclarationSyntax conversionSyntax:
+                                    yield return (part, conversionSyntax);
+                                    break;
+                                case DestructorDeclarationSyntax destructorSyntax:
+                                    yield return (part, destructorSyntax);
                                     break;
                             }
                         }
+
                         break;
                     case IPropertySymbol property:
                         foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
@@ -87,13 +100,59 @@ internal static class ExtractionUtils
                             {
                                 if (inScope != null && !inScope(syntaxRef.SyntaxTree))
                                     continue;
-                                if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorSyntax)
-                                    yield return (accessor, accessorSyntax);
+                                var accessorSyntax = syntaxRef.GetSyntax();
+                                switch (accessorSyntax)
+                                {
+                                    case AccessorDeclarationSyntax accessorDeclaration:
+                                        yield return (accessor, accessorDeclaration);
+                                        break;
+                                    // An expression-bodied property/indexer has no accessor
+                                    // declaration: the getter's declaring syntax is the property
+                                    // itself, and its body is the arrow expression.
+                                    case PropertyDeclarationSyntax propertyDeclaration
+                                        when propertyDeclaration.ExpressionBody != null:
+                                        yield return (accessor, propertyDeclaration);
+                                        break;
+                                    case IndexerDeclarationSyntax indexerDeclaration
+                                        when indexerDeclaration.ExpressionBody != null:
+                                        yield return (accessor, indexerDeclaration);
+                                        break;
+                                }
                             }
                         }
+
+                        // An expression-bodied property's getter is compiler-synthesized
+                        // and has no declaring syntax of its own; pair it with the
+                        // property/indexer declaration from the property symbol.
+                        if (property.GetMethod is { } getter)
+                        {
+                            foreach (var syntaxRef in property.DeclaringSyntaxReferences)
+                            {
+                                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                                    continue;
+                                switch (syntaxRef.GetSyntax())
+                                {
+                                    case PropertyDeclarationSyntax { ExpressionBody: not null } propertyDeclaration:
+                                        yield return (getter, propertyDeclaration);
+                                        break;
+                                    case IndexerDeclarationSyntax { ExpressionBody: not null } indexerDeclaration:
+                                        yield return (getter, indexerDeclaration);
+                                        break;
+                                }
+                            }
+                        }
+
                         break;
                 }
             }
+    }
+
+    private static IEnumerable<IMethodSymbol> MethodParts(IMethodSymbol method)
+    {
+        yield return method;
+        if (method.PartialImplementationPart is { } implementation &&
+            !SymbolEqualityComparer.Default.Equals(implementation, method))
+            yield return implementation;
     }
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
@@ -103,6 +162,11 @@ internal static class ExtractionUtils
             MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
             ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
             AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
+            OperatorDeclarationSyntax o => o.Body ?? (SyntaxNode?)o.ExpressionBody,
+            ConversionOperatorDeclarationSyntax co => co.Body ?? (SyntaxNode?)co.ExpressionBody,
+            DestructorDeclarationSyntax d => d.Body ?? (SyntaxNode?)d.ExpressionBody,
+            PropertyDeclarationSyntax p => p.ExpressionBody,
+            IndexerDeclarationSyntax i => i.ExpressionBody,
             _ => null
         };
     }

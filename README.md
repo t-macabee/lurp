@@ -146,7 +146,7 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 | Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
 | See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
 | Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
-| Find every modeled caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
+| Find every caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
 
 ## Framework adapters
 
@@ -166,8 +166,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 ## Limitations
 
 - **Windows only**: 2.x supports Windows; Linux and macOS are not tested.
-- **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project, but symbols are not attributed to an individual TFM, so a member present in only one target framework cannot be told apart from one present in all of them.
-- **Caller coverage is limited to modeled call shapes**: `impact` (upstream), the direct-caller tiers, and `dead-candidates` follow extracted edges only. Calls inside top-level statements, field/property initializers, expression-bodied properties and indexers, constructor initializers, method groups and delegates, event subscriptions (`+=`), user-defined operators, and implicit calls (`foreach`, `using`, `await`, deconstruction, collection initializers) are not extracted yet; each is registered in `DeclaredBoundaries` (see [TRUST_KERNEL.md](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)) until the extractor covers it.
+- **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but CLI/MCP reads do not surface the per-symbol set, so a member present in only one target framework cannot be told apart by a consumer from one present in all of them.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
 - **3-snapshot retention**: older snapshots and their document versions are pruned automatically, except a snapshot pinned via `pin-snapshot`, which pruning always skips.
@@ -185,13 +184,14 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-2.0.0. Schema v30, extractor
-1.6.0, CLI/MCP contract v4, output schema v5. 2.0.0 is a breaking release for
+2.0.0. Schema v32, extractor
+1.7.0, CLI/MCP contract v4, output schema v5. 2.0.0 is a breaking release for
 `impact` and the capsule topology, and an index built by 1.4.0 needs one
 `--mode=index` run before read commands accept it: see
 [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a manual real-parity gate on
-eNoteV2 (self-hosted runner, `workflow_dispatch`). Roadmap: per-symbol TFM
-attribution and richer DI parameter-type matching are postponed by design (see
+eNoteV2 (self-hosted runner, `workflow_dispatch`). Roadmap: surfacing the
+per-symbol TFM set in reads and richer DI parameter-type matching are postponed
+by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
 
 ## Documentation & license

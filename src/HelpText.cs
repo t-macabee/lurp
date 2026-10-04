@@ -77,7 +77,7 @@ internal static class HelpText
         ["--kinds="] = "Comma-separated edge kinds to follow.",
         ["--provenance="] = "Comma-separated provenance values to follow (e.g. compiler_proved,framework_derived). "
                             + "Pass compiler_proved to follow only compiler-verified edges. This keeps edges such as Calls, "
-                            + "Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
+                            + "MethodGroupRef, Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
                             + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
                             + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
                             + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "

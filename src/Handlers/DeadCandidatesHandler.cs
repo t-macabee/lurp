@@ -12,6 +12,7 @@ internal static class DeadCandidatesHandler
     private static readonly string[] IncomingEdgeKindsChecked =
     [
         nameof(EdgeKind.Calls),
+        nameof(EdgeKind.MethodGroupRef),
         nameof(EdgeKind.Constructs),
         nameof(EdgeKind.Reads),
         nameof(EdgeKind.Writes),

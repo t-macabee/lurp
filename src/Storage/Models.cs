@@ -28,6 +28,7 @@ public sealed class ProjectRow
     public List<string> References { get; init; } = [];
     public string? MetadataReferenceIdentitiesJson { get; init; }
     public string? CompilationOptionsFingerprint { get; init; }
+    public IReadOnlyList<string>? DocumentPaths { get; init; }
 }
 
 public enum GraphNodeKind

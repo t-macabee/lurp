@@ -108,7 +108,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 IsPartial = isPartial,
                 MetadataJson = metadataJson,
                 IsGenerated = isGenerated,
-                GeneratorIdentity = generatorIdentity
+                GeneratorIdentity = generatorIdentity,
+                TargetFramework = context.TargetFramework
             });
         }
     }

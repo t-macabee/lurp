@@ -131,6 +131,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
+        mismatches.AddRange(CheckProjectDocumentMembership(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
 
         return new FreshnessResult(mismatches.Count == 0, mismatches.AsReadOnly());
@@ -145,6 +146,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
+        mismatches.AddRange(CheckProjectDocumentMembership(current, stored));
         mismatches.AddRange(CheckExtractorVersion(current, stored));
         return mismatches;
     }
@@ -404,6 +406,40 @@ public static class WorkspaceFreshness
 
             if (!string.Equals(currentFingerprint, storedFingerprint, StringComparison.Ordinal))
                 yield return new SnapshotMismatch(MismatchKind.CompilationOptionsChanged, $"Compilation options changed for project '{projName}'.", null, $"{storedFingerprint} → {currentFingerprint}");
+        }
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckProjectDocumentMembership(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var storedDocumentPaths = new HashSet<string>(stored.DocumentVersions.Keys.Select(d => d.RelativePath), StringComparer.Ordinal);
+        var currentDocumentPaths = new HashSet<string>(current.Documents.Keys.Select(d => d.RelativePath), StringComparer.Ordinal);
+
+        // Only a path present in both snapshots can be a membership change: an
+        // added file is absent from the stored set and a deleted file from the
+        // current one, and both stay on the incremental document path.
+        foreach (var (projName, currentPaths) in current.ProjectDocuments)
+        {
+            if (!stored.ProjectDocuments.TryGetValue(projName, out var storedPaths))
+                continue;
+
+            var currentSet = currentPaths.ToHashSet(StringComparer.Ordinal);
+            var storedSet = storedPaths.ToHashSet(StringComparer.Ordinal);
+            if (currentSet.SetEquals(storedSet))
+                continue;
+
+            var added = currentSet.Except(storedSet)
+                .Where(path => storedDocumentPaths.Contains(path) && currentDocumentPaths.Contains(path))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            var removed = storedSet.Except(currentSet)
+                .Where(path => storedDocumentPaths.Contains(path) && currentDocumentPaths.Contains(path))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+
+            if (added.Count == 0 && removed.Count == 0)
+                continue;
+
+            yield return new SnapshotMismatch(MismatchKind.ProjectDocumentsChanged, $"Document membership changed for project '{projName}'.", null, FormatSetDifference(added, removed));
         }
     }
 

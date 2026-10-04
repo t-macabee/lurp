@@ -1,4 +1,5 @@
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Tests;
 
@@ -67,7 +68,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Inherits", "global::N.Derived", "global::N.Base");
-        AssertEdgeContract(edge, "Inherits", Provenance.CompilerProved, "1.6.0", Doc);
+        AssertEdgeContract(edge, "Inherits", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Implements", "global::N.Service", "global::N.IService");
-        AssertEdgeContract(edge, "Implements", Provenance.CompilerProved, "1.6.0", Doc);
+        AssertEdgeContract(edge, "Implements", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
     }
 
     [Fact]
@@ -286,7 +287,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Contains", "global::N.Outer", "global::N.Outer.Inner");
-        AssertEdgeContract(edge, "Contains", Provenance.CompilerProved, "1.6.0", Doc);
+        AssertEdgeContract(edge, "Contains", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
     }
 
     [Fact]

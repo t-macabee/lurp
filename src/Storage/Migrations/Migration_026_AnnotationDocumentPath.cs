@@ -15,7 +15,22 @@ public sealed class Migration_026_AnnotationDocumentPath : IMigration
     public void Up(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "ALTER TABLE annotations ADD COLUMN document_path TEXT;";
-        command.ExecuteNonQuery();
+        var existingColumns = GetColumnNames(command, "annotations");
+
+        if (!existingColumns.Contains("document_path"))
+        {
+            command.CommandText = "ALTER TABLE annotations ADD COLUMN document_path TEXT;";
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
+    {
+        command.CommandText = $"PRAGMA table_info({tableName});";
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            columns.Add(reader.GetString(1));
+        return columns;
     }
 }

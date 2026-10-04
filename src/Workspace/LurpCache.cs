@@ -22,8 +22,8 @@ internal static class LurpCache
     private const string RedirectTargetsContent = """
         <Project>
           <PropertyGroup>
-            <IntermediateOutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\</IntermediateOutputPath>
-            <OutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\bin\</OutputPath>
+            <IntermediateOutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\$(TargetFramework)\</IntermediateOutputPath>
+            <OutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\$(TargetFramework)\bin\</OutputPath>
           </PropertyGroup>
         </Project>
         """;

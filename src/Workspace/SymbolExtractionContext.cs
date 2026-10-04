@@ -8,6 +8,7 @@ internal sealed class SymbolExtractionContext(
     IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
     IReadOnlySet<DocumentId> generatedDocuments,
     string snapshotId,
+    string targetFramework,
     IReadOnlySet<string>? scopeDocuments = null,
     BindingIncompletenessCollector? incompleteness = null)
 {
@@ -20,6 +21,7 @@ internal sealed class SymbolExtractionContext(
     internal IReadOnlySet<DocumentId> GeneratedDocuments { get; } = generatedDocuments;
     internal string AssemblyIdentity { get; } = compilation.Assembly.Identity.GetDisplayName();
     internal string SnapshotId { get; } = snapshotId;
+    internal string TargetFramework { get; } = targetFramework;
     internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
     internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
 

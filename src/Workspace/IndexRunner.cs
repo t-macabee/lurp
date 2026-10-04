@@ -201,7 +201,10 @@ public static class IndexRunner
                 sink.WriteErrorLine();
             }
 
-            await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(solution, cancellationToken))
+            await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(
+                               solution,
+                               msg => sink.WriteErrorLine($"WARNING: {msg}"),
+                               cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;

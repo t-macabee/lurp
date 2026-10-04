@@ -13,6 +13,7 @@ public enum EdgeKind
     Hides,
     ExtensionReceiver,
     Calls,
+    MethodGroupRef,
     Constructs,
     Reads,
     Writes,
@@ -184,6 +185,7 @@ public sealed class SymbolDeclaration
     public string? MetadataJson { get; init; }
     public bool IsGenerated { get; init; }
     public string? GeneratorIdentity { get; init; }
+    public string TargetFramework { get; init; } = string.Empty;
 }
 
 public sealed record NavigationTarget(

@@ -10,6 +10,7 @@ public sealed class SymbolExtractor
         IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
         IReadOnlySet<DocumentId> generatedDocuments,
         string snapshotId,
+        string targetFramework,
         IReadOnlySet<string>? scopeDocuments,
         BindingIncompletenessCollector? incompleteness)
     {
@@ -19,7 +20,7 @@ public sealed class SymbolExtractor
         ArgumentNullException.ThrowIfNull(generatedDocuments);
         ArgumentNullException.ThrowIfNull(snapshotId);
 
-        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, scopeDocuments, incompleteness);
+        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, targetFramework, scopeDocuments, incompleteness);
     }
 
     public List<SymbolDeclaration> ExtractAll()

@@ -331,7 +331,13 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             cancellationToken.ThrowIfCancellationRequested();
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
-                throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during incremental extraction.");
+            {
+                // Same declared boundary as the full path: a project shell for a
+                // language MSBuildWorkspace does not load (VB/F#) has no compilation.
+                _output.WriteErrorLine($"WARNING: Project '{project.Name}' ({project.Language}) has no C# compilation and is skipped. " +
+                                       "Non-C# projects are a declared boundary (non_csharp_projects).");
+                continue;
+            }
             result[project.Name] = (project, compilation);
         }
 
@@ -366,16 +372,22 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // way, so an unchanged document elsewhere in the assembly must keep its
         // copied-forward null-path edges intact.
         var invalidatedOldVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, extractionScopePaths);
+        List<string> changedSymbolIds = invalidatedOldVersionIds.Count > 0
+            ? _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, invalidatedOldVersionIds)
+            : [];
         if (invalidatedOldVersionIds.Count > 0)
-        {
-            var changedSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, invalidatedOldVersionIds);
             _store.DeleteEdgesWithNullDocumentPathForSymbols(newSnapshotIdStr, changedSymbolIds);
-        }
 
         if (oldDocVersionIdSet.Count > 0)
             _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
 
         _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+        _store.CopySymbolTargetFrameworks(previousSnapshotId, newSnapshotIdStr);
+
+        // The TFM copy above is a union: a symbol re-extracted in this run must
+        // not keep TFM rows the current sources no longer declare, so its rows
+        // are removed here and written back by the extraction.
+        _store.DeleteSymbolTargetFrameworksBySymbolIds(newSnapshotIdStr, changedSymbolIds);
 
         // Mandatory incremental seed: copy every FTS row from the previous
         // snapshot into the new snapshot so the subsequent refresh in

@@ -10,8 +10,13 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            command.CommandText = "ALTER TABLE edges ADD COLUMN is_cross_generated INTEGER NOT NULL DEFAULT 0;";
-            command.ExecuteNonQuery();
+            var existingColumns = GetColumnNames(command, "edges");
+
+            if (!existingColumns.Contains("is_cross_generated"))
+            {
+                command.CommandText = "ALTER TABLE edges ADD COLUMN is_cross_generated INTEGER NOT NULL DEFAULT 0;";
+                command.ExecuteNonQuery();
+            }
 
             // Migrate existing composite provenance values: extract :cross_generated suffix,
             // clean the provenance, and set the flag.
@@ -22,6 +27,16 @@ namespace Lurp.Storage.Migrations
                 WHERE provenance LIKE '%:cross_generated';
             ";
             command.ExecuteNonQuery();
+        }
+
+        private static HashSet<string> GetColumnNames(SqliteCommand command, string tableName)
+        {
+            command.CommandText = $"PRAGMA table_info({tableName});";
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(1));
+            return columns;
         }
     }
 }

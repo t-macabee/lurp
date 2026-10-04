@@ -43,6 +43,10 @@ public sealed partial class SnapshotManifest
     public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; init; }
         = new Dictionary<string, string>(StringComparer.Ordinal);
 
+    [JsonPropertyName("project_documents")]
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; init; }
+        = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
     [JsonPropertyName("database_schema_version")]
     public int DatabaseSchemaVersion { get; init; }
 
@@ -77,6 +81,7 @@ public sealed partial class SnapshotManifest
                 StringComparer.Ordinal),
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
+            ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
             DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
             ExtractorVersion = VersionConstants.ExtractorVersion,
@@ -154,6 +159,9 @@ public sealed partial class SnapshotManifest
                 : null,
             CompilationOptionsFingerprint = CompilationOptionsFingerprints.TryGetValue(kvp.Key, out var fp)
                 ? fp
+                : null,
+            DocumentPaths = ProjectDocuments.TryGetValue(kvp.Key, out var documentPaths)
+                ? [.. documentPaths]
                 : null
         }).ToList();
 
@@ -191,6 +199,7 @@ public sealed partial class SnapshotManifest
         var projectGraph = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
         var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
+        var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var project in storage.Projects)
         {
             targetFrameworks[project.Name] = project.TargetFramework;
@@ -200,6 +209,8 @@ public sealed partial class SnapshotManifest
                     .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!];
             if (project.CompilationOptionsFingerprint != null)
                 compilationOptionsFingerprints[project.Name] = project.CompilationOptionsFingerprint;
+            if (project.DocumentPaths != null)
+                projectDocuments[project.Name] = project.DocumentPaths;
         }
 
         return new SnapshotManifest
@@ -214,6 +225,7 @@ public sealed partial class SnapshotManifest
             ProjectGraph = projectGraph,
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
+            ProjectDocuments = projectDocuments,
             DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
             OutputSchemaVersion = storage.OutputSchemaVersion,
             ExtractorVersion = storage.ExtractorVersion,

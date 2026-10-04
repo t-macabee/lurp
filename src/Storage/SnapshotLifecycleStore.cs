@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Lurp.Storage;
 
@@ -87,8 +88,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var projectCommand = _connection.CreateCommand();
         projectCommand.Transaction = transaction;
         projectCommand.CommandText = """
-            INSERT INTO projects (snapshot_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint)
-            VALUES (@snapshotId, @name, @targetFramework, @metadataReferenceIdentities, @compilationOptionsFingerprint);
+            INSERT INTO projects (snapshot_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json)
+            VALUES (@snapshotId, @name, @targetFramework, @metadataReferenceIdentities, @compilationOptionsFingerprint, @documentPathsJson);
             SELECT last_insert_rowid();
             """;
 
@@ -107,6 +108,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             projectCommand.Parameters.AddWithValue("@targetFramework", (object?)project.TargetFramework ?? DBNull.Value);
             projectCommand.Parameters.AddWithValue("@metadataReferenceIdentities", (object?)project.MetadataReferenceIdentitiesJson ?? DBNull.Value);
             projectCommand.Parameters.AddWithValue("@compilationOptionsFingerprint", (object?)project.CompilationOptionsFingerprint ?? DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@documentPathsJson", project.DocumentPaths == null ? DBNull.Value : (object)JsonSerializer.Serialize(project.DocumentPaths));
             var projectId = projectCommand.ExecuteScalar();
 
             if (project.References.Count > 0 && projectId != null)
@@ -479,7 +481,7 @@ SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
 
         using var projectCommand = _connection.CreateCommand();
         projectCommand.CommandText = """
-            SELECT project_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint
+            SELECT project_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json
             FROM projects
             WHERE snapshot_id = @snapshotId;
             """;
@@ -495,7 +497,8 @@ SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
                     TargetFramework = projectReader.IsDBNull(2) ? "" : projectReader.GetString(2),
                     References = referencesByProjectId.TryGetValue(projectId, out var refs) ? refs : [],
                     MetadataReferenceIdentitiesJson = projectReader.IsDBNull(3) ? null : projectReader.GetString(3),
-                    CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4)
+                    CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4),
+                    DocumentPaths = projectReader.IsDBNull(5) ? null : JsonSerializer.Deserialize<List<string>>(projectReader.GetString(5))
                 });
             }
         }

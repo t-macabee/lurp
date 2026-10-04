@@ -38,6 +38,10 @@ internal static class SnapshotAssertions
                 ReadDeclarations(dbPathC, snapshotC),
                 ReadDeclarations(dbPathB, snapshotB));
 
+            Assert.Equal(
+                ReadSymbolTargetFrameworks(dbPathC, snapshotC),
+                ReadSymbolTargetFrameworks(dbPathB, snapshotB));
+
             var edgesB = storeB.GetEdges(snapshotB);
             var edgesC = storeC.GetEdges(snapshotC);
             NormalizeEdges(edgesB);
@@ -174,6 +178,49 @@ internal static class SnapshotAssertions
         return result;
     }
 
+    internal static List<string> ReadTargetFrameworksForSymbol(string dbPath, string snapshotId, string docCommentId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT stf.tfm
+            FROM symbol_target_frameworks stf
+            JOIN symbols s ON s.symbol_id = stf.symbol_id
+            WHERE stf.snapshot_id = @snapshotId AND s.doc_comment_id = @docCommentId
+            ORDER BY stf.tfm;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@docCommentId", docCommentId);
+
+        var result = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) result.Add(reader.GetString(0));
+        return result;
+    }
+
+    private static List<SymbolTargetFrameworkSnapshot> ReadSymbolTargetFrameworks(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol_id, tfm
+            FROM symbol_target_frameworks
+            WHERE snapshot_id = @snapshotId
+            ORDER BY symbol_id, tfm;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<SymbolTargetFrameworkSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new SymbolTargetFrameworkSnapshot(reader.GetString(0), reader.GetString(1)));
+        return result;
+    }
+
     private static List<SourceFtsSnapshot> ReadSourceFts(string dbPath, string snapshotId)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");
@@ -272,11 +319,23 @@ internal static class SnapshotAssertions
     {
         diags.Sort((a, b) =>
         {
-            var cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
+            var cmp = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.Id, b.Id);
             if (cmp != 0) return cmp;
-            return (a.StartLine ?? 0).CompareTo(b.StartLine ?? 0);
+            cmp = (a.StartLine ?? 0).CompareTo(b.StartLine ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.StartColumn ?? 0).CompareTo(b.StartColumn ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.EndLine ?? 0).CompareTo(b.EndLine ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = (a.EndColumn ?? 0).CompareTo(b.EndColumn ?? 0);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.Severity, b.Severity);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.Message, b.Message);
         });
     }
 
@@ -347,6 +406,8 @@ internal static class SnapshotAssertions
     }
 
     private sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
+
+    private sealed record SymbolTargetFrameworkSnapshot(string SymbolId, string Tfm);
 
     private sealed record DeclarationSnapshot(
         string SymbolId,

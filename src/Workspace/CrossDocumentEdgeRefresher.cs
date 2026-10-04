@@ -294,7 +294,7 @@ internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRo
                 .ToList();
 
             if (scopeRelativePaths != null)
-                store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths);
+                store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths, project.Name);
 
             store.SaveEdges(newSnapshotId, result.Edges);
             store.SaveDeclarations(newSnapshotId, result.Declarations);

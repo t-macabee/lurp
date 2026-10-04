@@ -260,7 +260,7 @@ public sealed class TargetTreeIntegrityTests
         throw new InvalidOperationException("Could not locate tests/Fixtures/GroundTruth from " + AppContext.BaseDirectory);
     }
 
-    private static (string FileName, string? DllPath) ResolveToolCommand()
+    internal static (string FileName, string? DllPath) ResolveToolCommand()
     {
         var packed = Environment.GetEnvironmentVariable("LURP_TOOL_PATH");
         if (!string.IsNullOrEmpty(packed))
@@ -316,7 +316,7 @@ public sealed class TargetTreeIntegrityTests
         return Process.Start(psi) ?? throw new InvalidOperationException("Failed to start lurp serve.");
     }
 
-    private static (int ExitCode, string Stdout, string Stderr) RunCli(TimeSpan timeout, params string[] args)
+    internal static (int ExitCode, string Stdout, string Stderr) RunCli(TimeSpan timeout, params string[] args)
     {
         var (fileName, dllPath) = ResolveToolCommand();
         var fullArgs = dllPath == null ? args : [dllPath, .. args];

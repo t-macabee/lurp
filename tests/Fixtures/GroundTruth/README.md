@@ -1,9 +1,10 @@
 # Ground-truth fixtures (audit Phase 5)
 
-Committed, indexable source corpora for the B1 ground-truth work. No test consumes
-them yet: Phase 4 fixtures the packed tool, Phase 6 uses `CallShapes` for the
-tree-integrity check, Phase 7 builds Oracle A/B and the exact-set tests against
-these corpora, and Phase 10 runs the doc examples against them.
+Committed, indexable source corpora for the B1 ground-truth work. Consumers:
+Phase 4 fixtures the packed tool, Phase 6 uses `CallShapes` for the
+tree-integrity check, Phase 7 runs the golden, Oracle A (exact set) and Oracle B
+(`SymbolFinder` caller recall) tests against `CallShapes` and the VB boundary test
+against `NonCSharp`, and Phase 10 runs the doc examples against them.
 
 Restore a solution before an MSBuildWorkspace consumer loads it; no `obj/` assets
 are committed. Index output belongs outside the fixture tree.
@@ -26,13 +27,10 @@ are committed. Index output belongs outside the fixture tree.
   members; `CrossProject.App` consumes public, internal, generic, nested and
   partial members; `VbLib` is a Visual Basic project.
 - `CrossProject/CrossProject.slnx` — the full Fixture 2 solution (C# + VB).
-- `CrossProject/CrossProject.CSharp.slnx` — C#-only copy for consumers that need
-  a solution that indexes today. The full solution currently fails the full
-  index on the VB project (`Compilation loader: GetCompilationAsync returned
-  null for project 'VbLib'` from `src/Helpers/CompilationHelper.cs:19`); the
-  audit's B6/Q12b expected a reported boundary warning instead. The Phase 7 VB
-  test should load the full solution; everything else should use the C#-only
-  one until that fix lands.
+- `CrossProject/CrossProject.CSharp.slnx` — C#-only copy of Fixture 2.
+- `NonCSharp/NonCSharp.slnx` — one C# project plus the VB project. A full index
+  skips the VB project and prints the `non_csharp_projects` boundary warning
+  (audit B6/Q12b). `CrossProjectBoundaryTests` runs this through the CLI.
 - `Directory.Build.props` — turns analyzers and warnings-as-errors off for these
   projects only: the fixtures deliberately use instance members a consumer
   pattern requires, public fields, and other shapes the repo rule set flags.
@@ -72,16 +70,16 @@ represented as a hand-written source row in the corpus.
 
 ## Measured while building the corpus (2026-10-03, local Release build)
 
-Recorded for Phase 7; only the items needed to review the golden are repeated in
-its `notes`:
+Recorded before the Phase 7 fixes; only the items needed to review the golden are
+repeated in its `notes`. Status after Phase 7:
 
-- A VB project in the solution hard-fails a full index (see above).
-- The implementation part of a partial method is never walked: no edge from
-  `OnShapePartial`.
-- Operator declaration bodies are not walked (`OperatorDeclarationSyntax` is not
-  in the method-declaration switch), so their reads/constructions are absent
-  until the Phase 7 fix.
+- A VB project in the solution hard-failed a full index. Fixed: it is skipped
+  with a boundary warning.
+- The implementation part of a partial method was never walked. Fixed by
+  `OperationShapeExtractor`.
+- Operator declaration bodies were not walked. Fixed by `OperationShapeExtractor`.
 - A C# 14 extension block call binds to a compiler-generated nested symbol and
-  emits no `ExtensionReceiver` edge, while the classic extension emits both.
+  emitted no `ExtensionReceiver` edge. Fixed: `SymbolIdFactory` normalizes block
+  extension members to the declared member.
 - A dynamic invocation produces `unsupported_syntax` binding-incompleteness rows
   and no edge; `CoreApi.DynamicTarget()` still produces its normal `Calls` edge.

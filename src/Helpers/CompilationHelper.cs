@@ -8,7 +8,10 @@ namespace Lurp.Helpers;
 
 internal static class CompilationHelper
 {
-    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(Solution solution, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(
+        Solution solution,
+        Action<string>? logWarning = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var project in solution.Projects)
         {
@@ -16,7 +19,15 @@ internal static class CompilationHelper
             var compilation = await project.GetCompilationAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (compilation == null)
-                throw new InvalidOperationException($"Compilation loader: GetCompilationAsync returned null for project '{project.Name}' during full extraction.");
+            {
+                // MSBuildWorkspace loads a project shell for a language it does not
+                // support (VB/F#) but returns no compilation for it. That skip is a
+                // declared boundary (non_csharp_projects), not a full-index failure.
+                logWarning?.Invoke($"Project '{project.Name}' ({project.Language}) has no C# compilation and is skipped. " +
+                                   "Non-C# projects are a declared boundary (non_csharp_projects).");
+                continue;
+            }
+
             yield return (project, compilation);
             cancellationToken.ThrowIfCancellationRequested();
         }

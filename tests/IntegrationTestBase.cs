@@ -70,7 +70,10 @@ public abstract class IntegrationTestBase : IDisposable
         var sb = new StringBuilder();
         sb.AppendLine("""<Project Sdk="Microsoft.NET.Sdk">""");
         sb.AppendLine("  <PropertyGroup>");
-        sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFramework>{targetFramework}</TargetFramework>");
+        if (targetFramework.Contains(';'))
+            sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFrameworks>{targetFramework}</TargetFrameworks>");
+        else
+            sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFramework>{targetFramework}</TargetFramework>");
         sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
         sb.AppendLine("    <Nullable>enable</Nullable>");
         if (msbuildProperties is { Count: > 0 })

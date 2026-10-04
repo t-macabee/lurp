@@ -14,7 +14,8 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
         var seen = new HashSet<string>();
         var allowedKinds = new HashSet<string>
         {
-            nameof(EdgeKind.Calls)
+            nameof(EdgeKind.Calls),
+            nameof(EdgeKind.MethodGroupRef)
         };
         var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
 

@@ -74,7 +74,9 @@ public interface ISnapshotSymbolStore
 {
     void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds);
     void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId);
+    void CopySymbolTargetFrameworks(string fromSnapshotId, string toSnapshotId);
     void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds);
+    void DeleteSymbolTargetFrameworksBySymbolIds(string snapshotId, IEnumerable<string> symbolIds);
     List<string> GetSymbolIdsInSnapshot(string snapshotId);
     int CountSymbolsInSnapshot(string snapshotId);
 }

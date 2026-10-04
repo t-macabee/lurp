@@ -7,7 +7,7 @@ public interface IBindingIncompletenessStore
     void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records);
     List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null);
     void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId);
-    void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
+    void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null);
 }
 
 internal sealed class BindingIncompletenessStore(SqliteConnection connection) : IBindingIncompletenessStore
@@ -83,15 +83,19 @@ SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extrac
         command.ExecuteNonQuery();
     }
 
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
+    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = "DELETE FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND document_path = @path;";
+        command.CommandText = projectName == null
+            ? "DELETE FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND document_path = @path;"
+            : "DELETE FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND document_path = @path AND project_name = @projectName;";
         foreach (var path in documentPaths.Distinct(StringComparer.Ordinal))
         {
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             command.Parameters.AddWithValue("@path", path);
+            if (projectName != null)
+                command.Parameters.AddWithValue("@projectName", projectName);
             command.ExecuteNonQuery();
         }
     }

@@ -24,6 +24,8 @@ public enum MismatchKind
 
     CompilationOptionsChanged,
 
+    ProjectDocumentsChanged,
+
     VersionChanged
 }
 

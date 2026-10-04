@@ -14,6 +14,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 {
     private readonly string _cleanRebuildDbPath;
 
+    private static readonly string[] Net10Only = ["net10.0"];
+    private static readonly string[] Net10AndNet9 = ["net10.0", "net9.0"];
+
     public IncrementalParityTests()
     {
         _cleanRebuildDbPath = Path.Combine(TestDir, "clean.db");
@@ -1115,5 +1118,167 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         Assert.NotEqual(snapshotA, snapshotB);
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+    }
+
+    // ── Phase 7.8: per-symbol TFM attribution on a multi-target project ──────
+
+    /// <summary>
+    ///     7.8.3: the incremental TFM reset (7.4). v1 declares M() for both TFMs;
+    ///     v2 wraps M() in #if NET10_0. The copied-forward {net9.0, net10.0} set
+    ///     must be reset for the re-extracted symbol, so the increment matches the
+    ///     clean rebuild: M -> {net10.0}.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioTfm1_WrapMemberInIf_ResetsCopiedForwardTargetFrameworks()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Types.cs"] = """
+                               namespace TestProject;
+
+                               public class Types
+                               {
+                                   public int M() => 1;
+                               }
+                               """
+            },
+            targetFramework: "net9.0;net10.0");
+
+        await RestoreSolutionAsync();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+        Assert.Equal(Net10AndNet9,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "M:TestProject.Types.M"));
+
+        WriteFile("TestProject", "Types.cs", """
+                                              namespace TestProject;
+
+                                              public class Types
+                                              {
+                                              #if NET10_0
+                                                  public int M() => 1;
+                                              #endif
+                                              }
+                                              """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+        Assert.Equal(Net10Only,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotB, "M:TestProject.Types.M"));
+        Assert.Equal(Net10Only,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(_cleanRebuildDbPath, snapshotC, "M:TestProject.Types.M"));
+    }
+
+    /// <summary>
+    ///     7.8.4: the reverse edit. v1 wraps M() in #if NET10_0; v2 removes the
+    ///     guard so M() is declared for both TFMs again. The increment must recover
+    ///     {net9.0, net10.0}, not keep only the copied-forward net10.0 row.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioTfm2_RemoveIf_RecoversBothTargetFrameworks()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Types.cs"] = """
+                               namespace TestProject;
+
+                               public class Types
+                               {
+                               #if NET10_0
+                                   public int M() => 1;
+                               #endif
+                               }
+                               """
+            },
+            targetFramework: "net9.0;net10.0");
+
+        await RestoreSolutionAsync();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+        Assert.Equal(Net10Only,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "M:TestProject.Types.M"));
+
+        WriteFile("TestProject", "Types.cs", """
+                                              namespace TestProject;
+
+                                              public class Types
+                                              {
+                                                  public int M() => 1;
+                                              }
+                                              """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+        Assert.Equal(Net10AndNet9,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotB, "M:TestProject.Types.M"));
+        Assert.Equal(Net10AndNet9,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(_cleanRebuildDbPath, snapshotC, "M:TestProject.Types.M"));
+    }
+
+    /// <summary>
+    ///     7.8.5 (proves 7.9.1): a partial type with parts in two files on a
+    ///     multi-target project. Editing only file 1 must not lose the TFM rows the
+    ///     7.4 reset deletes, because the type's parts are re-extracted together:
+    ///     the class keeps {net9.0, net10.0}.
+    /// </summary>
+    [SkippableFact]
+    public async Task ScenarioTfm3_PartialTypeAcrossFiles_KeepsAllTargetFrameworks()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Calc.Part1.cs"] = """
+                                    namespace TestProject;
+
+                                    public partial class Calc
+                                    {
+                                        public int FromPartOne() => 1;
+                                    }
+                                    """,
+                ["Calc.Part2.cs"] = """
+                                    namespace TestProject;
+
+                                    public partial class Calc
+                                    {
+                                        public int FromPartTwo() => 2;
+                                    }
+                                    """
+            },
+            targetFramework: "net9.0;net10.0");
+
+        await RestoreSolutionAsync();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+        Assert.Equal(Net10AndNet9,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "T:TestProject.Calc"));
+
+        WriteFile("TestProject", "Calc.Part1.cs", """
+                                                  namespace TestProject;
+
+                                                  public partial class Calc
+                                                  {
+                                                      public int FromPartOne() => 1;
+                                                  }
+                                                  // comment-only edit
+                                                  """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+        Assert.Equal(Net10AndNet9,
+            SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotB, "T:TestProject.Calc"));
     }
 }
