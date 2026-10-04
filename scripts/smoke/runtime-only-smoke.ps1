@@ -103,3 +103,4 @@ Assert-True ($indexAttempt.Text -match 'requires a \.NET SDK') "index without an
 Assert-True ($indexAttempt.Text -notmatch 'Unhandled exception') 'index without an SDK leaked an unhandled exception dump'
 
 Write-Host 'runtime-only smoke: PASS'
+exit 0
