@@ -1,0 +1,11 @@
+{
+  "solutions": [
+    {
+      "name": "eNoteV2",
+      "repository": "https://github.com/t-macabee/eNoteV2.git",
+      "sha": "4ba9901a527b12978d3d86996026ce16fe2475e1",
+      "path": "eNote",
+      "solution": "eNote.sln"
+    }
+  ]
+}

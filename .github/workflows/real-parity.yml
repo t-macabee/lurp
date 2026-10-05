@@ -1,23 +1,29 @@
 name: Real Parity
 
-# Long-running real-solution parity gate, run against a self-hosted runner
-# that has eNoteV2 checked out at a fixed path.
+# Real-solution parity gate on a GitHub-hosted Windows runner.
 #
-# Split out of ci.yml: this job's `runs-on: [self-hosted, real-parity]` has
-# no matching runner registered whenever that machine is offline, which
-# always resolves as cancelled and was dragging the CI badge red even when
-# build/test in ci.yml passed cleanly. Keeping it in its own workflow means
-# an unavailable self-hosted runner no longer affects the CI badge — this
-# stays what it always was, a post-merge regression backstop, not a gate on
-# the actual build/test signal.
+# Runs R1 (five-cycle incremental↔full convergence) on eNoteV2 at the commit
+# pinned in parity/targets.json, using the lurp-nupkg artifact that the ci.yml
+# run for the dispatched SHA uploaded. eNoteV2 is public, so it is cloned
+# with no credentials. The nupkg is installed with
+# `dotnet tool install --tool-path` and the R1 script runs it via LURP_CMD;
+# scripts/r1-compare is the only project built from source (Release), because
+# it is not part of the nupkg.
 #
-# Fires only on manual dispatch (`gh workflow run real-parity.yml`); run it
-# before a release while the self-hosted runner is online.
+# Fails closed: no successful ci.yml run for the SHA, a missing or expired
+# artifact, a SHA-256 mismatch against the recorded SHA256SUMS.txt, or a failed
+# R1 run all fail the job.
 #
-# It does not run on push to main. With the runner offline, every push run
-# ended cancelled and left a red mark on the commit.
+# Fires only on manual dispatch with the lurp commit SHA whose CI artifact
+# should be exercised:
+#   gh workflow run real-parity.yml -f sha=<full commit SHA>
 on:
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Full lurp commit SHA; the ci.yml run for this SHA must have uploaded the lurp-nupkg artifact'
+        required: true
+        type: string
 
 concurrency:
   group: real-parity-${{ github.ref }}
@@ -25,23 +31,104 @@ concurrency:
 
 jobs:
   real-parity:
-    runs-on: [self-hosted, real-parity]
-    timeout-minutes: 30
+    runs-on: windows-latest
+    timeout-minutes: 60
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # The R1 script invokes `dotnet run --no-build` (Debug default) for
-      # both Lurp and r1-compare, so Debug artifacts are required — a Release
-      # build would fail the first --no-build run. r1-compare is not part of
-      # Lurp.slnx, so build both.
-      - name: Build Lurp + r1-compare (Debug)
-        run: |
-          dotnet build src/Lurp.csproj
-          dotnet build scripts/r1-compare/r1-compare.csproj
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
 
-      - name: R1 eNote (eNoteV2)
+      # Single source of truth for the real solution under test: the pinned
+      # commit, the repository to clone, and the solution file within it.
+      - name: Read pinned eNoteV2 target from parity/targets.json
+        shell: pwsh
+        run: |
+          $target = Get-Content parity/targets.json -Raw | ConvertFrom-Json
+          $s = $target.solutions[0]
+          if (-not $s) { throw "parity/targets.json lists no solutions." }
+          if ($s.sha -notmatch '^[0-9a-fA-F]{40}$') { throw "parity/targets.json: 'sha' is not a full commit SHA." }
+          "enotev2_repo=$($s.repository)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "enotev2_sha=$($s.sha)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "enotev2_path=$($s.path)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "enotev2_solution=$($s.solution)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Pinned eNoteV2 at $($s.sha) ($($s.repository))"
+
+      # Fail closed unless a successful ci.yml run exists for the dispatched SHA.
+      - name: Resolve ci.yml run for the dispatched SHA
+        shell: pwsh
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          $sha = $env:SHA
+          if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Input 'sha' must be a full 40-character commit SHA." }
+          $runsJson = gh run list --workflow=ci.yml --commit $sha --limit 5 --json databaseId,conclusion,status
+          if (-not $runsJson) { throw "No ci.yml run found for commit $sha." }
+          $run = @($runsJson | ConvertFrom-Json | Where-Object { $_.conclusion -eq 'success' })[0]
+          if (-not $run) { throw "No successful ci.yml run for commit $sha; the lurp-nupkg artifact does not exist." }
+          "run_id=$($run.databaseId)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Using ci.yml run $($run.databaseId) for $sha"
+
+      # Fails closed if the artifact is missing or expired: gh run download
+      # errors on both, and the explicit check below catches an empty download.
+      - name: Download lurp-nupkg artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ./artifacts | Out-Null
+          gh run download $env:run_id -n lurp-nupkg -D ./artifacts
+          $pkg = Get-ChildItem ./artifacts/*.nupkg -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkg) { throw "lurp-nupkg artifact missing or expired for run $env:run_id." }
+          Write-Host "Downloaded $($pkg.Name)"
+
+      - name: Verify nupkg SHA-256 against the recorded SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $fields = (Get-Content ./artifacts/SHA256SUMS.txt) -split '\s+' | Where-Object { $_ }
+          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
+          if (-not $pkg) { throw "no nupkg downloaded." }
+          $actual = (Get-FileHash $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $fields[0]) { throw "SHA-256 mismatch: expected $($fields[0]), got $actual." }
+          if ($pkg.Name -ne $fields[1]) { throw "artifact name mismatch: $($pkg.Name) vs $($fields[1])." }
+          Write-Host "SHA-256 verified: $actual"
+
+      - name: Install packed tool
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
+          $version = $pkg.BaseName -replace '^lurp\.', ''
+          if (-not $version) { throw "cannot parse tool version from $($pkg.Name)." }
+          dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
+          $exe = "$env:GITHUB_WORKSPACE/t/lurp.exe"
+          if (-not (Test-Path $exe)) { throw "installed tool not found at $exe." }
+          & $exe --version
+          $bashExe = $exe -replace '\\', '/'
+          "LURP_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # r1-compare is not part of the nupkg, so it is the only project built
+      # from source in this job (Release, as the R1 script expects).
+      - name: Build r1-compare (Release)
+        shell: pwsh
+        run: |
+          dotnet build scripts/r1-compare/r1-compare.csproj -c Release
+          $exe = "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare.exe"
+          if (-not (Test-Path $exe)) { throw "r1-compare Release build not found: $exe." }
+          $bashExe = $exe -replace '\\', '/'
+          "R1_COMPARE_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # eNoteV2 is public: a plain clone needs no credentials.
+      - name: Check out eNoteV2 fresh at the pinned SHA (no credentials)
         shell: bash
-        run: ./scripts/r1-verify-enote.sh "C:/Users/Tarik/Desktop/eNoteV2/eNote" "eNote.sln"
+        run: |
+          git clone --no-checkout "$enotev2_repo" "$RUNNER_TEMP/eNoteV2"
+          git -C "$RUNNER_TEMP/eNoteV2" checkout --detach "$enotev2_sha"
+
+      - name: R1 convergence on eNoteV2 (pinned SHA, CI nupkg)
+        shell: bash
+        run: |
+          solution_dir="$(cygpath "$RUNNER_TEMP")/eNoteV2/$enotev2_path"
+          ./scripts/r1-verify-enote.sh "$solution_dir" "$enotev2_solution"

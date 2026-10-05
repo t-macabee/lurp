@@ -9,6 +9,7 @@ SOLUTION_FILE="${2:?}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 TMPROOT="$(mktemp -d)"
+trap 'rm -rf "$TMPROOT"' EXIT
 SCRATCH="$TMPROOT/eNote"
 echo "=== R1-eNote: copying solution to scratchpad: $SCRATCH ==="
 cp -r "$SOLUTION_DIR" "$SCRATCH"
@@ -24,6 +25,9 @@ LURP_PROJ="$REPO_ROOT/src/Lurp.csproj"
 # Set LURP_CMD to run the packed tool instead of the local build, for example:
 #   LURP_CMD='/c/tools/lurp/lurp.exe' ./scripts/r1-verify-enote.sh <dir> <sln>
 LURP_CMD="${LURP_CMD:-dotnet run --no-build --project $LURP_PROJ --}"
+# Set R1_COMPARE_CMD to run a pre-built r1-compare instead of `dotnet run`, for example:
+#   R1_COMPARE_CMD='C:/tools/r1-compare.exe' ./scripts/r1-verify-enote.sh <dir> <sln>
+R1_COMPARE_CMD="${R1_COMPARE_CMD:-dotnet run --no-build --project $REPO_ROOT/scripts/r1-compare/r1-compare.csproj --}"
 
 run_full() {
     local outdir_win="$1"
@@ -338,7 +342,7 @@ public abstract class ReferenceCrudService<TEntity, TDto, TRequest, TSearch>(IAp
         var entity = await Db.Set<TEntity>()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new NotFoundException(NotFoundMessage);
-        if (entity is ISoftDeletable sd) { sd.IsDeleted = true; await Db.SaveChangesAsync(cancellationToken); }
+        await Db.SaveChangesAsync(cancellationToken);
     }
 }
 CSHARP
@@ -449,7 +453,7 @@ run_full "$WIN_FULL_DIR"
 # ==================== COMPARE ====================
 echo ""
 echo "=== COMPARISON: B5 vs C ==="
-dotnet run --no-build --project "$REPO_ROOT/scripts/r1-compare/r1-compare.csproj" -- "$WIN_INCR_DIR/index.db" "$WIN_FULL_DIR/index.db"
+$R1_COMPARE_CMD "$WIN_INCR_DIR/index.db" "$WIN_FULL_DIR/index.db"
 EXIT_CODE=$?
 
 echo ""

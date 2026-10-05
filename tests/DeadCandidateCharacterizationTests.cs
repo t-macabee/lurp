@@ -76,7 +76,7 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
     ///     Characterization for the entry-point suppression branch. Before this branch existed,
     ///     the compiler-synthesized top-level-statements entry point method landed in the
     ///     terminal no-incoming-edges branch and read as <c>proved_dead</c> — reproduced live
-    ///     against a real solution during the eNoteV2/FIT-RS2-2026 capability battery
+    ///     against a real solution during the eNoteV2 capability battery
     ///     (2026-08-21) and confirmed here by dedicated repro: nothing in-repo ever calls the
     ///     entry point (only the runtime launcher does), so "no incoming live edges" is
     ///     definitional for this symbol, not evidence of dead code. Program.cs holds only the
