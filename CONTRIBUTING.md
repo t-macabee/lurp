@@ -15,7 +15,11 @@ Lurp is shipped as a .NET global tool (`PackAsTool`); run from source via
 ```bash
 dotnet build Lurp.slnx
 dotnet test Lurp.slnx
+dotnet test Lurp.slnx --settings tests/full.runsettings
 ```
+
+The first `dotnet test` skips tests tagged `[Trait("Category", "Slow")]`
+(`tests/Lurp.Tests.runsettings`). The second runs the full suite, as CI does.
 
 Tests run on xunit 2.9.3 today. Moving to xunit.v3 is planned, not scheduled: it
 swaps the `xunit` and runner packages in `tests/Lurp.Tests.csproj` and needs a v3

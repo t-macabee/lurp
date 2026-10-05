@@ -27,6 +27,7 @@ namespace Lurp.Tests;
 ///     (a generic method constrained to a static abstract interface member) is a
 ///     dispatch relation, not a direct call, and is reported as a skipped target.
 /// </remarks>
+[Trait("Category", "Slow")]
 [Collection("GroundTruth")]
 public sealed class GroundTruthOracleBTests(GroundTruthFixture callShapes, CrossProjectGroundTruthFixture crossProject)
 {

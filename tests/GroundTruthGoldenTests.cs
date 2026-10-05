@@ -6,6 +6,7 @@ namespace Lurp.Tests;
 ///     real pipeline. A missing fact fails with the full list; extra extraction
 ///     facts are the exact-set test's job.
 /// </summary>
+[Trait("Category", "Slow")]
 [Collection("GroundTruth")]
 public sealed class GroundTruthGoldenTests(GroundTruthFixture fixture)
 {

@@ -9,6 +9,7 @@ namespace Lurp.Tests;
 ///     conversions) must equal Oracle A's operation-derived fact set over the
 ///     whole CallShapes corpus — no missing fact, no extra fact.
 /// </summary>
+[Trait("Category", "Slow")]
 [Collection("GroundTruth")]
 public sealed class GroundTruthOracleATests(GroundTruthFixture callShapes, CrossProjectGroundTruthFixture crossProject)
 {

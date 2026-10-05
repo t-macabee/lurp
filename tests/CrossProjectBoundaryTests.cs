@@ -12,6 +12,7 @@ namespace Lurp.Tests;
 ///     by the real CLI in a child process, so MSBuild nodes die with the process
 ///     and a stuck load fails by timeout instead of hanging the test host.
 /// </summary>
+[Trait("Category", "Slow")]
 public sealed class CrossProjectBoundaryTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);

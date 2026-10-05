@@ -14,6 +14,7 @@ namespace Lurp.Tests;
 ///     status/reason per candidate — the layer Phase 3 added on top of the raw
 ///     graph.
 /// </summary>
+[Trait("Category", "Slow")]
 public sealed class DeadCandidateIncrementalParityTests : IntegrationTestBase
 {
     private readonly string _cleanRebuildDbPath;

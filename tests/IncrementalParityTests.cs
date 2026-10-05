@@ -10,6 +10,7 @@ namespace Lurp.Tests;
 ///     V2, indexes incrementally (snapshot B), rebuilds V2 in a fresh DB (snapshot
 ///     C), and asserts B and C are equivalent across every persisted field.
 /// </summary>
+[Trait("Category", "Slow")]
 public sealed class IncrementalParityTests : IntegrationTestBase
 {
     private readonly string _cleanRebuildDbPath;

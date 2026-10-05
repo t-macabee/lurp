@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default settings for `dotnet test` (set by RunSettingsFilePath in Lurp.Tests.csproj).
+     Skips tests tagged [Trait("Category", "Slow")]. A command-line filter is joined to
+     this one with AND, so a targeted run still skips Slow tests.
+     For the full suite, pass tests/full.runsettings as the settings file
+     (see CONTRIBUTING.md). -->
+<RunSettings>
+  <RunConfiguration>
+    <TestCaseFilter>Category!=Slow</TestCaseFilter>
+  </RunConfiguration>
+  <LoggerRunSettings>
+    <Loggers>
+      <Logger friendlyName="console" enabled="True">
+        <Configuration>
+          <Verbosity>minimal</Verbosity>
+        </Configuration>
+      </Logger>
+    </Loggers>
+  </LoggerRunSettings>
+</RunSettings>

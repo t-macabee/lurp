@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Default run skips Slow tests; see Lurp.Tests.runsettings. -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)Lurp.Tests.runsettings</RunSettingsFilePath>
   </PropertyGroup>
 
   <ItemGroup>
