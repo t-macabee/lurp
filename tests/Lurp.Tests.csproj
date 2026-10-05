@@ -31,6 +31,11 @@
     <ProjectReference Include="..\src\Lurp.csproj" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\scripts\parity\shared\Lurp.Parity.Shared.csproj" />
+    <ProjectReference Include="..\scripts\parity\oracle-b\Lurp.Parity.OracleB.csproj" />
+  </ItemGroup>
+
   <!-- The growth gate tests run the perf harness as a process; this reference puts
        harness.dll next to the test assembly. The harness has no package dependencies. -->
   <ItemGroup>

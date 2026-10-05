@@ -22,3 +22,8 @@ dotnet_diagnostic.CA1707.severity = none
 # public surface, so CA1716 is a false positive here.
 [src/Shared/**]
 dotnet_diagnostic.CA1716.severity = none
+
+# The parity shared project carries the same 'Lurp.Parity.Shared' namespace;
+# CA1716 is the same false positive there.
+[scripts/parity/**]
+dotnet_diagnostic.CA1716.severity = none

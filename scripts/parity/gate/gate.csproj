@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- The gate consumes the shared parity projects (oracle B carries Roslyn
+       workspaces through its package reference). -->
+  <ItemGroup>
+    <ProjectReference Include="..\shared\Lurp.Parity.Shared.csproj" />
+    <ProjectReference Include="..\oracle-b\Lurp.Parity.OracleB.csproj" />
+  </ItemGroup>
+
+  <!-- `recall` opens the analyzed solution with MSBuildWorkspace, so the gate
+       needs the MSBuild workspace loader and the locator. The MSBuild runtime
+       assets are excluded exactly as in src/Lurp.csproj so MSBuildLocator binds
+       the SDK's own copies rather than a NuGet MSBuild. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
+    <PackageReference Include="Microsoft.Build.Locator" />
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.NET.StringTools" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- ProcessRunner is shared by linked source. It is internal to the perf
+       harness and references HarnessError, which lives in Model.cs, so that
+       file is linked alongside it. -->
+  <ItemGroup>
+    <Compile Include="..\..\perf\harness\ProcessRunner.cs" Link="ProcessRunner.cs" />
+    <Compile Include="..\..\perf\harness\Model.cs" Link="Model.cs" />
+  </ItemGroup>
+
+  <!-- `recall` must resolve symbol ids and open the workspace exactly as the tool
+       does: SymbolIdFactory normalizes reduced extension methods and C# 14
+       extension-block members, LurpCache redirects design-time intermediates out of
+       the analyzed tree (IndexRunLock supplies its key). Linked, not copied. -->
+  <ItemGroup>
+    <Compile Include="..\..\..\src\Shared\SymbolIdFactory.cs" Link="SymbolIdFactory.cs" />
+    <Compile Include="..\..\..\src\Workspace\LurpCache.cs" Link="LurpCache.cs" />
+    <Compile Include="..\..\..\src\Workspace\IndexRunLock.cs" Link="IndexRunLock.cs" />
+  </ItemGroup>
+
+</Project>

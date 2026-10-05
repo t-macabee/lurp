@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Oracle B needs Roslyn workspace APIs (Solution, SymbolFinder); the shared
+       tree-snapshot project must not carry them, so this is a second project. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+  </ItemGroup>
+
+  <!-- EdgeKind names the accepted/produced relation kinds; one source, not copies. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Storage\Lurp.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

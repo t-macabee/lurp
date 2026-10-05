@@ -32,7 +32,7 @@ concurrency:
 jobs:
   real-parity:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: read
       actions: read
@@ -54,10 +54,13 @@ jobs:
           $s = $target.solutions[0]
           if (-not $s) { throw "parity/targets.json lists no solutions." }
           if ($s.sha -notmatch '^[0-9a-fA-F]{40}$') { throw "parity/targets.json: 'sha' is not a full commit SHA." }
+          if ($null -eq $s.seed -or $null -eq $s.sample) { throw "parity/targets.json: 'seed' and 'sample' are both required." }
           "enotev2_repo=$($s.repository)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "enotev2_sha=$($s.sha)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "enotev2_path=$($s.path)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "enotev2_solution=$($s.solution)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "enotev2_seed=$($s.seed)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "enotev2_sample=$($s.sample)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           Write-Host "Pinned eNoteV2 at $($s.sha) ($($s.repository))"
 
       # Fail closed unless a successful ci.yml run exists for the dispatched SHA.
@@ -136,3 +139,53 @@ jobs:
         run: |
           solution_dir="$(cygpath "$RUNNER_TEMP")/eNoteV2/$enotev2_path"
           ./scripts/r1-verify-enote.sh "$solution_dir" "$enotev2_solution"
+
+      # The parity gate is neither in the nupkg nor in Lurp.slnx, so it is built
+      # from source (Release) here, like r1-compare. !cancelled() so the two
+      # checks below still run (and report) when R1 fails.
+      - name: Build parity gate (Release)
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          dotnet build scripts/parity/gate/gate.csproj -c Release
+          $exe = "$env:GITHUB_WORKSPACE/scripts/parity/gate/bin/Release/net10.0/gate.exe"
+          if (-not (Test-Path $exe)) { throw "parity gate Release build not found: $exe." }
+          $bashExe = $exe -replace '\\', '/'
+          "GATE_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # Audit B2: every CLI mode and MCP tool must leave the analyzed tree
+      # byte-identical. Runs on the fresh pinned clone (R1 mutates a scratchpad
+      # copy, not this tree) with the same CI nupkg as R1.
+      - name: Parity integrity on eNoteV2 (fresh clone, CI nupkg)
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $solution = Join-Path $env:RUNNER_TEMP "eNoteV2/$env:enotev2_path/$env:enotev2_solution"
+          $log = "$env:RUNNER_TEMP/integrity.log"
+          & $env:GATE_CMD integrity "--solution=$solution" "--lurp-cmd=$env:LURP_CMD" 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          $added = @(Select-String -Path $log -Pattern '^ADDED ' -ErrorAction SilentlyContinue).Count
+          $removed = @(Select-String -Path $log -Pattern '^REMOVED ' -ErrorAction SilentlyContinue).Count
+          $changed = @(Select-String -Path $log -Pattern '^CHANGED ' -ErrorAction SilentlyContinue).Count
+          $verdict = if ($code -eq 0) { 'pass' } else { 'fail' }
+          "integrity: $verdict (added=$added, removed=$removed, changed=$changed, exit=$code)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          exit $code
+
+      # Audit B1 Fixture 3: Oracle B (SymbolFinder) caller recall over a seeded
+      # sample of indexed methods, on the same fresh clone and CI nupkg.
+      - name: Parity recall on eNoteV2 (fresh clone, CI nupkg)
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $solution = Join-Path $env:RUNNER_TEMP "eNoteV2/$env:enotev2_path/$env:enotev2_solution"
+          $log = "$env:RUNNER_TEMP/recall.log"
+          & $env:GATE_CMD recall "--solution=$solution" "--lurp-cmd=$env:LURP_CMD" "--seed=$env:enotev2_seed" "--sample=$env:enotev2_sample" 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          $counts = (Select-String -Path $log -Pattern '^recall: ' -ErrorAction SilentlyContinue | Select-Object -Last 1).Line
+          $verdict = if ($code -eq 0) { 'pass' } else { 'fail' }
+          if ($counts) {
+            "recall: $verdict $(($counts -replace '^recall: ', '')), exit=$code" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          } else {
+            "recall: $verdict (no counts reported, exit=$code)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
+          exit $code

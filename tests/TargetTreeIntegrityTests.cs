@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Text.Json;
+using Lurp.Parity.Shared;
 using Lurp.Workspace;
 
 namespace Lurp.Tests;
@@ -38,7 +38,7 @@ public sealed class TargetTreeIntegrityTests
             var restore = RunProcess("dotnet", ["restore", solutionPath, "--nologo"], CliTimeout);
             Assert.True(restore.ExitCode == 0, $"dotnet restore failed ({restore.ExitCode}):\n{restore.Stderr}");
 
-            var before = CaptureTree(treeRoot);
+            var before = TreeSnapshot.Record(treeRoot);
             cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
 
             // ── Every CLI mode, all resolving the default output directory from --solution= ──
@@ -92,7 +92,7 @@ public sealed class TargetTreeIntegrityTests
 
             // ── MCP: --mode=serve, all 18 tools (read plus gated write tools) ──
             serve = StartServe(solutionPath, writeTools: true);
-            var client = new McpClient(serve);
+            var client = new McpStdioClient(serve);
             await client.SendAsync("initialize", new
             {
                 protocolVersion = "2024-11-05",
@@ -143,7 +143,7 @@ public sealed class TargetTreeIntegrityTests
             serve = null;
 
             // ── The measured window closes: the tree must not have moved a byte ──
-            var after = CaptureTree(treeRoot);
+            var after = TreeSnapshot.Record(treeRoot);
             AssertTreeUnchanged(before, after);
         }
         finally
@@ -155,7 +155,7 @@ public sealed class TargetTreeIntegrityTests
         }
     }
 
-    private static async Task WaitForIndexAsync(McpClient client, string operationId)
+    private static async Task WaitForIndexAsync(McpStdioClient client, string operationId)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(3);
         while (DateTime.UtcNow < deadline)
@@ -182,13 +182,8 @@ public sealed class TargetTreeIntegrityTests
 
     private static void AssertTreeUnchanged(SortedDictionary<string, string> before, SortedDictionary<string, string> after)
     {
-        var added = after.Keys.Except(before.Keys, StringComparer.Ordinal).ToList();
-        var removed = before.Keys.Except(after.Keys, StringComparer.Ordinal).ToList();
-        var changed = before.Keys
-            .Where(k => after.TryGetValue(k, out var v) && v != before[k])
-            .ToList();
-
-        if (added.Count == 0 && removed.Count == 0 && changed.Count == 0)
+        var diff = TreeSnapshot.Diff(before, after);
+        if (diff.Added.Count == 0 && diff.Removed.Count == 0 && diff.Changed.Count == 0)
             return;
 
         static string Sample(List<string> items) =>
@@ -196,27 +191,9 @@ public sealed class TargetTreeIntegrityTests
 
         Assert.Fail(
             $"the analyzed tree changed inside the measured window.\n" +
-            $"ADDED ({added.Count}):\n  {Sample(added)}\n" +
-            $"REMOVED ({removed.Count}):\n  {Sample(removed)}\n" +
-            $"CHANGED ({changed.Count}):\n  {Sample(changed)}");
-    }
-
-    /// <summary>Path plus size plus SHA-256 for every file, and every directory path.</summary>
-    private static SortedDictionary<string, string> CaptureTree(string root)
-    {
-        var map = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
-            map["dir: " + Path.GetRelativePath(root, dir).Replace('\\', '/')] = "";
-
-        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-        {
-            var info = new FileInfo(file);
-            using var stream = info.OpenRead();
-            var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-            map[Path.GetRelativePath(root, file).Replace('\\', '/')] = $"{info.Length}|{hash}";
-        }
-
-        return map;
+            $"ADDED ({diff.Added.Count}):\n  {Sample(diff.Added)}\n" +
+            $"REMOVED ({diff.Removed.Count}):\n  {Sample(diff.Removed)}\n" +
+            $"CHANGED ({diff.Changed.Count}):\n  {Sample(diff.Changed.Select(c => c.Path).ToList())}");
     }
 
     private static void CopyTree(string sourceRoot, string destinationRoot)
@@ -349,72 +326,4 @@ public sealed class TargetTreeIntegrityTests
         return (process.ExitCode, stdout.Result, stderr.Result);
     }
 
-    /// <summary>Minimal MCP stdio client: one request id at a time, response matched by id.</summary>
-    private sealed class McpClient
-    {
-        private readonly Process _process;
-        private readonly StreamWriter _stdin;
-        private readonly StreamReader _stdout;
-        private int _nextId = 1;
-
-        public McpClient(Process process)
-        {
-            _process = process;
-            _stdin = process.StandardInput;
-            _stdout = process.StandardOutput;
-        }
-
-        public async Task<JsonElement> SendAsync(string method, object? parameters)
-        {
-            var id = _nextId++;
-            var request = JsonSerializer.Serialize(new { jsonrpc = "2.0", id, method, @params = parameters });
-            await _stdin.WriteLineAsync(request);
-            await _stdin.FlushAsync();
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-            try
-            {
-                while (true)
-                {
-                    var line = await _stdout.ReadLineAsync(cts.Token);
-                    if (line == null)
-                        throw new InvalidOperationException($"lurp serve stdout closed while waiting for '{method}' (id={id}).");
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
-
-                    var doc = JsonDocument.Parse(line);
-                    if (doc.RootElement.TryGetProperty("id", out var idProp)
-                        && idProp.ValueKind == JsonValueKind.Number
-                        && idProp.GetInt32() == id)
-                        return doc.RootElement.Clone();
-
-                    doc.Dispose();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw new TimeoutException($"timed out waiting for '{method}' (id={id}) from lurp serve.");
-            }
-        }
-
-        public async Task<JsonElement> CallToolAsync(string name, object? arguments)
-        {
-            var response = await SendAsync("tools/call", new { name, arguments = arguments ?? new { } });
-            if (response.TryGetProperty("error", out var error))
-                throw new InvalidOperationException($"MCP tool {name} returned an error: {error}");
-
-            var result = response.GetProperty("result");
-            if (result.TryGetProperty("isError", out var isError) && isError.ValueKind == JsonValueKind.True)
-                throw new InvalidOperationException($"MCP tool {name} returned isError: {result}");
-
-            return result.Clone();
-        }
-
-        public async Task NotifyAsync(string method, object? parameters)
-        {
-            var request = JsonSerializer.Serialize(new { jsonrpc = "2.0", method, @params = parameters });
-            await _stdin.WriteLineAsync(request);
-            await _stdin.FlushAsync();
-        }
-    }
 }
