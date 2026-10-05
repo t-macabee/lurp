@@ -135,34 +135,6 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         return Encoding.UTF8.GetString(content, start, length);
     }
 
-    internal void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)
-    {
-        using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            foreach (var (_, versionId) in entries)
-            {
-                command.CommandText = """
-                    INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id)
-                    VALUES (@snapshotId, @documentVersionId);
-                    """;
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@snapshotId", snapshotId);
-                command.Parameters.AddWithValue("@documentVersionId", versionId);
-                command.ExecuteNonQuery();
-            }
-
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
-    }
-
     internal Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)
     {
         using var command = _connection.CreateCommand();

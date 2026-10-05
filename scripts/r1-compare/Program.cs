@@ -106,9 +106,26 @@ NormalizeDiagnostics(diagC);
 if (diagB.Count != diagC.Count)
     errors.Add($"Diagnostic count mismatch: B={diagB.Count} C={diagC.Count}");
 else
+{
+    var diagMismatches = 0;
     for (int i = 0; i < diagB.Count; i++)
-        if (!DiagEqual(diagB[i], diagC[i]))
-            errors.Add($"Diagnostic[{i}] mismatch.");
+    {
+        if (DiagEqual(diagB[i], diagC[i]))
+            continue;
+        diagMismatches++;
+        if (diagMismatches <= 20)
+        {
+            errors.Add(
+                $"Diagnostic[{i}] mismatch: " +
+                $"B=[{diagB[i].ProjectName}|{diagB[i].DocumentPath}|{diagB[i].Severity}|{diagB[i].Id}|{diagB[i].Message}|" +
+                $"{diagB[i].StartLine}|{diagB[i].StartColumn}|{diagB[i].EndLine}|{diagB[i].EndColumn}] " +
+                $"C=[{diagC[i].ProjectName}|{diagC[i].DocumentPath}|{diagC[i].Severity}|{diagC[i].Id}|{diagC[i].Message}|" +
+                $"{diagC[i].StartLine}|{diagC[i].StartColumn}|{diagC[i].EndLine}|{diagC[i].EndColumn}]");
+        }
+    }
+    if (diagMismatches > 0)
+        errors.Add($"Diagnostic mismatches: {diagMismatches} total.");
+}
 
 // --- Binding incompleteness ---
 var incB = NormalizeBindingIncompleteness(storeB.GetBindingIncompleteness(snapshotB));
@@ -133,6 +150,25 @@ NormalizeAnnotations(annB);
 NormalizeAnnotations(annC);
 if (annB.Count != annC.Count)
     errors.Add($"Annotation count mismatch: B={annB.Count} C={annC.Count}");
+else
+{
+    var annMismatches = 0;
+    for (int i = 0; i < annB.Count; i++)
+    {
+        if (AnnotationEqual(annB[i], annC[i]))
+            continue;
+        annMismatches++;
+        if (annMismatches <= 20)
+        {
+            errors.Add(
+                $"Annotation[{i}] mismatch: " +
+                $"B=[{annB[i].SymbolId}|{annB[i].Kind}|{annB[i].Value}|{annB[i].DocumentPath ?? ""}|{annB[i].AnnotationId}] " +
+                $"C=[{annC[i].SymbolId}|{annC[i].Kind}|{annC[i].Value}|{annC[i].DocumentPath ?? ""}|{annC[i].AnnotationId}]");
+        }
+    }
+    if (annMismatches > 0)
+        errors.Add($"Annotation mismatches: {annMismatches} total.");
+}
 
 // --- FTS ---
 var ftsSourceB = ReadSourceFts(dbPathB, snapshotB);
@@ -290,7 +326,15 @@ static void NormalizeDiagnostics(List<DiagnosticRecord> diags)
         if (c != 0) return c;
         c = StringComparer.Ordinal.Compare(a.Message, b.Message);
         if (c != 0) return c;
-        return StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
+        c = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
+        if (c != 0) return c;
+        c = StringComparer.Ordinal.Compare(a.Severity, b.Severity);
+        if (c != 0) return c;
+        c = (a.StartColumn ?? 0).CompareTo(b.StartColumn ?? 0);
+        if (c != 0) return c;
+        c = (a.EndLine ?? 0).CompareTo(b.EndLine ?? 0);
+        if (c != 0) return c;
+        return (a.EndColumn ?? 0).CompareTo(b.EndColumn ?? 0);
     });
 }
 
@@ -300,13 +344,21 @@ static bool DiagEqual(DiagnosticRecord a, DiagnosticRecord b) =>
     a.StartLine == b.StartLine && a.StartColumn == b.StartColumn &&
     a.EndLine == b.EndLine && a.EndColumn == b.EndColumn;
 
+static bool AnnotationEqual(AnnotationRecord a, AnnotationRecord b) =>
+    a.SymbolId == b.SymbolId && a.Kind == b.Kind &&
+    a.Value == b.Value && a.DocumentPath == b.DocumentPath;
+
 static void NormalizeAnnotations(List<AnnotationRecord> anns)
 {
     anns.Sort((a, b) =>
     {
         int c = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
         if (c != 0) return c;
-        return StringComparer.Ordinal.Compare(a.Kind, b.Kind);
+        c = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
+        if (c != 0) return c;
+        c = StringComparer.Ordinal.Compare(a.Value, b.Value);
+        if (c != 0) return c;
+        return StringComparer.Ordinal.Compare(a.DocumentPath ?? "", b.DocumentPath ?? "");
     });
 }
 

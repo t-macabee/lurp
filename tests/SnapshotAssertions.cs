@@ -292,6 +292,8 @@ internal static class SnapshotAssertions
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.Provenance, b.Provenance);
             if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.ExtractorVersion, b.ExtractorVersion);
+            if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.SourceDocumentPath ?? "", b.SourceDocumentPath ?? "");
             if (cmp != 0) return cmp;
             cmp = (a.SourceStartLine ?? 0).CompareTo(b.SourceStartLine ?? 0);
@@ -345,7 +347,9 @@ internal static class SnapshotAssertions
         {
             var cmp = StringComparer.Ordinal.Compare(a.SymbolId, b.SymbolId);
             if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.Kind, b.Kind);
+            cmp = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.Value, b.Value);
         });
     }
 

@@ -343,12 +343,6 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _documents!.GetSourceSlice(relativePath, snapshotId, startLine, endLine, contextLines);
     }
 
-    public void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries)
-    {
-        EnsureOpen();
-        _documents!.SaveSnapshotDocuments(snapshotId, entries);
-    }
-
     public Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)
     {
         EnsureOpen();

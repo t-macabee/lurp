@@ -64,7 +64,6 @@ public interface ISnapshotDocumentStore
 {
     string? GetSource(string relativePath, string snapshotId);
     SourceSlice? GetSourceSlice(string relativePath, string snapshotId, int? startLine, int? endLine, int? contextLines);
-    void SaveSnapshotDocuments(string snapshotId, IEnumerable<(string DocumentId, string DocumentVersionId)> entries);
     Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId);
     List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths);
 }
