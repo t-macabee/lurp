@@ -35,6 +35,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      actions: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -64,6 +65,7 @@ jobs:
         shell: pwsh
         env:
           SHA: ${{ inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $sha = $env:SHA
           if ($sha -notmatch '^[0-9a-fA-F]{40}$') { throw "Input 'sha' must be a full 40-character commit SHA." }
@@ -78,6 +80,8 @@ jobs:
       # errors on both, and the explicit check below catches an empty download.
       - name: Download lurp-nupkg artifact
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           New-Item -ItemType Directory -Force ./artifacts | Out-Null
           gh run download $env:run_id -n lurp-nupkg -D ./artifacts
