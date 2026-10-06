@@ -88,6 +88,35 @@ public sealed class SymbolFinderOracleTests
         }
         """;
 
+    private const string UsingExternalInterfaceSource = """
+        public sealed class Stub : System.ComponentModel.IComponent
+        {
+            public System.ComponentModel.ISite Site { get; set; }
+            public event System.EventHandler Disposed;
+            public void Dispose() { }
+        }
+
+        public static class Caller
+        {
+            public static System.ComponentModel.IComponent Make() => new Stub();
+            public static void UseIt() { using var s = Make(); }
+        }
+        """;
+
+    private const string UsingTargetTypeSource = """
+        public sealed class Stub : System.ComponentModel.IComponent
+        {
+            public System.ComponentModel.ISite Site { get; set; }
+            public event System.EventHandler Disposed;
+            public void Dispose() { }
+        }
+
+        public static class Caller
+        {
+            public static void UseIt() { using var s = new Stub(); }
+        }
+        """;
+
     [Fact]
     public async Task TargetImplementation_CallerOfInterfaceMatchesThroughDispatchFamily()
     {
@@ -268,6 +297,49 @@ public sealed class SymbolFinderOracleTests
         // callers it is checked and produces no miss.
         Assert.Contains(result.Targets, target => target.TargetId == dispose);
         Assert.Empty(result.Summary.SetAsideCallers);
+    }
+
+    [Fact]
+    public async Task TargetDispose_UsingOfExternalInterface_IsSetAsideAsBindsExternal()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, UsingExternalInterfaceSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var dispose = MethodId(compilation, "Stub", "Dispose");
+        var useIt = MethodId(compilation, "Caller", "UseIt");
+
+        var result = await RunAsync(solution, [], dispose);
+
+        // The using binds IComponent.Dispose through the interface return type,
+        // which is outside the solution: set aside, not a miss on Stub.Dispose.
+        var target = Assert.Single(result.Targets);
+        Assert.Equal(dispose, target.TargetId);
+        Assert.DoesNotContain(useIt, target.MissingCallers.SelectMany(static missing => missing.CallerIds));
+
+        var setAside = Assert.Single(result.Summary.SetAsideCallers);
+        Assert.Equal(SymbolFinderOracle.BindsExternalReason, setAside.Reason);
+        Assert.Contains(useIt, setAside.CallerIds);
+    }
+
+    [Fact]
+    public async Task TargetDispose_UsingOfTargetType_IsExpected()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, UsingTargetTypeSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var dispose = MethodId(compilation, "Stub", "Dispose");
+        var useIt = MethodId(compilation, "Caller", "UseIt");
+
+        var result = await RunAsync(solution, [], dispose);
+
+        // The using binds Stub.Dispose directly: expected, and with no edge it
+        // stays a miss.
+        var target = Assert.Single(result.Targets);
+        Assert.Equal(dispose, target.TargetId);
+        Assert.Contains(useIt, target.MissingCallers.SelectMany(static missing => missing.CallerIds));
+        Assert.DoesNotContain(result.Summary.SetAsideCallers, entry => entry.CallerIds.Contains(useIt));
     }
 
     [Fact]

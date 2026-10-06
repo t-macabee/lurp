@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -57,18 +56,18 @@ public static class SymbolFinderOracle
     public const string StaticAbstractDispatchBoundaryId = "static_abstract_dispatch";
 
     /// <summary>
-    ///     A caller set aside because its call site binds to a symbol outside the
-    ///     solution. The extractor deletes edges to external symbols
+    ///     A caller set aside because its called symbol is outside the solution.
+    ///     The extractor deletes edges to external symbols
     ///     (<c>filtered_external</c>), so no Calls/MayDispatchTo edge can exist and
     ///     the caller is not a miss.
     /// </summary>
     public const string BindsExternalReason = "binds_external";
 
     /// <summary>
-    ///     A caller recorded because its call site binds to an in-solution symbol
-    ///     that is neither the target nor a member of the target's dispatch family.
-    ///     It is still checked: without a persisted edge that matches it, it stays
-    ///     a miss, so a missing MayDispatchTo edge is not hidden.
+    ///     A caller recorded because its called symbol is an in-solution symbol that
+    ///     is neither the target nor a member of the target's dispatch family. It
+    ///     is still checked: without a persisted edge that matches it, it stays a
+    ///     miss, so a missing MayDispatchTo edge is not hidden.
     /// </summary>
     public const string BindsOtherReason = "binds_other";
 
@@ -196,12 +195,12 @@ public static class SymbolFinderOracle
             {
                 var candidates = CallerOwnerIds(caller.CallingSymbol, resolveNodeId).Distinct().ToList();
 
-                // Per-caller external-dispatch rule: a caller whose call site binds
-                // outside the solution cannot have an edge (the extractor filters
-                // external targets), so it is set aside rather than swallowed by a
-                // target-level skip. An in-solution binding outside the dispatch
-                // family is recorded but still checked, so a missing MayDispatchTo
-                // edge stays a miss.
+                // Per-caller external-dispatch rule: a caller whose called symbol
+                // is outside the solution cannot have an edge (the extractor
+                // filters external targets), so it is set aside rather than
+                // swallowed by a target-level skip. An in-solution called symbol
+                // outside the dispatch family is recorded but still checked, so a
+                // missing MayDispatchTo edge stays a miss.
                 var (expected, reason) = ClassifyCaller(caller, family, compilationByTree, resolveNodeId);
                 if (!expected)
                 {
@@ -424,12 +423,12 @@ public static class SymbolFinderOracle
     }
 
     /// <summary>
-    ///     Classifies a caller by the symbol Roslyn binds at its reference
-    ///     location(s). <c>Expected</c> is true when any location binds to the
-    ///     target's dispatch family. Otherwise <c>Reason</c> is
-    ///     <see cref="BindsExternalReason" /> when a location binds outside the
-    ///     solution, or <see cref="BindsOtherReason" /> when it binds to an
-    ///     in-solution symbol outside the family.
+    ///     Classifies a caller by the symbol Roslyn binds for it
+    ///     (<see cref="SymbolCallerInfo.CalledSymbol" />). <c>Expected</c> is true
+    ///     when the called symbol resolves to the target's dispatch family.
+    ///     Otherwise <c>Reason</c> is <see cref="BindsExternalReason" /> when the
+    ///     called symbol is outside the solution, or <see cref="BindsOtherReason" />
+    ///     when it is an in-solution symbol outside the family.
     /// </summary>
     private static (bool Expected, string? Reason) ClassifyCaller(
         SymbolCallerInfo caller,
@@ -437,76 +436,11 @@ public static class SymbolFinderOracle
         IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree,
         Func<ISymbol, string?> resolveNodeId)
     {
-        var sawExternal = false;
-        var sawInSolution = false;
-        foreach (var location in caller.Locations)
-        {
-            if (BoundSymbolAt(location, compilationByTree) is not { } bound)
-                continue;
+        var called = caller.CalledSymbol;
+        if (resolveNodeId(called) is { Length: > 0 } calledId && family.Contains(calledId))
+            return (true, null);
 
-            if (resolveNodeId(bound) is { Length: > 0 } boundId && family.Contains(boundId))
-                return (true, null);
-
-            if (IsInSolution(bound, compilationByTree))
-                sawInSolution = true;
-            else
-                sawExternal = true;
-        }
-
-        if (sawExternal)
-            return (false, BindsExternalReason);
-        if (sawInSolution)
-            return (false, BindsOtherReason);
-
-        // No bound symbol could be read at any location. Fall back to the caller
-        // symbol's own membership so a metadata caller is still external.
-        return (false, IsInSolution(caller.CallingSymbol, compilationByTree) ? BindsOtherReason : BindsExternalReason);
-    }
-
-    /// <summary>
-    ///     The symbol Roslyn binds at <paramref name="location" />: the reference node
-    ///     itself when it binds to a method (direct calls, member access,
-    ///     conditional access, and method groups); otherwise the object creation
-    ///     or constructor initializer the reference names a type or base
-    ///     constructor for, reached by walking up through name and member-access
-    ///     parents; otherwise the reference node's own symbol. Null when the
-    ///     location is not in a solution source tree the oracle has a
-    ///     compilation for.
-    /// </summary>
-    private static ISymbol? BoundSymbolAt(
-        Location location,
-        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree)
-    {
-        if (location.SourceTree is not { } tree ||
-            !compilationByTree.TryGetValue(tree, out var compilation))
-            return null;
-
-        var model = compilation.GetSemanticModel(tree);
-        var node = tree.GetRoot().FindNode(location.SourceSpan, getInnermostNodeForTie: true);
-        var resolved = ResolveSymbol(model, node);
-        if (resolved is IMethodSymbol method)
-            return method;
-
-        for (var current = node.Parent; current is not null; current = current.Parent)
-        {
-            switch (current)
-            {
-                case BaseObjectCreationExpressionSyntax:
-                case ConstructorInitializerSyntax:
-                    return ResolveSymbol(model, current);
-            }
-
-            if (current is not NameSyntax and not MemberAccessExpressionSyntax)
-                break;
-        }
-
-        return resolved;
-    }
-
-    private static ISymbol? ResolveSymbol(SemanticModel model, SyntaxNode node)
-    {
-        var info = model.GetSymbolInfo(node);
-        return info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
+        return (false, IsInSolution(called, compilationByTree) ? BindsOtherReason : BindsExternalReason);
     }
 
     /// <summary>
@@ -616,9 +550,9 @@ public sealed record SymbolFinderEdge(string Source, string Kind, string Target)
 public sealed record SymbolFinderExcludedTarget(MethodKind Kind, string DisplayId, string BoundaryId);
 
 /// <summary>
-///     A caller Roslyn reported for a target whose call site did not bind to the
-///     target or its dispatch family: the candidate owner ids the caller
-///     normalizes to, the reason it was set aside
+///     A caller Roslyn reported for a target whose called symbol is not the
+///     target or a member of its dispatch family: the candidate owner ids the
+///     caller normalizes to, the reason it was set aside
 ///     (<see cref="SymbolFinderOracle.BindsExternalReason" /> or
 ///     <see cref="SymbolFinderOracle.BindsOtherReason" />), and its source lines.
 /// </summary>

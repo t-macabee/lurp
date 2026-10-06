@@ -31,6 +31,8 @@ AGENTS.md
 prompt.txt
 .tmp_test/
 recall-out.txt
+recall-out-2.txt
+recall-out-3.txt
 CODE_REVIEW_*.md
 
 # Lurp index outputs (present: index.db + capsule-*.json + .trace-tmp)
