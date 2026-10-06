@@ -638,9 +638,16 @@ internal static class Program
                 $"recall: seed={seed}, sample={sampleSize}, candidates={orderedCandidates.Count}, " +
                 $"targets={result.Targets.Count}, checked={result.Summary.CheckedPairs}, " +
                 $"matched={result.Summary.MatchedPairs}, misses={misses.Count}");
-            Console.WriteLine($"recall skipped ({SymbolFinderOracle.ExternalDispatchBoundaryId}): {result.Summary.SkippedExternalDispatch.Count}");
-            foreach (var skipped in result.Summary.SkippedExternalDispatch.OrderBy(static id => id, StringComparer.Ordinal))
-                Console.WriteLine($"SKIP {skipped}");
+            Console.WriteLine(
+                $"recall set aside: " +
+                $"{SymbolFinderOracle.BindsExternalReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.BindsExternalReason)}, " +
+                $"{SymbolFinderOracle.BindsOtherReason}={result.Summary.SetAsideCallers.Count(static entry => entry.Reason == SymbolFinderOracle.BindsOtherReason)}");
+            foreach (var setAside in result.Summary.SetAsideCallers
+                         .OrderBy(static entry => entry.TargetId, StringComparer.Ordinal)
+                         .ThenBy(static entry => entry.Reason, StringComparer.Ordinal)
+                         .ThenBy(static entry => entry.CallerIds.Count > 0 ? entry.CallerIds[0] : "", StringComparer.Ordinal))
+                Console.WriteLine(
+                    $"SET ASIDE {setAside.Reason} {setAside.TargetId} expected caller {string.Join(" OR ", setAside.CallerIds)}");
             Console.WriteLine($"recall precision: {result.Summary.Precision:P2}");
             foreach (var miss in misses)
                 Console.WriteLine(

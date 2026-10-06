@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -56,13 +57,20 @@ public static class SymbolFinderOracle
     public const string StaticAbstractDispatchBoundaryId = "static_abstract_dispatch";
 
     /// <summary>
-    ///     A dispatch relation whose other side is outside the solution. The
-    ///     extractor deletes edges to external symbols (<c>filtered_external</c>),
-    ///     so no <see cref="EdgeKind.MayDispatchTo" /> edge exists and a caller of
-    ///     the external member is a false miss. Skipped targets name this boundary
-    ///     id.
+    ///     A caller set aside because its call site binds to a symbol outside the
+    ///     solution. The extractor deletes edges to external symbols
+    ///     (<c>filtered_external</c>), so no Calls/MayDispatchTo edge can exist and
+    ///     the caller is not a miss.
     /// </summary>
-    public const string ExternalDispatchBoundaryId = "external_dispatch";
+    public const string BindsExternalReason = "binds_external";
+
+    /// <summary>
+    ///     A caller recorded because its call site binds to an in-solution symbol
+    ///     that is neither the target nor a member of the target's dispatch family.
+    ///     It is still checked: without a persisted edge that matches it, it stays
+    ///     a miss, so a missing MayDispatchTo edge is not hidden.
+    /// </summary>
+    public const string BindsOtherReason = "binds_other";
 
     /// <summary>
     ///     Runs Oracle B over <paramref name="solution" />. <paramref name="edges" />
@@ -99,12 +107,12 @@ public static class SymbolFinderOracle
         var targets = new List<Target>();
         var excludedTargets = new List<SymbolFinderExcludedTarget>();
         var skippedStaticAbstract = new List<string>();
-        var skippedExternalDispatch = new List<string>();
+        var setAsideCallers = new List<SymbolFinderSetAsideCaller>();
         var skippedImplicit = 0;
         var skippedNoId = 0;
 
         var compilations = new List<Compilation>();
-        var solutionAssemblies = new HashSet<IAssemblySymbol>(SymbolEqualityComparer.Default);
+        var compilationByTree = new Dictionary<SyntaxTree, Compilation>();
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
@@ -112,58 +120,8 @@ public static class SymbolFinderOracle
                 continue;
 
             compilations.Add(compilation);
-            solutionAssemblies.Add(compilation.Assembly);
-        }
-
-        bool IsExternal(ISymbol symbol) =>
-            symbol.ContainingAssembly is not { } assembly || !solutionAssemblies.Contains(assembly);
-
-        // A solution interface member whose implementation resolves to a symbol
-        // outside the solution has no MayDispatchTo edge: the extractor deletes
-        // edges to external symbols. Collect those members so their targets can
-        // be skipped as a dispatch boundary instead of counted as misses.
-        var interfaceMembersWithExternalImplementation = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-        foreach (var compilation in compilations)
-        {
-            foreach (var type in AllTypes(compilation.Assembly.GlobalNamespace))
-            {
-                foreach (var interfaceType in type.AllInterfaces)
-                {
-                    foreach (var interfaceMember in interfaceType.GetMembers())
-                    {
-                        if (IsExternal(interfaceMember))
-                            continue;
-                        if (type.FindImplementationForInterfaceMember(interfaceMember) is { } implementation
-                            && IsExternal(implementation))
-                            interfaceMembersWithExternalImplementation.Add(interfaceMember.OriginalDefinition);
-                    }
-                }
-            }
-        }
-
-        bool IsExternalDispatch(IMethodSymbol method)
-        {
-            if (interfaceMembersWithExternalImplementation.Contains(method.OriginalDefinition))
-                return true;
-
-            foreach (var interfaceType in method.ContainingType.AllInterfaces)
-            {
-                foreach (var interfaceMember in interfaceType.GetMembers())
-                {
-                    if (IsExternal(interfaceMember)
-                        && SymbolEqualityComparer.Default.Equals(
-                            method.ContainingType.FindImplementationForInterfaceMember(interfaceMember), method))
-                        return true;
-                }
-            }
-
-            for (var overridden = method.OverriddenMethod; overridden is not null; overridden = overridden.OverriddenMethod)
-            {
-                if (IsExternal(overridden))
-                    return true;
-            }
-
-            return false;
+            foreach (var tree in compilation.SyntaxTrees)
+                compilationByTree[tree] = compilation;
         }
 
         foreach (var compilation in compilations)
@@ -195,12 +153,6 @@ public static class SymbolFinderOracle
                     if (method.MethodKind == MethodKind.Ordinary && IsStaticAbstractImplementation(method))
                     {
                         skippedStaticAbstract.Add(resolveNodeId(method) ?? method.ToDisplayString());
-                        continue;
-                    }
-
-                    if (IsExternalDispatch(method))
-                    {
-                        skippedExternalDispatch.Add(resolveNodeId(method) ?? method.ToDisplayString());
                         continue;
                     }
 
@@ -243,6 +195,26 @@ public static class SymbolFinderOracle
             foreach (var caller in callers)
             {
                 var candidates = CallerOwnerIds(caller.CallingSymbol, resolveNodeId).Distinct().ToList();
+
+                // Per-caller external-dispatch rule: a caller whose call site binds
+                // outside the solution cannot have an edge (the extractor filters
+                // external targets), so it is set aside rather than swallowed by a
+                // target-level skip. An in-solution binding outside the dispatch
+                // family is recorded but still checked, so a missing MayDispatchTo
+                // edge stays a miss.
+                var (expected, reason) = ClassifyCaller(caller, family, compilationByTree, resolveNodeId);
+                if (!expected)
+                {
+                    setAsideCallers.Add(new SymbolFinderSetAsideCaller(
+                        target.Id,
+                        target.Symbol.MethodKind,
+                        candidates,
+                        reason!,
+                        CallerLines(caller)));
+                    if (reason == BindsExternalReason)
+                        continue;
+                }
+
                 var matched = false;
                 foreach (var callerId in candidates)
                 {
@@ -275,15 +247,12 @@ public static class SymbolFinderOracle
                 if (matched)
                     continue;
 
-                var lines = caller.Locations
-                    .Select(location => location.GetLineSpan().StartLinePosition.Line + 1)
-                    .ToList();
                 missingCallers.Add(new SymbolFinderMissingCaller(
                     target.Id,
                     target.Symbol.MethodKind,
                     candidates,
                     AcceptedEdgeKinds(target),
-                    lines));
+                    CallerLines(caller)));
                 missCounts[target.Symbol.MethodKind] = missCounts.GetValueOrDefault(target.Symbol.MethodKind) + 1;
             }
 
@@ -324,7 +293,7 @@ public static class SymbolFinderOracle
                 targetCounts,
                 missCounts,
                 precision,
-                skippedExternalDispatch));
+                setAsideCallers));
     }
 
     private static bool Matches(
@@ -454,6 +423,113 @@ public static class SymbolFinderOracle
         return null;
     }
 
+    /// <summary>
+    ///     Classifies a caller by the symbol Roslyn binds at its reference
+    ///     location(s). <c>Expected</c> is true when any location binds to the
+    ///     target's dispatch family. Otherwise <c>Reason</c> is
+    ///     <see cref="BindsExternalReason" /> when a location binds outside the
+    ///     solution, or <see cref="BindsOtherReason" /> when it binds to an
+    ///     in-solution symbol outside the family.
+    /// </summary>
+    private static (bool Expected, string? Reason) ClassifyCaller(
+        SymbolCallerInfo caller,
+        HashSet<string> family,
+        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree,
+        Func<ISymbol, string?> resolveNodeId)
+    {
+        var sawExternal = false;
+        var sawInSolution = false;
+        foreach (var location in caller.Locations)
+        {
+            if (BoundSymbolAt(location, compilationByTree) is not { } bound)
+                continue;
+
+            if (resolveNodeId(bound) is { Length: > 0 } boundId && family.Contains(boundId))
+                return (true, null);
+
+            if (IsInSolution(bound, compilationByTree))
+                sawInSolution = true;
+            else
+                sawExternal = true;
+        }
+
+        if (sawExternal)
+            return (false, BindsExternalReason);
+        if (sawInSolution)
+            return (false, BindsOtherReason);
+
+        // No bound symbol could be read at any location. Fall back to the caller
+        // symbol's own membership so a metadata caller is still external.
+        return (false, IsInSolution(caller.CallingSymbol, compilationByTree) ? BindsOtherReason : BindsExternalReason);
+    }
+
+    /// <summary>
+    ///     The symbol Roslyn binds at <paramref name="location" />: the reference node
+    ///     itself when it binds to a method (direct calls, member access,
+    ///     conditional access, and method groups); otherwise the object creation
+    ///     or constructor initializer the reference names a type or base
+    ///     constructor for, reached by walking up through name and member-access
+    ///     parents; otherwise the reference node's own symbol. Null when the
+    ///     location is not in a solution source tree the oracle has a
+    ///     compilation for.
+    /// </summary>
+    private static ISymbol? BoundSymbolAt(
+        Location location,
+        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree)
+    {
+        if (location.SourceTree is not { } tree ||
+            !compilationByTree.TryGetValue(tree, out var compilation))
+            return null;
+
+        var model = compilation.GetSemanticModel(tree);
+        var node = tree.GetRoot().FindNode(location.SourceSpan, getInnermostNodeForTie: true);
+        var resolved = ResolveSymbol(model, node);
+        if (resolved is IMethodSymbol method)
+            return method;
+
+        for (var current = node.Parent; current is not null; current = current.Parent)
+        {
+            switch (current)
+            {
+                case BaseObjectCreationExpressionSyntax:
+                case ConstructorInitializerSyntax:
+                    return ResolveSymbol(model, current);
+            }
+
+            if (current is not NameSyntax and not MemberAccessExpressionSyntax)
+                break;
+        }
+
+        return resolved;
+    }
+
+    private static ISymbol? ResolveSymbol(SemanticModel model, SyntaxNode node)
+    {
+        var info = model.GetSymbolInfo(node);
+        return info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
+    }
+
+    /// <summary>
+    ///     True when the symbol is declared in a source tree the solution's
+    ///     compilations carry. A metadata view of a referenced project is not in
+    ///     the set, so classification never depends on assembly object identity.
+    /// </summary>
+    private static bool IsInSolution(
+        ISymbol symbol,
+        IReadOnlyDictionary<SyntaxTree, Compilation> compilationByTree)
+    {
+        foreach (var location in symbol.Locations)
+        {
+            if (location.IsInSource && location.SourceTree is { } tree && compilationByTree.ContainsKey(tree))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static List<int> CallerLines(SymbolCallerInfo caller) =>
+        [.. caller.Locations.Select(location => location.GetLineSpan().StartLinePosition.Line + 1)];
+
     private sealed record Target(string Id, IMethodSymbol Symbol, string? ContainingTypeId, string? OwnerId);
 
     private static IEnumerable<string> CallerOwnerIds(ISymbol caller, Func<ISymbol, string?> resolveNodeId)
@@ -539,6 +615,20 @@ public sealed record SymbolFinderEdge(string Source, string Kind, string Target)
 /// <summary>A target kind Oracle B excludes from the edge comparison.</summary>
 public sealed record SymbolFinderExcludedTarget(MethodKind Kind, string DisplayId, string BoundaryId);
 
+/// <summary>
+///     A caller Roslyn reported for a target whose call site did not bind to the
+///     target or its dispatch family: the candidate owner ids the caller
+///     normalizes to, the reason it was set aside
+///     (<see cref="SymbolFinderOracle.BindsExternalReason" /> or
+///     <see cref="SymbolFinderOracle.BindsOtherReason" />), and its source lines.
+/// </summary>
+public sealed record SymbolFinderSetAsideCaller(
+    string TargetId,
+    MethodKind TargetKind,
+    IReadOnlyList<string> CallerIds,
+    string Reason,
+    IReadOnlyList<int> Lines);
+
 /// <summary>Aggregate Oracle B counts, skips, exclusions, and precision.</summary>
 public sealed record SymbolFinderOracleSummary(
     int CheckedPairs,
@@ -550,7 +640,7 @@ public sealed record SymbolFinderOracleSummary(
     IReadOnlyDictionary<MethodKind, int> TargetCounts,
     IReadOnlyDictionary<MethodKind, int> MissCounts,
     double Precision,
-    IReadOnlyList<string> SkippedExternalDispatch);
+    IReadOnlyList<SymbolFinderSetAsideCaller> SetAsideCallers);
 
 /// <summary>The structured Oracle B result over one <see cref="Solution" />.</summary>
 public sealed record SymbolFinderOracleResult(

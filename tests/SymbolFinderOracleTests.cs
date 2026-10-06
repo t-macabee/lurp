@@ -56,6 +56,38 @@ public sealed class SymbolFinderOracleTests
         }
         """;
 
+    private const string MethodGroupArgumentSource = """
+        public static class Caller
+        {
+            public static void RunTarget() { System.Threading.Tasks.Task.Run(Target); }
+
+            public static void Target() { }
+        }
+        """;
+
+    private const string DelegateCreationSource = """
+        public static class Caller
+        {
+            public static void RunTarget() { var a = new System.Action(Target); }
+
+            public static void Target() { }
+        }
+        """;
+
+    private const string LocalMethodGroupArgumentSource = """
+        public static class Local
+        {
+            public static void Take(System.Action a) { }
+        }
+
+        public static class Caller
+        {
+            public static void RunTarget() { Local.Take(Target); }
+
+            public static void Target() { }
+        }
+        """;
+
     [Fact]
     public async Task TargetImplementation_CallerOfInterfaceMatchesThroughDispatchFamily()
     {
@@ -167,7 +199,7 @@ public sealed class SymbolFinderOracleTests
     }
 
     [Fact]
-    public async Task TargetInterfaceMember_ExternalInheritedImplementation_IsSkipped()
+    public async Task TargetInterfaceMember_ExternalInheritedImplementation_ConcreteCallerIsSetAside()
     {
         using var workspace = new AdhocWorkspace();
         var external = CompileExternalReference(
@@ -183,20 +215,39 @@ public sealed class SymbolFinderOracleTests
             public interface ISolution { void M(); }
 
             public class Derived : External.Base, ISolution { }
+
+            public static class Callers
+            {
+                public static void CallDerived(Derived d) { d.M(); }
+                public static void CallInterface(ISolution s) { s.M(); }
+            }
             """,
             [external]);
         var compilation = await solution.Projects.Single().GetCompilationAsync()
                           ?? throw new InvalidOperationException("Compilation not loaded.");
         var isolutionM = MethodId(compilation, "ISolution", "M");
+        var callDerived = MethodId(compilation, "Callers", "CallDerived");
+        var callInterface = MethodId(compilation, "Callers", "CallInterface");
 
-        var result = await RunAsync(solution, [], isolutionM);
+        var result = await SymbolFinderOracle.CompareAsync(
+            solution,
+            [(callInterface, nameof(EdgeKind.Calls), isolutionM)],
+            OperationShapeOracle.NormalizedDocId,
+            new HashSet<string>(StringComparer.Ordinal) { isolutionM });
 
-        Assert.Contains(isolutionM, result.Summary.SkippedExternalDispatch);
-        Assert.DoesNotContain(result.Targets, target => target.TargetId == isolutionM);
+        var target = Assert.Single(result.Targets);
+        Assert.Equal(isolutionM, target.TargetId);
+        Assert.DoesNotContain(callInterface, target.MissingCallers.SelectMany(static missing => missing.CallerIds));
+
+        // The concrete caller binds to External.Base.M, which is outside the
+        // solution: it is set aside, not counted as a miss.
+        var setAside = Assert.Single(result.Summary.SetAsideCallers);
+        Assert.Equal(SymbolFinderOracle.BindsExternalReason, setAside.Reason);
+        Assert.Contains(callDerived, setAside.CallerIds);
     }
 
     [Fact]
-    public async Task TargetImplementation_ExternalInterfaceMember_IsSkipped()
+    public async Task TargetImplementation_ExternalInterfaceMember_IsCheckedNotSkipped()
     {
         using var workspace = new AdhocWorkspace();
         var solution = CreateSolution(
@@ -213,8 +264,63 @@ public sealed class SymbolFinderOracleTests
 
         var result = await RunAsync(solution, [], dispose);
 
-        Assert.Contains(dispose, result.Summary.SkippedExternalDispatch);
-        Assert.DoesNotContain(result.Targets, target => target.TargetId == dispose);
+        // The external implementation no longer hides the target; with no
+        // callers it is checked and produces no miss.
+        Assert.Contains(result.Targets, target => target.TargetId == dispose);
+        Assert.Empty(result.Summary.SetAsideCallers);
+    }
+
+    [Fact]
+    public async Task TargetImplementation_MetadataInterfaceFromSecondProject_CallerThroughInterfaceIsExpected()
+    {
+        using var workspace = new AdhocWorkspace();
+        var interfaceImage = CompileExternalReference(
+            "SymbolFinderOracleMetadataInterface",
+            "public interface I { void M(); }");
+        var solution = CreateTwoProjectSolution(
+            workspace,
+            "public interface I { void M(); }",
+            """
+            public class C : I { public void M() { } }
+
+            public static class BCaller
+            {
+                public static void Call(I i) { i.M(); }
+            }
+            """,
+            interfaceImage);
+        var projectB = solution.Projects.Single(project => project.Name == "ProjectB");
+        var compilationB = await projectB.GetCompilationAsync()
+                           ?? throw new InvalidOperationException("Compilation not loaded.");
+        var cm = MethodId(compilationB, "C", "M");
+        var bCaller = MethodId(compilationB, "BCaller", "Call");
+
+        // The interface member as project B sees it: a metadata view from the
+        // first project's image, whose containing-assembly object differs from
+        // the source project's assembly.
+        var metadataI = compilationB.GetTypeByMetadataName("I")
+                        ?? throw new InvalidOperationException("Metadata interface not found.");
+        var metadataIM = metadataI.GetMembers("M").OfType<IMethodSymbol>().Single();
+        var metadataIMId = OperationShapeOracle.NormalizedDocId(metadataIM)
+                           ?? throw new InvalidOperationException("No doc id for metadata I.M.");
+
+        var edges = new (string Source, string Kind, string Target)[]
+        {
+            (bCaller, nameof(EdgeKind.Calls), metadataIMId),
+            (metadataIMId, nameof(EdgeKind.MayDispatchTo), cm)
+        };
+
+        var result = await SymbolFinderOracle.CompareAsync(
+            solution,
+            edges,
+            OperationShapeOracle.NormalizedDocId,
+            new HashSet<string>(StringComparer.Ordinal) { cm });
+
+        var target = Assert.Single(result.Targets);
+        Assert.Equal(cm, target.TargetId);
+        Assert.Empty(target.MissingCallers);
+        Assert.DoesNotContain(result.Summary.SetAsideCallers,
+            entry => entry.CallerIds.Contains(bCaller));
     }
 
     [Fact]
@@ -228,8 +334,86 @@ public sealed class SymbolFinderOracleTests
 
         var result = await RunAsync(solution, [], cm);
 
-        Assert.Empty(result.Summary.SkippedExternalDispatch);
+        // C.M is in the solution, so it is checked; the interface caller binds to
+        // I.M, which is in solution but outside C.M's dispatch family {C.M} and is
+        // recorded as binds_other (still checked, so it stays a miss).
+        Assert.DoesNotContain(result.Summary.SetAsideCallers,
+            entry => entry.Reason == SymbolFinderOracle.BindsExternalReason);
         Assert.Contains(result.Targets, target => target.TargetId == cm);
+    }
+
+    [Fact]
+    public async Task TargetMethodGroup_PassedToExternalCall_MatchesThroughMethodGroupRefEdge()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, MethodGroupArgumentSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var runTarget = MethodId(compilation, "Caller", "RunTarget");
+        var target = MethodId(compilation, "Caller", "Target");
+
+        var edges = new (string Source, string Kind, string Target)[]
+        {
+            (runTarget, nameof(EdgeKind.MethodGroupRef), target)
+        };
+
+        var result = await RunAsync(solution, edges, target);
+
+        var targetResult = Assert.Single(result.Targets);
+        Assert.Equal(target, targetResult.TargetId);
+        Assert.DoesNotContain(runTarget, targetResult.MissingCallers.SelectMany(static missing => missing.CallerIds));
+        Assert.Empty(result.Summary.SetAsideCallers);
+    }
+
+    [Fact]
+    public async Task TargetMethodGroup_PassedToExternalCallWithoutEdge_IsAMissNotSetAside()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, MethodGroupArgumentSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var runTarget = MethodId(compilation, "Caller", "RunTarget");
+        var target = MethodId(compilation, "Caller", "Target");
+
+        var result = await RunAsync(solution, [], target);
+
+        var targetResult = Assert.Single(result.Targets);
+        Assert.Equal(target, targetResult.TargetId);
+        Assert.Contains(runTarget, targetResult.MissingCallers.SelectMany(static missing => missing.CallerIds));
+        Assert.Empty(result.Summary.SetAsideCallers);
+    }
+
+    [Fact]
+    public async Task TargetMethodGroup_InDelegateCreationWithoutEdge_IsAMissNotSetAside()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, DelegateCreationSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var runTarget = MethodId(compilation, "Caller", "RunTarget");
+        var target = MethodId(compilation, "Caller", "Target");
+
+        var result = await RunAsync(solution, [], target);
+
+        var targetResult = Assert.Single(result.Targets);
+        Assert.Equal(target, targetResult.TargetId);
+        Assert.Contains(runTarget, targetResult.MissingCallers.SelectMany(static missing => missing.CallerIds));
+        Assert.Empty(result.Summary.SetAsideCallers);
+    }
+
+    [Fact]
+    public async Task TargetMethodGroup_PassedToLocalCall_IsNotSetAside()
+    {
+        using var workspace = new AdhocWorkspace();
+        var solution = CreateSolution(workspace, LocalMethodGroupArgumentSource);
+        var compilation = await solution.Projects.Single().GetCompilationAsync()
+                          ?? throw new InvalidOperationException("Compilation not loaded.");
+        var runTarget = MethodId(compilation, "Caller", "RunTarget");
+        var target = MethodId(compilation, "Caller", "Target");
+
+        var result = await RunAsync(solution, [], target);
+
+        Assert.DoesNotContain(result.Summary.SetAsideCallers, entry => entry.CallerIds.Contains(runTarget));
     }
 
     private static async Task<SymbolFinderOracleResult> RunAsync(
@@ -310,6 +494,44 @@ public sealed class SymbolFinderOracleTests
                 RoslynDocumentId.CreateNewId(projectId),
                 "Source.cs",
                 SourceText.From(source, Encoding.UTF8));
+
+        if (!workspace.TryApplyChanges(solution))
+            throw new InvalidOperationException("Could not apply the test solution.");
+
+        return workspace.CurrentSolution;
+    }
+
+    private static Solution CreateTwoProjectSolution(
+        AdhocWorkspace workspace,
+        string sourceA,
+        string sourceB,
+        MetadataReference referenceToA)
+    {
+        var solutionId = SolutionId.CreateNewId();
+        workspace.AddSolution(SolutionInfo.Create(
+            solutionId, VersionStamp.Create(), "SymbolFinderOracleTests.slnx"));
+
+        var projectAId = ProjectId.CreateNewId();
+        var projectBId = ProjectId.CreateNewId();
+        var solution = workspace.CurrentSolution
+            .AddProject(ProjectInfo.Create(
+                projectAId,
+                VersionStamp.Create(),
+                "ProjectA",
+                "ProjectA",
+                LanguageNames.CSharp,
+                compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
+                metadataReferences: _references))
+            .AddProject(ProjectInfo.Create(
+                projectBId,
+                VersionStamp.Create(),
+                "ProjectB",
+                "ProjectB",
+                LanguageNames.CSharp,
+                compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
+                metadataReferences: [.. _references, referenceToA]))
+            .AddDocument(RoslynDocumentId.CreateNewId(projectAId), "A.cs", SourceText.From(sourceA, Encoding.UTF8))
+            .AddDocument(RoslynDocumentId.CreateNewId(projectBId), "B.cs", SourceText.From(sourceB, Encoding.UTF8));
 
         if (!workspace.TryApplyChanges(solution))
             throw new InvalidOperationException("Could not apply the test solution.");
