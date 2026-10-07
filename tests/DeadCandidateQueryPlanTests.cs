@@ -25,13 +25,21 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
           AND d.symbol_id IN (@p0, @p1, @p2);
         """;
 
-    private const string IncomingEdgesQuerySql = """
-        SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json
-        FROM edges
-        WHERE snapshot_id = @snapshotId
-          AND target_symbol_id IN (@p0, @p1, @p2)
-          AND kind IN ('Calls','MethodGroupRef','Constructs','Reads','Writes','Handles','RoutesTo','Registers','MapsTo','MayDispatchTo','StaticallyCalls','TestedBy','ReflectionTypeRef','ReflectionMemberRef','ReflectionNameCandidate');
-        """;
+    private static readonly string IncomingEdgesQuerySql =
+        "SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json\n" +
+        "FROM edges\n" +
+        "WHERE snapshot_id = @snapshotId\n" +
+        "  AND target_symbol_id IN (@p0, @p1, @p2)\n" +
+        "  AND kind IN (" + string.Join(",", Lurp.Storage.DeadCandidateLiveness.LiveEdgeKinds.Select(k => $"'{k}'")) + ");\n";
+
+    // B25: the type-use query is a second batched query with the same shape, one kind list
+    // narrower. Mirrors DeadCandidateStore.FetchIncomingEdgesBatched with TypeUseEdgeKinds.
+    private static readonly string TypeUseEdgesQuerySql =
+        "SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json\n" +
+        "FROM edges\n" +
+        "WHERE snapshot_id = @snapshotId\n" +
+        "  AND target_symbol_id IN (@p0, @p1, @p2)\n" +
+        "  AND kind IN (" + string.Join(",", Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds.Select(k => $"'{k}'")) + ");\n";
 
     [SkippableFact]
     public async Task Plans_WithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
@@ -79,6 +87,10 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
         // snapshot edge set.
         var edgePlan = Explain(connection, IncomingEdgesQuerySql, snapshotId, symbolIds);
         Assert.Contains(edgePlan, detail => detail.Contains("idx_edges_snapshot_target", StringComparison.Ordinal));
+
+        // The type-use query (B25) must use the same probe index, not a scan.
+        var typeUsePlan = Explain(connection, TypeUseEdgesQuerySql, snapshotId, symbolIds);
+        Assert.Contains(typeUsePlan, detail => detail.Contains("idx_edges_snapshot_target", StringComparison.Ordinal));
     }
 
     private static List<string> Explain(SqliteConnection connection, string sql, string snapshotId, string[] symbolIds)

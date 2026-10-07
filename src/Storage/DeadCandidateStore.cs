@@ -5,40 +5,9 @@ namespace Lurp.Storage;
 
 internal sealed class DeadCandidateStore
 {
-    private static readonly HashSet<string> LiveKinds = new(StringComparer.Ordinal)
-    {
-        nameof(EdgeKind.Calls),
-        nameof(EdgeKind.MethodGroupRef),
-        nameof(EdgeKind.Constructs),
-        nameof(EdgeKind.Reads),
-        nameof(EdgeKind.Writes),
-        nameof(EdgeKind.Handles),
-        nameof(EdgeKind.RoutesTo),
-        nameof(EdgeKind.Registers),
-        nameof(EdgeKind.MapsTo),
-        nameof(EdgeKind.MayDispatchTo),
-        nameof(EdgeKind.StaticallyCalls),
-        nameof(EdgeKind.TestedBy),
-        nameof(EdgeKind.ReflectionTypeRef),
-        nameof(EdgeKind.ReflectionMemberRef),
-        nameof(EdgeKind.ReflectionNameCandidate)
-    };
+    private static readonly HashSet<string> StrongProvenance = new(DeadCandidateLiveness.StrongProvenance, StringComparer.Ordinal);
 
-    private static readonly HashSet<string> StrongProvenance = new(StringComparer.Ordinal)
-    {
-        Provenance.CompilerProved,
-        Provenance.FrameworkDerived,
-        Provenance.GlobalImplementationRelation
-    };
-
-    private static readonly HashSet<string> CandidateKinds = new(StringComparer.Ordinal)
-    {
-        nameof(IndexedSymbolKind.Type),
-        nameof(IndexedSymbolKind.Method),
-        nameof(IndexedSymbolKind.Property),
-        nameof(IndexedSymbolKind.Field),
-        nameof(IndexedSymbolKind.Event)
-    };
+    private static readonly HashSet<string> CandidateKinds = new(DeadCandidateLiveness.CandidateKinds, StringComparer.Ordinal);
 
     private static readonly HashSet<string> SerializationAttributeSubstrings = new(StringComparer.Ordinal)
     {
@@ -86,14 +55,16 @@ internal sealed class DeadCandidateStore
         // Fetch auxiliary persisted facts once
         var mapsToTargets = FetchMapsToTargets(snapshotId);
         var bindingRecords = FetchBindingIncompleteness(snapshotId);
-        var projectHasSystemTextJson = FetchProjectHasSystemTextJson(snapshotId);
+        var projectFacts = ProjectFacts.Load(_connection, snapshotId);
         var incompletenessByDocument = BuildUnobservableByDocument(bindingRecords);
-        var incompletenessProjects = BuildUnobservableProjects(bindingRecords);
+        var incompletenessProjects = BuildUnobservableProjects(bindingRecords, projectFacts);
         // Pre-fetch declarations for all candidates in batches
         var declInfo = FetchDeclarationInfo(snapshotId, allCandidates.Select(c => c.SymbolId).ToList(), includeGenerated);
 
-        // Apply candidate-universe filters (kind, project, document, generated, tests) in-memory
-        var filteredCandidates = new List<CandidateRow>();
+        // Apply candidate-universe filters (kind, project, document, generated, tests) in-memory.
+        // Metadata is parsed once per surviving candidate row into CandidateFacts and reused by
+        // the filter loop and the evaluation loop (R5.1: one parse per candidate).
+        var filteredCandidates = new List<CandidateFacts>();
         foreach (var c in allCandidates)
         {
             if (!CandidateKinds.Contains(c.Kind))
@@ -101,8 +72,15 @@ internal sealed class DeadCandidateStore
             if (!string.IsNullOrEmpty(kind) && !string.Equals(c.Kind, kind, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var assemblyName = ParseAssemblyName(c.AssemblyIdentity);
-            var isTestProject = IsTestProject(assemblyName);
+            var facts = BuildFacts(c);
+
+            // Universe exclusions (design decision 4): no user can call these, or the compiler
+            // calls them. They are skipped like is_extension_block and never counted.
+            if (facts.IsExtensionBlock || facts.IsStaticConstructor || facts.IsImplicitlyDeclared)
+                continue;
+
+            var assemblyName = facts.AssemblyName;
+            var isTestProject = projectFacts.IsTestProject(assemblyName);
             if (!includeTests && isTestProject)
                 continue;
 
@@ -118,14 +96,11 @@ internal sealed class DeadCandidateStore
             }
 
             // is_generated: derived from declInfo
-            var isGenerated = false;
-            if (declInfo.TryGetValue(c.SymbolId, out var d))
-                isGenerated = d.IsGenerated;
-
+            var isGenerated = declInfo.TryGetValue(c.SymbolId, out var d) && d.IsGenerated;
             if (!includeGenerated && isGenerated)
                 continue;
 
-            filteredCandidates.Add(c);
+            filteredCandidates.Add(facts);
         }
 
         // Candidate count is filtered universe before LIVE/suppression
@@ -137,8 +112,60 @@ internal sealed class DeadCandidateStore
         // Sort for deterministic keyset
         filteredCandidates.Sort((a, b) => string.Compare(a.SymbolId, b.SymbolId, StringComparison.Ordinal));
 
-        // Batched LIVE incoming edges for filtered candidates
-        var incomingByTarget = FetchIncomingLiveEdgesBatched(snapshotId, filteredCandidates.Select(c => c.SymbolId).ToList());
+        var hasTypeCandidate = filteredCandidates.Any(static f => f.Kind == nameof(IndexedSymbolKind.Type));
+
+        // B24: an accessor inherits its property's or event's edges by role, so the associated
+        // symbol's live edges must be fetched alongside the candidate's own.
+        var fetchIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in filteredCandidates)
+        {
+            fetchIds.Add(f.SymbolId);
+            if (f.AccessorKind != null && f.AssociatedSymbol != null)
+                fetchIds.Add($"{f.AssociatedSymbol}|{f.Row.AssemblyIdentity}");
+        }
+
+        // B25: a type inherits from its descendants. Descendants are found through each member's
+        // derived containing type and through the type-to-nested-type Contains edges.
+        var membersByContainingType = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var containsChildren = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        if (hasTypeCandidate)
+        {
+            foreach (var c in allCandidates)
+            {
+                var enclosing = SymbolId.DeriveContainingTypeSymbolId(c.SymbolId);
+                if (enclosing != null)
+                {
+                    if (!membersByContainingType.TryGetValue(enclosing, out var members))
+                    {
+                        members = [];
+                        membersByContainingType[enclosing] = members;
+                    }
+                    members.Add(c.SymbolId);
+                }
+
+                if (CandidateKinds.Contains(c.Kind))
+                    fetchIds.Add(c.SymbolId);
+            }
+            FetchContainsChildren(snapshotId, containsChildren);
+        }
+
+        // Batched LIVE incoming edges for fetchIds
+        var incomingByTarget = FetchIncomingEdgesBatched(snapshotId, fetchIds.ToList(), DeadCandidateLiveness.LiveEdgeKinds);
+
+        // B25: type-use edges are not LIVE kinds, so they are one extra batched query for the
+        // Type candidates only.
+        var typeUseByTarget = new Dictionary<string, List<EdgeRecord>>(StringComparer.Ordinal);
+        var subtreeByType = new Dictionary<string, TypeSubtree>(StringComparer.Ordinal);
+        if (hasTypeCandidate)
+        {
+            var typeIds = filteredCandidates
+                .Where(static f => f.Kind == nameof(IndexedSymbolKind.Type))
+                .Select(static f => f.SymbolId)
+                .ToList();
+            typeUseByTarget = FetchIncomingEdgesBatched(snapshotId, typeIds, DeadCandidateLiveness.TypeUseEdgeKinds);
+            foreach (var typeId in typeIds)
+                subtreeByType[typeId] = CollectSubtree(typeId, membersByContainingType, containsChildren);
+        }
 
         // Evaluate each candidate to status/reason
         var evaluated = new List<DeadCandidateEntry>();
@@ -150,13 +177,12 @@ internal sealed class DeadCandidateStore
         {
             var decl = declInfo.TryGetValue(cand.SymbolId, out var d) ? d : new DeclInfo { IsGenerated = false, Locations = [], DeclarationCount = 0, DocumentPaths = [] };
             var docPaths = decl.DocumentPaths;
-            var metadata = SymbolMetadata.Parse(cand.MetadataJson, cand.SymbolId);
-            var accessibility = ParseAccessibility(metadata);
-            var assemblyName = ParseAssemblyName(cand.AssemblyIdentity);
-            var isTest = IsTestProject(assemblyName);
-            var hasSystemTextJson = projectHasSystemTextJson.TryGetValue(assemblyName, out var has) && has;
+            var accessibility = cand.Accessibility;
+            var assemblyName = cand.AssemblyName;
+            var isTest = projectFacts.IsTestProject(assemblyName);
+            var hasSystemTextJson = projectFacts.HasReference(assemblyName, "System.Text.Json");
 
-            var incoming = incomingByTarget.TryGetValue(cand.SymbolId, out var list) ? list : [];
+            var incoming = BuildEffectiveIncoming(cand, incomingByTarget, typeUseByTarget, subtreeByType);
             var hasStrong = incoming.Any(e => StrongProvenance.Contains(e.Provenance));
             if (hasStrong)
             {
@@ -178,10 +204,10 @@ internal sealed class DeadCandidateStore
             {
                 status = DeadCandidateStatus.Unresolved;
                 reason = DeadCandidateReason.BindingIncompleteness;
-                uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, docPaths, assemblyName)];
+                uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, projectFacts, docPaths, assemblyName)];
                 unresolvedCount++;
             }
-            else if (IsProcessEntryPoint(cand, metadata))
+            else if (IsProcessEntryPoint(cand))
             {
                 // Checked ahead of the public/protected suppression below: the entry point's own
                 // accessibility varies by coding style (private for top-level statements, often
@@ -190,7 +216,16 @@ internal sealed class DeadCandidateStore
                 // visibly as uncertain rather than either proved_dead or silently excluded.
                 status = DeadCandidateStatus.UncertainDead;
                 reason = DeadCandidateReason.EntryPointConvention;
-                uncertainties = [MakeEntryPointConventionUncertainty(cand.SymbolId)];
+                uncertainties = [MakeEntryPointConventionUncertainty(cand.SymbolId, cand.Kind == nameof(IndexedSymbolKind.Type))];
+                uncertainCount++;
+            }
+            else if (cand.ImplementsExternalInterface)
+            {
+                // The runtime or a framework calls an explicitly implemented interface member
+                // through the interface, so the index cannot observe the call (B26).
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.ExternalInterfaceImplementation;
+                uncertainties = [MakeExternalInterfaceImplementationUncertainty(cand.SymbolId)];
                 uncertainCount++;
             }
             else if (IsPublicOrProtected(accessibility) && !includePublic)
@@ -280,7 +315,7 @@ internal sealed class DeadCandidateStore
                     uncertainties = [MakeEfConventionUncertainty(cand.SymbolId)];
                     uncertainCount++;
                 }
-                else if (IsSerializationConvention(cand, accessibility, hasSystemTextJson, decl, metadata))
+                else if (IsSerializationConvention(cand, hasSystemTextJson))
                 {
                     status = DeadCandidateStatus.UncertainDead;
                     reason = DeadCandidateReason.SerializationConvention;
@@ -301,7 +336,7 @@ internal sealed class DeadCandidateStore
             // Find best declaration location for start line? Use first location's start
             var entry = new DeadCandidateEntry(
                 cand.SymbolId,
-                cand.Fqn,
+                cand.Row.Fqn,
                 cand.Kind,
                 accessibility,
                 documentPath,
@@ -395,46 +430,6 @@ internal sealed class DeadCandidateStore
         return list;
     }
 
-    private Dictionary<string,bool> FetchProjectHasSystemTextJson(string snapshotId)
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT name, metadata_reference_identities FROM projects WHERE snapshot_id = @snapshotId;";
-        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var dict = new Dictionary<string,bool>(StringComparer.Ordinal);
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            var name = reader.GetString(0);
-            var json = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var has = false;
-            if (!string.IsNullOrEmpty(json))
-            {
-                try
-                {
-                    var arr = JsonSerializer.Deserialize<string[]>(json);
-                    if (arr != null)
-                    {
-                        foreach (var id in arr)
-                        {
-                            // id is like "System.Text.Json, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51|sha256=..."
-                            var assemblyPart = id.Split('|')[0];
-                            var simpleName = assemblyPart.Split(',')[0].Trim();
-                            if (string.Equals(simpleName, "System.Text.Json", StringComparison.Ordinal))
-                            { has = true; break; }
-                        }
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to parse metadata_reference_identities for project '{name}'.", ex);
-                }
-            }
-            dict[name] = has;
-        }
-        return dict;
-    }
-
     private static HashSet<string> BuildUnobservableByDocument(List<BindingIncompletenessRecord> records)
     {
         var set = new HashSet<string>(StringComparer.Ordinal);
@@ -447,12 +442,12 @@ internal sealed class DeadCandidateStore
         return set;
     }
 
-    private static HashSet<string> BuildUnobservableProjects(List<BindingIncompletenessRecord> records)
+    private static HashSet<string> BuildUnobservableProjects(List<BindingIncompletenessRecord> records, ProjectFacts projectFacts)
     {
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (var r in records)
             if (r.DocumentPath == null && IsUnobservableReason(r.Reason))
-                set.Add(r.ProjectName);
+                set.Add(projectFacts.ToAssemblyName(r.ProjectName));
         return set;
     }
 
@@ -471,12 +466,32 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
-    private Dictionary<string, List<EdgeRecord>> FetchIncomingLiveEdgesBatched(string snapshotId, List<string> symbolIds)
+    private void FetchContainsChildren(string snapshotId, Dictionary<string, List<string>> result)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT source_symbol_id, target_symbol_id FROM edges WHERE snapshot_id = @snapshotId AND kind = @kind;";
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        cmd.Parameters.AddWithValue("@kind", nameof(EdgeKind.Contains));
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var source = reader.GetString(0);
+            var target = reader.GetString(1);
+            if (!result.TryGetValue(source, out var children))
+            {
+                children = [];
+                result[source] = children;
+            }
+            children.Add(target);
+        }
+    }
+
+    private Dictionary<string, List<EdgeRecord>> FetchIncomingEdgesBatched(string snapshotId, List<string> symbolIds, IReadOnlyList<string> edgeKinds)
     {
         var result = new Dictionary<string, List<EdgeRecord>>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;
-        // Prepare live kinds filter string for SQL IN
-        var liveKindList = string.Join(",", LiveKinds.Select((k, i) => $"'{k}'"));
+        // Prepare kind filter string for SQL IN
+        var kindList = string.Join(",", edgeKinds.Select((k, i) => $"'{k}'"));
         // Chunk symbolIds to avoid SQLITE_MAX_VARIABLE_NUMBER
         const int ChunkSize = 900;
         // edge_id is selected so each target's list can be ordered by it in C#. The old
@@ -495,7 +510,7 @@ internal sealed class DeadCandidateStore
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                   AND target_symbol_id IN ({string.Join(",", paramNames)})
-                  AND kind IN ({liveKindList});
+                  AND kind IN ({kindList});
                 """;
             cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             for (var idx = 0; idx < chunk.Count; idx++)
@@ -663,12 +678,141 @@ internal sealed class DeadCandidateStore
         return result;
     }
 
-    private static string? ParseAccessibility(JsonElement? metadata)
+    private static CandidateFacts BuildFacts(CandidateRow row)
+    {
+        // One metadata parse per candidate row (R5.1). A row that does not parse still fails
+        // loudly and names the offending symbol (SymbolMetadata.Parse).
+        var metadata = SymbolMetadata.Parse(row.MetadataJson, row.SymbolId);
+        return new CandidateFacts(
+            row,
+            metadata,
+            GetString(metadata, SymbolMetadataKeys.Accessibility),
+            ParseAssemblyName(row.AssemblyIdentity),
+            IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
+            IsTrue(metadata, SymbolMetadataKeys.IsStaticConstructor),
+            IsTrue(metadata, SymbolMetadataKeys.IsImplicitlyDeclared),
+            IsTrue(metadata, SymbolMetadataKeys.ImplementsExternalInterface),
+            GetString(metadata, SymbolMetadataKeys.AccessorKind),
+            GetString(metadata, SymbolMetadataKeys.AssociatedSymbol),
+            IsTrue(metadata, SymbolMetadataKeys.ContainsEntryPoint),
+            IsTrue(metadata, SymbolMetadataKeys.IsEntryPoint));
+    }
+
+    private static bool IsTrue(JsonElement? metadata, string key)
+    {
+        return metadata is not null
+            && metadata.Value.TryGetProperty(key, out var el)
+            && el.ValueKind == JsonValueKind.True;
+    }
+
+    private static string? GetString(JsonElement? metadata, string key)
     {
         if (metadata is null) return null;
-        if (metadata.Value.TryGetProperty(SymbolMetadataKeys.Accessibility, out var el) && el.ValueKind == JsonValueKind.String)
+        if (metadata.Value.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
             return el.GetString();
         return null;
+    }
+
+    /// <summary>
+    ///     The symbols inside a Type candidate's subtree: the type itself, its members and the
+    ///     members of its nested types (through the type-to-nested-type Contains edges). Members
+    ///     are found by their derived containing type because a nested type's doc-comment id
+    ///     alone cannot tell a namespace from nesting (B25).
+    /// </summary>
+    private static TypeSubtree CollectSubtree(
+        string typeSymbolId,
+        Dictionary<string, List<string>> membersByContainingType,
+        Dictionary<string, List<string>> containsChildren)
+    {
+        var symbols = new HashSet<string>(StringComparer.Ordinal) { typeSymbolId };
+        var descendants = new List<string>();
+        var queue = new Queue<string>();
+        queue.Enqueue(typeSymbolId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (membersByContainingType.TryGetValue(current, out var members))
+            {
+                foreach (var member in members)
+                    if (symbols.Add(member))
+                        descendants.Add(member);
+            }
+            if (containsChildren.TryGetValue(current, out var nested))
+            {
+                foreach (var child in nested)
+                {
+                    if (symbols.Add(child))
+                    {
+                        descendants.Add(child);
+                        queue.Enqueue(child);
+                    }
+                }
+            }
+        }
+        descendants.Sort(StringComparer.Ordinal);
+        return new TypeSubtree(symbols, descendants);
+    }
+
+    /// <summary>
+    ///     The effective incoming LIVE list for a candidate: its own live edges plus the edges
+    ///     it inherits under design decision 1 (an accessor from its property or event by role;
+    ///     a type from its descendants and from the type-use edges that enter it from outside its
+    ///     subtree). The ladder and the summary run on this list (R5.7).
+    /// </summary>
+    private static List<EdgeRecord> BuildEffectiveIncoming(
+        CandidateFacts cand,
+        Dictionary<string, List<EdgeRecord>> incomingByTarget,
+        Dictionary<string, List<EdgeRecord>> typeUseByTarget,
+        Dictionary<string, TypeSubtree> subtreeByType)
+    {
+        var effective = new List<EdgeRecord>();
+        if (incomingByTarget.TryGetValue(cand.SymbolId, out var own))
+            effective.AddRange(own);
+
+        // B24: an accessor inherits its property's or event's edges by role.
+        if (cand.AccessorKind != null && cand.AssociatedSymbol != null)
+        {
+            var associatedId = $"{cand.AssociatedSymbol}|{cand.Row.AssemblyIdentity}";
+            if (incomingByTarget.TryGetValue(associatedId, out var associated))
+            {
+                foreach (var edge in associated)
+                    if (InheritsForAccessor(cand.AccessorKind, edge.Kind))
+                        effective.Add(edge);
+            }
+        }
+
+        // B25: a type inherits its descendants' live edges and the type-use edges that enter it
+        // from outside its own subtree. Self edges are never inherited.
+        if (cand.Kind == nameof(IndexedSymbolKind.Type) && subtreeByType.TryGetValue(cand.SymbolId, out var subtree))
+        {
+            foreach (var descendant in subtree.Descendants)
+            {
+                if (!incomingByTarget.TryGetValue(descendant, out var descendantEdges)) continue;
+                foreach (var edge in descendantEdges)
+                    if (edge.SourceSymbolId != descendant && !subtree.Symbols.Contains(edge.SourceSymbolId))
+                        effective.Add(edge);
+            }
+
+            if (typeUseByTarget.TryGetValue(cand.SymbolId, out var typeUse))
+            {
+                foreach (var edge in typeUse)
+                    if (edge.SourceSymbolId != cand.SymbolId && !subtree.Symbols.Contains(edge.SourceSymbolId))
+                        effective.Add(edge);
+            }
+        }
+
+        return effective;
+    }
+
+    private static bool InheritsForAccessor(string accessorKind, string edgeKind)
+    {
+        return accessorKind switch
+        {
+            "get" => edgeKind != nameof(EdgeKind.Writes),
+            "set" or "init" => edgeKind == nameof(EdgeKind.Writes),
+            "add" or "remove" or "raise" => true,
+            _ => false
+        };
     }
 
     private static bool IsPublicOrProtected(string? accessibility)
@@ -683,31 +827,24 @@ internal sealed class DeadCandidateStore
         return assemblyIdentity.Trim();
     }
 
-    private static bool IsTestProject(string assemblyName)
-    {
-        return string.Equals(assemblyName, "eNote.Tests", StringComparison.Ordinal)
-            || assemblyName.EndsWith(".Tests", StringComparison.Ordinal);
-    }
-
     /// <summary>
-    ///     True when this candidate is the compilation's own process entry point (an explicit
-    ///     <c>static void Main</c> or the compiler-synthesized top-level-statements form), tagged
-    ///     at extraction time by <see cref="Lurp.Workspace.SymbolDeclarationExtractor"/> via
-    ///     <c>SymbolMetadataKeys.IsEntryPoint</c>. Nothing in-repo ever calls the entry point —
-    ///     the runtime launcher does — so it would otherwise always land in the terminal
-    ///     no-incoming-edges branch below and read as proved_dead.
+    ///     True when this candidate is the compilation's own process entry point: an entry-point
+    ///     method (an explicit <c>static void Main</c> or the compiler-synthesized
+    ///     top-level-statements form) tagged via <c>SymbolMetadataKeys.IsEntryPoint</c>, or the
+    ///     type that contains it, tagged via <c>SymbolMetadataKeys.ContainsEntryPoint</c> (F13).
+    ///     Nothing in-repo ever calls the entry point — the runtime launcher does — so it would
+    ///     otherwise land in the terminal no-incoming-edges branch below and read as proved_dead.
     /// </summary>
-    private static bool IsProcessEntryPoint(CandidateRow cand, JsonElement? metadata)
+    private static bool IsProcessEntryPoint(CandidateFacts cand)
     {
-        if (cand.Kind != nameof(IndexedSymbolKind.Method))
-            return false;
-        if (metadata is null)
-            return false;
-        return metadata.Value.TryGetProperty(SymbolMetadataKeys.IsEntryPoint, out var el)
-            && el.ValueKind == JsonValueKind.True;
+        if (cand.Kind == nameof(IndexedSymbolKind.Method))
+            return cand.IsEntryPointMethod;
+        if (cand.Kind == nameof(IndexedSymbolKind.Type))
+            return cand.ContainsEntryPoint;
+        return false;
     }
 
-    private static bool IsEfPrivateMember(CandidateRow cand, string? accessibility, HashSet<string> mapsToTargets)
+    private static bool IsEfPrivateMember(CandidateFacts cand, string? accessibility, HashSet<string> mapsToTargets)
     {
         if (cand.Kind is not (nameof(IndexedSymbolKind.Method) or nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
             return false;
@@ -718,12 +855,13 @@ internal sealed class DeadCandidateStore
         return mapsToTargets.Contains(enclosing);
     }
 
-    private static bool IsSerializationConvention(CandidateRow cand, string? accessibility, bool hasSystemTextJson, DeclInfo decl, JsonElement? metadata)
+    private static bool IsSerializationConvention(CandidateFacts cand, bool hasSystemTextJson)
     {
         if (cand.Kind != nameof(IndexedSymbolKind.Property)) return false;
-        if (accessibility is not ("Public" or "Internal")) return false;
+        if (cand.Accessibility is not ("Public" or "Internal")) return false;
         if (!hasSystemTextJson) return false;
         // Check if any attribute is serialization attribute
+        var metadata = cand.Metadata;
         if (metadata is null) return true; // no attributes -> attribute-free
         if (metadata.Value.TryGetProperty(SymbolMetadataKeys.Attributes, out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
@@ -774,16 +912,18 @@ internal sealed class DeadCandidateStore
         return best;
     }
 
-    private static DeadCandidateUncertainty MakeBindingIncompletenessUncertainty(string symbolId, List<BindingIncompletenessRecord> all, List<string> docPaths, string assemblyName)
+    private static DeadCandidateUncertainty MakeBindingIncompletenessUncertainty(string symbolId, List<BindingIncompletenessRecord> all, ProjectFacts projectFacts, List<string> docPaths, string assemblyName)
     {
         // Find relevant binding records that overlap this candidate's docs. Restricted
         // to IsUnobservableReason so the description names the reason that actually
         // triggered OverlapsBindingIncompleteness — otherwise a co-located but
         // non-triggering record (e.g. filtered_external, which never makes a
         // candidate unresolved) could win the reason pick and describe the wrong cause.
+        // A binding record carries the Roslyn project name, the candidate carries the
+        // assembly name, so the project-level comparison maps one to the other (B18).
         var relevant = all.Where(r => IsUnobservableReason(r.Reason)
                                    && (r.DocumentPath != null && docPaths.Contains(r.DocumentPath, StringComparer.Ordinal)
-                                   || r.DocumentPath == null && string.Equals(r.ProjectName, assemblyName, StringComparison.Ordinal))).ToList();
+                                   || r.DocumentPath == null && string.Equals(projectFacts.ToAssemblyName(r.ProjectName), assemblyName, StringComparison.Ordinal))).ToList();
         var byReason = relevant.GroupBy(r => r.Reason, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).FirstOrDefault();
         if (byReason != null)
         {
@@ -852,9 +992,17 @@ internal sealed class DeadCandidateStore
         return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, desc);
     }
 
-    private static DeadCandidateUncertainty MakeEntryPointConventionUncertainty(string symbolId)
+    private static DeadCandidateUncertainty MakeEntryPointConventionUncertainty(string symbolId, bool isType)
     {
-        return new DeadCandidateUncertainty([symbolId], "entry_point_convention", "Process entry point: this is the compilation's Main method (explicit or the compiler-synthesized top-level-statements form), invoked by the runtime launcher rather than from within the indexed call graph. It has no incoming edge by definition; that is not evidence of dead code.");
+        var description = isType
+            ? "Process entry point: this is the type that contains the compilation's Main method (explicit or the compiler-synthesized top-level-statements form), invoked by the runtime launcher rather than from within the indexed call graph. It has no incoming edge by definition; that is not evidence of dead code."
+            : "Process entry point: this is the compilation's Main method (explicit or the compiler-synthesized top-level-statements form), invoked by the runtime launcher rather than from within the indexed call graph. It has no incoming edge by definition; that is not evidence of dead code.";
+        return new DeadCandidateUncertainty([symbolId], "entry_point_convention", description);
+    }
+
+    private static DeadCandidateUncertainty MakeExternalInterfaceImplementationUncertainty(string symbolId)
+    {
+        return new DeadCandidateUncertainty([symbolId], "external_interface_implementation", "Explicit implementation of an interface member declared outside the compilation: the runtime or a framework calls it through the interface, so the index cannot observe the call.");
     }
 
     private static DeadCandidateUncertainty MakeEfConventionUncertainty(string symbolId)
@@ -868,6 +1016,30 @@ internal sealed class DeadCandidateStore
     }
 
     private sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);
+
+    /// <summary>
+    ///     One metadata parse per candidate row (R5.1). Every filter and ladder decision reads
+    ///     these parsed fields instead of re-parsing <see cref="CandidateRow.MetadataJson" />.
+    /// </summary>
+    private sealed record CandidateFacts(
+        CandidateRow Row,
+        JsonElement? Metadata,
+        string? Accessibility,
+        string AssemblyName,
+        bool IsExtensionBlock,
+        bool IsStaticConstructor,
+        bool IsImplicitlyDeclared,
+        bool ImplementsExternalInterface,
+        string? AccessorKind,
+        string? AssociatedSymbol,
+        bool ContainsEntryPoint,
+        bool IsEntryPointMethod)
+    {
+        public string SymbolId => Row.SymbolId;
+        public string Kind => Row.Kind;
+    }
+
+    private sealed record TypeSubtree(HashSet<string> Symbols, List<string> Descendants);
 
     private sealed class DeclInfo
     {

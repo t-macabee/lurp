@@ -16,6 +16,7 @@ public static class DeadCandidateReason
     public const string GeneratedExcluded = "generated_excluded";
     public const string TestHarness = "test_harness";
     public const string EntryPointConvention = "entry_point_convention";
+    public const string ExternalInterfaceImplementation = "external_interface_implementation";
 }
 
 public static class DeadCandidateStatus

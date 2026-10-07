@@ -26,7 +26,9 @@ public enum MismatchKind
 
     ProjectDocumentsChanged,
 
-    VersionChanged
+    VersionChanged,
+
+    AssemblyNameChanged
 }
 
 public sealed record SnapshotMismatch(MismatchKind Kind, string Description, DocumentId? Document, string? Detail);

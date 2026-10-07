@@ -5,6 +5,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Lurp.Workspace;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
@@ -79,7 +80,7 @@ internal static class DependencyInjectionConventionMatcher
 
         var assembly = assemblyType.ContainingAssembly;
 
-        foreach (var type in EnumerateNamedTypes(assembly.GlobalNamespace))
+        foreach (var type in ExtractionUtils.GetAllNamedTypes(assembly.GlobalNamespace))
         {
             if (type.TypeKind != TypeKind.Class)
                 continue;
@@ -215,30 +216,6 @@ internal static class DependencyInjectionConventionMatcher
                && chainNames.Contains("AddClasses")
                && chainNames.Contains("AsImplementedInterfaces")
                && chainNames.Contains("WithScopedLifetime");
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamespaceSymbol namespaceSymbol)
-    {
-        foreach (var type in namespaceSymbol.GetTypeMembers())
-        {
-            yield return type;
-            foreach (var nested in EnumerateNamedTypes(type))
-                yield return nested;
-        }
-
-        foreach (var nestedNamespace in namespaceSymbol.GetNamespaceMembers())
-            foreach (var type in EnumerateNamedTypes(nestedNamespace))
-                yield return type;
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamedTypeSymbol type)
-    {
-        foreach (var nested in type.GetTypeMembers())
-        {
-            yield return nested;
-            foreach (var deeper in EnumerateNamedTypes(nested))
-                yield return deeper;
-        }
     }
 
     private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, string fallback)

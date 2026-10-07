@@ -143,6 +143,45 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ReadsWrites_MemberAccessWrite_EmitsNoRead()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Target
+                                                {
+                                                    public int P { get; set; }
+                                                    public int F;
+                                                }
+                                                public class User
+                                                {
+                                                    private int _g;
+                                                    public void Set(Target t) { t.P = 1; this._g = 2; t.F = 3; }
+                                                    public void SetConditional(Target? t) { t?.P = 4; }
+                                                }
+                                                """));
+
+        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.Target.P");
+        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.User._g");
+        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.Target.F");
+        extraction.SingleEdge("Writes", "global::N.User.SetConditional", "global::N.Target.P");
+
+        var set = extraction.ResolveId("global::N.User.Set");
+        var setConditional = extraction.ResolveId("global::N.User.SetConditional");
+        var writtenTargets = new[]
+        {
+            extraction.ResolveId("global::N.Target.P"),
+            extraction.ResolveId("global::N.User._g"),
+            extraction.ResolveId("global::N.Target.F")
+        };
+
+        var reads = extraction.EdgesOf("Reads")
+            .Where(e => (e.SourceSymbolId == set || e.SourceSymbolId == setConditional)
+                        && writtenTargets.Contains(e.TargetSymbolId))
+            .ToList();
+        Assert.Empty(reads);
+    }
+
+    [Fact]
     public async Task ReturnsEdge_MethodReturnsType()
     {
         var extraction = await ExtractAsync(One("""
@@ -325,5 +364,29 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         Assert.NotEmpty(extraction.EdgesOf("Throws"));
         // Calls: the interface member Add is never invoked from source; the
         // implicit ctor is not invoked either, so no Calls edge is expected.
+    }
+
+    [Fact]
+    public async Task PrimaryConstructorBase_AmbiguousBinding_EmitsNoCallAndRecordsIncompleteness()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Base
+                                                {
+                                                    public Base(int a, long b) { }
+                                                    public Base(long a, int b) { }
+                                                }
+                                                public class Derived(int x) : Base(x, x) { }
+                                                """));
+
+        var baseConstructorCalls = extraction.Result.Edges
+            .Where(e => e.Kind == "Calls"
+                        && e.SourceSymbolId.StartsWith("M:N.Derived.#ctor", StringComparison.Ordinal)
+                        && e.TargetSymbolId.StartsWith("M:N.Base.#ctor", StringComparison.Ordinal))
+            .ToList();
+        Assert.Empty(baseConstructorCalls);
+
+        Assert.Contains(extraction.Result.BindingIncompleteness,
+            r => r.DocumentPath?.EndsWith(Doc, StringComparison.Ordinal) == true && r.Reason == "ambiguous_overload");
     }
 }

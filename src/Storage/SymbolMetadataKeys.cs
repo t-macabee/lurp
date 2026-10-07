@@ -22,4 +22,11 @@ public static class SymbolMetadataKeys
     public const string IsVolatile = "is_volatile";
     public const string Attributes = "attributes";
     public const string IsEntryPoint = "is_entry_point";
+    public const string IsExtensionBlock = "is_extension_block";
+    public const string AssociatedSymbol = "associated_symbol";
+    public const string AccessorKind = "accessor_kind";
+    public const string IsStaticConstructor = "is_static_constructor";
+    public const string IsImplicitlyDeclared = "is_implicitly_declared";
+    public const string ImplementsExternalInterface = "implements_external_interface";
+    public const string ContainsEntryPoint = "contains_entry_point";
 }

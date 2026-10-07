@@ -128,6 +128,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckDocuments(current, stored));
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
+        mismatches.AddRange(CheckAssemblyNames(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
@@ -143,6 +144,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckWorkspaceIdentity(current, stored));
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
+        mismatches.AddRange(CheckAssemblyNames(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
@@ -324,6 +326,24 @@ public static class WorkspaceFreshness
             if (!storedTfms.TryGetValue(projName, out var storedTfm))
                 yield return new SnapshotMismatch(MismatchKind.ProjectAdded, $"Project added: '{projName}'.", null, projName);
             else if (!string.Equals(currentTfm, storedTfm, StringComparison.Ordinal)) yield return new SnapshotMismatch(MismatchKind.TargetFrameworkChanged, $"Target framework changed for project '{projName}'.", null, $"{storedTfm} → {currentTfm}");
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckAssemblyNames(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        var currentNames = current.AssemblyNames;
+        var storedNames = stored.AssemblyNames;
+
+        // Only projects present in both sides are compared. A project absent
+        // from the stored map means its value was null (pre-034 snapshot:
+        // unknown, not different) or the project itself is gone — project
+        // removal is reported by CheckTargetFrameworks.
+        foreach (var (projName, currentName) in currentNames)
+        {
+            if (!storedNames.TryGetValue(projName, out var storedName))
+                continue;
+
+            if (!string.Equals(currentName, storedName, StringComparison.Ordinal)) yield return new SnapshotMismatch(MismatchKind.AssemblyNameChanged, $"Assembly name changed for project '{projName}'.", null, $"{storedName} → {currentName}");
+        }
     }
 
     private static IEnumerable<SnapshotMismatch> CheckProjectGraph(WorkspaceInfo current, SnapshotManifest stored)

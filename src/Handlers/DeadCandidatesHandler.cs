@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
-using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -9,39 +8,13 @@ internal static class DeadCandidatesHandler
 {
     private const int DefaultLimit = 50;
 
-    private static readonly string[] IncomingEdgeKindsChecked =
-    [
-        nameof(EdgeKind.Calls),
-        nameof(EdgeKind.MethodGroupRef),
-        nameof(EdgeKind.Constructs),
-        nameof(EdgeKind.Reads),
-        nameof(EdgeKind.Writes),
-        nameof(EdgeKind.Handles),
-        nameof(EdgeKind.RoutesTo),
-        nameof(EdgeKind.Registers),
-        nameof(EdgeKind.MapsTo),
-        nameof(EdgeKind.MayDispatchTo),
-        nameof(EdgeKind.StaticallyCalls),
-        nameof(EdgeKind.TestedBy),
-        nameof(EdgeKind.ReflectionTypeRef),
-        nameof(EdgeKind.ReflectionMemberRef),
-        nameof(EdgeKind.ReflectionNameCandidate)
-    ];
+    private static readonly string[] IncomingEdgeKindsChecked = DeadCandidateLiveness.LiveEdgeKinds.ToArray();
 
-    private static readonly string[] LiveProvenanceRank =
-    [
-        Provenance.CompilerProved,
-        Provenance.FrameworkDerived,
-        Provenance.GlobalImplementationRelation
-    ];
+    private static readonly string[] TypeUseEdgeKindsChecked = DeadCandidateLiveness.TypeUseEdgeKinds.ToArray();
 
-    private static readonly string[] UncertainProvenance =
-    [
-        Provenance.Possible,
-        Provenance.Convention,
-        Provenance.NameCandidate,
-        Provenance.RuntimeUnknown
-    ];
+    private static readonly string[] LiveProvenanceRank = DeadCandidateLiveness.StrongProvenance.ToArray();
+
+    private static readonly string[] UncertainProvenance = DeadCandidateLiveness.UncertainProvenance.ToArray();
 
     public static void Run(string[] args)
     {
@@ -55,8 +28,8 @@ internal static class DeadCandidatesHandler
         var includeTests = args.Contains("--include-tests");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateKinds.IsValidKind(kindArg))
-            HandlerBootstrap.Fail($"ERROR: --kind must be one of: Type, Method, Property, Field, Event (case-insensitive). Got '{kindArg}'.");
+        if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateLiveness.IsCandidateKind(kindArg))
+            HandlerBootstrap.Fail($"ERROR: --kind must be one of: {DeadCandidateLiveness.CandidateKindsText} (case-insensitive). Got '{kindArg}'.");
 
         var limit = DefaultLimit;
         if (!string.IsNullOrEmpty(limitArg))
@@ -151,6 +124,7 @@ internal static class DeadCandidatesHandler
                 snapshot_id = snapshotId,
                 filters,
                 incoming_edge_kinds_checked = IncomingEdgeKindsChecked,
+                type_use_edge_kinds_checked = TypeUseEdgeKindsChecked,
                 live_provenance_rank = LiveProvenanceRank,
                 uncertain_provenance = UncertainProvenance,
                 candidate_count = page.CandidateCount,
@@ -185,6 +159,7 @@ internal static class DeadCandidatesHandler
                             snapshot_id = snapshotId,
                             filters,
                             incoming_edge_kinds_checked = IncomingEdgeKindsChecked,
+                            type_use_edge_kinds_checked = TypeUseEdgeKindsChecked,
                             live_provenance_rank = LiveProvenanceRank,
                             uncertain_provenance = UncertainProvenance,
                             candidate_count = page.CandidateCount,

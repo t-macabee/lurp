@@ -35,6 +35,10 @@ public sealed partial class SnapshotManifest
     public Dictionary<string, string[]> ProjectGraph { get; init; }
         = [];
 
+    [JsonPropertyName("assembly_names")]
+    public Dictionary<string, string> AssemblyNames { get; init; }
+        = [];
+
     [JsonPropertyName("metadata_reference_identities")]
     public IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities { get; init; }
         = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
@@ -79,6 +83,7 @@ public sealed partial class SnapshotManifest
             TargetFrameworks = new Dictionary<string, string>(workspace.TargetFrameworks),
             ProjectGraph = workspace.ProjectGraph.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.OrderBy(x => x).ToArray(),
                 StringComparer.Ordinal),
+            AssemblyNames = new Dictionary<string, string>(workspace.AssemblyNames, StringComparer.Ordinal),
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
@@ -151,6 +156,9 @@ public sealed partial class SnapshotManifest
         {
             Name = kvp.Key,
             TargetFramework = kvp.Value,
+            AssemblyName = AssemblyNames.TryGetValue(kvp.Key, out var assemblyName)
+                ? assemblyName
+                : kvp.Key,
             References = ProjectGraph.TryGetValue(kvp.Key, out var refs)
                 ? [.. refs.OrderBy(x => x, StringComparer.Ordinal)]
                 : [],
@@ -197,6 +205,7 @@ public sealed partial class SnapshotManifest
 
         var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectGraph = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var assemblyNames = new Dictionary<string, string>(StringComparer.Ordinal);
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
         var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -204,6 +213,8 @@ public sealed partial class SnapshotManifest
         {
             targetFrameworks[project.Name] = project.TargetFramework;
             projectGraph[project.Name] = [.. project.References];
+            if (project.AssemblyName != null)
+                assemblyNames[project.Name] = project.AssemblyName;
             if (project.MetadataReferenceIdentitiesJson != null)
                 metadataReferenceIdentities[project.Name] = [.. JsonSerializer
                     .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!];
@@ -223,6 +234,7 @@ public sealed partial class SnapshotManifest
             CompilerVersion = storage.CompilerVersion,
             TargetFrameworks = targetFrameworks,
             ProjectGraph = projectGraph,
+            AssemblyNames = assemblyNames,
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
             ProjectDocuments = projectDocuments,

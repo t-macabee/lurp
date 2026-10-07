@@ -13,10 +13,16 @@ namespace Lurp.Workspace;
 ///     statements, operator/conversion/destructor bodies) and the compiler-lowered
 ///     call shapes inside every root (method groups, event subscriptions,
 ///     user-defined operators and conversions, and the implicit invocations behind
-///     await, foreach, using, deconstruction, collection initializers and
-///     interpolated-string handlers). It walks Roslyn operations; the existing
-///     extractors remain the source of the syntax-level facts, and EdgeMerge
-///     collapses the overlap by (source, target, kind).
+///     await, foreach, using, deconstruction, collection initializers,
+///     interpolated-string handlers, and the C# pattern, index/range and
+///     collection-expression shapes). Await, foreach and deconstruction read their
+///     bound members from Roslyn's binding APIs (<c>GetAwaitExpressionInfo</c>,
+///     <c>GetForEachStatementInfo</c> and <c>GetDeconstructionInfo</c>); the pattern
+///     shapes read <c>IRecursivePatternOperation</c>, <c>IListPatternOperation</c>,
+///     <c>ISlicePatternOperation</c>, <c>IImplicitIndexerReferenceOperation</c> and
+///     <c>ICollectionExpressionOperation</c>. It walks Roslyn operations; the
+///     existing extractors remain the source of the syntax-level facts, and
+///     EdgeMerge collapses the overlap by (source, target, kind).
 /// </summary>
 internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
@@ -40,7 +46,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 AddCall(ownerId, initializerTarget, ctorInitializer, model, edges, seen);
 
             if (node is PrimaryConstructorBaseTypeSyntax primaryBase)
-                AddPrimaryBaseConstructor(owner, ownerId, primaryBase, model, edges, seen);
+                AddPrimaryBaseConstructor(ownerId, primaryBase, model, edges, seen);
 
 
             var operation = model.GetOperation(node);
@@ -190,9 +196,9 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     AddAwaitPattern(ownerId, awaitSyntax, model, edges, seen);
                     break;
 
-                case IForEachLoopOperation loopOperation
-                    when loopOperation.Syntax is CommonForEachStatementSyntax loopSyntax:
-                    AddForeachPattern(ownerId, loopOperation, loopSyntax, model, edges, seen);
+                case IForEachLoopOperation
+                    when operation.Syntax is CommonForEachStatementSyntax loopSyntax:
+                    AddForeachPattern(ownerId, loopSyntax, model, edges, seen);
                     break;
 
                 case IUsingDeclarationOperation usingDeclaration:
@@ -207,7 +213,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
                 case IDeconstructionAssignmentOperation deconstruction
                     when deconstruction.Syntax is AssignmentExpressionSyntax assignmentSyntax:
-                    AddDeconstructionCalls(ownerId, deconstruction, assignmentSyntax, model, edges, seen);
+                    AddDeconstructionCalls(ownerId, model.GetDeconstructionInfo(assignmentSyntax),
+                        assignmentSyntax, model, edges, seen);
                     break;
 
                 case IPropertyReferenceOperation propertyReference:
@@ -236,6 +243,36 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
                 case IConversionOperation conversion when conversion.OperatorMethod != null:
                     AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model, edges, seen);
+                    break;
+
+                // B19: implicit calls the syntax switch never sees. Each reads a
+                // member Roslyn bound for the shape.
+                case IRecursivePatternOperation { DeconstructSymbol: IMethodSymbol deconstruct }:
+                    AddCall(ownerId, deconstruct, operation.Syntax, model, edges, seen);
+                    break;
+
+                case IListPatternOperation listPattern:
+                    AddMemberBySymbolKind(ownerId, listPattern.LengthSymbol, operation.Syntax, model, edges, seen);
+                    AddMemberBySymbolKind(ownerId, listPattern.IndexerSymbol, operation.Syntax, model, edges, seen);
+                    break;
+
+                case ISlicePatternOperation { SliceSymbol: { } sliceSymbol }:
+                    AddMemberBySymbolKind(ownerId, sliceSymbol, operation.Syntax, model, edges, seen);
+                    break;
+
+                case IImplicitIndexerReferenceOperation implicitIndexer:
+                    AddMemberBySymbolKind(ownerId, implicitIndexer.LengthSymbol, operation.Syntax, model, edges, seen);
+                    if (implicitIndexer.IndexerSymbol is IPropertySymbol indexerProperty)
+                        AddMemberAccess(ownerId, indexerProperty, implicitIndexer, edges, seen);
+                    else
+                        AddCall(ownerId, implicitIndexer.IndexerSymbol as IMethodSymbol, operation.Syntax, model, edges, seen);
+                    break;
+
+                case ICollectionExpressionOperation { ConstructMethod: { } constructMethod }:
+                    if (constructMethod.MethodKind == MethodKind.Constructor)
+                        AddConstructs(ownerId, constructMethod.ContainingType, operation.Syntax, edges, seen);
+                    else
+                        AddCall(ownerId, constructMethod, operation.Syntax, model, edges, seen);
                     break;
             }
         }
@@ -422,59 +459,23 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     }
 
     private void AddPrimaryBaseConstructor(
-        ISymbol owner,
         string ownerId,
         PrimaryConstructorBaseTypeSyntax primaryBase,
         SemanticModel model,
         List<EdgeRecord> edges,
         HashSet<(string Source, string Target, string Kind)> seen)
     {
-        // Roslyn exposes the bound base constructor for a primary-constructor
-        // base clause directly; keep the signature match as a fallback for
-        // error-state bindings where the symbol lookup returns nothing.
-        if (model.GetSymbolInfo(primaryBase).Symbol is IMethodSymbol resolved)
+        // Roslyn exposes the bound base constructor for a primary-constructor base
+        // clause directly. When the binding fails (error-state code), emit no edge
+        // and record the unresolved binding instead of guessing a target.
+        var symbolInfo = model.GetSymbolInfo(primaryBase);
+        if (symbolInfo.Symbol is not IMethodSymbol resolved)
         {
-            AddCall(ownerId, resolved, primaryBase, model, edges, seen);
+            context.RecordUnresolvedBinding(symbolInfo, primaryBase, model);
             return;
         }
 
-        if (owner is not IMethodSymbol constructor || constructor.ContainingType?.BaseType is not INamedTypeSymbol baseType)
-            return;
-
-        var argumentTypes = primaryBase.ArgumentList.Arguments
-            .Select(argument => model.GetTypeInfo(argument.Expression).Type)
-            .ToArray();
-
-        var compilation = (CSharpCompilation)context.Compilation;
-        foreach (var candidate in baseType.InstanceConstructors)
-        {
-            if (candidate.Parameters.Length != argumentTypes.Length)
-                continue;
-
-            var matches = true;
-            for (var i = 0; i < argumentTypes.Length; i++)
-            {
-                var argumentType = argumentTypes[i];
-                if (argumentType == null)
-                {
-                    matches = false;
-                    break;
-                }
-
-                var conversion = compilation.ClassifyConversion(argumentType, candidate.Parameters[i].Type);
-                if (!conversion.IsImplicit)
-                {
-                    matches = false;
-                    break;
-                }
-            }
-
-            if (!matches)
-                continue;
-
-            AddCall(ownerId, candidate, primaryBase, model, edges, seen);
-            break;
-        }
+        AddCall(ownerId, resolved, primaryBase, model, edges, seen);
     }
 
     private void AddUsingDispose(
@@ -549,152 +550,63 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         List<EdgeRecord> edges,
         HashSet<(string Source, string Target, string Kind)> seen)
     {
-        // CSharpSemanticModel.GetAwaitExpressionInfo is not public on the pinned
-        // Roslyn version, so resolve the await pattern members from the public
-        // symbol model. The language rules find GetAwaiter/IsCompleted/GetResult
-        // on the awaited type and its awaiter; instance methods cover the shapes
-        // in scope (extension-method await patterns are not resolved).
-        var awaitedType = model.GetTypeInfo(syntax.Expression).Type;
-        if (awaitedType == null)
-            return;
-
-        var getAwaiter = FindParameterlessInstanceMethod(awaitedType, "GetAwaiter");
-        if (getAwaiter == null)
-            return;
-
-        AddCall(ownerId, getAwaiter, syntax, model, edges, seen);
-
-        var awaiterType = getAwaiter.ReturnType;
-        AddCall(ownerId, FindParameterlessInstanceMethod(awaiterType, "GetResult"), syntax, model, edges, seen);
-        AddMemberRead(ownerId, FindParameterlessProperty(awaiterType, "IsCompleted"), syntax, edges, seen);
+        var info = model.GetAwaitExpressionInfo(syntax);
+        AddCall(ownerId, info.GetAwaiterMethod, syntax, model, edges, seen);
+        AddCall(ownerId, info.GetResultMethod, syntax, model, edges, seen);
+        AddMemberRead(ownerId, info.IsCompletedProperty, syntax, edges, seen);
     }
 
     private void AddForeachPattern(
         string ownerId,
-        IForEachLoopOperation loop,
         CommonForEachStatementSyntax syntax,
         SemanticModel model,
         List<EdgeRecord> edges,
         HashSet<(string Source, string Target, string Kind)> seen)
     {
-        var collectionType = model.GetTypeInfo(syntax.Expression).Type;
-        if (collectionType == null)
-            return;
+        var info = model.GetForEachStatementInfo(syntax);
+        AddCall(ownerId, info.GetEnumeratorMethod, syntax, model, edges, seen);
+        AddCall(ownerId, info.MoveNextMethod, syntax, model, edges, seen);
+        AddMemberRead(ownerId, info.CurrentProperty, syntax, edges, seen);
+        AddCall(ownerId, info.DisposeMethod, syntax, model, edges, seen);
 
-        var isAsync = loop.IsAsynchronous;
-
-        var getEnumerator = FindParameterlessInstanceMethod(collectionType, isAsync ? "GetAsyncEnumerator" : "GetEnumerator");
-        if (getEnumerator == null)
-        {
-            var enumerableInterface = isAsync
-                ? FindInterface(collectionType, static i => i.MetadataName == "IAsyncEnumerable`1")
-                : FindInterface(collectionType, static i => i.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
-                  ?? FindInterface(collectionType, static i => i.SpecialType == SpecialType.System_Collections_IEnumerable);
-            if (enumerableInterface != null)
-                getEnumerator = FindInterfaceMember(collectionType, enumerableInterface, isAsync ? "GetAsyncEnumerator" : "GetEnumerator");
-        }
-
-        if (getEnumerator == null)
-            return;
-
-        AddCall(ownerId, getEnumerator, syntax, model, edges, seen);
-
-        var enumeratorType = getEnumerator.ReturnType;
-        var moveNext = FindParameterlessInstanceMethod(enumeratorType, isAsync ? "MoveNextAsync" : "MoveNext")
-                       ?? FindEnumeratorInterfaceMember(enumeratorType, isAsync, "MoveNext") as IMethodSymbol;
-        AddCall(ownerId, moveNext, syntax, model, edges, seen);
-
-        var current = FindParameterlessProperty(enumeratorType, "Current")
-                      ?? FindEnumeratorInterfaceMember(enumeratorType, isAsync, "Current") as IPropertySymbol;
-        AddMemberRead(ownerId, current, syntax, edges, seen);
-
-        AddCall(ownerId, FindParameterlessInstanceMethod(enumeratorType, isAsync ? "DisposeAsync" : "Dispose"),
-            syntax, model, edges, seen);
+        // A foreach deconstruction ('foreach (var (a, b) in pairs)') has its own
+        // Deconstruct calls, reached through the same Nested recursion as an
+        // assignment deconstruction.
+        if (syntax is ForEachVariableStatementSyntax variableSyntax)
+            AddDeconstructionCalls(ownerId, model.GetDeconstructionInfo(variableSyntax), variableSyntax,
+                model, edges, seen);
     }
 
     private void AddDeconstructionCalls(
         string ownerId,
-        IDeconstructionAssignmentOperation deconstruction,
-        AssignmentExpressionSyntax syntax,
+        DeconstructionInfo info,
+        SyntaxNode syntax,
         SemanticModel model,
         List<EdgeRecord> edges,
         HashSet<(string Source, string Target, string Kind)> seen)
     {
-        var valueType = deconstruction.Value.Type;
-        if (valueType == null)
-            return;
+        AddCall(ownerId, info.Method, syntax, model, edges, seen);
+        foreach (var nested in info.Nested)
+            AddDeconstructionCalls(ownerId, nested, syntax, model, edges, seen);
+    }
 
-        // One Deconstruct call covers the top-level designation; a declaration
-        // form such as 'var (left, right) = x' carries the designation on an
-        // IDeclarationExpressionOperation instead of a tuple operation. Nested
-        // designations would add further calls, which the fixture corpus does
-        // not exercise yet.
-        var count = deconstruction.Target switch
+    private void AddMemberBySymbolKind(
+        string ownerId,
+        ISymbol? member,
+        SyntaxNode syntax,
+        SemanticModel model,
+        List<EdgeRecord> edges,
+        HashSet<(string Source, string Target, string Kind)> seen)
+    {
+        switch (member)
         {
-            ITupleOperation tuple => tuple.Elements.Length,
-            IDeclarationExpressionOperation
-            {
-                Syntax: DeclarationExpressionSyntax
-                {
-                    Designation: ParenthesizedVariableDesignationSyntax designation
-                }
-            } => designation.Variables.Count,
-            _ => 0
-        };
-        if (count == 0)
-            return;
-
-        var deconstruct = valueType.GetMembers("Deconstruct").OfType<IMethodSymbol>()
-            .FirstOrDefault(method => !method.IsStatic &&
-                                      method.Parameters.Length == count &&
-                                      method.Parameters.All(parameter => parameter.RefKind == RefKind.Out));
-        AddCall(ownerId, deconstruct, syntax, model, edges, seen);
-    }
-
-    private static IMethodSymbol? FindParameterlessInstanceMethod(ITypeSymbol? type, string name)
-    {
-        if (type is not INamedTypeSymbol namedType)
-            return null;
-        return namedType.GetMembers(name).OfType<IMethodSymbol>()
-            .FirstOrDefault(method => !method.IsStatic && method.Parameters.Length == 0);
-    }
-
-    private static IPropertySymbol? FindParameterlessProperty(ITypeSymbol? type, string name)
-    {
-        if (type is not INamedTypeSymbol namedType)
-            return null;
-        return namedType.GetMembers(name).OfType<IPropertySymbol>()
-            .FirstOrDefault(property => !property.IsStatic && property.Parameters.Length == 0);
-    }
-
-    private static INamedTypeSymbol? FindInterface(ITypeSymbol type, Func<INamedTypeSymbol, bool> predicate)
-    {
-        if (type is not INamedTypeSymbol namedType)
-            return null;
-        if (predicate(namedType))
-            return namedType;
-        return namedType.AllInterfaces.FirstOrDefault(predicate);
-    }
-
-    private static IMethodSymbol? FindInterfaceMember(ITypeSymbol type, INamedTypeSymbol interfaceType, string name)
-    {
-        var interfaceMethod = interfaceType.GetMembers(name).OfType<IMethodSymbol>()
-            .FirstOrDefault(method => !method.IsStatic);
-        if (interfaceMethod == null)
-            return null;
-        if (type is INamedTypeSymbol namedType &&
-            namedType.FindImplementationForInterfaceMember(interfaceMethod) is IMethodSymbol implementation)
-            return implementation;
-        return interfaceMethod;
-    }
-
-    private static ISymbol? FindEnumeratorInterfaceMember(ITypeSymbol enumeratorType, bool isAsync, string name)
-    {
-        var interfaceType = isAsync
-            ? FindInterface(enumeratorType, static i => i.MetadataName == "IAsyncEnumerator`1")
-            : FindInterface(enumeratorType, static i => i.SpecialType == SpecialType.System_Collections_Generic_IEnumerator_T)
-              ?? FindInterface(enumeratorType, static i => i.SpecialType == SpecialType.System_Collections_IEnumerator);
-        return interfaceType == null ? null : FindInterfaceMember(enumeratorType, interfaceType, name);
+            case IPropertySymbol property:
+                AddMemberRead(ownerId, property, syntax, edges, seen);
+                break;
+            case IMethodSymbol method:
+                AddCall(ownerId, method, syntax, model, edges, seen);
+                break;
+        }
     }
 
     private void Emit(

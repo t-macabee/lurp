@@ -184,6 +184,7 @@ entry, not a new extractor.
 | `multi_target_union` | Multi-target projects | One union snapshot; per-symbol TFM set recorded, not surfaced in reads |
 | `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
 | `static_abstract_dispatch` | Static abstract interface dispatch | Interface-member `Calls` extracted; implementation dispatch not emitted |
+| `collection_expression_implicit_calls` | Collection expression `Add` calls and spread enumeration | `ConstructMethod` extracted; `Add` calls and spread `GetEnumerator` produce no edge |
 
 ## 7. Glossary
 

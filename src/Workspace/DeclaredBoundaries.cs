@@ -91,6 +91,12 @@ internal static class DeclaredBoundaries
             "Static-abstract interface dispatch is not modeled as a direct edge to the implementation: a generic " +
             "method constrained to an interface with a static abstract member is extracted as a Calls edge to " +
             "the interface member, but the implementing type selected at dispatch time is not emitted as a relation."
+        ),
+        new(
+            "collection_expression_implicit_calls",
+            "A collection expression whose target type has Add lowers to the constructor plus one Add call per " +
+            "element, and a spread element is enumerated; Roslyn exposes the construct method only, so Add calls " +
+            "and spread GetEnumerator produce no edge."
         )
     ];
 

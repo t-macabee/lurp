@@ -66,18 +66,13 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
 
     private static void CollectKnownNames(INamespaceSymbol ns, Dictionary<string, List<ISymbol>> typesByName, Dictionary<string, List<ISymbol>> membersByName)
     {
-        foreach (var type in ns.GetTypeMembers())
+        foreach (var type in ExtractionUtils.GetAllNamedTypes(ns))
         {
             AddSymbol(typesByName, type.Name, type);
             foreach (var member in type.GetMembers())
             {
                 AddSymbol(membersByName, member.Name, member);
             }
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            CollectKnownNames(childNs, typesByName, membersByName);
         }
     }
 

@@ -24,6 +24,15 @@ public class SnapshotRow
 public sealed class ProjectRow
 {
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    ///     The project's compiled assembly name (<see cref="Project.AssemblyName" />),
+    ///     which differs from <see cref="Name" /> when the project file sets
+    ///     <c>AssemblyName</c>. NULL for snapshots indexed before migration 034; the
+    ///     reader then falls back to <see cref="Name" />.
+    /// </summary>
+    public string? AssemblyName { get; init; }
+
     public string TargetFramework { get; init; } = string.Empty;
     public List<string> References { get; init; } = [];
     public string? MetadataReferenceIdentitiesJson { get; init; }

@@ -311,6 +311,31 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ReflectionNameCandidate_MemberOfNestedType()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Owner
+                                                {
+                                                    public class Inner
+                                                    {
+                                                        public void Run() { }
+                                                    }
+                                                }
+                                                public class User
+                                                {
+                                                    public void Use()
+                                                    {
+                                                        var m = typeof(Owner.Inner).GetMethod("Run");
+                                                    }
+                                                }
+                                                """));
+
+        extraction.SingleEdge("ReflectionNameCandidate", "global::N.User.Use", "global::N.Owner.Inner.Run",
+            Provenance.NameCandidate);
+    }
+
+    [Fact]
     public async Task PropertyChangedEventArgs_LimitsCandidateToContainingType()
     {
         var extraction = await ExtractAsync(One("""

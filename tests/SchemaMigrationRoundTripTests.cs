@@ -100,6 +100,20 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
+    public void RoundTrip_ProjectsTable_HasAssemblyNameColumn()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'assembly_name';";
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
     public void ValidateSchema_AfterRunMigrations_DoesNotThrow()
     {
         var runner = new MigrationRunner(_dbPath);

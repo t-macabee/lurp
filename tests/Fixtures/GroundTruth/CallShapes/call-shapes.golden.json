@@ -967,6 +967,342 @@
       "target": "T:CallShapes.Core.ShapeEnumerator",
       "reason": "Type ShapeSequence member surface: references T:CallShapes.Core.ShapeEnumerator.",
       "id": "gt-135"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionAwait",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeImplicitExtensions.GetAwaiter(CallShapes.Core.ShapeExtAwaitable)",
+      "reason": "Extension get-await: calls M:CallShapes.Core.ShapeImplicitExtensions.GetAwaiter(CallShapes.Core.ShapeExtAwaitable). B2: extension-method await binding; missing until Part D step 3.",
+      "id": "gt-136"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionAwait",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeExtAwaiter.GetResult",
+      "reason": "Extension get-await: calls M:CallShapes.Core.ShapeExtAwaiter.GetResult. B2: extension-method await binding; missing until Part D step 3.",
+      "id": "gt-137"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionAwait",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeExtAwaiter.IsCompleted",
+      "reason": "Extension get-await: reads P:CallShapes.Core.ShapeExtAwaiter.IsCompleted. B2: extension-method await binding; missing until Part D step 3.",
+      "id": "gt-138"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionAwait",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeExtAwaitable",
+      "reason": "Extension get-await: constructs T:CallShapes.Core.ShapeExtAwaitable. Control.",
+      "id": "gt-139"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionForeach",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeImplicitExtensions.GetEnumerator(CallShapes.Core.ShapeExtSequence)",
+      "reason": "Extension foreach: calls M:CallShapes.Core.ShapeImplicitExtensions.GetEnumerator(CallShapes.Core.ShapeExtSequence). B2: extension-method GetEnumerator binding; missing until Part D step 3.",
+      "id": "gt-140"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionForeach",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeExtEnumerator.MoveNext",
+      "reason": "Extension foreach: calls M:CallShapes.Core.ShapeExtEnumerator.MoveNext. B2: extension-method GetEnumerator binding; missing until Part D step 3.",
+      "id": "gt-141"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionForeach",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeExtEnumerator.Current",
+      "reason": "Extension foreach: reads P:CallShapes.Core.ShapeExtEnumerator.Current. B2: extension-method GetEnumerator binding; missing until Part D step 3.",
+      "id": "gt-142"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionDeconstruct",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeImplicitExtensions.Deconstruct(CallShapes.Core.ShapeExtPair,System.Int32@,System.Int32@)",
+      "reason": "Extension deconstruction: calls M:CallShapes.Core.ShapeImplicitExtensions.Deconstruct(CallShapes.Core.ShapeExtPair,System.Int32@,System.Int32@). B2: extension-method Deconstruct binding; missing until Part D step 3.",
+      "id": "gt-143"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromNestedDeconstruction",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeOuterPair.Deconstruct(System.Int32@,CallShapes.Core.ShapeInnerPair@)",
+      "reason": "Nested deconstruction: calls M:CallShapes.Core.ShapeOuterPair.Deconstruct(System.Int32@,CallShapes.Core.ShapeInnerPair@). Control.",
+      "id": "gt-144"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromNestedDeconstruction",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeInnerPair.Deconstruct(System.Int32@,System.Int32@)",
+      "reason": "Nested deconstruction: calls M:CallShapes.Core.ShapeInnerPair.Deconstruct(System.Int32@,System.Int32@). B2: nested DeconstructionInfo recursion; missing until Part D step 3.",
+      "id": "gt-145"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromPositionalPattern(CallShapes.Core.ShapePositional)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapePositional.Deconstruct(System.Int32@,System.Int32@)",
+      "reason": "Positional pattern: calls M:CallShapes.Core.ShapePositional.Deconstruct(System.Int32@,System.Int32@). B19: IRecursivePatternOperation.DeconstructSymbol; missing until Part D step 3.",
+      "id": "gt-146"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromForeachDeconstruction(CallShapes.Core.ShapeForeachItem[])",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeForeachItem.Deconstruct(System.Int32@,System.Int32@)",
+      "reason": "Foreach deconstruction: calls M:CallShapes.Core.ShapeForeachItem.Deconstruct(System.Int32@,System.Int32@). B19: foreach deconstruction; missing until Part D step 3.",
+      "id": "gt-147"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromListPattern(CallShapes.Core.ShapeListLike)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeListLike.Count",
+      "reason": "List pattern: reads P:CallShapes.Core.ShapeListLike.Count. B19: list-pattern length; missing until Part D step 3.",
+      "id": "gt-148"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromListPattern(CallShapes.Core.ShapeListLike)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeListLike.Item(System.Int32)",
+      "reason": "List pattern: reads P:CallShapes.Core.ShapeListLike.Item(System.Int32). B19: list-pattern indexer; missing until Part D step 3.",
+      "id": "gt-149"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromListPattern(CallShapes.Core.ShapeListLike)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeListLike.Slice(System.Int32,System.Int32)",
+      "reason": "List pattern slice: calls M:CallShapes.Core.ShapeListLike.Slice(System.Int32,System.Int32). B19: slice pattern (ISlicePatternOperation.SliceSymbol); missing until Part D step 3.",
+      "id": "gt-150"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitIndex(CallShapes.Core.ShapeIndexLike)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeIndexLike.Count",
+      "reason": "Implicit Index: reads P:CallShapes.Core.ShapeIndexLike.Count. B19: implicit-index length; missing until Part D step 3.",
+      "id": "gt-151"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitIndex(CallShapes.Core.ShapeIndexLike)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeIndexLike.Item(System.Int32)",
+      "reason": "Implicit Index: reads P:CallShapes.Core.ShapeIndexLike.Item(System.Int32). Present before Part D step 3: ReadsWritesEdgeExtractor binds the element access to the this[int] indexer (U2). B19 adds the same fact from IImplicitIndexerReferenceOperation in Oracle A and the operation walk.",
+      "id": "gt-152"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitRange(CallShapes.Core.ShapeIndexLike)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeIndexLike.Count",
+      "reason": "Implicit Range: reads P:CallShapes.Core.ShapeIndexLike.Count. B19: implicit-range length; missing until Part D step 3.",
+      "id": "gt-153"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitRange(CallShapes.Core.ShapeIndexLike)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeIndexLike.Slice(System.Int32,System.Int32)",
+      "reason": "Implicit Range: calls M:CallShapes.Core.ShapeIndexLike.Slice(System.Int32,System.Int32). B19: implicit-range slice; missing until Part D step 3.",
+      "id": "gt-154"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromCollectionBuilder",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBuiltBuilder.Create(System.ReadOnlySpan{System.Int32})",
+      "reason": "Collection builder: calls M:CallShapes.Core.ShapeBuiltBuilder.Create(System.ReadOnlySpan{System.Int32}). B19: ICollectionExpressionOperation.ConstructMethod (builder); missing until Part D step 3.",
+      "id": "gt-155"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromCollectionAdd",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeAddOnly",
+      "reason": "Collection Add target: constructs T:CallShapes.Core.ShapeAddOnly. B19: ICollectionExpressionOperation.ConstructMethod (constructor); missing until Part D step 3.",
+      "id": "gt-156"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromGenericBlockMethod(CallShapes.Core.ShapeBox{System.Int32})",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTextExtensions.BlockUnbox``1(CallShapes.Core.ShapeBox{``0})",
+      "reason": "Generic extension block method: calls M:CallShapes.Core.ShapeTextExtensions.BlockUnbox``1(CallShapes.Core.ShapeBox{``0}). B3: AssociatedExtensionImplementation; missing until Part D step 3.",
+      "id": "gt-157"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockLength(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeText.Value",
+      "reason": "Block property getter (BlockLength) body: reads P:CallShapes.Core.ShapeText.Value. B3 + B20: block accessor body owner; missing until Part D step 3.",
+      "id": "gt-158"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockTag(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeText.Note",
+      "reason": "Block property getter (BlockTag) body: reads P:CallShapes.Core.ShapeText.Note. B3 + B20: block accessor body owner; missing until Part D step 3.",
+      "id": "gt-159"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.set_BlockTag(CallShapes.Core.ShapeText,System.String)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeText.Note",
+      "reason": "Block property setter (BlockTag) body: writes P:CallShapes.Core.ShapeText.Note. B3 + B20: block accessor body owner; missing until Part D step 3.",
+      "id": "gt-160"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockHasItem``1(CallShapes.Core.ShapeBox{``0})",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeBox`1.Item",
+      "reason": "Generic block property getter (BlockHasItem) body: reads P:CallShapes.Core.ShapeBox`1.Item. B3 + B20: block accessor body owner; missing until Part D step 3.",
+      "id": "gt-161"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.BlockUnbox``1(CallShapes.Core.ShapeBox{``0})",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeBox`1.Item",
+      "reason": "Generic block method (BlockUnbox) body: reads P:CallShapes.Core.ShapeBox`1.Item. B3 control: block method body already walked; present (Inference).",
+      "id": "gt-162"
+    },
+    {
+      "source": "F:CallShapes.App.ShapeNestedHost.Level1._seed",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.NestedFieldInitializerTarget",
+      "reason": "Nested-type field initializer: calls M:CallShapes.Core.CoreApi.NestedFieldInitializerTarget. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-163"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.NestedConstructorInitializerTarget",
+      "reason": "Nested-type constructor initializer: calls M:CallShapes.Core.CoreApi.NestedConstructorInitializerTarget. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-164"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.#ctor",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeNestedHost.Level1.#ctor(System.Int32)",
+      "reason": "Nested-type constructor initializer: calls M:CallShapes.App.ShapeNestedHost.Level1.#ctor(System.Int32). B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-165"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.#ctor(System.Int32)",
+      "kind": "Writes",
+      "target": "P:CallShapes.App.ShapeNestedHost.Level1.Seed",
+      "reason": "Nested-type constructor body: writes P:CallShapes.App.ShapeNestedHost.Level1.Seed. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-166"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNestedCreated",
+      "reason": "Nested-type method body: constructs T:CallShapes.Core.ShapeNestedCreated. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-167"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNestedTarget.Counter",
+      "reason": "Nested-type method body: reads P:CallShapes.Core.ShapeNestedTarget.Counter. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-168"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeNestedTarget.Counter",
+      "reason": "Nested-type method body: writes P:CallShapes.Core.ShapeNestedTarget.Counter. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-169"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.NestedCallTarget",
+      "reason": "Nested-type method body: calls M:CallShapes.Core.CoreApi.NestedCallTarget. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-170"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeNestedCreated.Value",
+      "reason": "Nested-type method body: reads P:CallShapes.Core.ShapeNestedCreated.Value. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-171"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "Reads",
+      "target": "F:CallShapes.App.ShapeNestedHost.Level1._seed",
+      "reason": "Nested-type method body: reads F:CallShapes.App.ShapeNestedHost.Level1._seed. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-172"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Run(CallShapes.Core.ShapeNestedTarget)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNestedTarget",
+      "reason": "Nested-type method parameter: references T:CallShapes.Core.ShapeNestedTarget. B20: parameter dependency extractor sees nested types; missing until Part D step 3.",
+      "id": "gt-173"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.Level1.Level2.Deep",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.NestedDeepTarget",
+      "reason": "Two-level nested-type method body: calls M:CallShapes.Core.CoreApi.NestedDeepTarget. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-174"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.NestedDerived.Value",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeNestedHost.NestedBase.Value",
+      "reason": "Nested-type override body: calls M:CallShapes.App.ShapeNestedHost.NestedBase.Value. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-175"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.NestedDerived.Value",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.CoreApi.NestedOverrideTarget",
+      "reason": "Nested-type override body: calls M:CallShapes.Core.CoreApi.NestedOverrideTarget. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-176"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeNestedHost.NestedDerived.Fail",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeNestedException",
+      "reason": "Nested-type method body (throw): constructs T:CallShapes.Core.ShapeNestedException. B20: nested-type member enumeration; missing until Part D step 3.",
+      "id": "gt-177"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromBlockProperty(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockLength",
+      "reason": "B3 step 2: extension-property access targets the block property by design; present today.",
+      "id": "gt-178"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromBlockPropertyReadWrite(CallShapes.Core.ShapeText)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockTag",
+      "reason": "B3 step 2: extension-property access targets the block property by design; present today.",
+      "id": "gt-179"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromBlockPropertyReadWrite(CallShapes.Core.ShapeText)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockTag",
+      "reason": "B3 step 2: extension-property access targets the block property by design; present today.",
+      "id": "gt-180"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromGenericBlockProperty(CallShapes.Core.ShapeBox{System.Int32})",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeTextExtensions.<G>$3AC3106B91FFD4D8F00C1838C9BD2BF7`1.BlockHasItem",
+      "reason": "B3 step 2: extension-property access targets the block property by design; present today.",
+      "id": "gt-181"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitIndexWrite(CallShapes.Core.ShapeIndexWritable)",
+      "kind": "Writes",
+      "target": "P:CallShapes.Core.ShapeIndexWritable.Item(System.Int32)",
+      "reason": "B19: implicit Index write; the indexer is written, the length is read.",
+      "id": "gt-182"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromImplicitIndexWrite(CallShapes.Core.ShapeIndexWritable)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeIndexWritable.Count",
+      "reason": "B19: implicit Index write; the indexer is written, the length is read.",
+      "id": "gt-183"
     }
   ],
   "excluded": [
@@ -984,6 +1320,11 @@
       "id": "excluded-options-binding",
       "boundary": "di_options",
       "reason": "AddOptions<ShapeOptions>().Configure(...) resolves the options type (Registers edge, runtime_unknown provenance) but configuration-binding semantics are not captured."
+    },
+    {
+      "id": "excluded-collection-expression-implicit-calls",
+      "boundary": "collection_expression_implicit_calls",
+      "reason": "FromCollectionAdd: a collection expression whose target type has Add lowers to the constructor plus one Add call per element. Roslyn exposes the constructor (ICollectionExpressionOperation.ConstructMethod) but not the Add calls, and not the GetEnumerator of a spread element. ShapeAddOnly.Add has no incoming edge by design."
     }
   ],
   "notes": [
@@ -1009,7 +1350,7 @@
     },
     {
       "id": "note-csharp14-extension-block",
-      "reason": "The call to the C# 14 extension block binds, in the current extractor, to a compiler-generated nested symbol (M:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockWordCount); the fact above records the callable extension member M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText) as the intended target. The classic extension also gets an ExtensionReceiver edge today; the block form does not."
+      "reason": "The call to the C# 14 extension block binds, in the current extractor, to a compiler-generated nested symbol (M:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockWordCount); the fact above records the callable extension member M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText) as the intended target. Part D step 3 (B3): calls to block methods target the implementation on the outer class (AssociatedExtensionImplementation). Reads and writes of block properties target the block property (P:…<G>$….Name) by design. Accessor bodies are owned by the implementation accessor."
     },
     {
       "id": "note-partial-method-proof",
@@ -1022,6 +1363,10 @@
     {
       "id": "note-measured-baseline",
       "reason": "Facts whose source is a body the current extractor already walks (classic extension, interface calls, local function, query lambda, async iterator, ref struct, unsafe, accessor bodies, static constructor, operator reads, type-level References) are copied from the measured snapshot; the C# 14 block-extension call is the one normalised exception. They are included so the Phase 7 exact-set test can diff the whole corpus rather than a subset."
+    },
+    {
+      "id": "note-d3-overrides",
+      "reason": "NestedDerived.Value overrides NestedBase.Value. The Overrides edge is outside this oracle's kinds; the B20 self-index check in Part D step 3 covers Overrides, Declares, Returns and Throws from nested types."
     }
   ]
 }

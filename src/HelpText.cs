@@ -25,7 +25,7 @@ internal static class HelpText
         // Modes that accept --include-public: dead-candidates.
         ["--include-public"] = "Include public/protected symbols with no internal LIVE incoming edge as uncertain_dead (reason: public_surface). Default excludes them from proved_dead; without this flag a public helper with no callers is not flagged.",
         // Modes that accept --include-tests: dead-candidates.
-        ["--include-tests"] = "Include test-project symbols (project name %.Tests) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
+        ["--include-tests"] = "Include test-project symbols (a project that references a test framework) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
         // Modes that accept --cursor=: outline, search, impact, context, get-annotations, diagnostics, grep, and dead-candidates.
         ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
         // Modes that accept --json: status, timings, and pin-snapshot.

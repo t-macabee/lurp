@@ -153,7 +153,8 @@ public class MigrationRunner
             new Migration_030_EdgeSnapshotTargetIndex(),
             new Migration_031_SymbolTargetFrameworks(),
             new Migration_032_ProjectDocumentPaths(),
-            new Migration_033_SnapshotMetrics()
+            new Migration_033_SnapshotMetrics(),
+            new Migration_034_ProjectAssemblyName()
         ];
     }
 }

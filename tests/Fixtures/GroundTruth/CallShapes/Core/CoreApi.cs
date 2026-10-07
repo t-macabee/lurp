@@ -53,4 +53,14 @@ public static class CoreApi
     public static string MinimalApiTarget() => "shape";
 
     public static int OptionsTarget() => 22;
+
+    public static int NestedFieldInitializerTarget() => 23;
+
+    public static int NestedConstructorInitializerTarget() => 24;
+
+    public static int NestedCallTarget() => 25;
+
+    public static int NestedDeepTarget() => 26;
+
+    public static int NestedOverrideTarget() => 27;
 }

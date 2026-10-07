@@ -32,40 +32,20 @@ internal static class SymbolIdFactory
     /// <summary>
     ///     A C# 14 extension-block member binds, at the call site, to the
     ///     compiler-generated nested extension type, whose symbol is not the
-    ///     declared member. Map it back to the declared extension member on the
-    ///     outer static class so every edge endpoint names the stable symbol.
+    ///     declared member. A block method — this includes a property accessor —
+    ///     maps back to its implementation on the outer static class through
+    ///     Roslyn's <see cref="IMethodSymbol.AssociatedExtensionImplementation" />,
+    ///     so every edge endpoint names the stable implementation symbol. Every
+    ///     other member keeps its own symbol; a block property stays the declared
+    ///     block property by design.
     /// </summary>
     private static ISymbol NormalizeExtensionBlockMember(ISymbol member)
     {
-        if (member.ContainingType is not { IsExtension: true, ContainingType: { } outer })
+        if (member.ContainingType is not { IsExtension: true })
             return member;
 
-        switch (member)
-        {
-            case IMethodSymbol method:
-                var extensionParameter = member.ContainingType.ExtensionParameter;
-                foreach (var candidate in outer.GetMembers(method.Name).OfType<IMethodSymbol>())
-                {
-                    if (candidate.Parameters.Length != method.Parameters.Length + 1)
-                        continue;
-                    if (extensionParameter != null &&
-                        !SymbolEqualityComparer.Default.Equals(candidate.Parameters[0].Type, extensionParameter.Type))
-                        continue;
-                    if (candidate.Parameters.Skip(1).Zip(method.Parameters)
-                        .All(pair => SymbolEqualityComparer.Default.Equals(pair.First.Type, pair.Second.Type)))
-                        return candidate.OriginalDefinition;
-                }
-
-                break;
-            case IPropertySymbol property:
-                foreach (var candidate in outer.GetMembers(property.Name).OfType<IPropertySymbol>())
-                {
-                    if (SymbolEqualityComparer.Default.Equals(candidate.Type, property.Type))
-                        return candidate.OriginalDefinition;
-                }
-
-                break;
-        }
+        if (member is IMethodSymbol method)
+            return method.AssociatedExtensionImplementation?.OriginalDefinition ?? method;
 
         return member;
     }

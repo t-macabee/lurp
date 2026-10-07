@@ -75,7 +75,7 @@ internal sealed class MemberEdgeExtractionContext(
 
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
     {
-        return ExtractionUtils.GetNamespaceTypeMembers(Compilation.Assembly.GlobalNamespace);
+        return ExtractionUtils.GetAllNamedTypes(Compilation.Assembly.GlobalNamespace);
     }
 
     internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)

@@ -170,6 +170,77 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task AssemblyNameChange_ForcesRebuild()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        var source = new Dictionary<string, string>
+        {
+            ["Svc.cs"] = """
+                         namespace P;
+
+                         public class Svc
+                         {
+                             public int Value() => 42;
+                         }
+                         """
+        };
+
+        CreateProject("P", source);
+        await RestoreSolutionAsync();
+
+        var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
+        var snapshotV1 = await RunFullIndexAsync(DbPath);
+
+        // Capture the V1 manifest now: after the second index writes V2, the
+        // latest-snapshot lookup below would return V2's manifest and the
+        // comparison would be current-vs-itself.
+        SnapshotRow storedV1;
+        using (var store = OpenStore(DbPath))
+        {
+            storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
+                       ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+        }
+
+        // Rewrites the .csproj in place to change <AssemblyName> and nothing
+        // else. Written directly rather than via CreateProject, whose slnx
+        // append would add a duplicate project entry and break solution loading.
+        WriteFile("P", "P.csproj", """
+                                   <Project Sdk="Microsoft.NET.Sdk">
+                                     <PropertyGroup>
+                                       <TargetFramework>net10.0</TargetFramework>
+                                       <ImplicitUsings>enable</ImplicitUsings>
+                                       <Nullable>enable</Nullable>
+                                       <AssemblyName>Renamed.P</AssemblyName>
+                                     </PropertyGroup>
+                                   </Project>
+                                   """);
+        var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
+
+        // Assertion 1: the identity must change. Every symbol id ends with the
+        // assembly identity, so an <AssemblyName> change makes every symbol id
+        // of the project wrong; the identity payload must capture it.
+        Assert.NotEqual(
+            SnapshotIdentity.Create(workspaceInfoV1, new HashSet<string>()),
+            SnapshotIdentity.Create(workspaceInfoV2, new HashSet<string>()));
+
+        // Assertion 2: a second full index into the same db must write a new
+        // snapshot.
+        var snapshotV2 = await RunFullIndexNoDeleteAsync(DbPath);
+        using (var store = OpenStore(DbPath))
+        {
+            Assert.Equal(2, store.GetSnapshotIds(workspaceInfoV1.Id.Value).Count);
+            Assert.NotEqual(snapshotV1, snapshotV2);
+        }
+
+        // Assertion 3: the full-rebuild freshness gate must report a mismatch,
+        // and it must be the assembly-name one.
+        var mismatches = WorkspaceFreshness.GetFullRebuildMismatches(
+            workspaceInfoV2, SnapshotManifest.FromStorageManifest(storedV1));
+        Assert.Contains(mismatches, m => m.Kind == MismatchKind.AssemblyNameChanged);
+    }
+
+    [SkippableFact]
     public async Task CompileRemoveForOneTfm_ForcesRebuild()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");

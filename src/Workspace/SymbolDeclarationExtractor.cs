@@ -18,6 +18,13 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     // "<invalid-global-code>" when the source has unrelated syntax errors).
     private readonly IMethodSymbol? _entryPointMethod = context.Compilation.GetEntryPoint(CancellationToken.None);
 
+    // B24/B3: a C# 14 extension block property is declared on the marker type (the nested
+    // extension type), and its accessors there carry an AssociatedExtensionImplementation that
+    // names the real accessor on the outer static class. The implementation accessor has no
+    // AssociatedSymbol of its own, so this map (implementation accessor -> block property and
+    // accessor kind) is how its metadata gets an associated_symbol. Built once per ExtractAll.
+    private readonly Dictionary<IMethodSymbol, (IPropertySymbol Property, string Kind)> _extensionImplementationAccessors = new(SymbolEqualityComparer.Default);
+
     private static readonly SymbolDisplayFormat SignatureFormat = new(
         SymbolDisplayGlobalNamespaceStyle.Omitted,
         SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
@@ -35,9 +42,47 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         var results = new List<SymbolDeclaration>();
 
+        BuildExtensionImplementationAccessorMap();
+
         foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace)) ExtractTypeDeclarations(typeSymbol, results);
 
         return results;
+    }
+
+    private void BuildExtensionImplementationAccessorMap()
+    {
+        foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace))
+            CollectExtensionImplementationAccessors(typeSymbol);
+    }
+
+    private void CollectExtensionImplementationAccessors(INamedTypeSymbol typeSymbol)
+    {
+        foreach (var nestedType in typeSymbol.GetTypeMembers())
+        {
+            if (nestedType.IsExtension)
+            {
+                foreach (var member in nestedType.GetMembers())
+                {
+                    if (member is not IPropertySymbol property)
+                        continue;
+
+                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                    {
+                        if (accessor == null)
+                            continue;
+
+                        var kind = AccessorKindOf(accessor);
+                        if (kind == null)
+                            continue;
+
+                        if (accessor.AssociatedExtensionImplementation is IMethodSymbol implementation)
+                            _extensionImplementationAccessors[implementation] = (property, kind);
+                    }
+                }
+            }
+
+            CollectExtensionImplementationAccessors(nestedType);
+        }
     }
 
     private void ExtractTypeDeclarations(INamedTypeSymbol typeSymbol, List<SymbolDeclaration> results)
@@ -49,6 +94,12 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         foreach (var member in typeSymbol.GetMembers())
         {
             if (member is INamedTypeSymbol)
+                continue;
+
+            // B3 step 2a: a C# 14 extension block declares a block member and its
+            // implementation on the outer static class. Only the implementation is
+            // canonical, so the block method symbol is not declared.
+            if (member is IMethodSymbol { ContainingType.IsExtension: true })
                 continue;
 
             AddSymbolDeclarations(member, results);
@@ -63,7 +114,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
         var fqn = BuildFullyQualifiedName(symbol);
         var kind = MapKind(symbol);
-        var metadataJson = BuildMetadataJson(symbol, _entryPointMethod);
+        var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
         var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 } typeSymbol;
@@ -145,9 +196,12 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         };
     }
 
-    private static string? BuildMetadataJson(ISymbol symbol, IMethodSymbol? entryPointMethod)
+    private static string? BuildMetadataJson(ISymbol symbol, Compilation compilation, IMethodSymbol? entryPointMethod, Dictionary<IMethodSymbol, (IPropertySymbol Property, string Kind)> extensionImplementations)
     {
         var metadata = new Dictionary<string, object?>();
+
+        if (symbol.IsImplicitlyDeclared)
+            metadata[SymbolMetadataKeys.IsImplicitlyDeclared] = true;
 
         switch (symbol)
         {
@@ -164,6 +218,27 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.Signature] = method.ToDisplayString(SignatureFormat);
                 if (entryPointMethod != null && SymbolEqualityComparer.Default.Equals(method, entryPointMethod))
                     metadata[SymbolMetadataKeys.IsEntryPoint] = true;
+                if (method.MethodKind == MethodKind.StaticConstructor)
+                    metadata[SymbolMetadataKeys.IsStaticConstructor] = true;
+                var accessorKind = AccessorKindOf(method);
+                if (accessorKind != null)
+                {
+                    metadata[SymbolMetadataKeys.AccessorKind] = accessorKind;
+                    if (extensionImplementations.TryGetValue(method, out var extensionImplementation))
+                    {
+                        var blockPropertyId = extensionImplementation.Property.GetDocumentationCommentId();
+                        if (!string.IsNullOrEmpty(blockPropertyId))
+                            metadata[SymbolMetadataKeys.AssociatedSymbol] = blockPropertyId;
+                    }
+                    else if (method.AssociatedSymbol != null)
+                    {
+                        var associatedId = method.AssociatedSymbol.GetDocumentationCommentId();
+                        if (!string.IsNullOrEmpty(associatedId))
+                            metadata[SymbolMetadataKeys.AssociatedSymbol] = associatedId;
+                    }
+                }
+                if (ImplementsExternalInterface(compilation, method))
+                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
                 break;
             case INamedTypeSymbol type:
                 metadata[SymbolMetadataKeys.TypeKind] = type.TypeKind.ToString();
@@ -179,6 +254,10 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                     .Select(i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
                     .OrderBy(name => name, StringComparer.Ordinal)
                     .ToList();
+                if (type.IsExtension)
+                    metadata[SymbolMetadataKeys.IsExtensionBlock] = true;
+                if (entryPointMethod?.ContainingType != null && SymbolEqualityComparer.Default.Equals(type, entryPointMethod.ContainingType))
+                    metadata[SymbolMetadataKeys.ContainsEntryPoint] = true;
                 break;
             case IPropertySymbol prop:
                 metadata[SymbolMetadataKeys.ReturnType] = prop.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -190,6 +269,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsWriteOnly] = prop.IsWriteOnly;
                 metadata[SymbolMetadataKeys.Accessibility] = prop.DeclaredAccessibility.ToString();
                 metadata[SymbolMetadataKeys.Signature] = prop.ToDisplayString(SignatureFormat);
+                if (ImplementsExternalInterface(compilation, prop))
+                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
                 break;
             case IFieldSymbol field:
                 metadata[SymbolMetadataKeys.ReturnType] = field.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -207,6 +288,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsStatic] = evt.IsStatic;
                 metadata[SymbolMetadataKeys.Accessibility] = evt.DeclaredAccessibility.ToString();
                 metadata[SymbolMetadataKeys.Signature] = evt.ToDisplayString(SignatureFormat);
+                if (ImplementsExternalInterface(compilation, evt))
+                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
                 break;
         }
 
@@ -220,6 +303,40 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         return metadata.Count > 0
             ? JsonSerializer.Serialize(metadata)
             : null;
+    }
+
+    private static string? AccessorKindOf(IMethodSymbol method)
+    {
+        return method.MethodKind switch
+        {
+            MethodKind.PropertyGet => "get",
+            MethodKind.PropertySet => method.IsInitOnly ? "init" : "set",
+            MethodKind.EventAdd => "add",
+            MethodKind.EventRemove => "remove",
+            MethodKind.EventRaise => "raise",
+            _ => null
+        };
+    }
+
+    private static bool ImplementsExternalInterface(Compilation compilation, IMethodSymbol method) =>
+        ImplementsExternalInterface(compilation, method.ExplicitInterfaceImplementations.AsEnumerable());
+
+    private static bool ImplementsExternalInterface(Compilation compilation, IPropertySymbol property) =>
+        ImplementsExternalInterface(compilation, property.ExplicitInterfaceImplementations.AsEnumerable());
+
+    private static bool ImplementsExternalInterface(Compilation compilation, IEventSymbol @event) =>
+        ImplementsExternalInterface(compilation, @event.ExplicitInterfaceImplementations.AsEnumerable());
+
+    private static bool ImplementsExternalInterface(Compilation compilation, IEnumerable<ISymbol> implementations)
+    {
+        foreach (var implemented in implementations)
+        {
+            if (implemented.ContainingAssembly != null &&
+                !SymbolEqualityComparer.Default.Equals(implemented.ContainingAssembly, compilation.Assembly))
+                return true;
+        }
+
+        return false;
     }
 
     private static string? DeriveGeneratorIdentity(byte[] content, string encodingName)

@@ -130,6 +130,13 @@ public static unsafe class ShapeUnsafe
 public sealed class ShapeText
 {
     public string Value { get; init; } = string.Empty;
+
+    public string Note { get; set; } = string.Empty;
+}
+
+public sealed class ShapeBox<T>
+{
+    public T? Item { get; set; }
 }
 
 public static class ShapeTextExtensions
@@ -139,5 +146,20 @@ public static class ShapeTextExtensions
     extension(ShapeText text)
     {
         public int BlockWordCount() => text.Value.Split(' ').Length;
+
+        public int BlockLength => text.Value.Length;
+
+        public string BlockTag
+        {
+            get => text.Note;
+            set => text.Note = value;
+        }
+    }
+
+    extension<T>(ShapeBox<T> box)
+    {
+        public T? BlockUnbox() => box.Item;
+
+        public bool BlockHasItem => box.Item is not null;
     }
 }

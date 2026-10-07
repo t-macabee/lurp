@@ -11,9 +11,12 @@ namespace Lurp.Workspace;
 internal static class ExtractionUtils
 {
     /// <summary>
-    ///     Every named type declared under <paramref name="ns" />, recursing into
-    ///     child namespaces. Nested types are reached through their containing
-    ///     type's own <c>GetTypeMembers()</c> by callers that need them.
+    ///     Every named type declared directly under <paramref name="ns" />, recursing
+    ///     into child namespaces but not into nested types. Used only by the two
+    ///     walks that recurse into nested types themselves because they emit
+    ///     parent-child facts (<c>SymbolDeclarationExtractor</c> and
+    ///     <c>SymbolStructuralEdgeExtractor</c>); every other caller uses
+    ///     <see cref="GetAllNamedTypes" />.
     /// </summary>
     internal static IEnumerable<INamedTypeSymbol> GetNamespaceTypeMembers(INamespaceSymbol ns)
     {
@@ -22,6 +25,35 @@ internal static class ExtractionUtils
         foreach (var childNs in ns.GetNamespaceMembers())
             foreach (var type in GetNamespaceTypeMembers(childNs))
                 yield return type;
+    }
+
+    /// <summary>
+    ///     Every named type under <paramref name="ns" />, nested types included,
+    ///     depth-first and in the same namespace order as
+    ///     <see cref="GetNamespaceTypeMembers" />.
+    /// </summary>
+    internal static IEnumerable<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)
+    {
+        foreach (var type in ns.GetTypeMembers())
+        {
+            yield return type;
+            foreach (var nested in GetNestedTypes(type))
+                yield return nested;
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+            foreach (var type in GetAllNamedTypes(childNs))
+                yield return type;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetNestedTypes(INamedTypeSymbol parent)
+    {
+        foreach (var nested in parent.GetTypeMembers())
+        {
+            yield return nested;
+            foreach (var deeper in GetNestedTypes(nested))
+                yield return deeper;
+        }
     }
 
     /// <summary>
@@ -106,24 +138,14 @@ internal static class ExtractionUtils
                                     case AccessorDeclarationSyntax accessorDeclaration:
                                         yield return (accessor, accessorDeclaration);
                                         break;
-                                    // An expression-bodied property/indexer has no accessor
-                                    // declaration: the getter's declaring syntax is the property
-                                    // itself, and its body is the arrow expression.
-                                    case PropertyDeclarationSyntax propertyDeclaration
-                                        when propertyDeclaration.ExpressionBody != null:
-                                        yield return (accessor, propertyDeclaration);
-                                        break;
-                                    case IndexerDeclarationSyntax indexerDeclaration
-                                        when indexerDeclaration.ExpressionBody != null:
-                                        yield return (accessor, indexerDeclaration);
-                                        break;
                                 }
                             }
                         }
 
-                        // An expression-bodied property's getter is compiler-synthesized
-                        // and has no declaring syntax of its own; pair it with the
-                        // property/indexer declaration from the property symbol.
+                        // The getter's declaring syntax for an expression-bodied property
+                        // or indexer is the ArrowExpressionClause, which is not a method
+                        // body root, so the getter is paired with the property or indexer
+                        // declaration here.
                         if (property.GetMethod is { } getter)
                         {
                             foreach (var syntaxRef in property.DeclaringSyntaxReferences)

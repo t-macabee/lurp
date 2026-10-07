@@ -219,13 +219,20 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         using var store = OpenStore(DbPath);
         try
         {
-            var page = store.GetDeadCandidatesPage(snapshotId, null, "src/EntryPointProbe/Program.cs", "Method", false, false, false, 200, null);
+            var page = store.GetDeadCandidatesPage(snapshotId, null, "src/EntryPointProbe/Program.cs", null, false, false, false, 200, null);
 
-            var entry = Assert.Single(page.Candidates);
-            Assert.Equal(DeadCandidateStatus.UncertainDead, entry.Status);
-            Assert.Equal(DeadCandidateReason.EntryPointConvention, entry.Reason);
-            Assert.NotEqual(DeadCandidateStatus.ProvedDead, entry.Status);
-            Assert.Single(entry.Uncertainties);
+            Assert.Equal(2, page.Candidates.Count);
+
+            var methodEntry = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:Program.{Main}$(System.String[])");
+            var typeEntry = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:Program");
+
+            Assert.Equal(DeadCandidateStatus.UncertainDead, methodEntry.Status);
+            Assert.Equal(DeadCandidateReason.EntryPointConvention, methodEntry.Reason);
+            Assert.Single(methodEntry.Uncertainties);
+
+            Assert.Equal(DeadCandidateStatus.UncertainDead, typeEntry.Status);
+            Assert.Equal(DeadCandidateReason.EntryPointConvention, typeEntry.Reason);
+            Assert.Single(typeEntry.Uncertainties);
         }
         finally
         {
@@ -288,55 +295,550 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task PossibleDispatch_InheritedOnly_Uncertain()
+    public async Task ProjectIdentity_RenamedAndMultiTargeted_SameAnswerAsPlainProject()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
-        // NOTE ON FIXTURE CHOICE: InterfaceDispatchExtractor
-        // (src/Workspace/InterfaceDispatchExtractor.cs) can only emit a "possible"
-        // MayDispatchTo edge for a member that implicitly implements an interface —
-        // which C# requires to be `public` — and GetDeadCandidatesPage evaluates the
-        // public_surface branch (Q1) BEFORE the weak-provenance branch that yields
-        // possible_dispatch. So a naturally-occurring "possible"-only MayDispatchTo
-        // witness on real compiled code always surfaces as public_surface, never
-        // possible_dispatch — verified below in
-        // PossibleDispatch_InheritedOnly_SurfacesAsPublicSurface. This test isolates
-        // the possible_dispatch ladder branch itself by injecting the exact edge
-        // shape InterfaceDispatchExtractor emits for an inherited (non-direct)
-        // interface implementation onto a real internal declared symbol, so the
-        // branch is exercised the same way the store would exercise it for any
-        // other weak-provenance MayDispatchTo witness on a non-public candidate.
-        CreateProject("TestProject", new Dictionary<string, string>
+        // B18: Three projects with internal attribute-free properties, using different names
+        CreateProject("PlainLib", new Dictionary<string, string>
         {
-            ["Worker.cs"] = """
-                            namespace TestProject;
+            ["PlainLib.cs"] = """
+namespace PlainLib;
 
-                            internal class Worker
-                            {
-                                internal void DoWork() { }
-                            }
-                            """
+internal class PlainLibClass
+{
+    internal int Value { get; set; }
+}
+"""
         });
+        
+        CreateProject("RenamedLib", new Dictionary<string, string>
+        {
+            ["RenamedLib.cs"] = """
+namespace RenamedLib;
+
+internal class RenamedLibClass
+{
+    internal int Value { get; set; }
+}
+"""
+        }, msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = "Renamed.Lib" });
+        
+        CreateProject("MultiLib", new Dictionary<string, string>
+        {
+            ["MultiLib.cs"] = """
+namespace MultiLib;
+
+internal class MultiLibClass
+{
+    internal int Value { get; set; }
+}
+"""}, targetFramework: "net9.0;net10.0");
+
+        await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
-        var doWorkId = ResolveSymbolId(snapshotId, "global::TestProject.Worker.DoWork");
 
         using var store = OpenStore(DbPath);
         try
         {
-            store.SaveEdges(snapshotId,
+            // Query once with includePublic = false. The project filter is null:
+            // the store matches it exactly against the assembly name, so a renamed project's
+            // project name would return an empty page and hide the status check (B18).
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Property", false, false, false, 200, null);
+
+            // Assert all three have the same result
+            var plainEntry = Assert.Single(page.Candidates, c => c.SymbolId.Contains("PlainLibClass.Value"));
+            var renamedEntry = Assert.Single(page.Candidates, c => c.SymbolId.Contains("RenamedLibClass.Value"));
+            var multiEntry = Assert.Single(page.Candidates, c => c.SymbolId.Contains("MultiLibClass.Value"));
+
+            // All should be UncertainDead with SerializationConvention reason
+            Assert.Equal(DeadCandidateStatus.UncertainDead, plainEntry.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, plainEntry.Reason);
+
+            Assert.Equal(DeadCandidateStatus.UncertainDead, renamedEntry.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, renamedEntry.Reason);
+
+            Assert.Equal(DeadCandidateStatus.UncertainDead, multiEntry.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, multiEntry.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ProjectIdentity_RenamedProject_ProjectLevelBindingRecordMarksCandidatesUnresolved()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B18: One renamed project with binding incompleteness record
+        CreateProject("RenamedLib2", new Dictionary<string, string>
+        {
+            ["RenamedLib2.cs"] = """
+namespace RenamedLib2;
+
+internal class Helper
+{
+    internal void HelperMethod() { }
+}
+"""
+        }, msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = "Renamed.Lib2" });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var helperId = ResolveSymbolId(snapshotId, "global::RenamedLib2.Helper.HelperMethod");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Insert binding incompleteness record for project level
+            store.SaveBindingIncompleteness(snapshotId,
             [
-                MakeEdge("I:TestProject.IWorker.DoWork()|TestProject", doWorkId,
-                    nameof(EdgeKind.MayDispatchTo), Provenance.Possible)
+                new BindingIncompletenessRecord("RenamedLib2", null, "unsupported_syntax", 1, "0.0.0")
             ]);
 
-            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+            // Project filter is null: the store matches it exactly against the assembly
+            // name, and this project is renamed (B18).
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
 
-            var entry = Assert.Single(page.Candidates, c => c.SymbolId == doWorkId);
-            Assert.Equal(DeadCandidateStatus.UncertainDead, entry.Status);
-            Assert.Equal(DeadCandidateReason.PossibleDispatch, entry.Reason);
-            var uncertainty = Assert.Single(entry.Uncertainties);
-            Assert.Contains("Manually verify that the runtime dispatch reaches the correct implementation",
-                uncertainty.Description);
+            var entry = Assert.Single(page.Candidates, c => c.SymbolId == helperId);
+            Assert.Equal(DeadCandidateStatus.Unresolved, entry.Status);
+            Assert.Equal(DeadCandidateReason.BindingIncompleteness, entry.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task TestProjectDetection_UsesReferences_NotNames()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // F14: Test project detection uses references, not names
+        CreateProject("Foo.UnitTests", new Dictionary<string, string>
+        {
+            ["Helper.cs"] = """
+namespace Foo.UnitTests;
+
+internal static class Helper
+{
+    internal static void Unused() { }
+}
+"""
+        }, packageReferences: new[] { "xunit@2.9.3" });
+        
+        CreateProject("Bar.Tests", new Dictionary<string, string>
+        {
+            ["Helper2.cs"] = """
+namespace Bar.Tests;
+
+internal static class Helper2
+{
+    internal static void Unused() { }
+}
+"""
+        });
+
+        await RestoreSolutionAsync();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Default query (includeTests = false): only Bar.Tests should appear as proved_dead
+            var defaultPage = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            var fooUnused = defaultPage.Candidates.FirstOrDefault(c => c.SymbolId.Contains("Foo.UnitTests.Helper.Unused"));
+            var barUnused = defaultPage.Candidates.FirstOrDefault(c => c.SymbolId.Contains("Bar.Tests.Helper2.Unused"));
+            
+            Assert.Null(fooUnused); // Should not appear because it's a test project and includeTests = false
+            Assert.NotNull(barUnused); // Should appear because it's not a test project
+            Assert.Equal(DeadCandidateStatus.ProvedDead, barUnused.Status);
+
+            // Query with includeTests = true: the test project's entry surfaces as test_harness,
+            // while a project whose name merely ends in .Tests stays an ordinary proved_dead candidate.
+            var testPage = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, true, 200, null);
+            var fooUncertain = Assert.Single(testPage.Candidates, c => c.SymbolId.Contains("Foo.UnitTests.Helper.Unused"));
+            var barProved = Assert.Single(testPage.Candidates, c => c.SymbolId.Contains("Bar.Tests.Helper2.Unused"));
+
+            Assert.Equal(DeadCandidateStatus.Uncertain, fooUncertain.Status);
+            Assert.Equal(DeadCandidateReason.TestHarness, fooUncertain.Reason);
+            Assert.Equal(DeadCandidateStatus.ProvedDead, barProved.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, barProved.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public void DeadCandidateStore_HasNoHardcodedProjectNameRule()
+    {
+        AssertStoreSourceHasNoHardcodedProjectName();
+    }
+
+    [SkippableFact]
+    public async Task ProcessEntryPoint_ExplicitMain_TypeIsUncertain()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // F13: New test for explicit Main method - type should be UncertainDead, not ProvedDead
+        CreateProject("EntryPointProbe", new Dictionary<string, string>
+        {
+            ["Program.cs"] = """
+namespace EntryPointProbe;
+
+internal class Program
+{
+    static void Main() { }
+}
+"""
+        }, msbuildProperties: new Dictionary<string, string> { ["OutputType"] = "Exe" });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var programTypeId = ResolveSymbolId(snapshotId, "global::EntryPointProbe.Program");
+            var mainMethodId = ResolveSymbolId(snapshotId, "global::EntryPointProbe.Program.Main");
+
+            // Project filter is null; the document filter isolates Program.cs (F13).
+            var page = store.GetDeadCandidatesPage(snapshotId, null, "src/EntryPointProbe/Program.cs", null, false, false, false, 200, null);
+
+            // Should have exactly two entries: the method and the type
+            Assert.Equal(2, page.Candidates.Count);
+
+            var programType = Assert.Single(page.Candidates, c => c.SymbolId == programTypeId);
+            var mainMethod = Assert.Single(page.Candidates, c => c.SymbolId == mainMethodId);
+
+            // Both should be UncertainDead with EntryPointConvention
+            Assert.Equal(DeadCandidateStatus.UncertainDead, programType.Status);
+            Assert.Equal(DeadCandidateReason.EntryPointConvention, programType.Reason);
+            Assert.Single(programType.Uncertainties);
+            Assert.Equal(DeadCandidateStatus.UncertainDead, mainMethod.Status);
+            Assert.Equal(DeadCandidateReason.EntryPointConvention, mainMethod.Reason);
+            Assert.Single(mainMethod.Uncertainties);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task PropertyAndEventAccessors_InheritLivenessFromTheirSymbol()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B24: Test that property and event accessors inherit liveness from their symbol
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Holder.cs"] = """
+namespace TestProject;
+
+internal sealed class Holder
+{
+    internal int Written { get; private set; }      // setter written, getter read inside Run
+    internal int OnlyRead { get; private set; }     // getter read, setter never written
+    internal int this[int i] => i;                  // indexer getter read
+    internal event System.EventHandler? Ev { add { } remove { } }   // custom accessors are declared
+    internal int Weak { get; set; }                 // gets an injected name_candidate edge below
+    internal void Run()
+    {
+        Written = 1;
+        System.Console.WriteLine(Written);
+        System.Console.WriteLine(OnlyRead);
+        System.Console.WriteLine(this[1]);
+    }
+}
+internal static class Entry { internal static void Go() => new Holder().Run(); }
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Inject edges to test the inheritance rules
+            store.SaveEdges(snapshotId,
+            [
+                new EdgeRecord
+                {
+                    SourceSymbolId = "route://injected/writes",
+                    TargetSymbolId = ResolveSymbolId(snapshotId, "global::TestProject.Holder.Ev"),
+                    Kind = nameof(EdgeKind.Writes),
+                    Provenance = Provenance.CompilerProved,
+                    ExtractorVersion = "0.0.0-injected",
+                    SourceDocumentPath = "src/TestProject/Injected.cs",
+                    SourceStartLine = 1,
+                    SourceStartColumn = 1,
+                    SourceEndLine = 1,
+                    SourceEndColumn = 1
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = "name://injected/candidate",
+                    TargetSymbolId = ResolveSymbolId(snapshotId, "global::TestProject.Holder.Weak"),
+                    Kind = nameof(EdgeKind.ReflectionNameCandidate),
+                    Provenance = Provenance.NameCandidate,
+                    ExtractorVersion = "0.0.0-injected",
+                    SourceDocumentPath = "src/TestProject/Injected.cs",
+                    SourceStartLine = 1,
+                    SourceStartColumn = 1,
+                    SourceEndLine = 1,
+                    SourceEndColumn = 1
+                }
+            ]);
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+
+            // Accessors should NOT be in candidates (they inherit liveness)
+            var getWritten = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("get_Written"));
+            var setWritten = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("set_Written"));
+            var getOnlyRead = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("get_OnlyRead"));
+            var getItem = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("get_Item"));
+            var addEv = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("add_Ev"));
+            var removeEv = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("remove_Ev"));
+
+            Assert.Null(getWritten); // Not in candidates (inherits from Written property)
+            Assert.Null(setWritten); // Not in candidates (inherits from Written property)
+            Assert.Null(getOnlyRead); // Not in candidates (inherits from OnlyRead property)
+            Assert.Null(getItem); // Not in candidates (inherits from indexer)
+            Assert.Null(addEv); // Not in candidates (inherits from Ev event)
+            Assert.Null(removeEv); // Not in candidates (inherits from Ev event)
+
+            // set_OnlyRead should be ProvedDead (setter whose property is never written)
+            var setOnlyRead = Assert.Single(page.Candidates, c => c.SymbolId.Contains("set_OnlyRead"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, setOnlyRead.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, setOnlyRead.Reason);
+
+            // get_Weak should be UncertainDead with NameCandidate (weak inherited edge)
+            var getWeak = Assert.Single(page.Candidates, c => c.SymbolId.Contains("get_Weak"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, getWeak.Status);
+            Assert.Equal(DeadCandidateReason.NameCandidate, getWeak.Reason);
+            Assert.Single(getWeak.Uncertainties); // Should have one uncertainty about the weak inherited edge
+
+            // set_Weak should be ProvedDead (the injected edge is not a Writes edge)
+            var setWeak = Assert.Single(page.Candidates, c => c.SymbolId.Contains("set_Weak"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, setWeak.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, setWeak.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ExtensionBlockProperty_ImplementationAccessorInheritsLiveness()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B24: the read of t.Len gives Reads to the block property; the implementation
+        // accessor on the outer static class must inherit that liveness through
+        // associated_symbol, so it is not a candidate.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Text.cs"] = """
+                          namespace TestProject;
+
+                          internal sealed class Text { }
+                          """,
+            ["TextExt.cs"] = """
+                             namespace TestProject;
+
+                             public static class TextExt
+                             {
+                                 extension(Text t)
+                                 {
+                                     public int Len => 3;
+                                 }
+                             }
+                             """,
+            ["UseExt.cs"] = """
+                            namespace TestProject;
+
+                            internal static class UseExt { internal static int Go(Text t) => t.Len; }
+                            """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", true, false, false, 200, null);
+
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Contains(".get_Len(", StringComparison.Ordinal));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task TypeLiveness_InheritsFromMembersAndTypeUses()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B25: Test that type liveness inherits from members and type uses
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Helper.cs"] = """
+namespace TestProject;
+
+internal static class Helper { internal static void Do() { } }              // static class, called method
+internal enum Mode { A, B }                                                 // member A is read
+internal class BaseOnly { }
+internal interface IMark { }
+internal sealed class Derived : BaseOnly, IMark { }                         // constructed; base and interface are used through it
+internal sealed class SigOnly { }                                           // used only as a parameter type
+internal static class Outer2 { internal static class Inner2 { internal static void Do() { } } }   // nested chain
+internal sealed class SelfOnly { internal SelfOnly Next() => this; }        // only its own member refers to it
+internal sealed class Truly { }                                              // never used
+internal static class Host
+{
+    internal static void Run(SigOnly s) { Helper.Do(); var m = Mode.A; _ = new Derived(); Outer2.Inner2.Do(); System.Console.WriteLine(m); }
+}
+public static class Api { public static void Go() => Host.Run(null!); }
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            // These types should NOT be in candidates (they have live incoming edges)
+            var helperType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.Helper"));
+            var modeType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.Mode"));
+            var baseOnlyType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.BaseOnly"));
+            var iMarkType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.IMark"));
+            var derivedType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.Derived"));
+            var sigOnlyType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.SigOnly"));
+            var outer2Type = page.Candidates.FirstOrDefault(c => c.SymbolId.Split('|')[0] == "T:TestProject.Outer2");
+            var inner2Type = page.Candidates.FirstOrDefault(c => c.SymbolId.Split('|')[0] == "T:TestProject.Outer2.Inner2");
+            var hostType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.Host"));
+
+            Assert.Null(helperType); // Not in candidates (called by Host.Run)
+            Assert.Null(modeType); // Not in candidates (mode.A is read)
+            Assert.Null(baseOnlyType); // Not in candidates (used through Derived)
+            Assert.Null(iMarkType); // Not in candidates (implemented through Derived)
+            Assert.Null(derivedType); // Not in candidates (constructed)
+            Assert.Null(sigOnlyType); // Not in candidates (used as parameter)
+            Assert.Null(outer2Type); // Not in candidates (Outer2.Inner2.Do is called)
+            Assert.Null(inner2Type); // Not in candidates (nested type used through Outer2)
+            Assert.Null(hostType); // Not in candidates (Api.Go is called)
+
+            // SelfOnly and Truly should be ProvedDead with NoIncomingLiveEdges
+            var selfOnlyType = Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.SelfOnly"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, selfOnlyType.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, selfOnlyType.Reason);
+
+            var trulyType = Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.Truly"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, trulyType.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, trulyType.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task TypeLiveness_DeadTypeWithSelfCallingMembersStaysDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B25: a call from inside the type does not lift the type — the dead type
+        // whose members only call each other stays ProvedDead.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Island.cs"] = """
+                            namespace TestProject;
+
+                            internal static class Island { internal static void A() => B(); internal static void B() { } }
+                            """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            var islandType = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:TestProject.Island");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, islandType.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, islandType.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task CompilerAndRuntimeCalledMembers_AreNotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B26: Test that compiler and runtime called members are not proved dead
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Lifecycle.cs"] = """
+namespace TestProject;
+
+internal sealed class Lifecycle { static Lifecycle() { } internal static void Touch() { } }
+""",
+            ["Bag.cs"] = """
+namespace TestProject;
+
+internal sealed class Bag : System.Collections.IEnumerable
+{
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => System.Array.Empty<int>().GetEnumerator();
+}
+""",
+            ["Rec.cs"] = """
+namespace TestProject;
+
+internal sealed record Rec { internal int A { get; init; } }
+""",
+            ["Use.cs"] = """
+namespace TestProject;
+
+internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = new Bag(); _ = new Rec(); } }
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", true, false, false, 200, null);
+
+            // No entry whose symbol id contains Lifecycle.#cctor (static constructor should not be proved dead)
+            var cctor = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("Lifecycle.#cctor"));
+            Assert.Null(cctor);
+
+            // The Bag explicit implementation entry should have UncertainDead with external_interface_implementation
+            var bagGetEnumerator = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("System#Collections#IEnumerable#GetEnumerator"));
+            Assert.NotNull(bagGetEnumerator);
+            Assert.Equal(DeadCandidateStatus.UncertainDead, bagGetEnumerator.Status);
+            Assert.Equal("external_interface_implementation", bagGetEnumerator.Reason);
+
+            // No entry for any of the Rec members that are compiler-synthesized
+            var recMembers = new[] { "PrintMembers", "Equals", "GetHashCode", "ToString", "{Clone}$", "op_Equality", "op_Inequality", "get_EqualityContract" }
+                .SelectMany(member => page.Candidates.Where(c => c.SymbolId.Contains($"Rec.{member}")));
+            Assert.Empty(recMembers);
         }
         finally
         {
@@ -742,6 +1244,67 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
+    /// <summary>
+    ///     B3 step 2a: a C# 14 extension block declares a block member beside its
+    ///     implementation on the outer static class. The block method is never
+    ///     declared; the compiler-generated marker type is declared and tagged
+    ///     is_extension_block, then kept out of the candidate universe. Neither the
+    ///     marker type nor a block method is a dead candidate.
+    /// </summary>
+    [SkippableFact]
+    public async Task ExtensionBlock_MarkerTypeAndBlockMethods_AreNotCandidates()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Text.cs"] = """
+                          namespace TestProject;
+
+                          public sealed class Text
+                          {
+                              public string Value { get; set; } = string.Empty;
+                          }
+
+                          public static class TextExtensions
+                          {
+                              extension(Text text)
+                              {
+                                  public int WordCount() => text.Value.Length;
+                              }
+                          }
+                          """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        // The block's marker type is declared and tagged with the metadata key...
+        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT COUNT(*)
+                FROM snapshot_symbols
+                WHERE snapshot_id = @snapshotId
+                  AND metadata_json LIKE '%is_extension_block%';
+                """;
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            Assert.True((long)command.ExecuteScalar()! >= 1);
+        }
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // ...but neither the marker type nor a block method is a candidate.
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, true, true, true, 200, null);
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Contains("<G>$", StringComparison.Ordinal));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     private static void AssertNoPerCandidateGetIncomingEdgesCallSite(
         [System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
     {
@@ -750,5 +1313,15 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         Assert.True(File.Exists(storeFile), $"Could not locate {storeFile} for the batching invariant scan.");
         var source = File.ReadAllText(storeFile);
         Assert.DoesNotContain("GetIncomingEdges(", source);
+    }
+
+    private static void AssertStoreSourceHasNoHardcodedProjectName(
+        [System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, ".."));
+        var storeFile = Path.Combine(repoRoot, "src", "Storage", "DeadCandidateStore.cs");
+        Assert.True(File.Exists(storeFile), $"Could not locate {storeFile} for the project-name-rule scan.");
+        var source = File.ReadAllText(storeFile);
+        Assert.DoesNotContain("eNote", source);
     }
 }

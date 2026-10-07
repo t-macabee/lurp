@@ -11,7 +11,12 @@ namespace Lurp.Tests;
 ///     tree: an operation root is any node whose
 ///     <see cref="SemanticModel.GetOperation(SyntaxNode)" /> is non-null while
 ///     its parent's is null, plus attribute arguments and constructor
-///     initializers, so no root list is shared with the extractor. The reviewed
+///     initializers, so no root list is shared with the extractor. Await,
+///     foreach, deconstruction and the C# pattern, index/range and
+///     collection-expression shapes are read from Roslyn's binding answers, not a
+///     copy of extractor logic; the <c>using</c>/<c>Dispose</c> resolver is the one
+///     mapping shared with the extractor, because Roslyn exposes no public
+///     <c>using</c> info. The reviewed
 ///     golden (Oracle C) is the human check on this mapping; the exact-set test
 ///     fences the extractor against drift for the whole corpus.
 /// </summary>
@@ -50,6 +55,11 @@ internal static class OperationShapeOracle
                 foreach (var member in type.GetMembers())
                 {
                     if (member is INamedTypeSymbol)
+                        continue;
+                    // B3 step 2a: a C# 14 extension block declares a block member
+                    // and its implementation on the outer static class. Only the
+                    // implementation is canonical; the block method is not declared.
+                    if (member is IMethodSymbol { ContainingType.IsExtension: true })
                         continue;
                     AddDeclared(member, declared);
                 }
@@ -134,7 +144,7 @@ internal static class OperationShapeOracle
                         if (FindOwner(node, model) is not { } primaryOwner ||
                             DocId(primaryOwner) is not { } primaryOwnerId)
                             continue;
-                        AddPrimaryBase(primaryOwner, primaryOwnerId, primaryBase, model);
+                        AddPrimaryBase(primaryOwnerId, primaryBase, model);
                         continue;
                     }
 
@@ -270,8 +280,8 @@ internal static class OperationShapeOracle
                     case IAwaitOperation awaitOperation when awaitOperation.Syntax is AwaitExpressionSyntax awaitSyntax:
                         AddAwait(ownerId, awaitSyntax, model);
                         break;
-                    case IForEachLoopOperation loopOperation when loopOperation.Syntax is CommonForEachStatementSyntax loopSyntax:
-                        AddForeach(ownerId, loopOperation.IsAsynchronous, loopSyntax, model);
+                    case IForEachLoopOperation when operation.Syntax is CommonForEachStatementSyntax loopSyntax:
+                        AddForeach(ownerId, loopSyntax, model);
                         break;
                     case IUsingDeclarationOperation usingDeclaration:
                         AddUsingDispose(ownerId, usingDeclaration.DeclarationGroup, usingDeclaration.IsAsynchronous, operation.Syntax, model);
@@ -280,7 +290,7 @@ internal static class OperationShapeOracle
                         AddUsingDispose(ownerId, usingOperation.Resources, usingOperation.IsAsynchronous, operation.Syntax, model);
                         break;
                     case IDeconstructionAssignmentOperation deconstruction when deconstruction.Syntax is AssignmentExpressionSyntax assignment:
-                        AddDeconstruction(ownerId, deconstruction, assignment, model);
+                        AddDeconstruction(ownerId, model.GetDeconstructionInfo(assignment), assignment);
                         break;
                     case IPropertyReferenceOperation propertyReference:
                         AddMemberAccess(ownerId, propertyReference.Property, propertyReference);
@@ -302,6 +312,38 @@ internal static class OperationShapeOracle
                         break;
                     case IConversionOperation conversion when conversion.OperatorMethod != null:
                         AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model);
+                        break;
+
+                    // B19: implicit calls the syntax switch never sees. Each reads a
+                    // member Roslyn bound for the shape.
+                    case IRecursivePatternOperation { DeconstructSymbol: IMethodSymbol deconstruct }:
+                        AddCallLike(ownerId, deconstruct, nameof(Lurp.Storage.EdgeKind.Calls), operation.Syntax);
+                        break;
+                    case IListPatternOperation listPattern:
+                        AddMemberBySymbolKind(ownerId, listPattern.LengthSymbol, operation.Syntax);
+                        AddMemberBySymbolKind(ownerId, listPattern.IndexerSymbol, operation.Syntax);
+                        break;
+                    case ISlicePatternOperation { SliceSymbol: { } sliceSymbol }:
+                        AddMemberBySymbolKind(ownerId, sliceSymbol, operation.Syntax);
+                        break;
+                    case IImplicitIndexerReferenceOperation implicitIndexer:
+                        AddMemberBySymbolKind(ownerId, implicitIndexer.LengthSymbol, operation.Syntax);
+                        if (implicitIndexer.IndexerSymbol is IPropertySymbol indexerProperty)
+                            AddMemberAccess(ownerId, indexerProperty, implicitIndexer);
+                        else
+                            AddCall(ownerId, implicitIndexer.IndexerSymbol as IMethodSymbol, operation.Syntax, model);
+                        break;
+                    case ICollectionExpressionOperation { ConstructMethod: { } constructMethod }:
+                        if (constructMethod.MethodKind == MethodKind.Constructor)
+                        {
+                            if (DocId(constructMethod.ContainingType) is { } constructedId && constructedId != ownerId)
+                                Add(ownerId, nameof(Lurp.Storage.EdgeKind.Constructs), constructedId, operation.Syntax);
+                        }
+                        else
+                        {
+                            AddCallLike(ownerId, constructMethod, nameof(Lurp.Storage.EdgeKind.Calls), operation.Syntax);
+                        }
+
                         break;
                 }
             }
@@ -349,6 +391,20 @@ internal static class OperationShapeOracle
             };
         }
 
+        private void AddMemberBySymbolKind(string ownerId, ISymbol? member, SyntaxNode syntax)
+        {
+            switch (member)
+            {
+                case IPropertySymbol property:
+                    if (DocId(property) is { } propertyId)
+                        Add(ownerId, nameof(Lurp.Storage.EdgeKind.Reads), propertyId, syntax);
+                    break;
+                case IMethodSymbol method:
+                    AddCallLike(ownerId, method, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+                    break;
+            }
+        }
+
         private void AddStaticReceiverReference(string ownerId, SyntaxNode syntax, SemanticModel model)
         {
             if (syntax is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
@@ -360,91 +416,37 @@ internal static class OperationShapeOracle
             Add(ownerId, nameof(Lurp.Storage.EdgeKind.References), targetId, memberAccess.Expression);
         }
 
-        private void AddPrimaryBase(ISymbol owner, string ownerId, PrimaryConstructorBaseTypeSyntax primaryBase, SemanticModel model)
+        private void AddPrimaryBase(string ownerId, PrimaryConstructorBaseTypeSyntax primaryBase, SemanticModel model)
         {
+            // Emit no fact when the base constructor does not bind; guessing a
+            // target from the argument types would record an unproved edge.
             if (model.GetSymbolInfo(primaryBase).Symbol is IMethodSymbol resolved)
-            {
                 AddCallLike(ownerId, resolved, nameof(Lurp.Storage.EdgeKind.Calls), primaryBase);
-                return;
-            }
-
-            if (owner is not IMethodSymbol { ContainingType.BaseType: INamedTypeSymbol baseType })
-                return;
-
-            var argumentTypes = primaryBase.ArgumentList.Arguments
-                .Select(argument => model.GetTypeInfo(argument.Expression).Type)
-                .ToArray();
-            var csharpCompilation = (CSharpCompilation)compilation;
-            foreach (var candidate in baseType.InstanceConstructors)
-            {
-                if (candidate.Parameters.Length != argumentTypes.Length)
-                    continue;
-                var matches = true;
-                for (var i = 0; i < argumentTypes.Length; i++)
-                {
-                    if (argumentTypes[i] == null ||
-                        !csharpCompilation.ClassifyConversion(argumentTypes[i]!, candidate.Parameters[i].Type).IsImplicit)
-                    {
-                        matches = false;
-                        break;
-                    }
-                }
-
-                if (!matches)
-                    continue;
-                AddCallLike(ownerId, candidate, nameof(Lurp.Storage.EdgeKind.Calls), primaryBase);
-                break;
-            }
         }
 
         private void AddAwait(string ownerId, AwaitExpressionSyntax syntax, SemanticModel model)
         {
-            var awaitedType = model.GetTypeInfo(syntax.Expression).Type;
-            if (awaitedType == null)
-                return;
-            var getAwaiter = FindParameterless(awaitedType, "GetAwaiter");
-            if (getAwaiter == null)
-                return;
-
-            AddCallLike(ownerId, getAwaiter, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
-            var awaiterType = getAwaiter.ReturnType;
-            AddCallLike(ownerId, FindParameterless(awaiterType, "GetResult"), nameof(Lurp.Storage.EdgeKind.Calls), syntax);
-            if (FindProperty(awaiterType, "IsCompleted") is { } isCompleted &&
-                DocId(isCompleted) is { } isCompletedId)
+            var info = model.GetAwaitExpressionInfo(syntax);
+            AddCallLike(ownerId, info.GetAwaiterMethod, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            AddCallLike(ownerId, info.GetResultMethod, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            if (info.IsCompletedProperty is { } isCompleted && DocId(isCompleted) is { } isCompletedId)
                 Add(ownerId, nameof(Lurp.Storage.EdgeKind.Reads), isCompletedId, syntax);
         }
 
-        private void AddForeach(string ownerId, bool isAsync, CommonForEachStatementSyntax syntax, SemanticModel model)
+        private void AddForeach(string ownerId, CommonForEachStatementSyntax syntax, SemanticModel model)
         {
-            var collectionType = model.GetTypeInfo(syntax.Expression).Type;
-            if (collectionType == null)
-                return;
-
-            var getEnumerator = FindParameterless(collectionType, isAsync ? "GetAsyncEnumerator" : "GetEnumerator");
-            if (getEnumerator == null)
-            {
-                var enumerable = isAsync
-                    ? FindInterface(collectionType, static iface => iface.MetadataName == "IAsyncEnumerable`1")
-                    : FindInterface(collectionType, static iface => iface.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
-                      ?? FindInterface(collectionType, static iface => iface.SpecialType == SpecialType.System_Collections_IEnumerable);
-                if (enumerable != null)
-                    getEnumerator = FindInterfaceMember(collectionType, enumerable, isAsync ? "GetAsyncEnumerator" : "GetEnumerator");
-            }
-
-            if (getEnumerator == null)
-                return;
-
-            AddCallLike(ownerId, getEnumerator, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
-            var enumeratorType = getEnumerator.ReturnType;
-            AddCallLike(ownerId, FindParameterless(enumeratorType, isAsync ? "MoveNextAsync" : "MoveNext")
-                       ?? FindEnumeratorInterfaceMember(enumeratorType, isAsync, "MoveNext") as IMethodSymbol,
-                nameof(Lurp.Storage.EdgeKind.Calls), syntax);
-            var current = FindProperty(enumeratorType, "Current")
-                          ?? FindEnumeratorInterfaceMember(enumeratorType, isAsync, "Current") as IPropertySymbol;
-            if (current != null && DocId(current) is { } currentId)
+            var info = model.GetForEachStatementInfo(syntax);
+            AddCallLike(ownerId, info.GetEnumeratorMethod, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            AddCallLike(ownerId, info.MoveNextMethod, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            if (info.CurrentProperty is { } current && DocId(current) is { } currentId)
                 Add(ownerId, nameof(Lurp.Storage.EdgeKind.Reads), currentId, syntax);
-            AddCallLike(ownerId, FindParameterless(enumeratorType, isAsync ? "DisposeAsync" : "Dispose"),
-                nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            AddCallLike(ownerId, info.DisposeMethod, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+
+            // A foreach deconstruction ('foreach (var (a, b) in pairs)') has its own
+            // Deconstruct calls, reached through the same Nested recursion as an
+            // assignment deconstruction.
+            if (syntax is ForEachVariableStatementSyntax variableSyntax)
+                AddDeconstruction(ownerId, model.GetDeconstructionInfo(variableSyntax), variableSyntax);
         }
 
         private void AddUsingDispose(string ownerId, IOperation? resources, bool isAsync, SyntaxNode syntax, SemanticModel model)
@@ -472,12 +474,17 @@ internal static class OperationShapeOracle
                 AddCallLike(ownerId, ResolveDispose(type, isAsync), nameof(Lurp.Storage.EdgeKind.Calls), syntax);
         }
 
+        // This is the only mapping shared with the extractor: Roslyn exposes no
+        // public 'using' info, so both walks resolve Dispose from the resource type.
+        // The golden file is its check.
         private IMethodSymbol? ResolveDispose(ITypeSymbol type, bool isAsync)
         {
             if (type is not INamedTypeSymbol namedType)
                 return null;
             var name = isAsync ? "DisposeAsync" : "Dispose";
-            if (FindParameterless(namedType, name) is { } direct)
+            var direct = namedType.GetMembers(name).OfType<IMethodSymbol>()
+                .FirstOrDefault(method => !method.IsStatic && method.Parameters.Length == 0);
+            if (direct != null)
                 return direct;
 
             var special = isAsync
@@ -492,28 +499,11 @@ internal static class OperationShapeOracle
             return namedType.FindImplementationForInterfaceMember(interfaceMethod) as IMethodSymbol ?? interfaceMethod;
         }
 
-        private void AddDeconstruction(string ownerId, IDeconstructionAssignmentOperation deconstruction, AssignmentExpressionSyntax syntax, SemanticModel model)
+        private void AddDeconstruction(string ownerId, DeconstructionInfo info, SyntaxNode syntax)
         {
-            _ = model;
-            var valueType = deconstruction.Value.Type;
-            if (valueType == null)
-                return;
-            var count = deconstruction.Target switch
-            {
-                ITupleOperation tuple => tuple.Elements.Length,
-                IDeclarationExpressionOperation
-                {
-                    Syntax: DeclarationExpressionSyntax { Designation: ParenthesizedVariableDesignationSyntax designation }
-                } => designation.Variables.Count,
-                _ => 0
-            };
-            if (count == 0)
-                return;
-            var method = valueType.GetMembers("Deconstruct").OfType<IMethodSymbol>()
-                .FirstOrDefault(candidate => !candidate.IsStatic &&
-                                             candidate.Parameters.Length == count &&
-                                             candidate.Parameters.All(parameter => parameter.RefKind == RefKind.Out));
-            AddCallLike(ownerId, method, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            AddCallLike(ownerId, info.Method, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
+            foreach (var nested in info.Nested)
+                AddDeconstruction(ownerId, nested, syntax);
         }
 
         private void AddAttributeConstructions()
@@ -557,89 +547,27 @@ internal static class OperationShapeOracle
 
         internal static string? DocId(ISymbol symbol)
         {
-            symbol = NormalizeExtensionMember(symbol);
             if (symbol is IMethodSymbol { ReducedFrom: not null } reduced)
                 symbol = reduced.ReducedFrom;
-            return symbol.OriginalDefinition.GetDocumentationCommentId();
+            symbol = symbol.OriginalDefinition;
+            symbol = NormalizeExtensionMember(symbol);
+            return symbol.GetDocumentationCommentId();
         }
 
+        // The extractor's SymbolIdFactory.Make normalizes in this order:
+        // un-reduce, OriginalDefinition, then the extension-block mapping. This
+        // oracle uses the same Roslyn API (AssociatedExtensionImplementation) and
+        // never calls into Lurp.Shared.
         private static ISymbol NormalizeExtensionMember(ISymbol member)
         {
-            if (member.ContainingType is not { IsExtension: true, ContainingType: { } outer })
+            if (member.ContainingType is not { IsExtension: true })
                 return member;
-            switch (member)
-            {
-                case IMethodSymbol method:
-                    var unreduced = method.ReducedFrom ?? method;
-                    var extensionParameter = method.ContainingType.ExtensionParameter;
-                    foreach (var candidate in outer.GetMembers(method.Name).OfType<IMethodSymbol>())
-                    {
-                        if (candidate.Parameters.Length != unreduced.Parameters.Length + 1)
-                            continue;
-                        if (extensionParameter != null &&
-                            !SymbolEqualityComparer.Default.Equals(candidate.Parameters[0].Type, extensionParameter.Type))
-                            continue;
-                        if (candidate.Parameters.Skip(1).Zip(unreduced.Parameters)
-                            .All(pair => SymbolEqualityComparer.Default.Equals(pair.First.Type, pair.Second.Type)))
-                            return candidate;
-                    }
 
-                    break;
-                case IPropertySymbol property:
-                    foreach (var candidate in outer.GetMembers(property.Name).OfType<IPropertySymbol>())
-                    {
-                        if (SymbolEqualityComparer.Default.Equals(candidate.Type, property.Type))
-                            return candidate;
-                    }
-
-                    break;
-            }
+            if (member is IMethodSymbol method)
+                return method.AssociatedExtensionImplementation?.OriginalDefinition ?? method;
 
             return member;
         }
 
-        private static IMethodSymbol? FindParameterless(ITypeSymbol? type, string name)
-        {
-            return type is INamedTypeSymbol namedType
-                ? namedType.GetMembers(name).OfType<IMethodSymbol>()
-                    .FirstOrDefault(method => !method.IsStatic && method.Parameters.Length == 0)
-                : null;
-        }
-
-        private static IPropertySymbol? FindProperty(ITypeSymbol? type, string name)
-        {
-            return type is INamedTypeSymbol namedType
-                ? namedType.GetMembers(name).OfType<IPropertySymbol>()
-                    .FirstOrDefault(property => !property.IsStatic && property.Parameters.Length == 0)
-                : null;
-        }
-
-        private static INamedTypeSymbol? FindInterface(ITypeSymbol type, Func<INamedTypeSymbol, bool> predicate)
-        {
-            if (type is not INamedTypeSymbol namedType)
-                return null;
-            return predicate(namedType) ? namedType : namedType.AllInterfaces.FirstOrDefault(predicate);
-        }
-
-        private static IMethodSymbol? FindInterfaceMember(ITypeSymbol type, INamedTypeSymbol interfaceType, string name)
-        {
-            var interfaceMethod = interfaceType.GetMembers(name).OfType<IMethodSymbol>()
-                .FirstOrDefault(method => !method.IsStatic);
-            if (interfaceMethod == null)
-                return null;
-            if (type is INamedTypeSymbol namedType &&
-                namedType.FindImplementationForInterfaceMember(interfaceMethod) is IMethodSymbol implementation)
-                return implementation;
-            return interfaceMethod;
-        }
-
-        private static ISymbol? FindEnumeratorInterfaceMember(ITypeSymbol enumeratorType, bool isAsync, string name)
-        {
-            var interfaceType = isAsync
-                ? FindInterface(enumeratorType, static iface => iface.MetadataName == "IAsyncEnumerator`1")
-                : FindInterface(enumeratorType, static iface => iface.SpecialType == SpecialType.System_Collections_Generic_IEnumerator_T)
-                  ?? FindInterface(enumeratorType, static iface => iface.SpecialType == SpecialType.System_Collections_IEnumerator);
-            return interfaceType == null ? null : FindInterfaceMember(enumeratorType, interfaceType, name);
-        }
     }
 }

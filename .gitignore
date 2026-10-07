@@ -30,9 +30,7 @@ AGENTS.md
 # Scratch / local-only (never committed)
 prompt.txt
 .tmp_test/
-recall-out.txt
-recall-out-2.txt
-recall-out-3.txt
+recall-out*.txt
 CODE_REVIEW_*.md
 
 # Output-contract snapshot actual output (reviewed, not committed)

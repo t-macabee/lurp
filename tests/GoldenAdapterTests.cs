@@ -677,6 +677,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     {
         var expectedIds = new[]
         {
+            "collection_expression_implicit_calls",
             "di_external_extension",
             "di_hosted_service",
             "di_options",

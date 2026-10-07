@@ -362,6 +362,8 @@ cli:dead-candidates:json $.live_provenance_rank array
 cli:dead-candidates:json $.live_provenance_rank[] string
 cli:dead-candidates:json $.next_cursor null
 cli:dead-candidates:json $.snapshot_id string
+cli:dead-candidates:json $.type_use_edge_kinds_checked array
+cli:dead-candidates:json $.type_use_edge_kinds_checked[] string
 cli:dead-candidates:json $.uncertain_count number
 cli:dead-candidates:json $.uncertain_provenance array
 cli:dead-candidates:json $.uncertain_provenance[] string
@@ -428,6 +430,8 @@ cli:dead-candidates:jsonl:meta $.meta.live_provenance_rank array
 cli:dead-candidates:jsonl:meta $.meta.live_provenance_rank[] string
 cli:dead-candidates:jsonl:meta $.meta.next_cursor null
 cli:dead-candidates:jsonl:meta $.meta.snapshot_id string
+cli:dead-candidates:jsonl:meta $.meta.type_use_edge_kinds_checked array
+cli:dead-candidates:jsonl:meta $.meta.type_use_edge_kinds_checked[] string
 cli:dead-candidates:jsonl:meta $.meta.uncertain_count number
 cli:dead-candidates:jsonl:meta $.meta.uncertain_provenance array
 cli:dead-candidates:jsonl:meta $.meta.uncertain_provenance[] string
@@ -838,6 +842,8 @@ cli:impact:jsonl:symbol $.symbol.witness_path.hops[].target_symbol_id string
 cli:impact:jsonl:symbol $.symbol.witness_path.total_steps number
 cli:impact:jsonl:symbol $.type string
 cli:index:export $ object
+cli:index:export $.assembly_names object
+cli:index:export $.assembly_names.{*} string
 cli:index:export $.built_at_utc string
 cli:index:export $.compilation_options_fingerprints object
 cli:index:export $.compilation_options_fingerprints.{*} string
@@ -1115,6 +1121,8 @@ cli:status:json[default] $.effective_latest_snapshot_id string
 cli:status:json[default] $.is_fresh boolean
 cli:status:json[default] $.latest_snapshot_id string
 cli:status:json[default] $.manifest object
+cli:status:json[default] $.manifest.assembly_names object
+cli:status:json[default] $.manifest.assembly_names.{*} string
 cli:status:json[default] $.manifest.built_at_utc string
 cli:status:json[default] $.manifest.compilation_options_fingerprints object
 cli:status:json[default] $.manifest.compilation_options_fingerprints.{*} string
@@ -1173,6 +1181,8 @@ cli:status:json[detail=all] $.effective_latest_snapshot_id string
 cli:status:json[detail=all] $.is_fresh boolean
 cli:status:json[detail=all] $.latest_snapshot_id string
 cli:status:json[detail=all] $.manifest object
+cli:status:json[detail=all] $.manifest.assembly_names object
+cli:status:json[detail=all] $.manifest.assembly_names.{*} string
 cli:status:json[detail=all] $.manifest.built_at_utc string
 cli:status:json[detail=all] $.manifest.compilation_options_fingerprints object
 cli:status:json[detail=all] $.manifest.compilation_options_fingerprints.{*} string
@@ -1236,6 +1246,8 @@ cli:status:json[detail=completeness] $.effective_latest_snapshot_id string
 cli:status:json[detail=completeness] $.is_fresh boolean
 cli:status:json[detail=completeness] $.latest_snapshot_id string
 cli:status:json[detail=completeness] $.manifest object
+cli:status:json[detail=completeness] $.manifest.assembly_names object
+cli:status:json[detail=completeness] $.manifest.assembly_names.{*} string
 cli:status:json[detail=completeness] $.manifest.built_at_utc string
 cli:status:json[detail=completeness] $.manifest.compilation_options_fingerprints object
 cli:status:json[detail=completeness] $.manifest.compilation_options_fingerprints.{*} string
@@ -1300,6 +1312,8 @@ cli:status:json[detail=documents] $.effective_latest_snapshot_id string
 cli:status:json[detail=documents] $.is_fresh boolean
 cli:status:json[detail=documents] $.latest_snapshot_id string
 cli:status:json[detail=documents] $.manifest object
+cli:status:json[detail=documents] $.manifest.assembly_names object
+cli:status:json[detail=documents] $.manifest.assembly_names.{*} string
 cli:status:json[detail=documents] $.manifest.built_at_utc string
 cli:status:json[detail=documents] $.manifest.compilation_options_fingerprints object
 cli:status:json[detail=documents] $.manifest.compilation_options_fingerprints.{*} string
@@ -1358,6 +1372,8 @@ cli:status:json[detail=references] $.effective_latest_snapshot_id string
 cli:status:json[detail=references] $.is_fresh boolean
 cli:status:json[detail=references] $.latest_snapshot_id string
 cli:status:json[detail=references] $.manifest object
+cli:status:json[detail=references] $.manifest.assembly_names object
+cli:status:json[detail=references] $.manifest.assembly_names.{*} string
 cli:status:json[detail=references] $.manifest.built_at_utc string
 cli:status:json[detail=references] $.manifest.compilation_options_fingerprints object
 cli:status:json[detail=references] $.manifest.compilation_options_fingerprints.{*} string
@@ -1415,6 +1431,8 @@ cli:status:json[snapshot-only] $.effective_latest_snapshot_id string
 cli:status:json[snapshot-only] $.freshness_checked boolean
 cli:status:json[snapshot-only] $.latest_snapshot_id string
 cli:status:json[snapshot-only] $.manifest object
+cli:status:json[snapshot-only] $.manifest.assembly_names object
+cli:status:json[snapshot-only] $.manifest.assembly_names.{*} string
 cli:status:json[snapshot-only] $.manifest.built_at_utc string
 cli:status:json[snapshot-only] $.manifest.compilation_options_fingerprints object
 cli:status:json[snapshot-only] $.manifest.compilation_options_fingerprints.{*} string
@@ -1810,6 +1828,8 @@ mcp:dead_candidates $.live_provenance_rank[] string
 mcp:dead_candidates $.next_cursor null
 mcp:dead_candidates $.pinned boolean
 mcp:dead_candidates $.snapshot_id string
+mcp:dead_candidates $.type_use_edge_kinds_checked array
+mcp:dead_candidates $.type_use_edge_kinds_checked[] string
 mcp:dead_candidates $.uncertain_count number
 mcp:dead_candidates $.uncertain_provenance array
 mcp:dead_candidates $.uncertain_provenance[] string
@@ -2418,6 +2438,8 @@ mcp:status[sections=completeness] $.detail.database_path string
 mcp:status[sections=completeness] $.detail.git_root string
 mcp:status[sections=completeness] $.detail.latest_snapshot_id string
 mcp:status[sections=completeness] $.detail.manifest object
+mcp:status[sections=completeness] $.detail.manifest.assembly_names object
+mcp:status[sections=completeness] $.detail.manifest.assembly_names.{*} string
 mcp:status[sections=completeness] $.detail.manifest.built_at_utc string
 mcp:status[sections=completeness] $.detail.manifest.compilation_options_fingerprints object
 mcp:status[sections=completeness] $.detail.manifest.compilation_options_fingerprints.{*} string
@@ -2500,6 +2522,8 @@ mcp:status[sections=manifest] $.detail.database_path string
 mcp:status[sections=manifest] $.detail.git_root string
 mcp:status[sections=manifest] $.detail.latest_snapshot_id string
 mcp:status[sections=manifest] $.detail.manifest object
+mcp:status[sections=manifest] $.detail.manifest.assembly_names object
+mcp:status[sections=manifest] $.detail.manifest.assembly_names.{*} string
 mcp:status[sections=manifest] $.detail.manifest.built_at_utc string
 mcp:status[sections=manifest] $.detail.manifest.compilation_options_fingerprints object
 mcp:status[sections=manifest] $.detail.manifest.compilation_options_fingerprints.{*} string

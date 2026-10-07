@@ -42,6 +42,8 @@ public sealed class WorkspaceInfo
 
         TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot, sink);
 
+        AssemblyNames = BuildAssemblyNameMap(solution);
+
         ProjectDocuments = projectDocuments.ToDictionary(
             kvp => kvp.Key,
             kvp => (IReadOnlyList<string>)[.. kvp.Value.OrderBy(static path => path, StringComparer.Ordinal)],
@@ -67,6 +69,14 @@ public sealed class WorkspaceInfo
     public Version CompilerVersion { get; }
 
     public IReadOnlyDictionary<string, string> TargetFrameworks { get; }
+
+    /// <summary>
+    ///     Project name to <see cref="Project.AssemblyName" />. The assembly name is the
+    ///     identity a dead-candidate's <c>assembly_identity</c> and a binding-incompleteness
+    ///     record's <c>project_name</c> carry, and it differs from the project name whenever
+    ///     <c>AssemblyName</c> is set in the project file (B18).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> AssemblyNames { get; }
 
     public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
 
@@ -358,6 +368,14 @@ public sealed class WorkspaceInfo
         }
 
         return new Dictionary<string, string>(map, StringComparer.Ordinal);
+    }
+
+    private static Dictionary<string, string> BuildAssemblyNameMap(Solution solution)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+            map[project.Name] = project.AssemblyName;
+        return map;
     }
 
     private static Dictionary<string, ImmutableHashSet<string>> BuildProjectGraph(Solution solution)

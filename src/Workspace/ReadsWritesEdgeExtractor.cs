@@ -28,6 +28,11 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
 
             foreach (var access in accesses)
             {
+                if (access is IdentifierNameSyntax identifier
+                    && identifier.Parent is MemberAccessExpressionSyntax memberAccess
+                    && memberAccess.Name == identifier)
+                    continue;
+
                 var symbolInfo = semanticModel.GetSymbolInfo(access);
                 if (symbolInfo.Symbol is not IFieldSymbol and not IPropertySymbol)
                 {
@@ -45,7 +50,8 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                 if (memberId == null)
                     continue;
 
-                var isWrite = access.IsWriteContext();
+                var writeContext = access.Parent is MemberBindingExpressionSyntax ? access.Parent : access;
+                var isWrite = writeContext.IsWriteContext();
                 var kind = isWrite ? nameof(EdgeKind.Writes) : nameof(EdgeKind.Reads);
                 var seenSet = isWrite ? seenWrites : seenReads;
 
