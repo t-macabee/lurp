@@ -15,7 +15,8 @@ namespace Lurp.Workspace;
 ///     user-defined operators and conversions, and the implicit invocations behind
 ///     await, foreach, using, deconstruction, collection initializers,
 ///     interpolated-string handlers, and the C# pattern, index/range and
-///     collection-expression shapes). Await, foreach and deconstruction read their
+///     collection-expression shapes). Event references are <c>Reads</c> or
+///     <c>Writes</c> to the event. Await, foreach and deconstruction read their
 ///     bound members from Roslyn's binding APIs (<c>GetAwaitExpressionInfo</c>,
 ///     <c>GetForEachStatementInfo</c> and <c>GetDeconstructionInfo</c>); the pattern
 ///     shapes read <c>IRecursivePatternOperation</c>, <c>IListPatternOperation</c>,
@@ -23,6 +24,10 @@ namespace Lurp.Workspace;
 ///     <c>ICollectionExpressionOperation</c>. It walks Roslyn operations; the
 ///     existing extractors remain the source of the syntax-level facts, and
 ///     EdgeMerge collapses the overlap by (source, target, kind).
+///     B30 type uses (<c>is</c> and type patterns, explicit casts, <c>default(T)</c>,
+///     <c>sizeof</c>, array creation, local declarations, <c>catch</c> types, method and
+///     constructor type arguments) are <c>References</c> to the type and to the types
+///     nested inside it; <c>typeof</c> is left to <c>ReflectionTypeRef</c>.
 /// </summary>
 internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
@@ -82,6 +87,18 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 _ => (SyntaxNode)syntax
             };
             yield return (method, node);
+
+            // B33: a local function's or lambda's parameter default sits inside a
+            // method body but not in the body's operation tree; its owner is the
+            // enclosing member.
+            foreach (var parameter in syntax.DescendantNodes().OfType<ParameterSyntax>())
+            {
+                if (parameter.Default is not { } parameterDefault)
+                    continue;
+                if (parameter.Parent?.Parent is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
+                    continue;
+                yield return (method, parameterDefault.Value);
+            }
         }
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
@@ -100,6 +117,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                                 continue;
                             if (syntaxRef.GetSyntax() is VariableDeclaratorSyntax { Initializer: { } initializer })
                                 yield return (field, initializer.Value);
+                            else if (syntaxRef.GetSyntax() is EnumMemberDeclarationSyntax { EqualsValue: { } equalsValue })
+                                yield return (field, equalsValue.Value);
                         }
 
                         break;
@@ -112,18 +131,48 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                                 yield return (property, initializer.Value);
                         }
 
+                        if (property.IsIndexer)
+                        {
+                            foreach (var parameterDefault in EnumerateParameterDefaults(property.Parameters))
+                                yield return (property, parameterDefault);
+                        }
+
                         break;
-                    case IMethodSymbol method when method.MethodKind == MethodKind.Constructor:
-                        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                    case IMethodSymbol method:
+                        foreach (var parameterDefault in EnumerateParameterDefaults(method.Parameters))
+                            yield return (method, parameterDefault);
+
+                        if (method.MethodKind == MethodKind.Constructor)
+                        {
+                            foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+                            {
+                                if (!ExtractionUtils.IsInScope(context.ScopeDocuments, syntaxRef.SyntaxTree))
+                                    continue;
+                                if (syntaxRef.GetSyntax() is ConstructorDeclarationSyntax { Initializer: { } initializer })
+                                    yield return (method, initializer);
+                            }
+                        }
+
+                        break;
+                    case IEventSymbol eventSymbol:
+                        foreach (var syntaxRef in eventSymbol.DeclaringSyntaxReferences)
                         {
                             if (!ExtractionUtils.IsInScope(context.ScopeDocuments, syntaxRef.SyntaxTree))
                                 continue;
-                            if (syntaxRef.GetSyntax() is ConstructorDeclarationSyntax { Initializer: { } initializer })
-                                yield return (method, initializer);
+                            if (syntaxRef.GetSyntax() is VariableDeclaratorSyntax { Initializer: { } initializer })
+                                yield return (eventSymbol, initializer.Value);
                         }
 
                         break;
                 }
+            }
+
+            // R4.5: a delegate parameter default is owned by the delegate type; Roslyn's
+            // Invoke method is not a stored symbol, so its ContainingSymbol is not an id.
+            if (typeSymbol.TypeKind == TypeKind.Delegate && typeSymbol.DelegateInvokeMethod is { } invoke)
+            {
+                foreach (var parameterDefault in EnumerateParameterDefaults(invoke.Parameters))
+                    yield return (typeSymbol, parameterDefault);
             }
 
             foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
@@ -155,6 +204,20 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         }
     }
 
+    private IEnumerable<SyntaxNode> EnumerateParameterDefaults(IEnumerable<IParameterSymbol> parameters)
+    {
+        foreach (var parameter in parameters)
+        {
+            foreach (var syntaxRef in parameter.DeclaringSyntaxReferences)
+            {
+                if (!ExtractionUtils.IsInScope(context.ScopeDocuments, syntaxRef.SyntaxTree))
+                    continue;
+                if (syntaxRef.GetSyntax() is ParameterSyntax { Default: { } parameterDefault })
+                    yield return parameterDefault.Value;
+            }
+        }
+    }
+
     private void Walk(
         IOperation root,
         string ownerId,
@@ -174,13 +237,22 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                         break;
                     AddCall(ownerId, invocation.TargetMethod, operation.Syntax, model, edges, seen);
                     AddStaticReceiverReference(ownerId, operation.Syntax, model, edges, seen);
+                    foreach (var typeArgument in invocation.TargetMethod.TypeArguments)
+                        AddTypeUses(ownerId, typeArgument, operation.Syntax, edges, seen);
                     break;
 
                 case IObjectCreationOperation creation:
                     if (operation.Parent is IInterpolatedStringHandlerCreationOperation)
                         break;
                     if (creation.Type is { } createdType)
+                    {
                         AddConstructs(ownerId, createdType, operation.Syntax, edges, seen);
+                        foreach (var nestedType in ExtractionUtils.NestedTypeUses(createdType))
+                            AddTypeUses(ownerId, nestedType, operation.Syntax, edges, seen);
+                    }
+
+                    if (creation.Constructor is { IsImplicitlyDeclared: false } constructor)
+                        AddCall(ownerId, constructor, operation.Syntax, model, edges, seen);
                     break;
 
                 case IMethodReferenceOperation methodReference:
@@ -225,6 +297,10 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     AddMemberAccess(ownerId, fieldReference.Field, fieldReference, edges, seen);
                     break;
 
+                case IEventReferenceOperation eventReference:
+                    AddMemberAccess(ownerId, eventReference.Event, operation, edges, seen);
+                    break;
+
                 case IUnaryOperation unary when unary.OperatorMethod != null:
                     AddCall(ownerId, unary.OperatorMethod, operation.Syntax, model, edges, seen);
                     break;
@@ -241,14 +317,19 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     AddCall(ownerId, increment.OperatorMethod, operation.Syntax, model, edges, seen);
                     break;
 
-                case IConversionOperation conversion when conversion.OperatorMethod != null:
-                    AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model, edges, seen);
+                case IConversionOperation conversion:
+                    if (conversion.OperatorMethod != null)
+                        AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model, edges, seen);
+                    if (!conversion.IsImplicit)
+                        AddTypeUses(ownerId, conversion.Type, operation.Syntax, edges, seen);
                     break;
 
                 // B19: implicit calls the syntax switch never sees. Each reads a
                 // member Roslyn bound for the shape.
-                case IRecursivePatternOperation { DeconstructSymbol: IMethodSymbol deconstruct }:
-                    AddCall(ownerId, deconstruct, operation.Syntax, model, edges, seen);
+                case IRecursivePatternOperation recursivePattern:
+                    AddTypeUses(ownerId, recursivePattern.MatchedType, operation.Syntax, edges, seen);
+                    if (recursivePattern.DeconstructSymbol is IMethodSymbol deconstruct)
+                        AddCall(ownerId, deconstruct, operation.Syntax, model, edges, seen);
                     break;
 
                 case IListPatternOperation listPattern:
@@ -270,11 +351,73 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
                 case ICollectionExpressionOperation { ConstructMethod: { } constructMethod }:
                     if (constructMethod.MethodKind == MethodKind.Constructor)
+                    {
                         AddConstructs(ownerId, constructMethod.ContainingType, operation.Syntax, edges, seen);
+                        if (!constructMethod.IsImplicitlyDeclared)
+                            AddCall(ownerId, constructMethod, operation.Syntax, model, edges, seen);
+                    }
                     else
+                    {
                         AddCall(ownerId, constructMethod, operation.Syntax, model, edges, seen);
+                    }
+
+                    break;
+
+                // B30: every source type named in a body is a References target;
+                // typeof is left to ReflectionTypeRef.
+                case IIsTypeOperation isType:
+                    AddTypeUses(ownerId, isType.TypeOperand, operation.Syntax, edges, seen);
+                    break;
+
+                case IDeclarationPatternOperation declarationPattern:
+                    AddTypeUses(ownerId, declarationPattern.MatchedType, operation.Syntax, edges, seen);
+                    break;
+
+                case ITypePatternOperation typePattern:
+                    AddTypeUses(ownerId, typePattern.MatchedType, operation.Syntax, edges, seen);
+                    break;
+
+                case ISizeOfOperation sizeOf:
+                    AddTypeUses(ownerId, sizeOf.TypeOperand, operation.Syntax, edges, seen);
+                    break;
+
+                case IArrayCreationOperation arrayCreation:
+                    AddTypeUses(ownerId, arrayCreation.Type, operation.Syntax, edges, seen);
+                    break;
+
+                case IVariableDeclaratorOperation declarator:
+                    AddTypeUses(ownerId, declarator.Symbol.Type, operation.Syntax, edges, seen);
+                    break;
+
+                case ICatchClauseOperation catchClause:
+                    AddTypeUses(ownerId, catchClause.ExceptionType, operation.Syntax, edges, seen);
+                    break;
+
+                case IDefaultValueOperation defaultValue when defaultValue.Syntax is DefaultExpressionSyntax:
+                    AddTypeUses(ownerId, defaultValue.Type, operation.Syntax, edges, seen);
                     break;
             }
+        }
+    }
+
+    private void AddTypeUses(
+        string ownerId,
+        ITypeSymbol? type,
+        SyntaxNode syntax,
+        List<EdgeRecord> edges,
+        HashSet<(string Source, string Target, string Kind)> seen)
+    {
+        if (type == null)
+            return;
+
+        foreach (var used in ExtractionUtils.TypeUses(type))
+        {
+            context.RecordFilteredExternal(used, syntax);
+            var targetId = context.MakeSymbolId(used);
+            if (targetId == null || targetId == ownerId)
+                continue;
+
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.References), syntax);
         }
     }
 
@@ -303,14 +446,36 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (symbol.IsImplicitlyDeclared || !context.IsMemberInScope(symbol))
             return;
 
-        var attributes = symbol.GetAttributes();
-        if (attributes.IsEmpty)
-            return;
-
         var sourceId = context.MakeSymbolId(symbol);
         if (sourceId == null)
             return;
 
+        var syntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(symbol);
+        ExtractAttributes(symbol.GetAttributes(), sourceId, syntax, edges, seen);
+
+        // B33: parameter and return-value attributes belong to the declaring
+        // member (an indexer parameter to the indexer).
+        switch (symbol)
+        {
+            case IMethodSymbol method:
+                foreach (var parameter in method.Parameters)
+                    ExtractAttributes(parameter.GetAttributes(), sourceId, syntax, edges, seen);
+                ExtractAttributes(method.GetReturnTypeAttributes(), sourceId, syntax, edges, seen);
+                break;
+            case IPropertySymbol { IsIndexer: true } indexer:
+                foreach (var parameter in indexer.Parameters)
+                    ExtractAttributes(parameter.GetAttributes(), sourceId, syntax, edges, seen);
+                break;
+        }
+    }
+
+    private void ExtractAttributes(
+        IEnumerable<AttributeData> attributes,
+        string sourceId,
+        SyntaxNode? syntax,
+        List<EdgeRecord> edges,
+        HashSet<(string Source, string Target, string Kind)> seen)
+    {
         foreach (var attribute in attributes)
         {
             var attributeClass = attribute.AttributeClass;
@@ -321,8 +486,29 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             if (targetId == null)
                 continue;
 
-            var syntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(symbol);
             Emit(edges, seen, sourceId, targetId, nameof(EdgeKind.Constructs), syntax);
+
+            // B28: an attribute application calls its constructor when the
+            // constructor is declared in source.
+            if (attribute.AttributeConstructor is { IsImplicitlyDeclared: false } attributeConstructor)
+            {
+                context.RecordFilteredExternal(attributeConstructor, syntax);
+                var constructorId = context.MakeSymbolId(attributeConstructor);
+                if (constructorId != null)
+                    Emit(edges, seen, sourceId, constructorId, nameof(EdgeKind.Calls), syntax);
+            }
+
+            // B33: an attribute argument is a root; walk its expression.
+            if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax { ArgumentList: { } argumentList } &&
+                ExtractionUtils.IsInScope(context.ScopeDocuments, argumentList.SyntaxTree))
+            {
+                var model = context.GetOrCreateSemanticModel(argumentList.SyntaxTree);
+                foreach (var argument in argumentList.Arguments)
+                {
+                    if (model.GetOperation(argument.Expression) is { } argumentOperation)
+                        Walk(argumentOperation, sourceId, model, edges, seen);
+                }
+            }
         }
     }
 
@@ -427,6 +613,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     {
         switch (operation.Parent)
         {
+            case IEventAssignmentOperation eventAssignment when ReferenceEquals(eventAssignment.EventReference, operation):
+                return (false, true);
             case IAssignmentOperation assignment when ReferenceEquals(assignment.Target, operation):
                 return (false, true);
             case ICompoundAssignmentOperation compound when ReferenceEquals(compound.Target, operation):

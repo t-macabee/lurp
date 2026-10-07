@@ -351,15 +351,17 @@ internal class MultiLibClass
             var renamedEntry = Assert.Single(page.Candidates, c => c.SymbolId.Contains("RenamedLibClass.Value"));
             var multiEntry = Assert.Single(page.Candidates, c => c.SymbolId.Contains("MultiLibClass.Value"));
 
-            // All should be UncertainDead with SerializationConvention reason
-            Assert.Equal(DeadCandidateStatus.UncertainDead, plainEntry.Status);
-            Assert.Equal(DeadCandidateReason.SerializationConvention, plainEntry.Reason);
+            // All should be ProvedDead with NoIncomingLiveEdges reason: an internal
+            // attribute-free property is not serialized by convention, so the same
+            // answer in all three projects.
+            Assert.Equal(DeadCandidateStatus.ProvedDead, plainEntry.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, plainEntry.Reason);
 
-            Assert.Equal(DeadCandidateStatus.UncertainDead, renamedEntry.Status);
-            Assert.Equal(DeadCandidateReason.SerializationConvention, renamedEntry.Reason);
+            Assert.Equal(DeadCandidateStatus.ProvedDead, renamedEntry.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, renamedEntry.Reason);
 
-            Assert.Equal(DeadCandidateStatus.UncertainDead, multiEntry.Status);
-            Assert.Equal(DeadCandidateReason.SerializationConvention, multiEntry.Reason);
+            Assert.Equal(DeadCandidateStatus.ProvedDead, multiEntry.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, multiEntry.Reason);
         }
         finally
         {
@@ -1298,6 +1300,430 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             // ...but neither the marker type nor a block method is a candidate.
             var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, true, true, true, 200, null);
             Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Contains("<G>$", StringComparison.Ordinal));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ObjectCreation_CallsTheConstructor()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B28: a constructor called through new (plain, target-typed or in a field
+        // initializer) and an attribute constructor must not be proved_dead.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Shapes.cs"] = """
+namespace TestProject;
+
+internal sealed class Plain
+{
+    internal Plain(int x) { }
+}
+
+internal sealed class Targeted
+{
+    internal Targeted(int x) { }
+}
+
+internal sealed class InField
+{
+    internal InField(int x) { }
+}
+
+internal sealed class FieldHolder
+{
+    private readonly InField _f = new InField(3);
+}
+
+internal sealed class TagAttribute : System.Attribute
+{
+    internal TagAttribute(string s) { }
+}
+
+internal static class Entry
+{
+    [Tag("x")]
+    internal static void Tagged() { }
+
+    internal static void Go()
+    {
+        _ = new Plain(1);
+        Targeted t = new(2);
+        _ = new FieldHolder();
+        Tagged();
+    }
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+
+            Assert.DoesNotContain(page.Candidates,
+                c => c.Status == DeadCandidateStatus.ProvedDead
+                     && (c.SymbolId.Contains("Plain.#ctor(")
+                         || c.SymbolId.Contains("Targeted.#ctor(")
+                         || c.SymbolId.Contains("InField.#ctor(")
+                         || c.SymbolId.Contains("TagAttribute.#ctor(")));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task EventUse_MakesTheEventLive()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B29: subscribing, unsubscribing and raising an event must give the event a
+        // live edge; the custom accessors inherit that liveness.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Events.cs"] = """
+namespace TestProject;
+
+internal sealed class Raiser
+{
+    internal event System.EventHandler? Changed;
+
+    internal void Raise() => Changed?.Invoke(this, System.EventArgs.Empty);
+}
+
+internal sealed class CustomHolder
+{
+    internal event System.EventHandler? Custom { add { } remove { } }
+}
+
+internal static class Entry
+{
+    internal static void Go(Raiser raiser, CustomHolder holder)
+    {
+        raiser.Changed += Handler;
+        raiser.Changed -= Handler;
+        holder.Custom += Handler;
+        holder.Custom -= Handler;
+    }
+
+    private static void Handler(object? sender, System.EventArgs e) { }
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var events = store.GetDeadCandidatesPage(snapshotId, null, null, "Event", false, false, false, 200, null);
+            Assert.DoesNotContain(events.Candidates,
+                c => c.Status == DeadCandidateStatus.ProvedDead
+                     && (c.SymbolId.Contains(".Changed") || c.SymbolId.Contains(".Custom")));
+
+            var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            Assert.DoesNotContain(methods.Candidates,
+                c => c.Status == DeadCandidateStatus.ProvedDead
+                     && (c.SymbolId.Contains(".add_Custom") || c.SymbolId.Contains(".remove_Custom")));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ConstantInDefaultValueOrAttribute_IsLive()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B33: constants read only from a parameter default, an attribute argument,
+        // an enum member value and an indexer parameter default, plus a method used
+        // only as a field-like event initializer, must not be proved_dead.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Roots.cs"] = """
+namespace TestProject;
+
+internal static class Holder
+{
+    internal const int MethodDefault = 3;
+    internal const string AttributeArg = "x";
+    internal const int EnumSeed = 5;
+    internal const int IndexDefault = 7;
+}
+
+internal sealed class TagAttribute : System.Attribute
+{
+    internal TagAttribute(string s) { }
+}
+
+internal enum Mode
+{
+    A = Holder.EnumSeed
+}
+
+internal sealed class Indexed
+{
+    internal int this[int i, int j = Holder.IndexDefault] => i + j;
+}
+
+internal static class EventSource
+{
+    internal static event System.Action? E = Handler;
+
+    internal static void Handler() { }
+
+    internal static void Raise() => E?.Invoke();
+}
+
+internal static class Entry
+{
+    internal static int Use(int v = Holder.MethodDefault) => v;
+
+    [Tag(Holder.AttributeArg)]
+    internal static void Tagged() { }
+
+    internal static void Go()
+    {
+        _ = Use();
+        Tagged();
+        _ = Mode.A;
+        _ = new Indexed()[1];
+        _ = new Indexed()[1, 2];
+        EventSource.Raise();
+    }
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var fields = store.GetDeadCandidatesPage(snapshotId, null, null, "Field", false, false, false, 200, null);
+            foreach (var constant in new[] { "MethodDefault", "AttributeArg", "EnumSeed", "IndexDefault" })
+            {
+                Assert.DoesNotContain(fields.Candidates,
+                    c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains($"Holder.{constant}"));
+            }
+
+            var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            Assert.DoesNotContain(methods.Candidates,
+                c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains("EventSource.Handler"));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task SerializationConvention_RequiresOptInAttribute()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B31: the serialization convention applies only to a member carrying an
+        // opt-in attribute, matched by exact name.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Serialized.cs"] = """
+namespace TestProject;
+
+internal sealed class Serialized
+{
+    internal int Plain { get; set; }
+
+    [System.Text.Json.Serialization.JsonInclude]
+    internal int Included { get; set; }
+
+    [System.Runtime.Serialization.DataMember]
+    internal int Member { get; set; }
+
+    [System.Runtime.Serialization.DataMember]
+    private int _memberField;
+
+    [System.Text.Json.Serialization.JsonPropertyName("n")]
+    internal int NamedOnly { get; set; }
+}
+
+internal static class Entry
+{
+    internal static void Go() => _ = new Serialized();
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var properties = store.GetDeadCandidatesPage(snapshotId, null, null, "Property", false, false, false, 200, null);
+
+            var plain = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("Serialized.Plain"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, plain.Status);
+
+            var namedOnly = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("Serialized.NamedOnly"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, namedOnly.Status);
+
+            var included = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("Serialized.Included"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, included.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, included.Reason);
+
+            var member = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("Serialized.Member"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, member.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, member.Reason);
+
+            var fields = store.GetDeadCandidatesPage(snapshotId, null, null, "Field", false, false, false, 200, null);
+            var memberField = Assert.Single(fields.Candidates, c => c.SymbolId.Contains("Serialized._memberField"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, memberField.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, memberField.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ConventionVerdict_IsSharedByAccessorsAndType()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B34: a class that is never created still takes the serialization verdict
+        // from its members, and its accessors and type share that verdict.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Serialized.cs"] = """
+namespace TestProject;
+
+internal sealed class Serialized
+{
+    internal int Plain { get; set; }
+
+    [System.Text.Json.Serialization.JsonInclude]
+    internal int Included { get; set; }
+
+    [System.Runtime.Serialization.DataMember]
+    internal int Member { get; set; }
+
+    [System.Runtime.Serialization.DataMember]
+    private int _memberField;
+
+    [System.Text.Json.Serialization.JsonPropertyName("n")]
+    internal int NamedOnly { get; set; }
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var properties = store.GetDeadCandidatesPage(snapshotId, null, null, "Property", false, false, false, 200, null);
+            var included = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("Serialized.Included"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, included.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, included.Reason);
+
+            var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            var getIncluded = Assert.Single(methods.Candidates, c => c.SymbolId.Contains("get_Included"));
+            Assert.Equal(included.Status, getIncluded.Status);
+            Assert.Equal(included.Reason, getIncluded.Reason);
+
+            var setIncluded = Assert.Single(methods.Candidates, c => c.SymbolId.Contains("set_Included"));
+            Assert.Equal(included.Status, setIncluded.Status);
+            Assert.Equal(included.Reason, setIncluded.Reason);
+
+            var types = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+            var type = Assert.Single(types.Candidates, c => c.SymbolId.Contains("T:TestProject.Serialized"));
+            Assert.Equal(DeadCandidateStatus.UncertainDead, type.Status);
+            Assert.Equal(DeadCandidateReason.SerializationConvention, type.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task TypeUsedOnlyInBodyOrSignature_IsLive()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B30: a type named only inside a body (is, catch, a method type argument)
+        // or inside a signature (an array element, a generic argument) must not be
+        // proved_dead.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Uses.cs"] = """
+namespace TestProject;
+
+internal sealed class OnlyIsChecked { }
+
+internal sealed class OnlyCaught : System.Exception { }
+
+internal sealed class OnlyGenericArg { }
+
+internal sealed class OnlyArrayElement { }
+
+internal sealed class OnlyListArg { }
+
+internal static class Entry
+{
+    internal static bool IsCheck(object o) => o is OnlyIsChecked;
+
+    internal static int Catch()
+    {
+        try
+        {
+            return 0;
+        }
+        catch (OnlyCaught)
+        {
+            return 1;
+        }
+    }
+
+    internal static int Generic() => System.Array.Empty<OnlyGenericArg>().Length;
+
+    internal static OnlyArrayElement[]? ArrayReturn() => null;
+
+    internal static System.Collections.Generic.List<OnlyListArg>? ListReturn() => null;
+
+    internal static void Go()
+    {
+        _ = IsCheck(new object());
+        _ = Catch();
+        _ = Generic();
+        _ = ArrayReturn();
+        _ = ListReturn();
+    }
+}
+"""
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var types = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+            foreach (var type in new[] { "OnlyIsChecked", "OnlyCaught", "OnlyGenericArg", "OnlyArrayElement", "OnlyListArg" })
+            {
+                Assert.DoesNotContain(types.Candidates,
+                    c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains($"TestProject.{type}"));
+            }
         }
         finally
         {

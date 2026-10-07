@@ -6,6 +6,8 @@ public sealed class ShapePublisher
 {
     public event Action? Changed;
 
+    public event System.Action? CustomChanged { add { } remove { } }
+
     public void Raise() => Changed?.Invoke();
 }
 

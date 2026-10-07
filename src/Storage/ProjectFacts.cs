@@ -92,17 +92,6 @@ internal sealed class ProjectFacts
     }
 
     /// <summary>
-    ///     True when any row sharing <paramref name="assemblyName" /> references
-    ///     <paramref name="referenceSimpleName" />. NULL reference identities mean "no
-    ///     references", so the answer is false for every name.
-    /// </summary>
-    public bool HasReference(string assemblyName, string referenceSimpleName)
-    {
-        return _referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames)
-               && simpleNames.Contains(referenceSimpleName);
-    }
-
-    /// <summary>
     ///     F14: a project is a test project when it references a known test framework
     ///     assembly. There is no name rule and no solution-name rule.
     /// </summary>

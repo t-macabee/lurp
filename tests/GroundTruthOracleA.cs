@@ -213,6 +213,33 @@ internal static class OperationShapeOracle
                 model.GetDeclaredSymbol(typeDeclaration) is INamedTypeSymbol declaredType)
                 return declaredType.InstanceConstructors.FirstOrDefault(constructor => !constructor.IsImplicitlyDeclared) ?? (ISymbol)declaredType;
 
+            // An attribute argument belongs to the attributed symbol, not the
+            // enclosing binder: the type or member for a type/member attribute, the
+            // method (or indexer property) for a parameter or return-value attribute.
+            if (node.FirstAncestorOrSelf<AttributeArgumentSyntax>() is not null)
+            {
+                var attributeList = node.FirstAncestorOrSelf<AttributeListSyntax>();
+                var parent = attributeList?.Parent;
+                if (attributeList is null || parent is null ||
+                    attributeList.Target?.Identifier.ValueText is "assembly" or "module" ||
+                    parent is CompilationUnitSyntax)
+                    return null;
+
+                if (parent is ParameterSyntax parameter)
+                    return model.GetDeclaredSymbol(parameter)?.ContainingSymbol;
+
+                if (attributeList.Target?.Identifier.ValueText == "return")
+                    return model.GetDeclaredSymbol(parent);
+
+                if (parent is BaseFieldDeclarationSyntax fieldDeclaration)
+                {
+                    var variable = fieldDeclaration.Declaration.Variables.FirstOrDefault();
+                    return variable is null ? null : model.GetDeclaredSymbol(variable);
+                }
+
+                return model.GetDeclaredSymbol(parent);
+            }
+
             // Probe inside the executable body: GetEnclosingSymbol resolves through
             // the enclosing binder, which for a declaration only exists inside the
             // body, not on the signature.
@@ -224,10 +251,20 @@ internal static class OperationShapeOracle
             while (owner is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction or MethodKind.LocalFunction } nested)
                 owner = nested.ContainingSymbol;
 
+            // R4.5: a delegate parameter default's enclosing symbol is the delegate's Invoke
+            // method, which is not a stored symbol; extraction attributes it to the delegate type.
+            if (owner is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke } delegateInvoke)
+                owner = delegateInvoke.ContainingType;
+
             // An auto-property initializer's enclosing symbol is the compiler
             // backing field; extraction attributes it to the property.
             if (owner is IFieldSymbol { AssociatedSymbol: IPropertySymbol associatedProperty })
                 owner = associatedProperty;
+
+            // A field-like event initializer's enclosing symbol is the compiler
+            // backing field; extraction attributes it to the event (B33).
+            if (owner is IFieldSymbol { AssociatedSymbol: IEventSymbol associatedEvent })
+                owner = associatedEvent;
 
             if (owner is IMethodSymbol { AssociatedSymbol: IPropertySymbol associated })
             {
@@ -263,13 +300,22 @@ internal static class OperationShapeOracle
                             break;
                         AddCall(ownerId, invocation.TargetMethod, operation.Syntax, model);
                         AddStaticReceiverReference(ownerId, operation.Syntax, model);
+                        foreach (var typeArgument in invocation.TargetMethod.TypeArguments)
+                            AddTypeUses(ownerId, typeArgument, operation.Syntax);
                         break;
                     case IObjectCreationOperation creation:
                         if (operation.Parent is IInterpolatedStringHandlerCreationOperation)
                             break;
-                        if (creation.Type is { } createdType &&
-                            DocId(createdType) is { } createdId && createdId != ownerId)
-                            Add(ownerId, nameof(Lurp.Storage.EdgeKind.Constructs), createdId, operation.Syntax);
+                        if (creation.Type is { } createdType)
+                        {
+                            if (DocId(createdType) is { } createdId && createdId != ownerId)
+                                Add(ownerId, nameof(Lurp.Storage.EdgeKind.Constructs), createdId, operation.Syntax);
+                            foreach (var nestedType in NestedTypeUses(createdType))
+                                AddTypeUses(ownerId, nestedType, operation.Syntax);
+                        }
+
+                        if (creation.Constructor is { IsImplicitlyDeclared: false } constructor)
+                            AddCall(ownerId, constructor, operation.Syntax, model);
                         break;
                     case IMethodReferenceOperation methodReference:
                         AddCallLike(ownerId, methodReference.Method, nameof(Lurp.Storage.EdgeKind.MethodGroupRef), operation.Syntax);
@@ -298,6 +344,9 @@ internal static class OperationShapeOracle
                     case IFieldReferenceOperation fieldReference:
                         AddMemberAccess(ownerId, fieldReference.Field, fieldReference);
                         break;
+                    case IEventReferenceOperation eventReference:
+                        AddMemberAccess(ownerId, eventReference.Event, eventReference);
+                        break;
                     case IUnaryOperation unary when unary.OperatorMethod != null:
                         AddCall(ownerId, unary.OperatorMethod, operation.Syntax, model);
                         break;
@@ -310,14 +359,19 @@ internal static class OperationShapeOracle
                     case IIncrementOrDecrementOperation increment when increment.OperatorMethod != null:
                         AddCall(ownerId, increment.OperatorMethod, operation.Syntax, model);
                         break;
-                    case IConversionOperation conversion when conversion.OperatorMethod != null:
-                        AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model);
+                    case IConversionOperation conversion:
+                        if (conversion.OperatorMethod != null)
+                            AddCall(ownerId, conversion.OperatorMethod, operation.Syntax, model);
+                        if (!conversion.IsImplicit)
+                            AddTypeUses(ownerId, conversion.Type, operation.Syntax);
                         break;
 
                     // B19: implicit calls the syntax switch never sees. Each reads a
                     // member Roslyn bound for the shape.
-                    case IRecursivePatternOperation { DeconstructSymbol: IMethodSymbol deconstruct }:
-                        AddCallLike(ownerId, deconstruct, nameof(Lurp.Storage.EdgeKind.Calls), operation.Syntax);
+                    case IRecursivePatternOperation recursivePattern:
+                        AddTypeUses(ownerId, recursivePattern.MatchedType, operation.Syntax);
+                        if (recursivePattern.DeconstructSymbol is IMethodSymbol deconstruct)
+                            AddCallLike(ownerId, deconstruct, nameof(Lurp.Storage.EdgeKind.Calls), operation.Syntax);
                         break;
                     case IListPatternOperation listPattern:
                         AddMemberBySymbolKind(ownerId, listPattern.LengthSymbol, operation.Syntax);
@@ -338,12 +392,41 @@ internal static class OperationShapeOracle
                         {
                             if (DocId(constructMethod.ContainingType) is { } constructedId && constructedId != ownerId)
                                 Add(ownerId, nameof(Lurp.Storage.EdgeKind.Constructs), constructedId, operation.Syntax);
+                            if (!constructMethod.IsImplicitlyDeclared)
+                                AddCall(ownerId, constructMethod, operation.Syntax, model);
                         }
                         else
                         {
                             AddCallLike(ownerId, constructMethod, nameof(Lurp.Storage.EdgeKind.Calls), operation.Syntax);
                         }
 
+                        break;
+
+                    // B30: every source type named in a body is a References target;
+                    // typeof is left to ReflectionTypeRef.
+                    case IIsTypeOperation isType:
+                        AddTypeUses(ownerId, isType.TypeOperand, operation.Syntax);
+                        break;
+                    case IDeclarationPatternOperation declarationPattern:
+                        AddTypeUses(ownerId, declarationPattern.MatchedType, operation.Syntax);
+                        break;
+                    case ITypePatternOperation typePattern:
+                        AddTypeUses(ownerId, typePattern.MatchedType, operation.Syntax);
+                        break;
+                    case ISizeOfOperation sizeOf:
+                        AddTypeUses(ownerId, sizeOf.TypeOperand, operation.Syntax);
+                        break;
+                    case IArrayCreationOperation arrayCreation:
+                        AddTypeUses(ownerId, arrayCreation.Type, operation.Syntax);
+                        break;
+                    case IVariableDeclaratorOperation declarator:
+                        AddTypeUses(ownerId, declarator.Symbol.Type, operation.Syntax);
+                        break;
+                    case ICatchClauseOperation catchClause:
+                        AddTypeUses(ownerId, catchClause.ExceptionType, operation.Syntax);
+                        break;
+                    case IDefaultValueOperation defaultValue when defaultValue.Syntax is DefaultExpressionSyntax:
+                        AddTypeUses(ownerId, defaultValue.Type, operation.Syntax);
                         break;
                 }
             }
@@ -383,6 +466,7 @@ internal static class OperationShapeOracle
         {
             return operation.Parent switch
             {
+                IEventAssignmentOperation eventAssignment when ReferenceEquals(eventAssignment.EventReference, operation) => (false, true),
                 IAssignmentOperation assignment when ReferenceEquals(assignment.Target, operation) => (false, true),
                 ICompoundAssignmentOperation compound when ReferenceEquals(compound.Target, operation) => (true, true),
                 IIncrementOrDecrementOperation increment when ReferenceEquals(increment.Target, operation) => (true, true),
@@ -403,6 +487,44 @@ internal static class OperationShapeOracle
                     AddCallLike(ownerId, method, nameof(Lurp.Storage.EdgeKind.Calls), syntax);
                     break;
             }
+        }
+
+        private void AddTypeUses(string ownerId, ITypeSymbol? type, SyntaxNode syntax)
+        {
+            if (type == null)
+                return;
+
+            foreach (var used in TypeUses(type))
+            {
+                if (DocId(used) is not { } targetId || targetId == ownerId)
+                    continue;
+                Add(ownerId, nameof(Lurp.Storage.EdgeKind.References), targetId, syntax);
+            }
+        }
+
+        private static IEnumerable<INamedTypeSymbol> NestedTypeUses(ITypeSymbol type)
+        {
+            switch (type)
+            {
+                case IArrayTypeSymbol array:
+                    foreach (var nested in TypeUses(array.ElementType))
+                        yield return nested;
+                    break;
+                case INamedTypeSymbol named:
+                    foreach (var argument in named.TypeArguments)
+                        foreach (var nested in TypeUses(argument))
+                            yield return nested;
+                    break;
+            }
+        }
+
+        private static IEnumerable<INamedTypeSymbol> TypeUses(ITypeSymbol type)
+        {
+            if (type is INamedTypeSymbol named && named.TypeKind != TypeKind.Error && !named.IsAnonymousType)
+                yield return named.OriginalDefinition;
+
+            foreach (var nested in NestedTypeUses(type))
+                yield return nested;
         }
 
         private void AddStaticReceiverReference(string ownerId, SyntaxNode syntax, SemanticModel model)
@@ -526,14 +648,38 @@ internal static class OperationShapeOracle
                 return;
             if (DocId(symbol) is not { } sourceId)
                 return;
-            foreach (var attribute in symbol.GetAttributes())
+
+            var syntax = symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+            AddAttributes(symbol.GetAttributes(), sourceId, syntax);
+
+            // B33: parameter and return-value attributes belong to the declaring
+            // member (an indexer parameter to the indexer).
+            switch (symbol)
+            {
+                case IMethodSymbol method:
+                    foreach (var parameter in method.Parameters)
+                        AddAttributes(parameter.GetAttributes(), sourceId, syntax);
+                    AddAttributes(method.GetReturnTypeAttributes(), sourceId, syntax);
+                    break;
+                case IPropertySymbol { IsIndexer: true } indexer:
+                    foreach (var parameter in indexer.Parameters)
+                        AddAttributes(parameter.GetAttributes(), sourceId, syntax);
+                    break;
+            }
+        }
+
+        private void AddAttributes(IEnumerable<AttributeData> attributes, string sourceId, SyntaxNode? syntax)
+        {
+            foreach (var attribute in attributes)
             {
                 if (attribute.AttributeClass is not { } attributeClass)
                     continue;
                 if (DocId(attributeClass) is not { } targetId)
                     continue;
-                var syntax = symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
                 Add(sourceId, nameof(Lurp.Storage.EdgeKind.Constructs), targetId, syntax);
+                if (attribute.AttributeConstructor is { IsImplicitlyDeclared: false } attributeConstructor &&
+                    DocId(attributeConstructor) is { } constructorId && constructorId != sourceId)
+                    Add(sourceId, nameof(Lurp.Storage.EdgeKind.Calls), constructorId, syntax);
             }
         }
 

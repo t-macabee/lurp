@@ -7,16 +7,14 @@ namespace Lurp.Tests;
 ///     is the caller oracle. For every method-like member the extractor models —
 ///     ordinary methods, constructors (including primary constructors),
 ///     user-defined operators, conversions, and property/event accessors — each
-///     caller Roslyn reports must appear in extraction as a Calls, Constructs or
+///     caller Roslyn reports must appear in extraction as a Calls or
 ///     MethodGroupRef relation: recall must be 100% for these compiler-proved
-///     relations. Constructor targets match Calls to the constructor itself or
-///     Constructs to its containing type; accessor targets are mapped to the
-///     owner ids the extractor uses (a getter/setter to its property, checked
-///     against the extractor's Reads/Writes), and event accessors are excluded
-///     with the boundary id that documents the unmodeled relation. The test also
-///     prints the precision of those relations and the first 20 extracted
-///     Calls/MethodGroupRef edges to checked targets that Roslyn did not report
-///     (precision is informational).
+///     relations. A constructor target needs a Calls edge to the constructor
+///     itself. Accessor targets are mapped to the owner ids the extractor uses: a
+///     getter/setter to Reads/Writes on its property, and an event add/remove to
+///     Writes on its event. The test also prints the precision of those relations
+///     and the first 20 extracted Calls/MethodGroupRef edges to checked targets
+///     that Roslyn did not report (precision is informational).
 /// </summary>
 /// <remarks>
 ///     Caller identity is normalized to the extraction owner: an auto-property
@@ -72,11 +70,6 @@ public sealed class GroundTruthOracleBTests(GroundTruthFixture callShapes, Cross
         foreach (var method in summary.SkippedStaticAbstract)
             Console.WriteLine($"  skipped static-abstract: {method} " +
                               $"(registered boundary '{SymbolFinderOracle.StaticAbstractDispatchBoundaryId}')");
-        foreach (var entry in SymbolFinderOracle.ExcludedTargetKinds)
-            Console.WriteLine($"Oracle B exclusion: {entry.Kind} targets are not modeled as edges; " +
-                              $"registered boundary '{entry.BoundaryId}'.");
-        foreach (var excluded in summary.ExcludedTargets)
-            Console.WriteLine($"  excluded target: {excluded.Kind} {excluded.DisplayId} -> {excluded.BoundaryId}");
 
         Assert.True(summary.CheckedPairs > 0, "SymbolFinder returned no caller pairs; the oracle did not run.");
         Assert.True(missLines.Count == 0,

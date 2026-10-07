@@ -23,6 +23,17 @@ public sealed partial class ShapeCallers
     public static void FromEventSubscription(ShapePublisher publisher) =>
         publisher.Changed += CoreApi.EventHandlerTarget;
 
+    public static void FromRoots(ShapePublisher publisher)
+    {
+        _ = ShapeRoots.WithDefault();
+        _ = new ShapeSeedIndex()[1];
+        ShapeRoots.Marked();
+        _ = ShapeSeeded.First;
+        publisher.CustomChanged += CoreApi.EventHandlerTarget;
+        publisher.CustomChanged -= CoreApi.EventHandlerTarget;
+        publisher.Changed -= CoreApi.EventHandlerTarget;
+    }
+
     public static int FromQueryLambda(int[] values) =>
         (from value in values
          where value > 0

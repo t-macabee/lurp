@@ -9,10 +9,10 @@ namespace Lurp.Parity.Shared;
 ///     is the caller oracle. For a <see cref="Solution"/>, the extracted edge set
 ///     and a symbol-to-node-id resolver, it enumerates every method-like member the
 ///     extractor models, asks Roslyn for its callers, normalizes each caller to the
-///     extraction owner, filters the excluded/boundary kinds, and compares the result
-///     with the edge set. The result carries the expected and missing callers per
-///     target, the accepted edge kinds an unmatched caller lacks, the precision
-///     extras, and the skip/exclusion counts. It uses no xUnit types.
+///     extraction owner, and compares the result with the edge set. The result
+///     carries the expected and missing callers per target, the accepted edge kinds
+///     an unmatched caller lacks, the precision extras, and the skip counts. It uses
+///     no xUnit types.
 /// </summary>
 public static class SymbolFinderOracle
 {
@@ -31,21 +31,6 @@ public static class SymbolFinderOracle
         MethodKind.PropertySet,
         MethodKind.EventAdd,
         MethodKind.EventRemove
-    ];
-
-    /// <summary>
-    ///     Target kinds Lurp deliberately does not model as edges. Event accessor
-    ///     calls are the one case here: an event subscription is modeled as a
-    ///     MethodGroupRef to the subscribed handler (B1/Q6), never as an edge to the
-    ///     event or its add/remove accessors. 'event_subscriptions' is a retired id:
-    ///     it was registered in DeclaredBoundaries at HEAD and removed from Known in
-    ///     the Phase 7 cleanup; naming it here keeps the skip visible instead of
-    ///     turning it into a recall failure.
-    /// </summary>
-    public static IReadOnlyList<(MethodKind Kind, string BoundaryId)> ExcludedTargetKinds { get; } =
-    [
-        (MethodKind.EventAdd, "event_subscriptions"),
-        (MethodKind.EventRemove, "event_subscriptions")
     ];
 
     /// <summary>
@@ -104,7 +89,6 @@ public static class SymbolFinderOracle
         var dispatchAdjacency = BuildDispatchAdjacency(edgeSet);
 
         var targets = new List<Target>();
-        var excludedTargets = new List<SymbolFinderExcludedTarget>();
         var skippedStaticAbstract = new List<string>();
         var setAsideCallers = new List<SymbolFinderSetAsideCaller>();
         var skippedImplicit = 0;
@@ -139,15 +123,6 @@ public static class SymbolFinderOracle
 
                     if (!TargetKinds.Contains(method.MethodKind))
                         continue;
-
-                    if (ExcludedTargetBoundary(method.MethodKind) is { } excludedBoundary)
-                    {
-                        excludedTargets.Add(new SymbolFinderExcludedTarget(
-                            method.MethodKind,
-                            resolveNodeId(method) ?? method.ToDisplayString(),
-                            excludedBoundary));
-                        continue;
-                    }
 
                     if (method.MethodKind == MethodKind.Ordinary && IsStaticAbstractImplementation(method))
                     {
@@ -288,7 +263,6 @@ public static class SymbolFinderOracle
                 skippedImplicit,
                 skippedNoId,
                 skippedStaticAbstract,
-                excludedTargets,
                 targetCounts,
                 missCounts,
                 precision,
@@ -313,21 +287,19 @@ public static class SymbolFinderOracle
                 return true;
         }
 
-        // A constructor may also be reached through a Constructs edge to its
-        // containing type (object creation targets the type, not the ctor).
-        if (target is { Symbol.MethodKind: MethodKind.Constructor, ContainingTypeId: { } containingTypeId } &&
-            edges.Contains((callerId, nameof(EdgeKind.Constructs), containingTypeId)))
-            return true;
-
-        // Accessor targets are not edge endpoints in extraction; the property is.
-        // A getter is the compiler-proved read of its property, a setter the
-        // compiler-proved write; a compound access emits both.
+        // Accessor targets are not edge endpoints in extraction; the property or
+        // event is. A getter is the compiler-proved read of its property, a setter
+        // the compiler-proved write; a compound property access emits both. An event
+        // subscription or unsubscription writes the event.
         if (target.OwnerId is { } ownerId)
         {
             if (target.Symbol.MethodKind == MethodKind.PropertyGet &&
                 edges.Contains((callerId, nameof(EdgeKind.Reads), ownerId)))
                 return true;
             if (target.Symbol.MethodKind == MethodKind.PropertySet &&
+                edges.Contains((callerId, nameof(EdgeKind.Writes), ownerId)))
+                return true;
+            if (target.Symbol.MethodKind is MethodKind.EventAdd or MethodKind.EventRemove &&
                 edges.Contains((callerId, nameof(EdgeKind.Writes), ownerId)))
                 return true;
         }
@@ -409,17 +381,6 @@ public static class SymbolFinderOracle
         }
 
         return kinds;
-    }
-
-    private static string? ExcludedTargetBoundary(MethodKind kind)
-    {
-        foreach (var entry in ExcludedTargetKinds)
-        {
-            if (entry.Kind == kind)
-                return entry.BoundaryId;
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -546,9 +507,6 @@ public sealed record SymbolFinderMissingCaller(
 /// <summary>An extracted edge: <see cref="Source" /> -[<see cref="Kind" />]-&gt; <see cref="Target" />.</summary>
 public sealed record SymbolFinderEdge(string Source, string Kind, string Target);
 
-/// <summary>A target kind Oracle B excludes from the edge comparison.</summary>
-public sealed record SymbolFinderExcludedTarget(MethodKind Kind, string DisplayId, string BoundaryId);
-
 /// <summary>
 ///     A caller Roslyn reported for a target whose called symbol is not the
 ///     target or a member of its dispatch family: the candidate owner ids the
@@ -563,14 +521,13 @@ public sealed record SymbolFinderSetAsideCaller(
     string Reason,
     IReadOnlyList<int> Lines);
 
-/// <summary>Aggregate Oracle B counts, skips, exclusions, and precision.</summary>
+/// <summary>Aggregate Oracle B counts, skips, and precision.</summary>
 public sealed record SymbolFinderOracleSummary(
     int CheckedPairs,
     int MatchedPairs,
     int SkippedImplicit,
     int SkippedNoId,
     IReadOnlyList<string> SkippedStaticAbstract,
-    IReadOnlyList<SymbolFinderExcludedTarget> ExcludedTargets,
     IReadOnlyDictionary<MethodKind, int> TargetCounts,
     IReadOnlyDictionary<MethodKind, int> MissCounts,
     double Precision,

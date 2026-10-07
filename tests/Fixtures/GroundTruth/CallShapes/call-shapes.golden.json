@@ -16,11 +16,13 @@
   "symbol_id_format": "Facts carry the Roslyn documentation-comment id only. The snapshot id is 'docCommentId|assemblyDisplayName' (SymbolIdFactory.Make); append the assembly from the projects list, or resolve the doc id against the snapshot. Doc ids are unique across the two projects in this fixture.",
   "mapping": [
     "Invocations in a body (including implicit ones: foreach GetEnumerator/MoveNext, using Dispose, await GetAwaiter/GetResult, deconstruction Deconstruct, collection-initializer Add, operator and conversion methods, interpolated-string-handler appends) are 'Calls' to the resolved method.",
-    "Object creation and attribute construction are 'Constructs' to the constructed type.",
-    "Constructor initializers and primary-constructor base arguments invoke the other/base constructor: 'Calls' to the constructor symbol (the constructor is a declared method; this is more precise than the type-level 'Constructs' used for 'new' syntax).",
+    "Object creation and attribute construction are 'Constructs' to the constructed type and 'Calls' to the bound constructor when it is declared in source (an implicitly declared constructor gets no 'Calls'). Constructor initializers and primary-constructor base arguments are 'Calls' to the constructor.",
     "Method groups, delegate conversions and event += handlers are 'MethodGroupRef' (B1 decision: new kind, provenance compiler_proved).",
+    "Event access is 'Writes' to the event for += and -=, and 'Reads' for any other use (for example a raise); the handler of += is also a 'MethodGroupRef'.",
     "Field and property initializers are owned by the field/property symbol; expression-bodied property getters are owned by the accessor method symbol (accessors are declared symbols).",
-    "Static member-access invocations additionally emit 'References' to the receiver type; parameter-type and member-type references come from the existing parameter/structural extractors."
+    "Static member-access invocations additionally emit 'References' to the receiver type; parameter-type and member-type references come from the existing parameter/structural extractors.",
+    "Parameter default values, enum member values, field-like event initializers and attribute arguments are walked like bodies. Owner: the method (an indexer parameter: the indexer property; a delegate parameter: the delegate type), the enum field, the event, and the attributed symbol (a parameter or return-value attribute: its method).",
+    "Type uses are 'References' to every source type named in a body (is and type patterns, explicit casts, default(T), sizeof, array creation, local declarations, catch types, method and constructor type arguments; typeof is 'ReflectionTypeRef') and to every type inside a member or parameter type (type arguments, array elements)."
   ],
   "facts": [
     {
@@ -1303,6 +1305,132 @@
       "target": "P:CallShapes.Core.ShapeIndexWritable.Count",
       "reason": "B19: implicit Index write; the indexer is written, the length is read.",
       "id": "gt-183"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromAttribute",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeMarkerAttribute.#ctor(System.Int32)",
+      "reason": "Attribute application: calls the attribute constructor M:CallShapes.Core.ShapeMarkerAttribute.#ctor(System.Int32).",
+      "id": "gt-184"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromPartialMethod",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeCallers.#ctor(System.Int32)",
+      "reason": "Object creation (new ShapeCallers(0)): calls M:CallShapes.App.ShapeCallers.#ctor(System.Int32).",
+      "id": "gt-185"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeRoots.Marked",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeMarkerAttribute.#ctor(System.Int32)",
+      "reason": "Attribute application on ShapeRoots.Marked: calls the attribute constructor M:CallShapes.Core.ShapeMarkerAttribute.#ctor(System.Int32).",
+      "id": "gt-186"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromEventSubscription(CallShapes.Core.ShapePublisher)",
+      "kind": "Writes",
+      "target": "E:CallShapes.Core.ShapePublisher.Changed",
+      "reason": "Event += subscription: writes E:CallShapes.Core.ShapePublisher.Changed.",
+      "id": "gt-187"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapePublisher.Raise",
+      "kind": "Reads",
+      "target": "E:CallShapes.Core.ShapePublisher.Changed",
+      "reason": "Event raise (Changed?.Invoke()): reads E:CallShapes.Core.ShapePublisher.Changed.",
+      "id": "gt-188"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromRoots(CallShapes.Core.ShapePublisher)",
+      "kind": "Writes",
+      "target": "E:CallShapes.Core.ShapePublisher.CustomChanged",
+      "reason": "Event += subscription: writes E:CallShapes.Core.ShapePublisher.CustomChanged.",
+      "id": "gt-189"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromRoots(CallShapes.Core.ShapePublisher)",
+      "kind": "Writes",
+      "target": "E:CallShapes.Core.ShapePublisher.Changed",
+      "reason": "Event -= unsubscription: writes E:CallShapes.Core.ShapePublisher.Changed.",
+      "id": "gt-190"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeRoots.WithDefault(System.Int32)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRoots.DefaultSeed",
+      "reason": "Parameter default value: reads F:CallShapes.Core.ShapeRoots.DefaultSeed.",
+      "id": "gt-191"
+    },
+    {
+      "source": "P:CallShapes.Core.ShapeSeedIndex.Item(System.Int32,System.Int32)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRoots.DefaultSeed",
+      "reason": "Indexer parameter default value: reads F:CallShapes.Core.ShapeRoots.DefaultSeed.",
+      "id": "gt-192"
+    },
+    {
+      "source": "F:CallShapes.Core.ShapeSeeded.First",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRoots.EnumSeed",
+      "reason": "Enum member value: reads F:CallShapes.Core.ShapeRoots.EnumSeed.",
+      "id": "gt-193"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeRoots.Marked",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRoots.AttributeSeed",
+      "reason": "Attribute argument: reads F:CallShapes.Core.ShapeRoots.AttributeSeed.",
+      "id": "gt-194"
+    },
+    {
+      "source": "E:CallShapes.Core.ShapeRoots.Seeded",
+      "kind": "MethodGroupRef",
+      "target": "M:CallShapes.Core.ShapeRoots.SeedHandler",
+      "reason": "Field-like event initializer: references as a method group M:CallShapes.Core.ShapeRoots.SeedHandler.",
+      "id": "gt-195"
+    },
+    {
+      "source": "T:CallShapes.Core.ShapeSeedDelegate",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeRoots.DelegateSeed",
+      "reason": "Delegate parameter default value: reads F:CallShapes.Core.ShapeRoots.DelegateSeed.",
+      "id": "gt-196"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromIs(System.Object)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOnlyIsChecked",
+      "reason": "Is-pattern in a body: references T:CallShapes.Core.ShapeOnlyIsChecked.",
+      "id": "gt-197"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromCatch",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOnlyCaught",
+      "reason": "Catch clause exception type: references T:CallShapes.Core.ShapeOnlyCaught.",
+      "id": "gt-198"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromGenericArg",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOnlyGenericArg",
+      "reason": "Invocation type argument: references T:CallShapes.Core.ShapeOnlyGenericArg.",
+      "id": "gt-199"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromArrayReturn",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOnlyArrayElement",
+      "reason": "Array element in a return type: references T:CallShapes.Core.ShapeOnlyArrayElement.",
+      "id": "gt-200"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromListReturn",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOnlyListArg",
+      "reason": "Generic argument in a return type: references T:CallShapes.Core.ShapeOnlyListArg.",
+      "id": "gt-201"
     }
   ],
   "excluded": [

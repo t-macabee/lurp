@@ -40,13 +40,22 @@ public sealed class GroundTruthOracleATests(GroundTruthFixture callShapes, Cross
             .Select(fact => (fact.Source, fact.Kind, fact.Target))
             .ToHashSet();
 
-        var missing = expected.Except(actual).OrderBy(fact => fact).ToList();
+        // The edge merge keeps one lineage per (source, kind, target). A body fact
+        // that an earlier extractor also emits (for example a method's parameter type,
+        // which ParameterDependencyEdgeExtractor also emits) is stored under that
+        // extractor's lineage, so the missing check reads every lineage.
+        var present = fixture.Facts
+            .Where(fact => fact.SourceDeclared && fact.TargetDeclared)
+            .Select(fact => (fact.Source, fact.Kind, fact.Target))
+            .ToHashSet();
+
+        var missing = expected.Except(present).OrderBy(fact => fact).ToList();
         var extra = actual.Except(expected).OrderBy(fact => fact).ToList();
 
         Console.WriteLine(
             $"Oracle A fixture ({(useCrossProject ? "CrossProject" : "CallShapes")}): " +
             $"{fixture.Compilations.Count} compilation(s), expected={expected.Count}, actual={actual.Count}, " +
-            $"missing={missing.Count}, extra={extra.Count}.");
+            $"present={present.Count}, missing={missing.Count}, extra={extra.Count}.");
 
         Assert.True(missing.Count == 0 && extra.Count == 0,
             $"Oracle A mismatch: {missing.Count} missing, {extra.Count} extra. " +

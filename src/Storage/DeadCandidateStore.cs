@@ -9,13 +9,11 @@ internal sealed class DeadCandidateStore
 
     private static readonly HashSet<string> CandidateKinds = new(DeadCandidateLiveness.CandidateKinds, StringComparer.Ordinal);
 
-    private static readonly HashSet<string> SerializationAttributeSubstrings = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> SerializationOptInAttributes = new(StringComparer.Ordinal)
     {
-        "JsonPropertyName",
-        "JsonProperty",
-        "DataMember",
-        "JsonIgnore",
-        "IgnoreDataMember"
+        "global::System.Text.Json.Serialization.JsonIncludeAttribute",
+        "global::Newtonsoft.Json.JsonPropertyAttribute",
+        "global::System.Runtime.Serialization.DataMemberAttribute"
     };
 
     private readonly SqliteConnection _connection;
@@ -62,17 +60,22 @@ internal sealed class DeadCandidateStore
         var declInfo = FetchDeclarationInfo(snapshotId, allCandidates.Select(c => c.SymbolId).ToList(), includeGenerated);
 
         // Apply candidate-universe filters (kind, project, document, generated, tests) in-memory.
-        // Metadata is parsed once per surviving candidate row into CandidateFacts and reused by
-        // the filter loop and the evaluation loop (R5.1: one parse per candidate).
+        // Metadata is parsed once per candidate row into CandidateFacts and reused by the filter
+        // loop and the evaluation loop (R5.1: one parse per candidate). B34 keeps every parsed
+        // fact by id, so an accessor can read its associated symbol's facts and a type can read
+        // its members' facts even when those symbols are filtered out of this page.
+        var factsById = new Dictionary<string, CandidateFacts>(StringComparer.Ordinal);
         var filteredCandidates = new List<CandidateFacts>();
         foreach (var c in allCandidates)
         {
             if (!CandidateKinds.Contains(c.Kind))
                 continue;
-            if (!string.IsNullOrEmpty(kind) && !string.Equals(c.Kind, kind, StringComparison.OrdinalIgnoreCase))
-                continue;
 
             var facts = BuildFacts(c);
+            factsById[facts.SymbolId] = facts;
+
+            if (!string.IsNullOrEmpty(kind) && !string.Equals(c.Kind, kind, StringComparison.OrdinalIgnoreCase))
+                continue;
 
             // Universe exclusions (design decision 4): no user can call these, or the compiler
             // calls them. They are skipped like is_extension_block and never counted.
@@ -180,7 +183,6 @@ internal sealed class DeadCandidateStore
             var accessibility = cand.Accessibility;
             var assemblyName = cand.AssemblyName;
             var isTest = projectFacts.IsTestProject(assemblyName);
-            var hasSystemTextJson = projectFacts.HasReference(assemblyName, "System.Text.Json");
 
             var incoming = BuildEffectiveIncoming(cand, incomingByTarget, typeUseByTarget, subtreeByType);
             var hasStrong = incoming.Any(e => StrongProvenance.Contains(e.Provenance));
@@ -315,11 +317,22 @@ internal sealed class DeadCandidateStore
                     uncertainties = [MakeEfConventionUncertainty(cand.SymbolId)];
                     uncertainCount++;
                 }
-                else if (IsSerializationConvention(cand, hasSystemTextJson))
+                else if (IsSerializationConvention(cand))
                 {
                     status = DeadCandidateStatus.UncertainDead;
                     reason = DeadCandidateReason.SerializationConvention;
                     uncertainties = [MakeSerializationConventionUncertainty(cand.SymbolId)];
+                    uncertainCount++;
+                }
+                else if (TryInheritedConvention(cand, factsById, subtreeByType, mapsToTargets, out var inheritedReason, out var inheritedSymbolId))
+                {
+                    // B34: an accessor inherits its associated symbol's convention verdict, and a
+                    // type inherits the first such verdict among its descendant members.
+                    status = DeadCandidateStatus.UncertainDead;
+                    reason = inheritedReason;
+                    uncertainties = inheritedReason == DeadCandidateReason.EfConvention
+                        ? [MakeEfConventionUncertainty(inheritedSymbolId)]
+                        : [MakeSerializationConventionUncertainty(inheritedSymbolId)];
                     uncertainCount++;
                 }
                 else
@@ -855,28 +868,90 @@ internal sealed class DeadCandidateStore
         return mapsToTargets.Contains(enclosing);
     }
 
-    private static bool IsSerializationConvention(CandidateFacts cand, bool hasSystemTextJson)
+    private static bool IsSerializationConvention(CandidateFacts cand)
     {
-        if (cand.Kind != nameof(IndexedSymbolKind.Property)) return false;
-        if (cand.Accessibility is not ("Public" or "Internal")) return false;
-        if (!hasSystemTextJson) return false;
-        // Check if any attribute is serialization attribute
+        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
+            return false;
+        // The member is non-public (public and protected members never reach this branch), so a
+        // serializer sees it only when an opt-in attribute names it. Exact stored names only:
+        // the attribute formatter writes fully qualified names such as
+        // "global::System.Runtime.Serialization.DataMemberAttribute".
         var metadata = cand.Metadata;
-        if (metadata is null) return true; // no attributes -> attribute-free
+        if (metadata is null) return false;
         if (metadata.Value.TryGetProperty(SymbolMetadataKeys.Attributes, out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
             foreach (var el in arr.EnumerateArray())
             {
+                if (el.ValueKind != JsonValueKind.String) continue;
                 var s = el.GetString();
-                if (s == null) continue;
-                foreach (var sub in SerializationAttributeSubstrings)
-                    if (s.Contains(sub, StringComparison.Ordinal))
-                        return false; // has explicit attr -> not convention blind spot
+                if (s != null && SerializationOptInAttributes.Contains(s))
+                    return true;
             }
-            return true; // attribute array exists but none are serialization attrs
         }
-        // No attributes property -> attribute-free
-        return true;
+        return false;
+    }
+
+    /// <summary>
+    ///     B34: the convention verdict for a candidate that inherits it from another symbol. An
+    ///     accessor inherits its associated property's or event's verdict; a type inherits the
+    ///     first verdict among its descendant members (EF before serialization, in the subtree's
+    ///     ordinal member order). Returns the reason and the symbol id the uncertainty is made
+    ///     with.
+    /// </summary>
+    private static bool TryInheritedConvention(
+        CandidateFacts cand,
+        Dictionary<string, CandidateFacts> factsById,
+        Dictionary<string, TypeSubtree> subtreeByType,
+        HashSet<string> mapsToTargets,
+        out string reason,
+        out string symbolId)
+    {
+        if (cand.AccessorKind != null && cand.AssociatedSymbol != null)
+        {
+            var associatedId = $"{cand.AssociatedSymbol}|{cand.Row.AssemblyIdentity}";
+            if (factsById.TryGetValue(associatedId, out var associated) &&
+                TryConvention(associated, mapsToTargets, out reason))
+            {
+                symbolId = associatedId;
+                return true;
+            }
+        }
+
+        if (cand.Kind == nameof(IndexedSymbolKind.Type) &&
+            subtreeByType.TryGetValue(cand.SymbolId, out var subtree))
+        {
+            foreach (var memberId in subtree.Descendants)
+            {
+                if (factsById.TryGetValue(memberId, out var member) &&
+                    TryConvention(member, mapsToTargets, out reason))
+                {
+                    symbolId = memberId;
+                    return true;
+                }
+            }
+        }
+
+        reason = string.Empty;
+        symbolId = string.Empty;
+        return false;
+    }
+
+    private static bool TryConvention(CandidateFacts cand, HashSet<string> mapsToTargets, out string reason)
+    {
+        if (IsEfPrivateMember(cand, cand.Accessibility, mapsToTargets))
+        {
+            reason = DeadCandidateReason.EfConvention;
+            return true;
+        }
+
+        if (IsSerializationConvention(cand))
+        {
+            reason = DeadCandidateReason.SerializationConvention;
+            return true;
+        }
+
+        reason = string.Empty;
+        return false;
     }
 
     private static DeadCandidateIncomingSummary BuildIncomingSummary(List<EdgeRecord> incoming)
@@ -1012,7 +1087,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeSerializationConventionUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "serialization_convention", "Serialization convention: the property is serialization-eligible (public/internal, no System.Text.Json attribute) in a System.Text.Json-referencing project, but no SerializationAdapter edge witnesses usage. Verify no serialization contract depends on this member — System.Text.Json serializes public properties by convention with no attribute.");
+        return new DeadCandidateUncertainty([symbolId], "serialization_convention", "Serialization opt-in: the member is not public, has no LIVE incoming edge, and carries a serializer opt-in attribute (JsonInclude, Newtonsoft JsonProperty or DataMember), so a serializer may read or write it by reflection. Verify no serialization contract depends on it before removing.");
     }
 
     private sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);

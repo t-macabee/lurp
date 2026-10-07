@@ -56,6 +56,31 @@ internal static class ExtractionUtils
         }
     }
 
+    internal static IEnumerable<INamedTypeSymbol> NestedTypeUses(ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                foreach (var nested in TypeUses(array.ElementType))
+                    yield return nested;
+                break;
+            case INamedTypeSymbol named:
+                foreach (var argument in named.TypeArguments)
+                    foreach (var nested in TypeUses(argument))
+                        yield return nested;
+                break;
+        }
+    }
+
+    internal static IEnumerable<INamedTypeSymbol> TypeUses(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol named && named.TypeKind != TypeKind.Error && !named.IsAnonymousType)
+            yield return named.OriginalDefinition;
+
+        foreach (var nested in NestedTypeUses(type))
+            yield return nested;
+    }
+
     /// <summary>
     ///     True when <paramref name="syntaxTree" /> falls inside the extraction scope.
     ///     A null <paramref name="scopeDocuments" /> means "whole compilation"; a tree

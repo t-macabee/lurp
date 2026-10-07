@@ -92,6 +92,14 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(namedType);
             if (targetId != null && targetId != sourceSymbolId) edges.Add(MakeEdge(sourceSymbolId, targetId, nameof(EdgeKind.References), member));
         }
+
+        if (referencedType is not null && SymbolIdFactory.Make(member, context.AssemblyIdentity) is { } memberId)
+            foreach (var nestedType in ExtractionUtils.NestedTypeUses(referencedType))
+            {
+                context.RecordFilteredExternal(nestedType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
+                var nestedId = MakeSymbolId(nestedType);
+                if (nestedId != null && nestedId != memberId) edges.Add(MakeEdge(memberId, nestedId, nameof(EdgeKind.References), member));
+            }
     }
 
     private string? MakeSymbolId(ITypeSymbol typeSymbol)
