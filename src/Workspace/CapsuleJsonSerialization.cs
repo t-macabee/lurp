@@ -7,10 +7,10 @@ using System.Text.Json;
 namespace Lurp.Workspace;
 
 // Canonical serializer for the emitted capsule representation; the handler
-// writes exactly this. Note which field describes it: estimatedTokens is a
+// writes exactly this. Note which field describes it: estimated_tokens is a
 // content estimate and is smaller than this serialization, because per-item
 // identity/provenance framing is uncounted navigation metadata.
-// estimatedArtifactTokens is the estimate of this serialization itself.
+// estimated_artifact_tokens is the estimate of this serialization itself.
 internal static class ContextCapsuleJson
 {
     internal static readonly JsonSerializerOptions Options = LurpJsonOptions.IndentedIgnoreNull;

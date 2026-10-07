@@ -64,7 +64,7 @@ public sealed class McpGetSymbolTests : IntegrationTestBase
 
         var jsonSummary = tool.LurpGetSymbol(symbol: barId, view: "summary");
         using var dSummary = JsonDocument.Parse(jsonSummary);
-        Assert.True(dSummary.RootElement.TryGetProperty("metadata_json", out _));
+        Assert.True(dSummary.RootElement.TryGetProperty("metadata", out var metadataSummary) && metadataSummary.ValueKind == JsonValueKind.Object);
         Assert.True(dSummary.RootElement.TryGetProperty("locations", out _));
         Assert.True(dSummary.RootElement.GetProperty("source").ValueKind == JsonValueKind.Null);
 
@@ -75,7 +75,7 @@ public sealed class McpGetSymbolTests : IntegrationTestBase
         var jsonAll = tool.LurpGetSymbol(symbol: barId, view: "all", context_lines: 2);
         using var dAll = JsonDocument.Parse(jsonAll);
         Assert.True(dAll.RootElement.TryGetProperty("source", out var srcAll) && srcAll.ValueKind == JsonValueKind.String);
-        Assert.True(dAll.RootElement.TryGetProperty("metadata_json", out _));
+        Assert.True(dAll.RootElement.TryGetProperty("metadata", out var metadataAll) && metadataAll.ValueKind == JsonValueKind.Object);
 
         var jsonCtx = tool.LurpGetSymbol(symbol: barId, view: "source", context_lines: 5);
         using var dCtx = JsonDocument.Parse(jsonCtx);

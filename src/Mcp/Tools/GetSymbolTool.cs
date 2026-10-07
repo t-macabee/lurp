@@ -69,11 +69,7 @@ internal sealed class GetSymbolTool
                 }
             }
 
-            object? metadataObj = null;
-            if (info.MetadataJson != null)
-            {
-                try { metadataObj = JsonSerializer.Deserialize<object>(info.MetadataJson); } catch { metadataObj = info.MetadataJson; }
-            }
+            var metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value);
 
             var envelope = new
             {
@@ -85,7 +81,7 @@ internal sealed class GetSymbolTool
                 assembly_identity = info.SymbolId.AssemblyIdentity,
                 kind = info.Kind.ToString(),
                 fully_qualified_name = info.FullyQualifiedName,
-                metadata_json = metadataObj,
+                metadata = metadata,
                 declaration_count = info.DeclarationCount,
                 is_partial = info.IsPartial,
                 locations,

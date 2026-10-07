@@ -175,7 +175,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""")
+                metadataJson: """{"is_record": false}""")
         ]);
 
         store.SaveDeclarations(toSnapshotId, [
@@ -189,7 +189,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": true}""")
+                metadataJson: """{"is_record": true}""")
         ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
@@ -224,7 +224,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"typeKind": "Class"}""")
+                metadataJson: """{"type_kind": "Class"}""")
         ]);
 
         store.SaveDeclarations(toSnapshotId, [
@@ -238,7 +238,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"typeKind": "Struct"}""")
+                metadataJson: """{"type_kind": "Struct"}""")
         ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
@@ -607,7 +607,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""")
+                metadataJson: """{"is_record": false}""")
         ]);
 
         store.SaveDeclarations(toSnapshotId, [
@@ -621,7 +621,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""")
+                metadataJson: """{"is_record": false}""")
         ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
@@ -669,7 +669,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""")
+                metadataJson: """{"is_record": false}""")
         ]);
 
         var differ = new SemanticDiffer(store, store, store, store);
@@ -810,7 +810,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""",
+                metadataJson: """{"is_record": false}""",
                 fqn: "Ns.Foo")
         ]);
 
@@ -825,7 +825,7 @@ public sealed class SemanticDifferTests : IDisposable
                 sigS: 0, sigE: 5,
                 bodyS: 6, bodyE: 10,
                 nameS: 0, nameE: 5,
-                metadataJson: """{"isRecord": false}""",
+                metadataJson: """{"is_record": false}""",
                 fqn: "NewNs.Foo")
         ]);
 

@@ -344,13 +344,8 @@ public class SemanticDiffer
     {
         var changes = new List<SemanticChange>();
 
-        var fromMeta = string.IsNullOrEmpty(fromJson)
-            ? []
-            : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(fromJson) ?? [];
-
-        var toMeta = string.IsNullOrEmpty(toJson)
-            ? []
-            : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(toJson) ?? [];
+        var fromMeta = ToMetadataDictionary(SymbolMetadata.Parse(fromJson, symbolId));
+        var toMeta = ToMetadataDictionary(SymbolMetadata.Parse(toJson, symbolId));
 
         foreach (var entry in MetadataComparisons)
             // All MetadataComparisonKind values (String, Array, Scalar) handled — exhaustive
@@ -392,6 +387,16 @@ public class SemanticDiffer
             changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId,
                 new { field = key, before, after }));
         }
+    }
+
+    private static Dictionary<string, JsonElement> ToMetadataDictionary(JsonElement? metadata)
+    {
+        var dictionary = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (metadata is null)
+            return dictionary;
+        foreach (var property in metadata.Value.EnumerateObject())
+            dictionary[property.Name] = property.Value;
+        return dictionary;
     }
 
     private (List<SemanticChange> Changes, int Skipped) CompareSource(string symbolId, string fromSnapshotId, string toSnapshotId)

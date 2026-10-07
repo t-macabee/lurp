@@ -173,8 +173,8 @@ internal sealed record CapsuleTopology(
     [property: JsonPropertyName("current")]
     CapsuleTopologyReference Current);
 
-// The capsule's current topology is the union of incomingPaths and
-// outgoingPaths. Those collections carry witness leaf paths, not one entry
+// The capsule's current topology is the union of incoming_paths and
+// outgoing_paths. Those collections carry witness leaf paths, not one entry
 // per simple path: each emitted path is the deterministic witness path to a
 // reached symbol that no other emitted path passes through. The symbol,
 // witness-path and hop counts are all taken before the budget trim; this
@@ -330,7 +330,7 @@ internal sealed class ContextCapsule
     public List<CapsuleItem> AffectedPublicSurfaces { get; init; } = [];
 
     // Null once the budget enforcer drops it: zeroed counts would read as a
-    // positive "no references" claim. Its absence is declared in omittedTiers.
+    // positive "no references" claim. Its absence is declared in omitted_tiers.
     [JsonPropertyName("topology")] public CapsuleTopology? Topology { get; set; } = new(CapsuleTopologyReference.Empty);
 
     [JsonPropertyName("completeness")] public SnapshotCompleteness? Completeness { get; set; }

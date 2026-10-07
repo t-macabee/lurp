@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Lurp.Handlers;
+using Lurp.Storage;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -52,7 +53,7 @@ internal sealed class FindSymbolTool
                 assembly_identity = info.SymbolId.AssemblyIdentity,
                 kind = info.Kind.ToString(),
                 fully_qualified_name = info.FullyQualifiedName,
-                metadata_json = info.MetadataJson,
+                metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value),
                 declaration_count = info.DeclarationCount,
                 is_partial = info.IsPartial,
                 locations

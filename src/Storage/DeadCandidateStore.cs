@@ -113,15 +113,7 @@ internal sealed class DeadCandidateStore
             // document filter: requires at least one declaration in that document
             if (!string.IsNullOrEmpty(document))
             {
-                if (!declInfo.TryGetValue(c.SymbolId, out var di) || di.Locations.Count == 0)
-                    continue;
-                var found = false;
-                foreach (var loc in di.Locations)
-                {
-                    if (string.Equals(loc.DocumentPath, document, StringComparison.Ordinal))
-                    { found = true; break; }
-                }
-                if (!found)
+                if (!declInfo.TryGetValue(c.SymbolId, out var di) || !di.DocumentPaths.Contains(document, StringComparer.Ordinal))
                     continue;
             }
 
@@ -158,7 +150,8 @@ internal sealed class DeadCandidateStore
         {
             var decl = declInfo.TryGetValue(cand.SymbolId, out var d) ? d : new DeclInfo { IsGenerated = false, Locations = [], DeclarationCount = 0, DocumentPaths = [] };
             var docPaths = decl.DocumentPaths;
-            var accessibility = ParseAccessibility(cand.MetadataJson);
+            var metadata = SymbolMetadata.Parse(cand.MetadataJson, cand.SymbolId);
+            var accessibility = ParseAccessibility(metadata);
             var assemblyName = ParseAssemblyName(cand.AssemblyIdentity);
             var isTest = IsTestProject(assemblyName);
             var hasSystemTextJson = projectHasSystemTextJson.TryGetValue(assemblyName, out var has) && has;
@@ -188,7 +181,7 @@ internal sealed class DeadCandidateStore
                 uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, docPaths, assemblyName)];
                 unresolvedCount++;
             }
-            else if (IsProcessEntryPoint(cand))
+            else if (IsProcessEntryPoint(cand, metadata))
             {
                 // Checked ahead of the public/protected suppression below: the entry point's own
                 // accessibility varies by coding style (private for top-level statements, often
@@ -287,7 +280,7 @@ internal sealed class DeadCandidateStore
                     uncertainties = [MakeEfConventionUncertainty(cand.SymbolId)];
                     uncertainCount++;
                 }
-                else if (IsSerializationConvention(cand, accessibility, hasSystemTextJson, decl))
+                else if (IsSerializationConvention(cand, accessibility, hasSystemTextJson, decl, metadata))
                 {
                     status = DeadCandidateStatus.UncertainDead;
                     reason = DeadCandidateReason.SerializationConvention;
@@ -304,7 +297,7 @@ internal sealed class DeadCandidateStore
             }
 
             var projectName = assemblyName;
-            var documentPath = decl.Locations.Count > 0 ? decl.Locations[0].DocumentPath : null;
+            var documentPath = decl.DocumentPaths.Count > 0 ? decl.DocumentPaths[0] : null;
             // Find best declaration location for start line? Use first location's start
             var entry = new DeadCandidateEntry(
                 cand.SymbolId,
@@ -431,7 +424,11 @@ internal sealed class DeadCandidateStore
                         }
                     }
                 }
-                catch { }
+                catch (JsonException ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to parse metadata_reference_identities for project '{name}'.", ex);
+                }
             }
             dict[name] = has;
         }
@@ -613,12 +610,7 @@ internal sealed class DeadCandidateStore
                     var docVersionId = docReader.GetString(0);
                     var docPath = docReader.GetString(1);
                     var lineStartsJson = docReader.IsDBNull(2) ? null : docReader.GetString(2);
-                    int[]? lineStarts = null;
-                    if (lineStartsJson != null)
-                    {
-                        try { lineStarts = JsonSerializer.Deserialize<int[]>(lineStartsJson); }
-                        catch { lineStarts = null; }
-                    }
+                    var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId);
                     var content = docReader.IsDBNull(3) ? null : (byte[])docReader[3];
                     documentCache[docVersionId] = (docPath, lineStarts, content);
                 }
@@ -631,11 +623,11 @@ internal sealed class DeadCandidateStore
                 // The old query only returned rows that joined document_versions/documents;
                 // keep rows without document data out of locations while still counting them
                 // (the old separate COUNT(*) query had no such join either).
-                var locatedRows = new List<(string DocPath, int? FullStart, int? FullEnd, int[]? LineStarts, byte[]? Content, int IsGenerated)>();
+                var locatedRows = new List<(string DocPath, string DocVersionId, int? FullStart, int? FullEnd, int[]? LineStarts, byte[]? Content, int IsGenerated)>();
                 foreach (var r in rows)
                 {
                     if (documentCache.TryGetValue(r.DocVersionId, out var doc))
-                        locatedRows.Add((doc.DocPath, r.FullStart, r.FullEnd, doc.LineStarts, doc.Content, r.IsGenerated));
+                        locatedRows.Add((doc.DocPath, r.DocVersionId, r.FullStart, r.FullEnd, doc.LineStarts, doc.Content, r.IsGenerated));
                 }
 
                 // Same order as the old ORDER BY d.symbol_id, doc.relative_path, d.full_start:
@@ -652,35 +644,10 @@ internal sealed class DeadCandidateStore
                 var docPaths = new List<string>();
                 foreach (var r in locatedRows)
                 {
-                    if (r.FullStart == null || r.FullEnd == null || r.LineStarts == null || r.Content == null)
-                    {
-                        // Degraded location without line mapping -> use 0
-                        locations.Add(new DeclarationLocation(r.DocPath, 0, 0, 0, 0, r.IsGenerated == 1));
-                        if (!docPaths.Contains(r.DocPath, StringComparer.Ordinal)) docPaths.Add(r.DocPath);
-                        continue;
-                    }
-                    try
-                    {
-                        var lineStarts = r.LineStarts;
-                        if (lineStarts is { Length: > 0 } && r.FullStart.Value >= 0 && r.FullEnd.Value >= r.FullStart.Value && r.FullEnd.Value <= r.Content.Length)
-                        {
-                            var sIdx = FindLineIndex(lineStarts, r.FullStart.Value);
-                            var eIdx = FindLineIndex(lineStarts, r.FullEnd.Value);
-                            var startLine = LineNumbers.ToOneBased(sIdx);
-                            var endLine = LineNumbers.ToOneBased(eIdx);
-                            var startCol = Utf8Column(r.Content, lineStarts[sIdx], r.FullStart.Value);
-                            var endCol = Utf8Column(r.Content, lineStarts[eIdx], r.FullEnd.Value);
-                            locations.Add(new DeclarationLocation(r.DocPath, startLine, startCol, endLine, endCol, r.IsGenerated == 1));
-                        }
-                        else
-                        {
-                            locations.Add(new DeclarationLocation(r.DocPath, 0, 0, 0, 0, r.IsGenerated == 1));
-                        }
-                    }
-                    catch
-                    {
-                        locations.Add(new DeclarationLocation(r.DocPath, 0, 0, 0, 0, r.IsGenerated == 1));
-                    }
+                    var location = SourceLineMap.MapDeclaration(
+                        r.DocPath, r.FullStart, r.FullEnd, r.LineStarts, r.Content, r.IsGenerated == 1, r.DocVersionId, sid);
+                    if (location != null)
+                        locations.Add(location);
                     if (!docPaths.Contains(r.DocPath, StringComparer.Ordinal)) docPaths.Add(r.DocPath);
                 }
                 result[sid] = new DeclInfo { IsGenerated = isGeneratedOverall, Locations = locations, DeclarationCount = declCount, DocumentPaths = docPaths };
@@ -696,35 +663,11 @@ internal sealed class DeadCandidateStore
         return result;
     }
 
-    private static int FindLineIndex(int[] lineStarts, int byteOffset)
+    private static string? ParseAccessibility(JsonElement? metadata)
     {
-        int lo = 0, hi = lineStarts.Length - 1;
-        while (lo < hi)
-        {
-            var mid = (lo + hi + 1) / 2;
-            if (lineStarts[mid] <= byteOffset) lo = mid; else hi = mid - 1;
-        }
-        return lo;
-    }
-
-    private static int Utf8Column(byte[] content, int lineStart, int offset)
-    {
-        var safe = Math.Clamp(offset, lineStart, content.Length);
-        return System.Text.Encoding.UTF8.GetCharCount(content, lineStart, safe - lineStart);
-    }
-
-    private static string? ParseAccessibility(string? metadataJson)
-    {
-        if (string.IsNullOrEmpty(metadataJson)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(metadataJson);
-            if (doc.RootElement.TryGetProperty("accessibility", out var el) && el.ValueKind == JsonValueKind.String)
-                return el.GetString();
-            if (doc.RootElement.TryGetProperty("Accessibility", out var el2) && el2.ValueKind == JsonValueKind.String)
-                return el2.GetString();
-        }
-        catch { }
+        if (metadata is null) return null;
+        if (metadata.Value.TryGetProperty(SymbolMetadataKeys.Accessibility, out var el) && el.ValueKind == JsonValueKind.String)
+            return el.GetString();
         return null;
     }
 
@@ -754,19 +697,14 @@ internal sealed class DeadCandidateStore
     ///     the runtime launcher does — so it would otherwise always land in the terminal
     ///     no-incoming-edges branch below and read as proved_dead.
     /// </summary>
-    private static bool IsProcessEntryPoint(CandidateRow cand)
+    private static bool IsProcessEntryPoint(CandidateRow cand, JsonElement? metadata)
     {
         if (cand.Kind != nameof(IndexedSymbolKind.Method))
             return false;
-        if (string.IsNullOrEmpty(cand.MetadataJson))
+        if (metadata is null)
             return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(cand.MetadataJson);
-            return doc.RootElement.TryGetProperty(SymbolMetadataKeys.IsEntryPoint, out var el)
-                && el.ValueKind == JsonValueKind.True;
-        }
-        catch { return false; }
+        return metadata.Value.TryGetProperty(SymbolMetadataKeys.IsEntryPoint, out var el)
+            && el.ValueKind == JsonValueKind.True;
     }
 
     private static bool IsEfPrivateMember(CandidateRow cand, string? accessibility, HashSet<string> mapsToTargets)
@@ -780,32 +718,27 @@ internal sealed class DeadCandidateStore
         return mapsToTargets.Contains(enclosing);
     }
 
-    private static bool IsSerializationConvention(CandidateRow cand, string? accessibility, bool hasSystemTextJson, DeclInfo decl)
+    private static bool IsSerializationConvention(CandidateRow cand, string? accessibility, bool hasSystemTextJson, DeclInfo decl, JsonElement? metadata)
     {
         if (cand.Kind != nameof(IndexedSymbolKind.Property)) return false;
         if (accessibility is not ("Public" or "Internal")) return false;
         if (!hasSystemTextJson) return false;
         // Check if any attribute is serialization attribute
-        if (string.IsNullOrEmpty(cand.MetadataJson)) return true; // no attributes -> attribute-free
-        try
+        if (metadata is null) return true; // no attributes -> attribute-free
+        if (metadata.Value.TryGetProperty(SymbolMetadataKeys.Attributes, out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
-            using var doc = JsonDocument.Parse(cand.MetadataJson);
-            if (doc.RootElement.TryGetProperty("attributes", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var el in arr.EnumerateArray())
             {
-                foreach (var el in arr.EnumerateArray())
-                {
-                    var s = el.GetString();
-                    if (s == null) continue;
-                    foreach (var sub in SerializationAttributeSubstrings)
-                        if (s.Contains(sub, StringComparison.Ordinal))
-                            return false; // has explicit attr -> not convention blind spot
-                }
-                return true; // attribute array exists but none are serialization attrs
+                var s = el.GetString();
+                if (s == null) continue;
+                foreach (var sub in SerializationAttributeSubstrings)
+                    if (s.Contains(sub, StringComparison.Ordinal))
+                        return false; // has explicit attr -> not convention blind spot
             }
-            // No attributes property -> attribute-free
-            return true;
+            return true; // attribute array exists but none are serialization attrs
         }
-        catch { return true; }
+        // No attributes property -> attribute-free
+        return true;
     }
 
     private static DeadCandidateIncomingSummary BuildIncomingSummary(List<EdgeRecord> incoming)

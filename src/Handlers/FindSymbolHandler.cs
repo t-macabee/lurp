@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Lurp.Storage;
 
 namespace Lurp.Handlers;
 
@@ -32,7 +34,7 @@ internal static class FindSymbolHandler
                 assembly_identity = info.SymbolId.AssemblyIdentity,
                 kind = info.Kind.ToString(),
                 fully_qualified_name = info.FullyQualifiedName,
-                metadata_json = info.MetadataJson,
+                metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value),
                 declaration_count = info.DeclarationCount,
                 is_partial = info.IsPartial,
                 snapshot_id = snapshotId,
@@ -52,7 +54,16 @@ internal static class FindSymbolHandler
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(payload, HandlerBootstrap.CompactJson));
+                    var node = JsonSerializer.SerializeToNode(payload, HandlerBootstrap.CompactJson)!.AsObject();
+                    var meta = new JsonObject
+                    {
+                        ["snapshot_id"] = node["snapshot_id"]!.DeepClone(),
+                        ["freshness"] = node["freshness"]!.DeepClone()
+                    };
+                    node.Remove("snapshot_id");
+                    node.Remove("freshness");
+                    Console.WriteLine(JsonSerializer.Serialize(new JsonObject { ["type"] = "meta", ["meta"] = meta }, HandlerBootstrap.CompactJson));
+                    Console.WriteLine(JsonSerializer.Serialize(new JsonObject { ["type"] = "symbol", ["symbol"] = node }, HandlerBootstrap.CompactJson));
                     break;
 
                 // default: Json is the historical default — intentional fallback for OutputMode.Json and future values

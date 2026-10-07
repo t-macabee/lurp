@@ -1,5 +1,4 @@
 using Microsoft.Data.Sqlite;
-using System.Text.Json;
 
 namespace Lurp.Storage;
 
@@ -116,8 +115,8 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         if (!reader.Read())
             return null;
 
-        var startLineIndex = FindLineIndex(lineStarts, reader.GetInt32(1));
-        var endLineIndex = FindLineIndex(lineStarts, reader.GetInt32(2));
+        var startLineIndex = SourceLineMap.FindLineIndex(lineStarts, reader.GetInt32(1));
+        var endLineIndex = SourceLineMap.FindLineIndex(lineStarts, reader.GetInt32(2));
         var startLine = LineNumbers.ToOneBased(startLineIndex);
         var endLine = LineNumbers.ToOneBased(endLineIndex);
 
@@ -128,21 +127,6 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
             startLine,
             endLine);
-    }
-
-    private static int FindLineIndex(int[] lineStarts, int byteOffset)
-    {
-        int lo = 0, hi = lineStarts.Length - 1;
-        while (lo < hi)
-        {
-            var mid = (lo + hi + 1) / 2;
-            if (lineStarts[mid] <= byteOffset)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-
-        return lo;
     }
 
     private (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(string relativePath, string snapshotId)
@@ -172,7 +156,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         if (lineStartsJson == null)
             return (docVersionId, null);
 
-        return (docVersionId, JsonSerializer.Deserialize<int[]>(lineStartsJson));
+        return (docVersionId, SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId));
     }
 
     private string? FindSymbolAtOffset(string docVersionId, int byteOffset, bool includeGenerated)

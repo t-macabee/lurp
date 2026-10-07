@@ -178,7 +178,7 @@ Look up symbol metadata or source by view kind.
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
 | `--include-generated` | No | Include source-generated symbols. |
 
-Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code.
+Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`).
 
 ---
 
@@ -251,7 +251,7 @@ Also accepts the shared [read-command options](#read-command-options).
 
 `declarationCount` is scoped to the requested snapshot, so a non-partial type reports `1` however many historical declarations retention still holds; a partial type reports its true multiplicity in that snapshot.
 
-The payload carries a `locations` array: one entry per declaration in the snapshot, each `{ document_path, start_line, end_line, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`.
+The payload carries a `locations` array: one entry per declaration in the snapshot, each `{ document_path, start_line, end_line, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`. `--output=jsonl` prints `{"type":"meta", meta}` (`snapshot_id`, `freshness`), then one `{"type":"symbol", symbol}` record. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`).
 
 ---
 
@@ -361,7 +361,7 @@ The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and 
 
 `incoming_paths` and `outgoing_paths` hold **witness paths**, not every simple path. Lurp visits each symbol within `--max-hops` once and keeps one deterministic path to it. A capsule emits the witness path of each reached symbol that no other emitted path passes through, so no emitted path is a prefix of another. A path that ends at `--max-hops` with followable edges beyond it carries `truncated: true` and `truncation_reason: "max depth reached"`. The budget step can then keep only a few of these paths (`summarized`).
 
-`topology.current` reports the reach before the budget trim: `incoming_symbol_count` and `outgoing_symbol_count` (reached symbols), `incoming_witness_path_count` and `outgoing_witness_path_count` (witness paths), and `total_hop_count` (hops over those witness paths). `--output=summary` prints the trimmed counts as `incomingWitnessPaths` / `outgoingWitnessPaths`.
+`topology.current` reports the reach before the budget trim: `incoming_symbol_count` and `outgoing_symbol_count` (reached symbols), `incoming_witness_path_count` and `outgoing_witness_path_count` (witness paths), and `total_hop_count` (hops over those witness paths). `--output=summary` prints the trimmed counts as `incoming_witness_paths` / `outgoing_witness_paths`.
 
 Items in `direct_callers`, `second_degree_context` and `relevant_tests` come in depth order, then symbol ID. `--tier=` pages over that order, so a `--tier=` cursor from a 1.x build is not valid.
 
@@ -391,7 +391,7 @@ at realistic budgets, which is a worse capsule for the same context cost.
 
 Population order decides what the budget sees. `suggested_verification` is
 assembled before the budget pass, so it counts toward `estimated_tokens` and
-can be dropped to fit (`omitted_tiers`, category `suggestedVerification`,
+can be dropped to fit (`omitted_tiers`, category `suggested_verification`,
 reason `budget_exhausted`). When one test class contributes more than one
 covering test, the section carries one entry per class with a
 `dotnet test --filter "FullyQualifiedName~<Class>"` command instead of one
@@ -421,7 +421,7 @@ the emitted capsule rather than the history of how it settled. Reasons:
 | `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
 
 Both `budget_exhausted` shapes are recovered the same way: refetch that one tier
-unbudgeted with `--tier=<category>` (see `inclusion_reasons["omittedTiers.budget_exhausted"]`,
+unbudgeted with `--tier=<category>` (see `inclusion_reasons["omitted_tiers_budget_exhausted"]`,
 which is retained in the capsule even when budget pressure clears every other
 inclusion reason).
 

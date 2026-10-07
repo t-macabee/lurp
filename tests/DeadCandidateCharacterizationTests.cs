@@ -1,5 +1,6 @@
 using Lurp.Storage;
 using Microsoft.Build.Locator;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -65,6 +66,112 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
             Assert.Empty(entry.Uncertainties);
             Assert.True(page.DeadCount >= 1);
             Assert.True(page.CandidateCount >= 1);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task CorruptMetadataJson_ThrowsNamingSymbol()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Util.cs"] = """
+                          namespace TestProject;
+
+                          internal static class Util
+                          {
+                              internal static void Helper() { }
+                          }
+                          """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var helperId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Helper");
+
+        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE snapshot_symbols
+                SET metadata_json = @json
+                WHERE snapshot_id = @snapshotId AND symbol_id = @symbolId;
+                """;
+            command.Parameters.AddWithValue("@json", "{not valid json");
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.Parameters.AddWithValue("@symbolId", helperId);
+            command.ExecuteNonQuery();
+        }
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Lurp writes metadata_json itself; a row that does not parse is an extractor
+            // or storage bug, so the read fails loudly and names the offending symbol.
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null));
+            Assert.Contains(helperId, ex.Message);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task NullSpanColumns_NoLocationWithLineZero_KeepsDocumentPathAndMatchesDocumentFilter()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Util.cs"] = """
+                          namespace TestProject;
+
+                          internal static class Util
+                          {
+                              internal static void Helper() { }
+                          }
+                          """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var helperId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Helper");
+        const string helperFile = "src/TestProject/Util.cs";
+
+        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE declarations
+                SET full_start = NULL, full_end = NULL
+                WHERE symbol_id = @symbolId
+                  AND document_version_id IN (
+                      SELECT document_version_id FROM snapshot_documents WHERE snapshot_id = @snapshotId);
+                """;
+            command.Parameters.AddWithValue("@symbolId", helperId);
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
+            command.ExecuteNonQuery();
+        }
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            var entry = Assert.Single(page.Candidates, c => c.SymbolId == helperId);
+            // A declaration without span data has no line mapping: it emits no location
+            // (never a placeholder with line 0) but keeps its document membership.
+            Assert.Empty(entry.Locations);
+            Assert.DoesNotContain(entry.Locations, l => l.StartLine == 0 || l.EndLine == 0);
+            Assert.Equal(helperFile, entry.DocumentPath);
+
+            var filtered = store.GetDeadCandidatesPage(snapshotId, null, helperFile, null, false, false, false, 200, null);
+            Assert.Contains(filtered.Candidates, c => c.SymbolId == helperId);
         }
         finally
         {

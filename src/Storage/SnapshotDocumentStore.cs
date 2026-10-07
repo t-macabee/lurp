@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 using System.Text;
-using System.Text.Json;
 
 namespace Lurp.Storage;
 
@@ -25,7 +24,7 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
-            SELECT dv.content, dv.line_starts
+            SELECT dv.content, dv.line_starts, dv.document_version_id
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
@@ -44,17 +43,20 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
 
         var bytes = (byte[])reader[0];
         var lineStartsJson = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var documentVersionId = reader.GetString(2);
 
         // No window requested — return whole file verbatim (back-compatible).
         if (startLine == null && endLine == null && contextLines == null)
         {
             var whole = Encoding.UTF8.GetString(bytes);
-            var totalLinesWhole = TryParseLineStarts(lineStartsJson, out var lsWhole) ? lsWhole.Length : CountLinesFallback(bytes);
+            var lsWhole = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId);
+            var totalLinesWhole = lsWhole?.Length ?? CountLinesFallback(bytes);
             return new SourceSlice(whole, 1, totalLinesWhole, totalLinesWhole, false);
         }
 
         // If line_starts is missing, fall back to whole file (cannot slice safely).
-        if (!TryParseLineStarts(lineStartsJson, out var lineStarts) || lineStarts.Length == 0)
+        var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, documentVersionId);
+        if (lineStarts == null)
         {
             var whole = Encoding.UTF8.GetString(bytes);
             var totalLinesFallback = CountLinesFallback(bytes);
@@ -92,27 +94,6 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
 
         var truncated = expandedStart != 1 || expandedEnd != totalLines;
         return new SourceSlice(sliced, expandedStart, expandedEnd, totalLines, truncated);
-    }
-
-    private static bool TryParseLineStarts(string? json, out int[] lineStarts)
-    {
-        lineStarts = [];
-        if (string.IsNullOrEmpty(json))
-            return false;
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<int[]>(json);
-            if (parsed is { Length: > 0 })
-            {
-                lineStarts = parsed;
-                return true;
-            }
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static int CountLinesFallback(byte[] bytes)

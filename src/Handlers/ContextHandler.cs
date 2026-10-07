@@ -101,7 +101,7 @@ internal static class ContextHandler
     /// <summary>
     ///     Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>): one capsule tier,
     ///     rebuilt outside the capsule budget and paged. This is the action a capsule's
-    ///     <c>omittedTiers: budget_exhausted</c> entry previously admitted to but offered no
+    ///     <c>omitted_tiers: budget_exhausted</c> entry previously admitted to but offered no
     ///     way to take.
     /// </summary>
     private static void RunTierContinuation(
@@ -291,8 +291,8 @@ internal static class ContextHandler
         // content is what --content-budget bounded, delivery is what loading the emitted
         // file costs. The delivery number is always the larger; size a context
         // window from it, never from content.
-        Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimatedTokens: the budget basis)");
-        Console.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimatedArtifactTokens: whole emitted file; size the context window from this)");
+        Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimated_tokens: the budget basis)");
+        Console.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimated_artifact_tokens: whole emitted file; size the context window from this)");
         Console.WriteLine($"  truncated: {capsule.Truncated}");
 
         foreach (var (name, count) in new (string, int)[]
@@ -307,7 +307,7 @@ internal static class ContextHandler
                  })
             Console.WriteLine($"  {name,-28} {count}");
 
-        Console.WriteLine($"  incomingWitnessPaths: {capsule.IncomingPaths.Count}  outgoingWitnessPaths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
+        Console.WriteLine($"  incoming_witness_paths: {capsule.IncomingPaths.Count}  outgoing_witness_paths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
 
         foreach (var omitted in capsule.OmittedTiers)
         {

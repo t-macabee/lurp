@@ -199,8 +199,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             // omitted_tiers records the proved absence
             Assert.Contains(capsule.OmittedTiers,
                 e => e is { Category: "direct_callers", Reason: "empty" });
-            // InclusionReasons must NOT contain omittedTiers.unresolved
-            Assert.False(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"),
+            // InclusionReasons must NOT contain omitted_tiers_unresolved
+            Assert.False(capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"),
                 "Proved-absence capsule must not carry the 'unresolved' inclusion reason.");
         }
         finally
@@ -226,7 +226,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.Empty(capsule.DirectCallers);
             Assert.Contains(capsule.OmittedTiers,
                 e => e is { Category: "direct_callers", Reason: "empty" });
-            Assert.False(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
+            Assert.False(capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"));
         }
         finally
         {
@@ -268,9 +268,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 e => e is { Category: "direct_callers", Reason: "unresolved" });
             Assert.DoesNotContain(capsule.OmittedTiers,
                 e => e is { Category: "direct_callers", Reason: "empty" });
-            // InclusionReasons must contain omittedTiers.unresolved
-            Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
-            Assert.Contains("unresolved", capsule.InclusionReasons["omittedTiers.unresolved"]);
+            // InclusionReasons must contain omitted_tiers_unresolved
+            Assert.True(capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"));
+            Assert.Contains("unresolved", capsule.InclusionReasons["omitted_tiers_unresolved"]);
         }
         finally
         {
@@ -296,7 +296,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.NotNull(capsule);
             Assert.Contains(capsule.OmittedTiers,
                 e => e is { Category: "direct_callers", Reason: "unresolved" });
-            Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
+            Assert.True(capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"));
         }
         finally
         {
@@ -330,8 +330,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 Assert.Contains(capsule.OmittedTiers,
                     e => e.Category == tierName && e.Reason == "unresolved");
 
-            Assert.True(capsule.InclusionReasons.ContainsKey("omittedTiers.unresolved"));
-            Assert.Contains("unresolved", capsule.InclusionReasons["omittedTiers.unresolved"]);
+            Assert.True(capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"));
+            Assert.Contains("unresolved", capsule.InclusionReasons["omitted_tiers_unresolved"]);
 
             // Must have a location_gap uncertainty
             Assert.Contains(capsule.Uncertainties, u => u.RelationshipKind == "location_gap");
@@ -367,9 +367,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.NotNull(omittedEntry);
 
             Assert.Contains(budgetedCapsule.InclusionReasons,
-                kv => kv.Key == "omittedTiers.budget_exhausted");
+                kv => kv.Key == "omitted_tiers_budget_exhausted");
 
-            var template = budgetedCapsule.InclusionReasons["omittedTiers.budget_exhausted"];
+            var template = budgetedCapsule.InclusionReasons["omitted_tiers_budget_exhausted"];
 
             // The template must contain the fetch command pattern for fetchable tiers
             Assert.Contains("--mode=context --tier=<category> --symbol=<anchor symbolId>", template);
@@ -478,7 +478,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             Assert.Empty(capsule.SuggestedVerification);
             Assert.Contains(capsule.OmittedTiers,
-                entry => entry is { Category: "suggestedVerification", Reason: "budget_exhausted" });
+                entry => entry is { Category: "suggested_verification", Reason: "budget_exhausted" });
         }
         finally
         {
@@ -617,7 +617,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     ///     but not under the new 40-token-per-item estimate, so pre-T6 it was admitted
     ///     for free and post-T6 it is truncated while the source tier survives.
     ///     This deliberately does not run the full <c>ResolveAndAssemble</c> pipeline:
-    ///     CapsuleBudgetEnforcer's retained floor (the omittedTiers.* recovery
+    ///     CapsuleBudgetEnforcer's retained floor (the omitted_tiers_* recovery
     ///     instruction, ~150-195 tokens at CharsPerToken 3 for a capsule with budget_exhausted tiers)
     ///     exceeds the budgeter's path-tier exclusion window (anchor + source tier +
     ///     40 at most), so at every budget where the path tier is excluded the

@@ -57,6 +57,15 @@ version but update the snapshot. Either way, any change to `Program.ModeRegistry
 (`src/Program.cs`) or `src/Mcp/Tools/*.cs` must update `tests/CliMcpContractSnapshotTests.cs`;
 the test snapshot makes surface changes a visible, deliberate diff.
 
+A second snapshot covers the JSON/JSONL *shape* (field paths and types) of every CLI mode
+and MCP tool: `tests/OutputContractSnapshotTests.cs` compares against
+`tests/Snapshots/output-contract.txt`. On a mismatch the test writes
+`tests/Snapshots/output-contract.actual.txt` (gitignored) and fails with the diff. Review
+the `.actual` file, copy it over `output-contract.txt`, and re-run. Bump
+`CliMcpContractVersion` when the change is breaking. This test is tagged
+`[Trait("Category", "Slow")]`, so `dotnet test` skips it; run it with
+`dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutputContractSnapshotTests" --settings tests/full.runsettings`.
+
 ## Reporting issues
 
 Strip any sensitive or proprietary code before sharing fixtures or logs.

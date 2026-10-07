@@ -15,20 +15,20 @@ namespace Lurp.Workspace;
 // Over-budget capsules first bound the path sections (a "summarized"
 // entry), then bound tier-item source text to a per-item cap, then clear the
 // lowest-priority sections greedily; every omitted/summarized category is
-// recorded in omittedTiers and truncatedCategories. surroundingSource is
+// recorded in omitted_tiers and truncated_categories. surrounding_source is
 // low-value bulk (sibling declarations that heavily overlap the anchor) and
-// is cleared before high-signal small sections such as inclusionReasons and
-// affectedPublicSurfaces. The anchor is never dropped; as a last resort its
+// is cleared before high-signal small sections such as inclusion_reasons and
+// affected_public_surfaces. The anchor is never dropped; as a last resort its
 // source is bounded to fit the remaining budget (a "summarized" entry), so
 // --content-budget always bounds the content basis it is documented to bound. Only
 // when the residual non-anchor content alone still exceeds the budget is the
-// overflow declared with budget_exhausted. estimatedTokens is set to the
+// overflow declared with budget_exhausted. estimated_tokens is set to the
 // settled CONTENT measure of the capsule : the serialized artifact is
 // larger, because per-item identity and provenance framing is uncounted
 // navigation metadata; the whole-artifact figure is reported separately as
-// estimatedArtifactTokens.
+// estimated_artifact_tokens.
 //
-// omittedTiers carries exactly ONE terminal record per category: a later trim
+// omitted_tiers carries exactly ONE terminal record per category: a later trim
 // of a category supersedes its earlier record in place, so the list describes
 // the settled capsule rather than the history of how it settled.
 internal static class CapsuleBudgetEnforcer
@@ -54,7 +54,7 @@ internal static class CapsuleBudgetEnforcer
             // The serialized path sections dominate a capsule and are the most
             // compressible content. Bound them first so that lower-priority
             // sections are not dropped merely to preserve an unbounded path blob.
-            foreach (var category in (string[])["incomingPaths", "outgoingPaths"])
+            foreach (var category in (string[])["incoming_paths", "outgoing_paths"])
                 if (trimmer.BoundPathSection(category) is { } bounded)
                     RecordTruncation(capsule, bounded);
 
@@ -70,10 +70,10 @@ internal static class CapsuleBudgetEnforcer
         while (true)
         {
             // The recovery instruction is (re)stamped here, from the CURRENT
-            // omittedTiers, so it only promises --tier=<category> for categories
+            // omitted_tiers, so it only promises --tier=<category> for categories
             // the CLI can serve and its own cost stays inside every measured
             // estimate. Budget-governed sections outside the tier list
-            // (likelyChangeSites, affectedPublicSurfaces, paths, topology, ...)
+            // (likely_change_sites, affected_public_surfaces, paths, topology, ...)
             // are dropped for budget, not fetchable: the instruction names them
             // and states the only honest recovery, a larger --content-budget.
             ComposeRecoveryInstruction(capsule, tierPriority);
@@ -134,7 +134,7 @@ internal static class CapsuleBudgetEnforcer
                       + string.Join(", ", nonFetchableOmitted)
                       + ") were dropped to fit the budget; re-run with a larger --content-budget to retain them.");
 
-        capsule.InclusionReasons["omittedTiers.budget_exhausted"] = string.Join(" ", parts);
+        capsule.InclusionReasons["omitted_tiers_budget_exhausted"] = string.Join(" ", parts);
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ internal static class CapsuleBudgetEnforcer
     // Dropped, not zeroed. A retained topology whose counts are all zero
     // reads as "no incoming or outgoing references" : a positive claim, and a
     // false one beside a populated directCallers tier. Absence plus the
-    // omittedTiers record says what is true: the section was not emitted.
+    // omitted_tiers record says what is true: the section was not emitted.
     private static Func<ContextCapsule, bool> TopologyResetStep(ContextCapsule capsule)
     {
         return _ =>
@@ -292,7 +292,7 @@ internal static class CapsuleBudgetEnforcer
         };
     }
 
-    // The omittedTiers.* entries are how a consumer interprets and recovers
+    // The omitted_tiers_* entries are how a consumer interprets and recovers
     // the omissions this trim pass creates, so they must outlive the pressure
     // that makes them necessary : clearing them first (they are the
     // lowest-priority section) left the capsule that omitted the most as the
@@ -302,7 +302,7 @@ internal static class CapsuleBudgetEnforcer
         return _ =>
         {
             var removable = items.Keys
-                .Where(static key => !key.StartsWith("omittedTiers.", StringComparison.Ordinal))
+                .Where(static key => !key.StartsWith("omitted_tiers_", StringComparison.Ordinal))
                 .ToList();
             if (removable.Count == 0)
                 return false;
@@ -393,26 +393,26 @@ internal static class CapsuleBudgetEnforcer
             sections.AddRange(
             [
                 TrimmableSection.Clear("uncertainties", capsule.Uncertainties),
-                TrimmableSection.Clear("suggestedVerification", capsule.SuggestedVerification),
-                TrimmableSection.Clear("incomingPaths", capsule.IncomingPaths),
-                TrimmableSection.Clear("outgoingPaths", capsule.OutgoingPaths),
+                TrimmableSection.Clear("suggested_verification", capsule.SuggestedVerification),
+                TrimmableSection.Clear("incoming_paths", capsule.IncomingPaths),
+                TrimmableSection.Clear("outgoing_paths", capsule.OutgoingPaths),
                 TrimmableSection.WithSteps("topology",
                     new TrimStep("budget_exhausted", TopologyResetStep(capsule))),
                 TrimmableSection.Clear("constraints", capsule.Constraints),
                 TrimmableSection.WithSteps("completeness",
                     new TrimStep("summarized", CompletenessDropDetailStep(capsule)),
                     new TrimStep("budget_exhausted", CompletenessDropStep(capsule))),
-                TrimmableSection.Clear("likelyChangeSites", capsule.LikelyChangeSites),
-                TrimmableSection.Clear("affectedPublicSurfaces", capsule.AffectedPublicSurfaces),
-                TrimmableSection.ClearDictionary("inclusionReasons", capsule.InclusionReasons)
+                TrimmableSection.Clear("likely_change_sites", capsule.LikelyChangeSites),
+                TrimmableSection.Clear("affected_public_surfaces", capsule.AffectedPublicSurfaces),
+                TrimmableSection.ClearDictionary("inclusion_reasons", capsule.InclusionReasons)
             ]);
 
             _sections = sections;
 
-            // surroundingSource is low-value bulk: sibling declarations that
+            // surrounding_source is low-value bulk: sibling declarations that
             // heavily overlap the anchor. It must be cleared before the
-            // small high-signal sections (inclusionReasons,
-            // affectedPublicSurfaces), so it moves to the end of the list
+            // small high-signal sections (inclusion_reasons,
+            // affected_public_surfaces), so it moves to the end of the list
             // (the greedy loop trims from the end first) regardless of its
             // position in the tier priority. Source bounding is unaffected:
             // BoundTierSources looks sections up by name.
@@ -475,8 +475,8 @@ internal static class CapsuleBudgetEnforcer
         {
             return category switch
             {
-                "incomingPaths" => capsule.IncomingPaths,
-                "outgoingPaths" => capsule.OutgoingPaths,
+                "incoming_paths" => capsule.IncomingPaths,
+                "outgoing_paths" => capsule.OutgoingPaths,
                 _ => null
             };
         }

@@ -91,7 +91,7 @@ public sealed class McpContextTests : IntegrationTestBase
             Assert.Equal(anchorPipe, anchorDocId);
             Assert.Equal(anchorPipe, anchorFqn);
 
-            // Budget defaults inside capsule should be consistent (estimatedTokens)
+            // Budget defaults inside capsule should be consistent (estimated_tokens)
             Assert.True(docPipe.RootElement.GetProperty("capsule").TryGetProperty("budget", out _));
         }
     }
@@ -173,7 +173,7 @@ public sealed class McpContextTests : IntegrationTestBase
             var capsule = doc.RootElement.GetProperty("capsule");
             var anchorKind = capsule.GetProperty("anchor").GetProperty("kind").GetString();
             Assert.Equal("gap", anchorKind);
-            // All tiers unresolved via omittedTiers
+            // All tiers unresolved via omitted_tiers
             Assert.True(capsule.TryGetProperty("omitted_tiers", out var omitted));
             Assert.True(omitted.GetArrayLength() > 0);
         }

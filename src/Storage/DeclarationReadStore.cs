@@ -2,7 +2,6 @@ using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 
 namespace Lurp.Storage;
 
@@ -112,8 +111,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             // These are 0-based indexes into line_starts (never consumer-facing
             // line numbers); names carry the Index suffix to keep the boundary
             // with the 1-based DeclarationLocation values self-documenting.
-            var startLineIndex = FindLineIndex(span.LineStarts, span.Start.Value);
-            var endLineIndex = FindLineIndex(span.LineStarts, span.End.Value - 1);
+            var startLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.Start.Value);
+            var endLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.End.Value - 1);
             var expandedStartLineIndex = Math.Max(0, startLineIndex - contextLines);
             var expandedEndLineIndex = Math.Min(span.LineStarts.Length - 1, endLineIndex + contextLines);
             var byteStart = span.LineStarts[expandedStartLineIndex];
@@ -133,7 +132,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         using var command = _connection.CreateCommand();
         command.CommandText = """
             SELECT doc.relative_path, d.full_start, d.full_end, dv.line_starts, dv.content,
-                   COALESCE(d.is_generated, 0)
+                   COALESCE(d.is_generated, 0), d.document_version_id
             FROM declarations d
             JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
@@ -150,29 +149,18 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            if (reader.IsDBNull(1) || reader.IsDBNull(2) || reader.IsDBNull(3) || reader.IsDBNull(4))
-                continue;
-            var start = reader.GetInt32(1);
-            var end = reader.GetInt32(2);
-            var lineStarts = JsonSerializer.Deserialize<int[]>(reader.GetString(3));
-            var content = (byte[])reader[4];
-            if (lineStarts is not { Length: > 0 } || start < 0 || end < start || end > content.Length)
-                continue;
-            // FindLineIndex returns a 0-based index into line_starts; storage is
-            // Roslyn-native 0-based. The 0-to-1 conversion happens ONLY here via the
-            // LineNumbers choke point, so the DeclarationLocation a consumer reads
-            // is 1-based (matching --line=). The raw indexes still index line_starts.
-            var startLineIndex = FindLineIndex(lineStarts, start);
-            var endLineIndex = FindLineIndex(lineStarts, end);
-            var startLine = LineNumbers.ToOneBased(startLineIndex);
-            var endLine = LineNumbers.ToOneBased(endLineIndex);
-            results.Add(new DeclarationLocation(
+            var documentVersionId = reader.GetString(6);
+            var location = SourceLineMap.MapDeclaration(
                 reader.GetString(0),
-                startLine,
-                Utf8Column(content, lineStarts[startLineIndex], start),
-                endLine,
-                Utf8Column(content, lineStarts[endLineIndex], end),
-                reader.GetInt32(5) == 1));
+                reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                SourceLineMap.ParseLineStarts(reader.IsDBNull(3) ? null : reader.GetString(3), documentVersionId),
+                reader.IsDBNull(4) ? null : (byte[])reader[4],
+                reader.GetInt32(5) == 1,
+                documentVersionId,
+                symbolId);
+            if (location != null)
+                results.Add(location);
         }
 
         return results;
@@ -207,17 +195,11 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return result;
     }
 
-    private static int Utf8Column(byte[] content, int lineStart, int offset)
-    {
-        var safeOffset = Math.Clamp(offset, lineStart, content.Length);
-        return Encoding.UTF8.GetCharCount(content, lineStart, safeOffset - lineStart);
-    }
-
     private List<SymbolSpanContent> GetSymbolSpanContents(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = $"""
-            SELECT dv.content, d.{startCol}, d.{endCol}, dv.line_starts
+            SELECT dv.content, d.{startCol}, d.{endCol}, dv.line_starts, dv.document_version_id
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
             JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
@@ -239,9 +221,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var lineStarts = reader.IsDBNull(3)
-                ? null
-                : JsonSerializer.Deserialize<int[]>(reader.GetString(3));
+            var lineStarts = SourceLineMap.ParseLineStarts(
+                reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetString(4));
             results.Add(new SymbolSpanContent(
                 reader.IsDBNull(0) ? null : (byte[])reader[0],
                 reader.IsDBNull(1) ? null : reader.GetInt32(1),
@@ -266,21 +247,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.GetInt32(6),
             !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
-    }
-
-    private static int FindLineIndex(int[] lineStarts, int byteOffset)
-    {
-        int lo = 0, hi = lineStarts.Length - 1;
-        while (lo < hi)
-        {
-            var mid = (lo + hi + 1) / 2;
-            if (lineStarts[mid] <= byteOffset)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-
-        return lo;
     }
 
     private static string? SliceToString(byte[] content, int start, int end)
@@ -446,10 +412,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             if (!reader.Read())
                 return null;
             docVersionId = reader.GetString(0);
-            if (!reader.IsDBNull(1))
-            {
-                try { lineStarts = JsonSerializer.Deserialize<int[]>(reader.GetString(1)); } catch { lineStarts = null; }
-            }
+            lineStarts = SourceLineMap.ParseLineStarts(reader.IsDBNull(1) ? null : reader.GetString(1), docVersionId);
         }
 
         // Total count (without cursor/limit) for the header.
@@ -524,14 +487,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 int? sigStartLine = null, nameStartLine = null;
                 if (lineStarts is { Length: > 0 } && fullStart >= 0 && fullEnd >= fullStart)
                 {
-                    var sIdx = FindLineIndex(lineStarts, fullStart);
-                    var eIdx = FindLineIndex(lineStarts, fullEnd);
+                    var sIdx = SourceLineMap.FindLineIndex(lineStarts, fullStart);
+                    var eIdx = SourceLineMap.FindLineIndex(lineStarts, fullEnd);
                     startLine = LineNumbers.ToOneBased(sIdx);
                     endLine = LineNumbers.ToOneBased(eIdx);
                     if (sigStart.HasValue)
-                        sigStartLine = LineNumbers.ToOneBased(FindLineIndex(lineStarts, sigStart.Value));
+                        sigStartLine = LineNumbers.ToOneBased(SourceLineMap.FindLineIndex(lineStarts, sigStart.Value));
                     if (nameStart.HasValue)
-                        nameStartLine = LineNumbers.ToOneBased(FindLineIndex(lineStarts, nameStart.Value));
+                        nameStartLine = LineNumbers.ToOneBased(SourceLineMap.FindLineIndex(lineStarts, nameStart.Value));
                 }
                 else
                 {

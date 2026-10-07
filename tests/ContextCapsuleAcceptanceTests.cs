@@ -85,7 +85,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
 
         // Public surfaces: EdgeLocationResolver is public, so it (and its public
         // callers) surface here; if empty it must be reason-coded.
-        AssertSectionPresentOrOmitted(capsule, "affectedPublicSurfaces", capsule.AffectedPublicSurfaces);
+        AssertSectionPresentOrOmitted(capsule, "affected_public_surfaces", capsule.AffectedPublicSurfaces);
 
         // Constraints section. The original test asserted a "caller_supplied"
         // constraint, which came from the CallerConstraints assembly option removed

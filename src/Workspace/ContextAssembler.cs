@@ -156,12 +156,12 @@ internal sealed class ContextAssembler
         // tier budgeter and this trim pass actually recorded, stamped before every
         // measured estimate so its own cost is always counted. It promises
         // --tier=<category> only for the tier-builder tiers the CLI can serve; sections
-        // that are budget-governed but not fetchable (likelyChangeSites,
-        // affectedPublicSurfaces) are named with the only honest recovery: re-running
+        // that are budget-governed but not fetchable (likely_change_sites,
+        // affected_public_surfaces) are named with the only honest recovery: re-running
         // with a larger --content-budget.
 
         if (anchorBindingIsIncomplete)
-            capsule.InclusionReasons["omittedTiers.unresolved"] =
+            capsule.InclusionReasons["omitted_tiers_unresolved"] =
                 "Bindings were lost over the anchor's documents, so an omitted tier marked "
                 + "'unresolved' means the relation could not be observed. It is NOT evidence that "
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
@@ -178,7 +178,7 @@ internal sealed class ContextAssembler
                          annotation.Kind.Contains("invariant", StringComparison.OrdinalIgnoreCase)))
             capsule.Constraints.Add(new CapsuleConstraint(annotation.Value, "annotation", annotation.Kind, annotation.SymbolId));
 
-        // The current topology is the union of incomingPaths and outgoingPaths.
+        // The current topology is the union of incoming_paths and outgoing_paths.
         // Those collections are serialized once above; the reference summary
         // preserves the topology meaning (direction, path and hop counts)
         // without duplicating the path data.
@@ -213,7 +213,7 @@ internal sealed class ContextAssembler
                      capsule.Anchor.Locations.FirstOrDefault(), "anchor declaration")))
         {
             var metadata = DeclarationStore.GetSymbolInfo(candidate.SymbolId, SnapshotId)?.MetadataJson;
-            if (IsPublicSurface(metadata) && capsule.AffectedPublicSurfaces.All(item => item.SymbolId != candidate.SymbolId))
+            if (IsPublicSurface(metadata, candidate.SymbolId) && capsule.AffectedPublicSurfaces.All(item => item.SymbolId != candidate.SymbolId))
                 capsule.AffectedPublicSurfaces.Add(candidate);
         }
 
@@ -224,7 +224,7 @@ internal sealed class ContextAssembler
             // budgeter uses for empty tiers, including the same proved-absence
             // versus unobservable-region distinction.
             var reason = anchorBindingIsIncomplete ? "unresolved" : "empty";
-            capsule.OmittedTiers.Add(new TruncationEntry("affectedPublicSurfaces", reason));
+            capsule.OmittedTiers.Add(new TruncationEntry("affected_public_surfaces", reason));
         }
 
         if (BindingIncompletenessStore != null)
@@ -243,12 +243,12 @@ internal sealed class ContextAssembler
         }
     }
 
-    private static bool IsPublicSurface(string? metadataJson)
+    private static bool IsPublicSurface(string? metadataJson, string symbolId)
     {
-        if (string.IsNullOrWhiteSpace(metadataJson))
+        var metadata = SymbolMetadata.Parse(metadataJson, symbolId);
+        if (metadata is null)
             return false;
-        using var document = JsonDocument.Parse(metadataJson);
-        if (!document.RootElement.TryGetProperty(SymbolMetadataKeys.Accessibility, out var accessibility))
+        if (!metadata.Value.TryGetProperty(SymbolMetadataKeys.Accessibility, out var accessibility))
             return false;
         return accessibility.GetString() is "Public" or "Protected" or "ProtectedOrInternal";
     }
@@ -492,7 +492,7 @@ internal sealed class ContextAssembler
             // "unresolved", the snapshot that was consulted is recorded, the
             // anchor carries no evidence grade (it asserts the absence of a
             // symbol, so "compiler_proved" would be a false claim), and the
-            // budget enforcer settles estimatedTokens the same way it does
+            // budget enforcer settles estimated_tokens the same way it does
             // everywhere else.
             var gapAnchor = new CapsuleAnchor(
                 $"file://{lookup.FileArg}:{lookup.LineNumber}",
@@ -514,7 +514,7 @@ internal sealed class ContextAssembler
             foreach (var tierName in TierNames)
                 gapCapsule.OmittedTiers.Add(new TruncationEntry(tierName, "unresolved"));
 
-            gapCapsule.InclusionReasons["omittedTiers.unresolved"] =
+            gapCapsule.InclusionReasons["omitted_tiers_unresolved"] =
                 "No symbol resolved at the requested location, so every tier is marked "
                 + "'unresolved': the relation could not be observed. It is NOT evidence that "
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";

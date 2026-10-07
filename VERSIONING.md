@@ -21,7 +21,7 @@ It is surfaced programmatically so callers can check it without scraping help te
 - Making an optional flag/param required, or tightening its accepted values (e.g. rejecting a previously accepted enum value).
 - Changing the semantics of an existing flag/param without renaming it.
 
-Breaking changes must bump `CliMcpContractVersion` by `+1`, update `tests/CliMcpContractSnapshotTests.cs` to reflect the new surface, and be noted in the commit/PR description. The test snapshot is the review gate for the **named** surface: a mode, flag, tool, or parameter that is silently added, removed, or renamed fails the build. It does not yet cover JSON field names or types, parameter types, or default values; changes of those kinds rely on review until an output-contract snapshot lands.
+Breaking changes must bump `CliMcpContractVersion` by `+1`, update `tests/CliMcpContractSnapshotTests.cs` to reflect the new surface, and be noted in the commit/PR description. The test snapshot is the review gate for the **named** surface: a mode, flag, tool, or parameter that is silently added, removed, or renamed fails the build. JSON field paths and types for every CLI `--output=json`/`jsonl` mode and every MCP tool are covered by `tests/OutputContractSnapshotTests.cs` (`tests/Snapshots/output-contract.txt`); a field that is added, removed, renamed, or re-typed shows as a diff in that snapshot. One surface is deliberately excluded: `serve` (the MCP stdio transport; its payloads are the MCP tool payloads). `get-source` and the five source-text `get-symbol` views (`signature`, `body`, `declaration`, `containing-type`, `surrounding`) print raw text, so each is recorded as a single `$ text` line with no field shape. Parameter types and default values are still not covered by a snapshot; changes of those kinds rely on review.
 
 ### Non-breaking (does not bump the contract version, but still updates the snapshot)
 
@@ -36,10 +36,10 @@ Non-breaking changes still require updating `tests/CliMcpContractSnapshotTests.c
 
 ## Process
 
-1. Change `Program.ModeRegistry` (`src/Program.cs`) or any `src/Mcp/Tools/*.cs` tool definition.
-2. Run `dotnet test` — `CliMcpContractSnapshotTests` will fail with a diff showing the surface delta.
+1. Change `Program.ModeRegistry` (`src/Program.cs`) or any `src/Mcp/Tools/*.cs` tool definition, or any code path that shapes JSON/JSONL output.
+2. Run `dotnet test` — `CliMcpContractSnapshotTests` will fail with a diff showing the named-surface delta. `OutputContractSnapshotTests` is tagged `[Trait("Category", "Slow")]`, so `dotnet test` skips it; run it with `dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutputContractSnapshotTests" --settings tests/full.runsettings`. It (`tests/Snapshots/output-contract.txt`) will fail with a diff showing any JSON field-path/type change across all CLI modes and MCP tools.
 3. Decide whether the delta is breaking (see above). If breaking, bump `VersionConstants.CliMcpContractVersion` (`+1`).
-4. Update the expected snapshot in `tests/CliMcpContractSnapshotTests.cs` to the new surface and re-run tests.
+4. Update the expected snapshot in `tests/CliMcpContractSnapshotTests.cs` to the new named surface and re-run tests. For `OutputContractSnapshotTests`, review the `.actual.txt` the test writes, copy it over `tests/Snapshots/output-contract.txt`, and re-run. Bump `CliMcpContractVersion` if the change is breaking.
 5. Document breaking bumps in the PR description (what was removed/renamed/re-typed and why). No migration is needed — callers compare `contract_version`.
 
 ## Non-goal

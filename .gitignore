@@ -35,6 +35,9 @@ recall-out-2.txt
 recall-out-3.txt
 CODE_REVIEW_*.md
 
+# Output-contract snapshot actual output (reviewed, not committed)
+tests/Snapshots/*.actual.txt
+
 # Lurp index outputs (present: index.db + capsule-*.json + .trace-tmp)
 index.db
 *.db-wal

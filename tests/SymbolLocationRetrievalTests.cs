@@ -209,6 +209,63 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task FindSymbol_JsonlEmitsMetaAndSymbolEnvelope()
+    {
+        var snapshotId = await SeedAndIndexAsync();
+        var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
+
+        var jsonResult = RunCaptured(() => FindSymbolHandler.Run([
+            "--mode=find-symbol",
+            $"--symbol={widgetId}",
+            $"--output-dir={TestDir}"
+        ]));
+        Assert.Null(jsonResult.Failure);
+        using var jsonDoc = JsonDocument.Parse(jsonResult.Stdout);
+        var jsonSymbolId = jsonDoc.RootElement.GetProperty("symbol_id").GetString();
+
+        var jsonlResult = RunCaptured(() => FindSymbolHandler.Run([
+            "--mode=find-symbol",
+            $"--symbol={widgetId}",
+            "--output=jsonl",
+            $"--output-dir={TestDir}"
+        ]));
+        Assert.Null(jsonlResult.Failure);
+
+        var lines = jsonlResult.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+
+        using var metaDoc = JsonDocument.Parse(lines[0]);
+        Assert.Equal("meta", metaDoc.RootElement.GetProperty("type").GetString());
+        var meta = metaDoc.RootElement.GetProperty("meta");
+        Assert.Equal(snapshotId, meta.GetProperty("snapshot_id").GetString());
+        Assert.True(meta.TryGetProperty("freshness", out _));
+
+        using var symbolDoc = JsonDocument.Parse(lines[1]);
+        Assert.Equal("symbol", symbolDoc.RootElement.GetProperty("type").GetString());
+        Assert.Equal(jsonSymbolId, symbolDoc.RootElement.GetProperty("symbol").GetProperty("symbol_id").GetString());
+    }
+
+    [Fact]
+    public async Task FindSymbol_JsonEmitsMetadataObject()
+    {
+        var snapshotId = await SeedAndIndexAsync();
+        var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
+
+        var jsonResult = RunCaptured(() => FindSymbolHandler.Run([
+            "--mode=find-symbol",
+            $"--symbol={widgetId}",
+            "--output=json",
+            $"--output-dir={TestDir}"
+        ]));
+        Assert.Null(jsonResult.Failure);
+
+        using var doc = JsonDocument.Parse(jsonResult.Stdout);
+        Assert.True(doc.RootElement.TryGetProperty("metadata", out var metadata));
+        Assert.Equal(JsonValueKind.Object, metadata.ValueKind);
+        Assert.True(metadata.TryGetProperty("accessibility", out _));
+    }
+
+    [Fact]
     public async Task GetSymbolMetadata_ReturnsLocationsArray()
     {
         var snapshotId = await SeedAndIndexAsync();

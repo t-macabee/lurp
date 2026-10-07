@@ -1,3 +1,4 @@
+using Lurp.Storage;
 using Lurp.Workspace;
 using System.Globalization;
 using System.Text.Json;
@@ -80,7 +81,7 @@ internal static class GetSymbolHandler
             assembly_identity = info.SymbolId.AssemblyIdentity,
             kind = info.Kind.ToString(),
             fully_qualified_name = info.FullyQualifiedName,
-            metadata_json = info.MetadataJson,
+            metadata = SymbolMetadata.Parse(info.MetadataJson, info.SymbolId.Value),
             declaration_count = info.DeclarationCount,
             is_partial = info.IsPartial,
             snapshot_id = snapshotId,

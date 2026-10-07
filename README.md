@@ -73,8 +73,8 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 ```
 capsule OrderService.CreateAsync (Method)
   snapshot: f3bff523b103462be239655c9b753be3  intent: inspect  maxHops: 3
-  content tokens:  283/8000  (estimatedTokens: the budget basis)
-  delivery tokens: ~571  (estimatedArtifactTokens: whole emitted file; size the context window from this)
+  content tokens:  283/8000  (estimated_tokens: the budget basis)
+  delivery tokens: ~571  (estimated_artifact_tokens: whole emitted file; size the context window from this)
   truncated: true
   omitted: direct_callers (budget_exhausted) : fetch with --tier=direct_callers
   omitted: relevant_tests (budget_exhausted) : fetch with --tier=relevant_tests
