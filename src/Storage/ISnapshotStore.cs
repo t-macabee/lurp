@@ -8,6 +8,8 @@ public interface IStoreConnection
     void RunMigrations();
     int GetCurrentSchemaVersion();
     void ValidateSchema(int expectedVersion);
+    /// <summary>Refreshes the query planner's statistics (<c>ANALYZE</c>) after a successful index write.</summary>
+    void RefreshPlannerStatistics();
 }
 
 /// <summary>

@@ -555,6 +555,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // Completion must be last : all preceding phases must succeed.
         cancellationToken.ThrowIfCancellationRequested();
         _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
+
+        IndexFinalization.RefreshPlannerStatistics(_store, _output, timings);
         return (crossDocEdgesProcessed, orphanEdgesDropped);
     }
 

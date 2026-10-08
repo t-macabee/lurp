@@ -130,6 +130,13 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         ExecutePragma("PRAGMA query_only=ON;");
     }
 
+    public void RefreshPlannerStatistics()
+    {
+        EnsureOpen();
+        // analysis_limit caps the rows sampled per index, so the cost stays bounded at any size.
+        ExecutePragma("PRAGMA analysis_limit=1000; ANALYZE;");
+    }
+
     private void ExecutePragma(string sql)
     {
         using var command = _connection!.CreateCommand();

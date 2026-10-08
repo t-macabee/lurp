@@ -1,16 +1,19 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
 /// <summary>
-///     Pins the no-statistics query plans of the two hot reads in
+///     Pins the query plans of the two hot reads in
 ///     <see cref="Lurp.Storage.DeadCandidateStore" />. The 4x profile regression was
 ///     caused by the planner's cost model (not C# code): with no sqlite_stat1 rows it
 ///     drove the declaration query from snapshot_documents and satisfied the incoming
 ///     edge ORDER BY via idx_edges_snapshot_id, scanning the full snapshot edge set per
-///     chunk. These tests run on a freshly indexed test database, which never has
-///     sqlite_stat1 because the product never runs ANALYZE. The SQL text mirrors
+///     chunk. The product writes statistics after each index run, so the test pins the
+///     plans with them. It then drops sqlite_stat1 and pins the plans an older database
+///     gets, which was indexed before the product wrote statistics. The SQL text mirrors
 ///     DeadCandidateStore.FetchDeclarationInfo / FetchIncomingLiveEdgesBatched — keep it
 ///     in sync when those change.
 /// </summary>
@@ -42,22 +45,13 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
         "  AND kind IN (" + string.Join(",", Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds.Select(k => $"'{k}'")) + ");\n";
 
     [SkippableFact]
-    public async Task Plans_WithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
+    public async Task Plans_WithAndWithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
         CreateProject("QueryPlanProbe", new Dictionary<string, string>
         {
-            ["Probe.cs"] = """
-                           namespace QueryPlanProbe;
-
-                           internal class Probe
-                           {
-                               internal void A() { }
-                               internal void B() { }
-                               internal void C() { }
-                           }
-                           """
+            ["Probe.cs"] = BuildProbeSource()
         });
         var snapshotId = await RunFullIndexAsync(DbPath);
         var symbolIds = new[]
@@ -67,15 +61,31 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
             ResolveSymbolId(snapshotId, "global::QueryPlanProbe.Probe.B")
         };
 
-        using var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
-        connection.Open();
-
-        using (var statCmd = connection.CreateCommand())
+        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
         {
-            statCmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sqlite_stat1';";
-            Assert.Equal(0L, (long)statCmd.ExecuteScalar()!);
+            connection.Open();
+
+            using (var statCmd = connection.CreateCommand())
+            {
+                statCmd.CommandText = "SELECT COUNT(*) FROM sqlite_stat1;";
+                Assert.True((long)statCmd.ExecuteScalar()! > 0);
+            }
+
+            AssertDeadCandidatePlans(connection, snapshotId, symbolIds);
+
+            using var dropCmd = connection.CreateCommand();
+            dropCmd.CommandText = "DROP TABLE sqlite_stat1;";
+            dropCmd.ExecuteNonQuery();
         }
 
+        // A new connection reads the schema again, so the planner loads the dropped statistics as absent.
+        using var noStatsConnection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
+        noStatsConnection.Open();
+        AssertDeadCandidatePlans(noStatsConnection, snapshotId, symbolIds);
+    }
+
+    private static void AssertDeadCandidatePlans(SqliteConnection connection, string snapshotId, string[] symbolIds)
+    {
         // The declaration query must be driven by declarations (its own row set), never by
         // snapshot_documents probing the IN list per document row.
         var declarationPlan = Explain(connection, DeclarationQuerySql, snapshotId, symbolIds);
@@ -105,5 +115,25 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
         while (reader.Read())
             details.Add(reader.GetString(3));
         return details;
+    }
+
+    // With statistics the planner scans tables that have a handful of rows, so the fixture
+    // needs enough declarations and edges for the index plans to win; 200 chained methods
+    // give the plans of a real database (probe 2026-10-08).
+    private static string BuildProbeSource()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("namespace QueryPlanProbe;");
+        sb.AppendLine();
+        sb.AppendLine("internal class Probe");
+        sb.AppendLine("{");
+        sb.AppendLine("    internal void A() { }");
+        sb.AppendLine("    internal void B() { }");
+        sb.AppendLine("    internal void C() { }");
+        sb.AppendLine("    internal void F0() { }");
+        for (var i = 1; i < 200; i++)
+            sb.AppendLine(CultureInfo.InvariantCulture, $"    internal void F{i}() {{ F{i - 1}(); }}");
+        sb.AppendLine("}");
+        return sb.ToString();
     }
 }

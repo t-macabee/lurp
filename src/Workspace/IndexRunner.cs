@@ -346,6 +346,8 @@ public static class IndexRunner
             cancellationToken.ThrowIfCancellationRequested();
             store.MarkSnapshotComplete(snapshotIdStr);
 
+            IndexFinalization.RefreshPlannerStatistics(store, sink, timings);
+
             // Persist all timings
             try
             {
