@@ -15,7 +15,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" /> <!-- C# syntax and semantic analysis used by extraction. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" /> <!-- Workspace-level C# services required by MSBuildWorkspace. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.6.0" /> <!-- Loads .sln/.slnx through MSBuild design-time builds. -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" /> <!-- SQLite ADO.NET provider used by the index and every read path. -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" /> <!-- SQLite ADO.NET provider used by the index and every read path. -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" /> <!-- Generic host for the serve mode (MCP over stdio). -->
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" /> <!-- MCP server SDK: stdio transport, tool registration, error mapping. -->
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" /> <!-- Native e_sqlite3; tool and tests must run the same SQLite build. -->
