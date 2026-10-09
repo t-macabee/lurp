@@ -1,3 +1,4 @@
+using Lurp.Helpers;
 using Microsoft.CodeAnalysis;
 using System.Diagnostics;
 
@@ -297,7 +298,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         {
             _store.SaveMetrics(newSnapshotIdStr, new Dictionary<string, long>
             {
-                [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+                [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
             });
             _store.SaveTimings(newSnapshotIdStr, timings);
         }
@@ -327,30 +328,16 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped);
     }
 
-    private static long GetPeakWorkingSetMb()
-    {
-        using var process = Process.GetCurrentProcess();
-        return (process.PeakWorkingSet64 + (1024 * 1024 - 1)) / (1024 * 1024);
-    }
-
     private async Task<Dictionary<string, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
     {
         _output.Write("Loading compilations for affected projects... ");
         var result = new Dictionary<string, (Project Project, Compilation Compilation)>(StringComparer.Ordinal);
-        foreach (var project in solution.Projects)
+        await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(
+                           solution,
+                           msg => _output.WriteErrorLine($"WARNING: {msg}"),
+                           project => affectedProjects.Contains(project.Name),
+                           cancellationToken))
         {
-            if (!affectedProjects.Contains(project.Name))
-                continue;
-            cancellationToken.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(cancellationToken);
-            if (compilation == null)
-            {
-                // Same declared boundary as the full path: a project shell for a
-                // language MSBuildWorkspace does not load (VB/F#) has no compilation.
-                _output.WriteErrorLine($"WARNING: Project '{project.Name}' ({project.Language}) has no C# compilation and is skipped. " +
-                                       "Non-C# projects are a declared boundary (non_csharp_projects).");
-                continue;
-            }
             result[project.Name] = (project, compilation);
         }
 

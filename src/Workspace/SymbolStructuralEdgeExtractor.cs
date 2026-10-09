@@ -40,7 +40,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
                 edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Inherits), typeSymbol,
-                    IsExternalTarget(typeSymbol.BaseType) ? GraphNodeKind.ExternalType : null));
+                    ExtractionUtils.IsOutsideCompilation(typeSymbol.BaseType, context.Compilation) ? GraphNodeKind.ExternalType : null));
         }
 
         foreach (var iface in typeSymbol.Interfaces)
@@ -49,7 +49,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
                 edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Implements), typeSymbol,
-                    IsExternalTarget(iface) ? GraphNodeKind.ExternalType : null));
+                    ExtractionUtils.IsOutsideCompilation(iface, context.Compilation) ? GraphNodeKind.ExternalType : null));
         }
 
         foreach (var nested in typeSymbol.GetTypeMembers())
@@ -126,12 +126,6 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             IsCrossGenerated = IsGeneratedSymbol(sourceSymbol),
             TargetNodeKind = targetNodeKind
         };
-    }
-
-    private bool IsExternalTarget(ISymbol target)
-    {
-        return target.ContainingAssembly != null
-               && !SymbolEqualityComparer.Default.Equals(target.ContainingAssembly, context.Compilation.Assembly);
     }
 
     private bool IsGeneratedSymbol(ISymbol symbol)

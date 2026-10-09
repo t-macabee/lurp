@@ -43,15 +43,7 @@ internal sealed class MemberEdgeExtractionContext(
         Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
     }
 
-    private bool IsSyntaxTreeInScope(SyntaxTree? syntaxTree)
-    {
-        if (ScopeDocuments == null || syntaxTree == null)
-            return true;
-        var filePath = syntaxTree.FilePath;
-        if (string.IsNullOrEmpty(filePath))
-            return true;
-        return ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath));
-    }
+    internal bool IsInScope(SyntaxTree? syntaxTree) => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
 
     internal bool IsMemberInScope(ISymbol member)
     {
@@ -67,10 +59,10 @@ internal sealed class MemberEdgeExtractionContext(
             var containingType = member.ContainingType;
             if (containingType == null)
                 return true;
-            return containingType.DeclaringSyntaxReferences.Any(syntaxRef => IsSyntaxTreeInScope(syntaxRef.SyntaxTree));
+            return containingType.DeclaringSyntaxReferences.Any(syntaxRef => IsInScope(syntaxRef.SyntaxTree));
         }
 
-        return syntaxRefs.Any(syntaxRef => IsSyntaxTreeInScope(syntaxRef.SyntaxTree));
+        return syntaxRefs.Any(syntaxRef => IsInScope(syntaxRef.SyntaxTree));
     }
 
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
@@ -87,7 +79,7 @@ internal sealed class MemberEdgeExtractionContext(
     {
         if (_methodDeclarations != null)
             return _methodDeclarations;
-        var result = ExtractionUtils.EnumerateMethodDeclarations(GetAllNamedTypes(), IsSyntaxTreeInScope).ToList();
+        var result = ExtractionUtils.EnumerateMethodDeclarations(GetAllNamedTypes(), IsInScope).ToList();
         _methodDeclarations = result;
         return result;
     }

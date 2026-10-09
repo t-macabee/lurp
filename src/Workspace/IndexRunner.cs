@@ -190,21 +190,10 @@ public static class IndexRunner
             var blindProjects = new List<string>();
             var extractedProjects = 0;
 
-            var unrestoredProjects = WorkspaceLoadGate.GetUnrestoredProjectNames(solution);
-            if (unrestoredProjects.Count > 0)
-            {
-                sink.WriteErrorLine();
-                sink.WriteErrorLine($"WARNING: {unrestoredProjects.Count} of {solution.Projects.Count()} project(s) have not been restored:");
-                foreach (var name in unrestoredProjects.OrderBy(static n => n, StringComparer.Ordinal))
-                    sink.WriteErrorLine($"  - {name}");
-                sink.WriteErrorLine(WorkspaceLoadGate.DescribeUnrestored(unrestoredProjects));
-                sink.WriteErrorLine();
-            }
-
             await foreach (var (project, compilation) in CompilationHelper.GetAllAsync(
                                solution,
                                msg => sink.WriteErrorLine($"WARNING: {msg}"),
-                               cancellationToken))
+                               cancellationToken: cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var projectName = project.Name;
@@ -353,7 +342,7 @@ public static class IndexRunner
             {
                 store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
                 {
-                    [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+                    [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
                 });
                 store.SaveTimings(snapshotIdStr, timings);
             }
@@ -386,7 +375,7 @@ public static class IndexRunner
             {
                 store.SaveMetrics(snapshotIdStr, new Dictionary<string, long>
                 {
-                    [SnapshotMetricNames.PeakWorkingSetMb] = GetPeakWorkingSetMb()
+                    [SnapshotMetricNames.PeakWorkingSetMb] = ProcessMetrics.PeakWorkingSetMb()
                 });
                 store.SaveTimings(snapshotIdStr, timings);
             }
@@ -397,12 +386,6 @@ public static class IndexRunner
 
             throw;
         }
-    }
-
-    private static long GetPeakWorkingSetMb()
-    {
-        using var process = Process.GetCurrentProcess();
-        return (process.PeakWorkingSet64 + (1024 * 1024 - 1)) / (1024 * 1024);
     }
 
     private static string ResolveStrategy(IIndexStore store, string? strategyArg, IOutputSink sink)

@@ -2,6 +2,7 @@ using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.Data.Sqlite;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -245,6 +246,51 @@ public abstract class IntegrationTestBase : IDisposable
         }
 
         throw new InvalidOperationException($"No symbol with FQN '{fqn}' found in snapshot {snapshotId}.");
+    }
+
+    /// <summary>Opens a non-pooled connection to the database at <see cref="DbPath" />.</summary>
+    public SqliteConnection OpenDbConnection()
+    {
+        var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
+        connection.Open();
+        return connection;
+    }
+
+    /// <summary>Number of planner statistics rows (sqlite_stat1) in the database at <see cref="DbPath" />.</summary>
+    public long CountPlannerStatisticsRows()
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_stat1;";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>
+    ///     Drops the planner statistics of the database at <see cref="DbPath" />, so the next
+    ///     connection plans as on a database indexed before the product wrote statistics.
+    /// </summary>
+    public void DropPlannerStatistics()
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DROP TABLE sqlite_stat1;";
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Asserts the plans with planner statistics, then again after they are dropped.</summary>
+    public void AssertPlansWithAndWithoutStatistics(Action<SqliteConnection> assertPlans)
+    {
+        Assert.True(CountPlannerStatisticsRows() > 0);
+        using (var connection = OpenDbConnection())
+        {
+            assertPlans(connection);
+        }
+
+        DropPlannerStatistics();
+
+        // A new connection reads the schema again, so the planner loads the dropped statistics as absent.
+        using var noStatsConnection = OpenDbConnection();
+        assertPlans(noStatsConnection);
     }
 
     /// <summary>All edges of a snapshot matching the given kind/provenance.</summary>

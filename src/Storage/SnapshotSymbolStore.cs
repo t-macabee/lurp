@@ -96,14 +96,7 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
                 command.Parameters.AddWithValue($"@p{i++}", id);
             command.ExecuteNonQuery();
 
-            command.CommandText = """
-                DELETE FROM symbol_target_frameworks
-                WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (
-                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-            );
-            """;
-            command.ExecuteNonQuery();
+            DeleteTargetFrameworkRows(command, idList);
             transaction.Commit();
         }
         catch
@@ -124,18 +117,12 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                DELETE FROM symbol_target_frameworks
-                WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (
-                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-            );
-            """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             var i = 0;
             foreach (var id in idList)
                 command.Parameters.AddWithValue($"@p{i++}", id);
-            command.ExecuteNonQuery();
+
+            DeleteTargetFrameworkRows(command, idList);
             transaction.Commit();
         }
         catch
@@ -143,6 +130,20 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
             transaction.Rollback();
             throw;
         }
+    }
+
+    // The one symbol_target_frameworks delete text. Both delete methods bind
+    // @snapshotId and @p{i} on their own command, then run this.
+    private static void DeleteTargetFrameworkRows(SqliteCommand command, IReadOnlyCollection<string> idList)
+    {
+        command.CommandText = """
+            DELETE FROM symbol_target_frameworks
+            WHERE snapshot_id = @snapshotId
+              AND symbol_id IN (
+        """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
+        );
+        """;
+        command.ExecuteNonQuery();
     }
 
     internal List<string> GetSymbolIdsInSnapshot(string snapshotId)

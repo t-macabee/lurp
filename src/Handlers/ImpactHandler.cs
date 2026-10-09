@@ -124,10 +124,7 @@ internal static class ImpactHandler
 
     /// <summary>The <c>docCommentId</c> half of a symbol ID, without the assembly identity.</summary>
     private static string DocCommentPart(string symbolId)
-    {
-        var pipe = symbolId.IndexOf('|');
-        return pipe > 0 ? symbolId[..pipe] : symbolId;
-    }
+        => SymbolId.DocCommentIdOf(symbolId);
 
     private static void WriteSummary(string symbolName, string direction, int total, int returned, int offset, int groupCount, int frontierCount,
         IEnumerable<(string Label, int Count)> groupLines, object? truncated)

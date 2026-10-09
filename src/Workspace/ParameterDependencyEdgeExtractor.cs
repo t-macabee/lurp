@@ -26,37 +26,23 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                 if (methodId == null)
                     continue;
 
+                var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
+                var loc = context.GetMemberSourceLocation(method);
                 foreach (var param in method.Parameters)
                 {
-                    if (param.Type == null)
-                        continue;
-
-                    var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
-                    var loc = context.GetMemberSourceLocation(method);
-                    var paramTypeId = context.MakeSymbolId(param.Type);
-                    if (paramTypeId != null)
+                    foreach (var usedType in ExtractionUtils.TypeUses(param.Type))
                     {
-                        context.RecordFilteredExternal(param.Type, methodSyntax);
-
-                        var key = (methodId, paramTypeId, nameof(EdgeKind.References));
-                        if (seen.Add(key))
-                            edges.Add(context.MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References),
-                                ExtractorConstants.ParameterDependenciesExtractor, loc));
-                    }
-
-                    foreach (var nestedType in ExtractionUtils.NestedTypeUses(param.Type))
-                    {
-                        var nestedTypeId = context.MakeSymbolId(nestedType);
-                        if (nestedTypeId == null)
+                        var usedTypeId = context.MakeSymbolId(usedType);
+                        if (usedTypeId == null)
                             continue;
 
-                        context.RecordFilteredExternal(nestedType, methodSyntax);
+                        context.RecordFilteredExternal(usedType, methodSyntax);
 
-                        var nestedKey = (methodId, nestedTypeId, nameof(EdgeKind.References));
-                        if (!seen.Add(nestedKey))
+                        var key = (methodId, usedTypeId, nameof(EdgeKind.References));
+                        if (!seen.Add(key))
                             continue;
 
-                        edges.Add(context.MakeEdge(methodId, nestedTypeId, nameof(EdgeKind.References),
+                        edges.Add(context.MakeEdge(methodId, usedTypeId, nameof(EdgeKind.References),
                             ExtractorConstants.ParameterDependenciesExtractor, loc));
                     }
                 }

@@ -38,7 +38,6 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var current = runner.GetCurrentSchemaVersion();
         Assert.Equal(VersionConstants.DatabaseSchemaVersion, current);
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, current);
     }
 
     [Fact]
@@ -111,6 +110,23 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'assembly_name';";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void RoundTrip_Migration035_DeclarationIndexSet()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version_generated', 'idx_edges_snapshot_id', 'idx_annotations_snapshot_id');";
+        Assert.Equal(3L, (long)command.ExecuteScalar()!);
+
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version', 'idx_declarations_generated', 'idx_declarations_symbol_id', 'idx_snapshot_symbols_snapshot_id', 'idx_snapshot_documents_snapshot_id');";
+        Assert.Equal(0L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]

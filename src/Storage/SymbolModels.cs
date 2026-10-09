@@ -58,7 +58,18 @@ public sealed class SymbolId : IEquatable<SymbolId>
         DocCommentId = docCommentId ?? throw new ArgumentNullException(nameof(docCommentId));
         AssemblyIdentity = assemblyIdentity ?? throw new ArgumentNullException(nameof(assemblyIdentity));
         FullyQualifiedName = fullyQualifiedName;
-        Value = $"{docCommentId}|{assemblyIdentity}";
+        Value = Compose(docCommentId, assemblyIdentity);
+    }
+
+    /// <summary>The persisted <c>docCommentId|assemblyIdentity</c> string form of a symbol id.</summary>
+    public static string Compose(string docCommentId, string assemblyIdentity)
+        => $"{docCommentId}|{assemblyIdentity}";
+
+    /// <summary>The <c>docCommentId</c> half of a persisted symbol id, without the assembly identity.</summary>
+    public static string DocCommentIdOf(string symbolId)
+    {
+        var pipeIndex = symbolId.IndexOf('|');
+        return pipeIndex > 0 ? symbolId[..pipeIndex] : symbolId;
     }
 
     public string Value { get; }

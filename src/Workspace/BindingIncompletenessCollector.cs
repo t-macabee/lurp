@@ -76,9 +76,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     /// </summary>
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node, Compilation compilation)
     {
-        if (resolvedTarget.ContainingAssembly == null)
-            return;
-        if (SymbolEqualityComparer.Default.Equals(resolvedTarget.ContainingAssembly, compilation.Assembly))
+        if (!ExtractionUtils.IsOutsideCompilation(resolvedTarget, compilation))
             return;
         Record(BindingIncompletenessReason.FilteredExternal, node?.SyntaxTree?.FilePath);
     }

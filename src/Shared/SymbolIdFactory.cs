@@ -1,3 +1,4 @@
+using Lurp.Storage;
 using Microsoft.CodeAnalysis;
 
 namespace Lurp.Shared;
@@ -26,7 +27,7 @@ internal static class SymbolIdFactory
         if (string.IsNullOrEmpty(docCommentId))
             return null;
         var identity = symbol.ContainingAssembly?.Identity.GetDisplayName() ?? ambientAssemblyIdentity;
-        return $"{docCommentId}|{identity}";
+        return SymbolId.Compose(docCommentId, identity);
     }
 
     /// <summary>

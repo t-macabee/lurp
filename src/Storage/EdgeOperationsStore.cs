@@ -603,23 +603,7 @@ internal sealed class EdgeOperationsStore
         var results = new List<EdgeRecord>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            results.Add(new EdgeRecord
-            {
-                SourceSymbolId = reader.GetString(0),
-                TargetSymbolId = reader.GetString(1),
-                Kind = reader.GetString(2),
-                Provenance = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                SnapshotId = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                ExtractorVersion = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                SourceDocumentPath = reader.IsDBNull(6) ? null : reader.GetString(6),
-                SourceStartLine = reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                SourceStartColumn = reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                SourceEndLine = reader.IsDBNull(9) ? null : reader.GetInt32(9),
-                SourceEndColumn = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-                IsCrossGenerated = reader.GetBoolean(11),
-                TypeArgumentsJson = reader.IsDBNull(12) ? null : reader.GetString(12),
-                ReceiverTypeConstraintsJson = reader.IsDBNull(13) ? null : reader.GetString(13)
-            });
+            results.Add(EdgeRecordReader.Read(reader, 0));
         return results;
     }
 }

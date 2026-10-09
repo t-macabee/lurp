@@ -430,10 +430,7 @@ internal static class HandlerBootstrap
     /// </summary>
     public static IndexedSymbolInfo? ResolveSymbolInfo(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
-        var candidate = symbolArg;
-        var pipe = symbolArg.IndexOf('|');
-        if (pipe > 0)
-            candidate = symbolArg[..pipe];
+        var candidate = SymbolId.DocCommentIdOf(symbolArg);
 
         // Doc-comment ID format: starts with a Roslyn prefix character followed by ':'
         // (T: for types, M: for methods, P: for properties, E: for events, F: for fields, N: for namespaces)
@@ -445,7 +442,7 @@ internal static class HandlerBootstrap
         }
 
         // The full ID form carries no FQN to fall back to.
-        if (pipe > 0)
+        if (symbolArg.IndexOf('|') > 0)
             return null;
 
         return store.ResolveSymbolByFqn(symbolArg, snapshotId, includeGenerated);

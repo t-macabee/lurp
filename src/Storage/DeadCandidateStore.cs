@@ -23,6 +23,40 @@ internal sealed class DeadCandidateStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
+    /// <summary>
+    ///     The declaration query of <see cref="FetchDeclarationInfo" />. One owner: the
+    ///     plan tests pin this text, so a change here is what they see.
+    /// </summary>
+    internal static string DeclarationSql(int idCount)
+    {
+        var paramNames = Enumerable.Range(0, idCount).Select(static i => $"@p{i}");
+        return $"""
+            SELECT d.symbol_id, d.document_version_id, d.full_start, d.full_end, COALESCE(d.is_generated,0), d.is_partial
+            FROM declarations d
+            CROSS JOIN snapshot_documents sd
+            WHERE sd.snapshot_id = @snapshotId
+              AND sd.document_version_id = d.document_version_id
+              AND d.symbol_id IN ({string.Join(",", paramNames)});
+            """;
+    }
+
+    /// <summary>
+    ///     The incoming-edge query of <see cref="FetchIncomingEdgesBatched" />, for one
+    ///     chunk of <paramref name="idCount" /> symbol ids and one edge-kind list.
+    /// </summary>
+    internal static string IncomingEdgesSql(IReadOnlyList<string> kinds, int idCount)
+    {
+        var paramNames = Enumerable.Range(0, idCount).Select(static i => $"@p{i}");
+        var kindList = string.Join(",", kinds.Select(k => $"'{k}'"));
+        return $"""
+            SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json
+            FROM edges
+            WHERE snapshot_id = @snapshotId
+              AND target_symbol_id IN ({string.Join(",", paramNames)})
+              AND kind IN ({kindList});
+            """;
+    }
+
     public DeadCandidatePage GetDeadCandidatesPage(
         string snapshotId,
         string? project,
@@ -123,8 +157,8 @@ internal sealed class DeadCandidateStore
         foreach (var f in filteredCandidates)
         {
             fetchIds.Add(f.SymbolId);
-            if (f.AccessorKind != null && f.AssociatedSymbol != null)
-                fetchIds.Add($"{f.AssociatedSymbol}|{f.Row.AssemblyIdentity}");
+            if (f.AssociatedSymbolId != null)
+                fetchIds.Add(f.AssociatedSymbolId);
         }
 
         // B25: a type inherits from its descendants. Descendants are found through each member's
@@ -308,31 +342,15 @@ internal sealed class DeadCandidateStore
             }
             else
             {
-                // No LIVE incoming at all - check EF and serialization before proved
-                var isEfPrivate = IsEfPrivateMember(cand, accessibility, mapsToTargets);
-                if (isEfPrivate)
+                // No LIVE incoming at all - check the conventions before proved
+                if (TryConventionVerdict(cand, factsById, subtreeByType, mapsToTargets, out var conventionReason, out var conventionSymbolId))
                 {
+                    // The candidate's own EF or serialization verdict comes first. Then (B34) an
+                    // accessor inherits its associated symbol's verdict, and a type inherits the
+                    // first verdict among its descendant members.
                     status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.EfConvention;
-                    uncertainties = [MakeEfConventionUncertainty(cand.SymbolId)];
-                    uncertainCount++;
-                }
-                else if (IsSerializationConvention(cand))
-                {
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.SerializationConvention;
-                    uncertainties = [MakeSerializationConventionUncertainty(cand.SymbolId)];
-                    uncertainCount++;
-                }
-                else if (TryInheritedConvention(cand, factsById, subtreeByType, mapsToTargets, out var inheritedReason, out var inheritedSymbolId))
-                {
-                    // B34: an accessor inherits its associated symbol's convention verdict, and a
-                    // type inherits the first such verdict among its descendant members.
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = inheritedReason;
-                    uncertainties = inheritedReason == DeadCandidateReason.EfConvention
-                        ? [MakeEfConventionUncertainty(inheritedSymbolId)]
-                        : [MakeSerializationConventionUncertainty(inheritedSymbolId)];
+                    reason = conventionReason;
+                    uncertainties = [MakeConventionUncertainty(conventionReason, conventionSymbolId)];
                     uncertainCount++;
                 }
                 else
@@ -503,8 +521,6 @@ internal sealed class DeadCandidateStore
     {
         var result = new Dictionary<string, List<EdgeRecord>>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;
-        // Prepare kind filter string for SQL IN
-        var kindList = string.Join(",", edgeKinds.Select((k, i) => $"'{k}'"));
         // Chunk symbolIds to avoid SQLITE_MAX_VARIABLE_NUMBER
         const int ChunkSize = 900;
         // edge_id is selected so each target's list can be ordered by it in C#. The old
@@ -518,13 +534,7 @@ internal sealed class DeadCandidateStore
             var chunk = symbolIds.Skip(i).Take(ChunkSize).ToList();
             using var cmd = _connection.CreateCommand();
             var paramNames = chunk.Select((_, idx) => $"@p{idx}").ToList();
-            cmd.CommandText = $"""
-                SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json
-                FROM edges
-                WHERE snapshot_id = @snapshotId
-                  AND target_symbol_id IN ({string.Join(",", paramNames)})
-                  AND kind IN ({kindList});
-                """;
+            cmd.CommandText = IncomingEdgesSql(edgeKinds, chunk.Count);
             cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             for (var idx = 0; idx < chunk.Count; idx++)
                 cmd.Parameters.AddWithValue(paramNames[idx], chunk[idx]);
@@ -532,23 +542,7 @@ internal sealed class DeadCandidateStore
             while (reader.Read())
             {
                 var edgeId = reader.GetInt64(0);
-                var rec = new EdgeRecord
-                {
-                    SourceSymbolId = reader.GetString(1),
-                    TargetSymbolId = reader.GetString(2),
-                    Kind = reader.GetString(3),
-                    Provenance = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                    SnapshotId = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                    ExtractorVersion = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
-                    SourceDocumentPath = reader.IsDBNull(7) ? null : reader.GetString(7),
-                    SourceStartLine = reader.IsDBNull(8) ? null : reader.GetInt32(8),
-                    SourceStartColumn = reader.IsDBNull(9) ? null : reader.GetInt32(9),
-                    SourceEndLine = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-                    SourceEndColumn = reader.IsDBNull(11) ? null : reader.GetInt32(11),
-                    IsCrossGenerated = !reader.IsDBNull(12) && reader.GetBoolean(12),
-                    TypeArgumentsJson = reader.IsDBNull(13) ? null : reader.GetString(13),
-                    ReceiverTypeConstraintsJson = reader.IsDBNull(14) ? null : reader.GetString(14)
-                };
+                var rec = EdgeRecordReader.Read(reader, 1);
                 if (!byTarget.TryGetValue(rec.TargetSymbolId, out var lst))
                 {
                     lst = [];
@@ -582,14 +576,7 @@ internal sealed class DeadCandidateStore
             // outer table so that with no sqlite_stat1 rows the planner cannot start from
             // snapshot_documents and probe the IN list once per document row.
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"""
-                SELECT d.symbol_id, d.document_version_id, d.full_start, d.full_end, COALESCE(d.is_generated,0), d.is_partial
-                FROM declarations d
-                CROSS JOIN snapshot_documents sd
-                WHERE sd.snapshot_id = @snapshotId
-                  AND sd.document_version_id = d.document_version_id
-                  AND d.symbol_id IN ({string.Join(",", paramNames)});
-                """;
+            cmd.CommandText = DeclarationSql(chunk.Count);
             cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             for (var idx = 0; idx < chunk.Count; idx++)
                 cmd.Parameters.AddWithValue(paramNames[idx], chunk[idx]);
@@ -696,17 +683,21 @@ internal sealed class DeadCandidateStore
         // One metadata parse per candidate row (R5.1). A row that does not parse still fails
         // loudly and names the offending symbol (SymbolMetadata.Parse).
         var metadata = SymbolMetadata.Parse(row.MetadataJson, row.SymbolId);
+        var accessorKind = GetString(metadata, SymbolMetadataKeys.AccessorKind);
+        var associatedSymbol = GetString(metadata, SymbolMetadataKeys.AssociatedSymbol);
         return new CandidateFacts(
             row,
             metadata,
             GetString(metadata, SymbolMetadataKeys.Accessibility),
-            ParseAssemblyName(row.AssemblyIdentity),
+            MetadataReferenceIdentity.SimpleName(row.AssemblyIdentity),
             IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
             IsTrue(metadata, SymbolMetadataKeys.IsStaticConstructor),
             IsTrue(metadata, SymbolMetadataKeys.IsImplicitlyDeclared),
             IsTrue(metadata, SymbolMetadataKeys.ImplementsExternalInterface),
-            GetString(metadata, SymbolMetadataKeys.AccessorKind),
-            GetString(metadata, SymbolMetadataKeys.AssociatedSymbol),
+            accessorKind,
+            accessorKind != null && associatedSymbol != null
+                ? SymbolId.Compose(associatedSymbol, row.AssemblyIdentity)
+                : null,
             IsTrue(metadata, SymbolMetadataKeys.ContainsEntryPoint),
             IsTrue(metadata, SymbolMetadataKeys.IsEntryPoint));
     }
@@ -783,10 +774,9 @@ internal sealed class DeadCandidateStore
             effective.AddRange(own);
 
         // B24: an accessor inherits its property's or event's edges by role.
-        if (cand.AccessorKind != null && cand.AssociatedSymbol != null)
+        if (cand.AccessorKind != null && cand.AssociatedSymbolId != null)
         {
-            var associatedId = $"{cand.AssociatedSymbol}|{cand.Row.AssemblyIdentity}";
-            if (incomingByTarget.TryGetValue(associatedId, out var associated))
+            if (incomingByTarget.TryGetValue(cand.AssociatedSymbolId, out var associated))
             {
                 foreach (var edge in associated)
                     if (InheritsForAccessor(cand.AccessorKind, edge.Kind))
@@ -802,14 +792,14 @@ internal sealed class DeadCandidateStore
             {
                 if (!incomingByTarget.TryGetValue(descendant, out var descendantEdges)) continue;
                 foreach (var edge in descendantEdges)
-                    if (edge.SourceSymbolId != descendant && !subtree.Symbols.Contains(edge.SourceSymbolId))
+                    if (!subtree.Symbols.Contains(edge.SourceSymbolId))
                         effective.Add(edge);
             }
 
             if (typeUseByTarget.TryGetValue(cand.SymbolId, out var typeUse))
             {
                 foreach (var edge in typeUse)
-                    if (edge.SourceSymbolId != cand.SymbolId && !subtree.Symbols.Contains(edge.SourceSymbolId))
+                    if (!subtree.Symbols.Contains(edge.SourceSymbolId))
                         effective.Add(edge);
             }
         }
@@ -833,13 +823,6 @@ internal sealed class DeadCandidateStore
         return accessibility is "Public" or "Protected" or "ProtectedOrInternal";
     }
 
-    private static string ParseAssemblyName(string assemblyIdentity)
-    {
-        var comma = assemblyIdentity.IndexOf(',');
-        if (comma > 0) return assemblyIdentity[..comma].Trim();
-        return assemblyIdentity.Trim();
-    }
-
     /// <summary>
     ///     True when this candidate is the compilation's own process entry point: an entry-point
     ///     method (an explicit <c>static void Main</c> or the compiler-synthesized
@@ -857,11 +840,11 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
-    private static bool IsEfPrivateMember(CandidateFacts cand, string? accessibility, HashSet<string> mapsToTargets)
+    private static bool IsEfPrivateMember(CandidateFacts cand, HashSet<string> mapsToTargets)
     {
         if (cand.Kind is not (nameof(IndexedSymbolKind.Method) or nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)))
             return false;
-        if (accessibility is not ("Private" or "PrivateProtected"))
+        if (cand.Accessibility is not ("Private" or "PrivateProtected"))
             return false;
         var enclosing = SymbolId.DeriveContainingTypeSymbolId(cand.SymbolId);
         if (enclosing == null) return false;
@@ -906,13 +889,12 @@ internal sealed class DeadCandidateStore
         out string reason,
         out string symbolId)
     {
-        if (cand.AccessorKind != null && cand.AssociatedSymbol != null)
+        if (cand.AssociatedSymbolId != null)
         {
-            var associatedId = $"{cand.AssociatedSymbol}|{cand.Row.AssemblyIdentity}";
-            if (factsById.TryGetValue(associatedId, out var associated) &&
+            if (factsById.TryGetValue(cand.AssociatedSymbolId, out var associated) &&
                 TryConvention(associated, mapsToTargets, out reason))
             {
-                symbolId = associatedId;
+                symbolId = cand.AssociatedSymbolId;
                 return true;
             }
         }
@@ -936,9 +918,29 @@ internal sealed class DeadCandidateStore
         return false;
     }
 
+    /// <summary>
+    ///     The candidate's own convention verdict first, then the inherited one (B34).
+    /// </summary>
+    private static bool TryConventionVerdict(
+        CandidateFacts cand,
+        Dictionary<string, CandidateFacts> factsById,
+        Dictionary<string, TypeSubtree> subtreeByType,
+        HashSet<string> mapsToTargets,
+        out string reason,
+        out string symbolId)
+    {
+        if (TryConvention(cand, mapsToTargets, out reason))
+        {
+            symbolId = cand.SymbolId;
+            return true;
+        }
+
+        return TryInheritedConvention(cand, factsById, subtreeByType, mapsToTargets, out reason, out symbolId);
+    }
+
     private static bool TryConvention(CandidateFacts cand, HashSet<string> mapsToTargets, out string reason)
     {
-        if (IsEfPrivateMember(cand, cand.Accessibility, mapsToTargets))
+        if (IsEfPrivateMember(cand, mapsToTargets))
         {
             reason = DeadCandidateReason.EfConvention;
             return true;
@@ -1090,6 +1092,13 @@ internal sealed class DeadCandidateStore
         return new DeadCandidateUncertainty([symbolId], "serialization_convention", "Serialization opt-in: the member is not public, has no LIVE incoming edge, and carries a serializer opt-in attribute (JsonInclude, Newtonsoft JsonProperty or DataMember), so a serializer may read or write it by reflection. Verify no serialization contract depends on it before removing.");
     }
 
+    private static DeadCandidateUncertainty MakeConventionUncertainty(string reason, string symbolId)
+    {
+        return reason == DeadCandidateReason.EfConvention
+            ? MakeEfConventionUncertainty(symbolId)
+            : MakeSerializationConventionUncertainty(symbolId);
+    }
+
     private sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);
 
     /// <summary>
@@ -1106,7 +1115,7 @@ internal sealed class DeadCandidateStore
         bool IsImplicitlyDeclared,
         bool ImplementsExternalInterface,
         string? AccessorKind,
-        string? AssociatedSymbol,
+        string? AssociatedSymbolId,
         bool ContainsEntryPoint,
         bool IsEntryPointMethod)
     {

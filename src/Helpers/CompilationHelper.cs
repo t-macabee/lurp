@@ -11,10 +11,13 @@ internal static class CompilationHelper
     public static async IAsyncEnumerable<(Project Project, Compilation Compilation)> GetAllAsync(
         Solution solution,
         Action<string>? logWarning = null,
+        Func<Project, bool>? include = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (var project in solution.Projects)
         {
+            if (include != null && !include(project))
+                continue;
             cancellationToken.ThrowIfCancellationRequested();
             var compilation = await project.GetCompilationAsync(cancellationToken)
                 .ConfigureAwait(false);

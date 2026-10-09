@@ -673,10 +673,7 @@ internal static class Program
 
     /// <summary>The <c>docCommentId</c> half of a persisted <c>docCommentId|assembly</c> symbol id.</summary>
     private static string DocIdPart(string symbolId)
-    {
-        var pipe = symbolId.IndexOf('|');
-        return pipe > 0 ? symbolId[..pipe] : symbolId;
-    }
+        => SymbolId.DocCommentIdOf(symbolId);
 
     /// <summary>
     ///     The doc-comment id the extractor persists for a symbol, taken from the

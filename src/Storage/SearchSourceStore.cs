@@ -15,6 +15,50 @@ internal sealed class SearchSourceStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
+    /// <summary>
+    ///     The <c>matches</c> CTE body of <see cref="SearchSource" />, with or without the
+    ///     generated-document filter. One owner: the plan tests pin this text.
+    /// </summary>
+    internal static string FtsMatchSql(bool includeGenerated)
+    {
+        var filter = includeGenerated
+            ? ""
+            : GeneratedDocumentFilter.ExcludeGeneratedDocuments("source_fts.document_version_id");
+        return $"""
+                SELECT source_fts.rowid,
+                       source_fts.rank,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY source_fts.document_path
+                           ORDER BY source_fts.rank
+                       ) AS path_rank
+                FROM source_fts
+                WHERE source_fts MATCH @query
+                  AND source_fts.snapshot_id = @snapshotId{filter}
+            """;
+    }
+
+    /// <summary>
+    ///     The LIKE fallback query of <see cref="SearchSource" />. One owner: the plan tests
+    ///     pin this text.
+    /// </summary>
+    internal static string FallbackSql(bool includeGenerated)
+    {
+        var filter = includeGenerated
+            ? ""
+            : GeneratedDocumentFilter.ExcludeGeneratedDocuments("dv.document_version_id");
+        return $"""
+            SELECT d.relative_path, CAST(dv.content AS TEXT)
+            FROM document_versions dv
+            JOIN documents d ON d.document_id = dv.document_id
+            JOIN snapshot_documents sd ON sd.document_version_id = dv.document_version_id
+            WHERE sd.snapshot_id = @snapshotId
+              AND dv.content IS NOT NULL
+              AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'{filter}
+            ORDER BY d.relative_path
+            LIMIT @remaining
+            """;
+    }
+
     /// <inheritdoc cref="ISearchStore.SearchSource" />
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
@@ -26,29 +70,7 @@ internal sealed class SearchSourceStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = """
-            WITH matches AS (
-                SELECT source_fts.rowid,
-                       source_fts.rank,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY source_fts.document_path
-                           ORDER BY source_fts.rank
-                       ) AS path_rank
-                FROM source_fts
-                WHERE source_fts MATCH @query
-                  AND source_fts.snapshot_id = @snapshotId
-            """;
-
-        if (!includeGenerated)
-            command.CommandText += @"
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM declarations dec
-                      WHERE dec.document_version_id = source_fts.document_version_id
-                        AND dec.is_generated = 1
-                  )";
-
-        command.CommandText += @"
+        command.CommandText = "WITH matches AS (\n" + FtsMatchSql(includeGenerated) + @"
             )
             SELECT source_fts.document_path,
                    snippet(source_fts, 1, '<mark>', '</mark>', '…', @snippetTokens) AS snippet
@@ -79,25 +101,7 @@ internal sealed class SearchSourceStore
             var remaining = limit - results.Count;
             var seen = new HashSet<string>(results.Select(static r => r.DocumentPath));
             using var fbCmd = _connection.CreateCommand();
-            fbCmd.CommandText = """
-                SELECT d.relative_path, CAST(dv.content AS TEXT)
-                FROM document_versions dv
-                JOIN documents d ON d.document_id = dv.document_id
-                JOIN snapshot_documents sd ON sd.document_version_id = dv.document_version_id
-                WHERE sd.snapshot_id = @snapshotId
-                  AND dv.content IS NOT NULL
-                  AND CAST(dv.content AS TEXT) LIKE @likePattern ESCAPE '\'
-                """;
-            if (!includeGenerated)
-                fbCmd.CommandText += @"
-                  AND NOT EXISTS (
-                      SELECT 1 FROM declarations dec
-                      WHERE dec.document_version_id = dv.document_version_id
-                        AND dec.is_generated = 1
-                  )";
-            fbCmd.CommandText += @"
-                ORDER BY d.relative_path
-                LIMIT @remaining";
+            fbCmd.CommandText = FallbackSql(includeGenerated);
 
             var escaped = query.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
             fbCmd.Parameters.AddWithValue("@likePattern", $"%{escaped}%");

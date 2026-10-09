@@ -95,7 +95,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         if (parentDocCommentId == null)
             return null;
 
-        var parentSymbolId = $"{parentDocCommentId}|{assemblyIdentity}";
+        var parentSymbolId = SymbolId.Compose(parentDocCommentId, assemblyIdentity);
 
         return GetSymbolSource(parentSymbolId, snapshotId, ViewKind.Declaration);
     }

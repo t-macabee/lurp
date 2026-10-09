@@ -16,6 +16,29 @@ internal sealed class TextSearchStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
+    /// <summary>
+    ///     The candidate query of <see cref="SearchTextPage" />. instr returns 0 when the
+    ///     literal is not found, >0 when found; for ignoreCase both sides are lowercased.
+    ///     One owner: the plan tests pin this text.
+    /// </summary>
+    internal static string CandidateSql(bool includeGenerated, bool ignoreCase)
+    {
+        var filter = includeGenerated
+            ? ""
+            : GeneratedDocumentFilter.ExcludeGeneratedDocuments("dv.document_version_id");
+        var contains = ignoreCase
+            ? " AND instr(lower(CAST(dv.content AS TEXT)), lower(@query)) > 0"
+            : " AND instr(CAST(dv.content AS TEXT), @query) > 0";
+        return $"""
+            SELECT d.relative_path, dv.content
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents d ON d.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId AND dv.content IS NOT NULL{filter}{contains}
+            ORDER BY d.relative_path;
+            """;
+    }
+
     public TextSearchPage SearchTextPage(string query, string snapshotId, int limit, bool includeGenerated, bool ignoreCase, TextSearchCursor? cursor)
     {
         if (string.IsNullOrEmpty(query) || limit <= 0)
@@ -27,28 +50,10 @@ internal sealed class TextSearchStore
 
         var comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-        // Fetch candidate documents that contain the literal. Use SQL instr() to reduce the set
-        // before decoding in C#. For case-sensitive, instr is exact; for insensitive, lower() both sides.
+        // Fetch candidate documents that contain the literal. Push the literal containment
+        // into SQL to avoid fetching every document's content.
         using var cmd = _connection.CreateCommand();
-        var where = "WHERE sd.snapshot_id = @snapshotId AND dv.content IS NOT NULL";
-        if (!includeGenerated)
-            where += " AND NOT EXISTS (SELECT 1 FROM declarations dec WHERE dec.document_version_id = dv.document_version_id AND dec.is_generated = 1)";
-
-        // Push the literal containment into SQL to avoid fetching every document's content.
-        // instr returns 0 when not found, >0 when found. For ignoreCase we compare lowercased content.
-        if (ignoreCase)
-            where += " AND instr(lower(CAST(dv.content AS TEXT)), lower(@query)) > 0";
-        else
-            where += " AND instr(CAST(dv.content AS TEXT), @query) > 0";
-
-        cmd.CommandText = $"""
-            SELECT d.relative_path, dv.content
-            FROM snapshot_documents sd
-            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
-            JOIN documents d ON d.document_id = dv.document_id
-            {where}
-            ORDER BY d.relative_path;
-            """;
+        cmd.CommandText = CandidateSql(includeGenerated, ignoreCase);
 
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         cmd.Parameters.AddWithValue("@query", query);

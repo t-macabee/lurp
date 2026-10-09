@@ -103,6 +103,16 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
+    ///     True when <paramref name="symbol" /> is declared in an assembly other than the
+    ///     compilation's own. A symbol with no containing assembly is not outside it.
+    /// </summary>
+    internal static bool IsOutsideCompilation(ISymbol symbol, Compilation compilation)
+    {
+        return symbol.ContainingAssembly != null
+               && !SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, compilation.Assembly);
+    }
+
+    /// <summary>
     ///     Every method-like declaration (methods, constructors, accessors, operators,
     ///     conversion operators, destructors) owned by the given types, paired with its
     ///     syntax node. When <paramref name="inScope" /> is provided, declarations whose

@@ -45,10 +45,7 @@ public sealed class PlannerStatisticsTests : IntegrationTestBase
         });
         var snapshotId = await RunFullIndexAsync(DbPath);
 
-        Assert.True(CountRows("SELECT COUNT(*) FROM sqlite_stat1;") > 0);
-        Assert.Equal(1L, CountRows(
-            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;",
-            snapshotId, SnapshotTimingSteps.PlannerStatistics));
+        AssertPlannerStatisticsWritten(snapshotId);
     }
 
     [SkippableFact]
@@ -63,33 +60,29 @@ public sealed class PlannerStatisticsTests : IntegrationTestBase
         await RunFullIndexAsync(DbPath);
 
         // Simulate a database indexed before the product wrote statistics.
-        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
-        {
-            connection.Open();
-            using var dropCmd = connection.CreateCommand();
-            dropCmd.CommandText = "DROP TABLE sqlite_stat1;";
-            dropCmd.ExecuteNonQuery();
-        }
+        DropPlannerStatistics();
 
         WriteFile(ProjectName, "Probe.cs", ProbeSourceWithSecondMethod);
         var snapshotId = await RunIncrementalIndexAsync();
 
-        Assert.True(CountRows("SELECT COUNT(*) FROM sqlite_stat1;") > 0);
-        Assert.Equal(1L, CountRows(
-            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;",
-            snapshotId, SnapshotTimingSteps.PlannerStatistics));
+        AssertPlannerStatisticsWritten(snapshotId);
     }
 
-    private long CountRows(string sql, string? snapshotId = null, string? stepName = null)
+    private void AssertPlannerStatisticsWritten(string snapshotId)
+    {
+        Assert.True(CountPlannerStatisticsRows() > 0);
+        Assert.Equal(1L, CountRows(snapshotId, SnapshotTimingSteps.PlannerStatistics));
+    }
+
+    private long CountRows(string snapshotId, string stepName)
     {
         using var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        if (snapshotId != null)
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        if (stepName != null)
-            command.Parameters.AddWithValue("@stepName", stepName);
+        command.CommandText =
+            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@stepName", stepName);
         return (long)command.ExecuteScalar()!;
     }
 }

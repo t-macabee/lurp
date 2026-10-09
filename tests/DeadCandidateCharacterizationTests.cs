@@ -19,6 +19,14 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
 {
+    private static readonly string[] XunitPackageReference = ["xunit@2.9.3"];
+
+    // Compiler-synthesized record members: none may appear as a dead candidate.
+    private static readonly string[] RecordSynthesizedMembers =
+    [
+        "PrintMembers", "Equals", "GetHashCode", "ToString", "{Clone}$", "op_Equality", "op_Inequality", "get_EqualityContract"
+    ];
+
     private static EdgeRecord MakeEdge(string source, string target, string kind, string provenance)
     {
         return new EdgeRecord
@@ -429,7 +437,7 @@ internal static class Helper
     internal static void Unused() { }
 }
 """
-        }, packageReferences: new[] { "xunit@2.9.3" });
+        }, packageReferences: XunitPackageReference);
         
         CreateProject("Bar.Tests", new Dictionary<string, string>
         {
@@ -838,7 +846,7 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             Assert.Equal("external_interface_implementation", bagGetEnumerator.Reason);
 
             // No entry for any of the Rec members that are compiler-synthesized
-            var recMembers = new[] { "PrintMembers", "Equals", "GetHashCode", "ToString", "{Clone}$", "op_Equality", "op_Inequality", "get_EqualityContract" }
+            var recMembers = RecordSynthesizedMembers
                 .SelectMany(member => page.Candidates.Where(c => c.SymbolId.Contains($"Rec.{member}")));
             Assert.Empty(recMembers);
         }
