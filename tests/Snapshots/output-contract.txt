@@ -1776,6 +1776,9 @@ mcp:dead_candidates $.candidates array
 mcp:dead_candidates $.candidates[] object
 mcp:dead_candidates $.candidates[].accessibility string
 mcp:dead_candidates $.candidates[].declaration_count number
+mcp:dead_candidates $.candidates[].declaration_span object
+mcp:dead_candidates $.candidates[].declaration_span.end_line number
+mcp:dead_candidates $.candidates[].declaration_span.start_line number
 mcp:dead_candidates $.candidates[].document_path string
 mcp:dead_candidates $.candidates[].fqn string
 mcp:dead_candidates $.candidates[].incoming_edge_summary object

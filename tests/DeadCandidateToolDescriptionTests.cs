@@ -52,4 +52,68 @@ public sealed class DeadCandidateToolDescriptionTests
         // F14: the description states the reference rule, not a project-name rule.
         Assert.Contains("references a test framework", text);
     }
+
+    // Mirrors the check order in DeadCandidateStore.GetDeadCandidatesPage; change both together.
+    private static readonly string[] LadderReasonCodesInOrder =
+    {
+        DeadCandidateReason.BindingIncompleteness,
+        DeadCandidateReason.EntryPointConvention,
+        DeadCandidateReason.ExternalInterfaceImplementation,
+        DeadCandidateReason.PublicSurface,
+        DeadCandidateReason.GeneratedExcluded,
+        DeadCandidateReason.TestHarness,
+        DeadCandidateReason.PossibleDispatch,
+        DeadCandidateReason.FrameworkConvention,
+        DeadCandidateReason.NameCandidate,
+        DeadCandidateReason.RuntimeUnknown,
+        DeadCandidateReason.EfConvention,
+        DeadCandidateReason.SerializationConvention,
+        DeadCandidateReason.NoIncomingLiveEdges
+    };
+
+    [Fact]
+    public void Description_SuppressionLadder_NamesReasonCodesInCodeOrder()
+    {
+        var text = ReadDescription();
+
+        const string startAnchor = "Suppression ladder";
+        const string endAnchor = "Default excludes";
+        var start = text.IndexOf(startAnchor, StringComparison.Ordinal);
+        var end = text.IndexOf(endAnchor, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"description is missing '{startAnchor}'");
+        Assert.True(end > start, $"description is missing '{endAnchor}' after '{startAnchor}'");
+
+        var slice = text.Substring(start, end - start);
+
+        var previous = -1;
+        foreach (var code in LadderReasonCodesInOrder)
+        {
+            var position = slice.IndexOf(code, StringComparison.Ordinal);
+            Assert.True(position >= 0, $"ladder is missing the reason code '{code}'");
+            Assert.True(position > previous, $"reason code '{code}' is out of code order in the ladder");
+            previous = position;
+        }
+
+        // The order list and the reason constants must be the same set, so a new reason
+        // cannot be added without the ladder and this test.
+        var constCodes = typeof(DeadCandidateReason)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.True(
+            constCodes.SetEquals(LadderReasonCodesInOrder),
+            "the ladder reason list must be exactly the DeadCandidateReason constants");
+    }
+
+    [Fact]
+    public void Description_SerializationRule_NamesTheOptInAttributes()
+    {
+        var text = ReadDescription();
+
+        Assert.Contains("JsonInclude", text);
+        Assert.Contains("JsonProperty", text);
+        Assert.Contains("DataMember", text);
+        Assert.DoesNotContain("attribute-free", text);
+    }
 }

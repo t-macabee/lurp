@@ -226,10 +226,11 @@ internal sealed class UncertaintyDetector
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(static name => name, StringComparer.Ordinal)
                 .ToList();
+            var scope = string.Join(", ", projects);
             capsule.Uncertainties.Add(new UncertaintyEntry(
                 [_symbolId.Value],
                 "binding_incompleteness",
-                DescribeBindingIncompleteness(group.Key, count, projects)));
+                BindingIncompletenessReason.Describe(group.Key, count, scope)));
         }
     }
 
@@ -256,28 +257,6 @@ internal sealed class UncertaintyDetector
         foreach (var item in items)
             if (item.DocumentPath != null)
                 paths.Add(item.DocumentPath);
-    }
-
-    private static string DescribeBindingIncompleteness(string reason, int count, IReadOnlyList<string> projects)
-    {
-        var scope = string.Join(", ", projects);
-        return reason switch
-        {
-            BindingIncompletenessReason.CompilerError =>
-                $"{count} binding(s) in {scope} could not be completed because the snapshot compilation reported compiler errors in those projects. Relations that depend on that code may be missing from the graph even though the references exist in source.",
-            BindingIncompletenessReason.UnresolvedMetadata =>
-                $"{count} binding(s) in {scope} could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
-            BindingIncompletenessReason.FilteredExternal =>
-                $"{count} binding(s) in {scope} resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
-            BindingIncompletenessReason.AmbiguousOverload =>
-                $"{count} binding(s) in {scope} were ambiguous, so no unique overload target could be selected. Dispatch targets for those call sites are uncertain.",
-            BindingIncompletenessReason.UnsupportedSyntax =>
-                $"{count} binding(s) in {scope} could not be completed because the extractor does not support the relevant syntax. Relations at those sites may be missing.",
-            BindingIncompletenessReason.ExtractorFailure =>
-                $"{count} extractor failure(s) were recorded while producing the snapshot for {scope}. Some relations may be missing.",
-            _ =>
-                $"{count} binding-incompleteness record(s) (reason '{reason}') affect {scope}. Relations in that code may be incomplete."
-        };
     }
 
     private void CollectGeneratedExclusionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)

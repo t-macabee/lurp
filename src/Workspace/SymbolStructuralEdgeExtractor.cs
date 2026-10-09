@@ -64,18 +64,30 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             if (member is INamedTypeSymbol)
                 continue;
 
-            CollectMemberReferenceEdges(member, sourceId, edges);
+            CollectMemberReferenceEdges(member, edges);
         }
     }
 
-    private void CollectMemberReferenceEdges(ISymbol member, string sourceSymbolId, List<EdgeRecord> edges)
+    private void CollectMemberReferenceEdges(ISymbol member, List<EdgeRecord> edges)
     {
-        // Compiler-synthesized backing fields (auto-properties, record positional
-        // properties) share their declaring syntax location with the property that
-        // owns them : counting both produces exact-duplicate edges at the same
-        // source location for one logical fact.
-        if (member is IFieldSymbol { IsImplicitlyDeclared: true })
+        // A member that does not name its type in source adds no edge. Compiler-synthesized
+        // backing fields (auto-properties, record positional properties) share their declaring
+        // syntax location with the property that owns them : counting both produces exact-duplicate
+        // edges at the same source location for one logical fact, and an accessor or an enum
+        // constant names no type in source either : the property or event, and the enum type,
+        // carry their types. Exception, checked first : a delegate's Invoke is implicit, but the
+        // delegate declaration names the return type, so the delegate type owns its own signature.
+        var sourceSymbol = member;
+        if (member is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke })
+        {
+            sourceSymbol = member.ContainingType;
+        }
+        else if (member.IsImplicitlyDeclared
+            || member is IMethodSymbol { AssociatedSymbol: not null }
+            || member is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
+        {
             return;
+        }
 
         var referencedType = member switch
         {
@@ -86,20 +98,21 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             _ => null
         };
 
-        if (referencedType is INamedTypeSymbol namedType)
-        {
-            context.RecordFilteredExternal(namedType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
-            var targetId = MakeSymbolId(namedType);
-            if (targetId != null && targetId != sourceSymbolId) edges.Add(MakeEdge(sourceSymbolId, targetId, nameof(EdgeKind.References), member));
-        }
+        if (referencedType is null)
+            return;
 
-        if (referencedType is not null && SymbolIdFactory.Make(member, context.AssemblyIdentity) is { } memberId)
-            foreach (var nestedType in ExtractionUtils.NestedTypeUses(referencedType))
-            {
-                context.RecordFilteredExternal(nestedType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member));
-                var nestedId = MakeSymbolId(nestedType);
-                if (nestedId != null && nestedId != memberId) edges.Add(MakeEdge(memberId, nestedId, nameof(EdgeKind.References), member));
-            }
+        var memberId = SymbolIdFactory.Make(sourceSymbol, context.AssemblyIdentity);
+        if (memberId is null)
+            return;
+
+        // The member is the source of every member-signature References edge, as in
+        // ParameterDependencyEdgeExtractor and OperationShapeExtractor.
+        foreach (var used in ExtractionUtils.TypeUses(referencedType))
+        {
+            context.RecordFilteredExternal(used, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol));
+            var usedId = MakeSymbolId(used);
+            if (usedId != null) edges.Add(MakeEdge(memberId, usedId, nameof(EdgeKind.References), sourceSymbol));
+        }
     }
 
     private string? MakeSymbolId(ITypeSymbol typeSymbol)

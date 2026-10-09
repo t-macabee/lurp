@@ -20,7 +20,7 @@
     "Method groups, delegate conversions and event += handlers are 'MethodGroupRef' (B1 decision: new kind, provenance compiler_proved).",
     "Event access is 'Writes' to the event for += and -=, and 'Reads' for any other use (for example a raise); the handler of += is also a 'MethodGroupRef'.",
     "Field and property initializers are owned by the field/property symbol; expression-bodied property getters are owned by the accessor method symbol (accessors are declared symbols).",
-    "Static member-access invocations additionally emit 'References' to the receiver type; parameter-type and member-type references come from the existing parameter/structural extractors.",
+    "Static member-access invocations additionally emit 'References' to the receiver type. Every type named in a member signature (the return type of a method, the type of a property, field or event, with its type arguments and array elements) is a 'References' from that member; the declaring type is never the source, except for a delegate type, which owns its own signature. Implicitly declared members, accessors and enum constants name no type of their own and add no edge. Parameter types are 'References' from the method, from the parameter extractor.",
     "Parameter default values, enum member values, field-like event initializers and attribute arguments are walked like bodies. Owner: the method (an indexer parameter: the indexer property; a delegate parameter: the delegate type), the enum field, the event, and the attributed symbol (a parameter or return-value attribute: its method).",
     "Type uses are 'References' to every source type named in a body (is and type patterns, explicit casts, default(T), sizeof, array creation, local declarations, catch types, method and constructor type arguments; typeof is 'ReflectionTypeRef') and to every type inside a member or parameter type (type arguments, array elements)."
   ],
@@ -929,48 +929,6 @@
       "id": "gt-129"
     },
     {
-      "source": "T:CallShapes.App.ShapeCallers",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeBag",
-      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeBag.",
-      "id": "gt-130"
-    },
-    {
-      "source": "T:CallShapes.App.ShapeCallers",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeFactory",
-      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeFactory.",
-      "id": "gt-131"
-    },
-    {
-      "source": "T:CallShapes.App.ShapeCallers",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeNumber",
-      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeNumber.",
-      "id": "gt-132"
-    },
-    {
-      "source": "T:CallShapes.App.ShapeCallers",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeRecord",
-      "reason": "Type ShapeCallers member surface: references T:CallShapes.Core.ShapeRecord.",
-      "id": "gt-133"
-    },
-    {
-      "source": "T:CallShapes.Core.ShapeAwaitable",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeAwaiter",
-      "reason": "Type ShapeAwaitable member surface: references T:CallShapes.Core.ShapeAwaiter.",
-      "id": "gt-134"
-    },
-    {
-      "source": "T:CallShapes.Core.ShapeSequence",
-      "kind": "References",
-      "target": "T:CallShapes.Core.ShapeEnumerator",
-      "reason": "Type ShapeSequence member surface: references T:CallShapes.Core.ShapeEnumerator.",
-      "id": "gt-135"
-    },
-    {
       "source": "M:CallShapes.App.ShapeImplicitCallers.FromExtensionAwait",
       "kind": "Calls",
       "target": "M:CallShapes.Core.ShapeImplicitExtensions.GetAwaiter(CallShapes.Core.ShapeExtAwaitable)",
@@ -1431,6 +1389,41 @@
       "target": "T:CallShapes.Core.ShapeOnlyListArg",
       "reason": "Generic argument in a return type: references T:CallShapes.Core.ShapeOnlyListArg.",
       "id": "gt-201"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromExplicitConversion",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeNumber. B36: the member is the source of every member-signature References edge.",
+      "id": "gt-202"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromCollectionInitializer",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeBag",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeBag. B36: the member is the source of every member-signature References edge.",
+      "id": "gt-203"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromStaticAbstract",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeFactory",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeFactory. B36: the member is the source of every member-signature References edge.",
+      "id": "gt-204"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeAwaitable.GetAwaiter",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeAwaiter",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeAwaiter. B36: the member is the source of every member-signature References edge.",
+      "id": "gt-205"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeSequence.GetEnumerator",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeEnumerator",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeEnumerator. B36: the member is the source of every member-signature References edge.",
+      "id": "gt-206"
     }
   ],
   "excluded": [
@@ -1490,7 +1483,7 @@
     },
     {
       "id": "note-measured-baseline",
-      "reason": "Facts whose source is a body the current extractor already walks (classic extension, interface calls, local function, query lambda, async iterator, ref struct, unsafe, accessor bodies, static constructor, operator reads, type-level References) are copied from the measured snapshot; the C# 14 block-extension call is the one normalised exception. They are included so the Phase 7 exact-set test can diff the whole corpus rather than a subset."
+      "reason": "Facts whose source is a body the current extractor already walks (classic extension, interface calls, local function, query lambda, async iterator, ref struct, unsafe, accessor bodies, static constructor, operator reads, member-signature References) are copied from the measured snapshot; the C# 14 block-extension call is the one normalised exception. They are included so the Phase 7 exact-set test can diff the whole corpus rather than a subset."
     },
     {
       "id": "note-d3-overrides",

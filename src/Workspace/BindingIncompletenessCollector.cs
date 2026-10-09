@@ -2,44 +2,6 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-internal static class BindingIncompletenessReason
-{
-    internal const string AmbiguousOverload = "ambiguous_overload";
-    internal const string CompilerError = "compiler_error";
-    internal const string UnresolvedMetadata = "unresolved_metadata";
-    internal const string UnsupportedSyntax = "unsupported_syntax";
-    internal const string FilteredExternal = "filtered_external";
-    internal const string ExtractorFailure = "extractor_failure";
-
-    /// <summary>
-    ///     A DI convention scan site whose match set is open: any type added to the
-    ///     scanned assembly may newly match, and no persisted edge witnesses the new
-    ///     match, so the relation set for the site is never provably complete.
-    /// </summary>
-    internal const string ConventionScan = "convention_scan";
-
-    /// <summary>The whole project failed to load or extract; no binding over it was observable.</summary>
-    internal const string ProjectUnreadable = "project_unreadable";
-
-    /// <summary>
-    ///     Reasons under which a missing relation proves nothing, because the relation was
-    ///     never observable. Excludes <see cref="FilteredExternal" />: there the target was
-    ///     resolved and is knowably outside the snapshot, which is an explained absence
-    ///     rather than an unknown one.
-    /// </summary>
-    internal static readonly IReadOnlySet<string> UnobservableReasons =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            AmbiguousOverload,
-            CompilerError,
-            UnresolvedMetadata,
-            UnsupportedSyntax,
-            ExtractorFailure,
-            ProjectUnreadable,
-            ConventionScan
-        };
-}
-
 public sealed class BindingIncompletenessCollector(string projectName, string gitRoot)
 {
     private static readonly HashSet<string> MissingMetadataDiagnosticIds =

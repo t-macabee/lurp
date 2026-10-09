@@ -467,7 +467,7 @@ internal sealed class DeadCandidateStore
         foreach (var r in records)
         {
             if (r.DocumentPath == null) continue;
-            if (IsUnobservableReason(r.Reason))
+            if (BindingIncompletenessReason.UnobservableReasons.Contains(r.Reason))
                 set.Add(r.DocumentPath);
         }
         return set;
@@ -477,14 +477,9 @@ internal sealed class DeadCandidateStore
     {
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (var r in records)
-            if (r.DocumentPath == null && IsUnobservableReason(r.Reason))
+            if (r.DocumentPath == null && BindingIncompletenessReason.UnobservableReasons.Contains(r.Reason))
                 set.Add(projectFacts.ToAssemblyName(r.ProjectName));
         return set;
-    }
-
-    private static bool IsUnobservableReason(string reason)
-    {
-        return reason is "ambiguous_overload" or "compiler_error" or "unresolved_metadata" or "unsupported_syntax" or "extractor_failure" or "project_unreadable" or "convention_scan";
     }
 
     private static bool OverlapsBindingIncompleteness(List<string> docPaths, string assemblyName, HashSet<string> byDoc, HashSet<string> byProject)
@@ -992,13 +987,13 @@ internal sealed class DeadCandidateStore
     private static DeadCandidateUncertainty MakeBindingIncompletenessUncertainty(string symbolId, List<BindingIncompletenessRecord> all, ProjectFacts projectFacts, List<string> docPaths, string assemblyName)
     {
         // Find relevant binding records that overlap this candidate's docs. Restricted
-        // to IsUnobservableReason so the description names the reason that actually
+        // to BindingIncompletenessReason.UnobservableReasons so the description names the reason that actually
         // triggered OverlapsBindingIncompleteness — otherwise a co-located but
         // non-triggering record (e.g. filtered_external, which never makes a
         // candidate unresolved) could win the reason pick and describe the wrong cause.
         // A binding record carries the Roslyn project name, the candidate carries the
         // assembly name, so the project-level comparison maps one to the other (B18).
-        var relevant = all.Where(r => IsUnobservableReason(r.Reason)
+        var relevant = all.Where(r => BindingIncompletenessReason.UnobservableReasons.Contains(r.Reason)
                                    && (r.DocumentPath != null && docPaths.Contains(r.DocumentPath, StringComparer.Ordinal)
                                    || r.DocumentPath == null && string.Equals(projectFacts.ToAssemblyName(r.ProjectName), assemblyName, StringComparison.Ordinal))).ToList();
         var byReason = relevant.GroupBy(r => r.Reason, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).FirstOrDefault();
@@ -1008,26 +1003,10 @@ internal sealed class DeadCandidateStore
             var count = byReason.Sum(r => r.Count);
             var projects = byReason.Select(r => r.ProjectName).Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
             var scope = string.Join(", ", projects);
-            var desc = DescribeBindingIncompleteness(reason, count, scope);
+            var desc = BindingIncompletenessReason.Describe(reason, count, scope);
             return new DeadCandidateUncertainty([symbolId], "binding_incompleteness", desc);
         }
         return new DeadCandidateUncertainty([symbolId], "binding_incompleteness", "Binding incompleteness overlaps this symbol's document; relations may be missing.");
-    }
-
-    private static string DescribeBindingIncompleteness(string reason, int count, string scope)
-    {
-        return reason switch
-        {
-            "compiler_error" => $"{count} binding(s) in {scope} could not be completed because the snapshot compilation reported compiler errors in those projects. Relations that depend on that code may be missing from the graph even though the references exist in source.",
-            "unresolved_metadata" => $"{count} binding(s) in {scope} could not be resolved against project metadata (for example missing package or project references). Relations that depend on those bindings may not be persisted even though the references exist in source.",
-            "filtered_external" => $"{count} binding(s) in {scope} resolved to symbols in assemblies outside the compilation. Edges to those external targets are intentionally filtered from the persisted graph; their absence is a declared boundary, not an extraction failure.",
-            "ambiguous_overload" => $"{count} binding(s) in {scope} were ambiguous, so no unique overload target could be selected. Dispatch targets for those call sites are uncertain.",
-            "unsupported_syntax" => $"{count} binding(s) in {scope} could not be completed because the extractor does not support the relevant syntax. Relations at those sites may be missing.",
-            "extractor_failure" => $"{count} extractor failure(s) were recorded while producing the snapshot for {scope}. Some relations may be missing.",
-            "project_unreadable" => $"{count} binding(s) in {scope} could not be completed because the project was unreadable.",
-            "convention_scan" => $"{count} binding(s) in {scope} are convention-scan sites with an open match set.",
-            _ => $"{count} binding-incompleteness record(s) (reason '{reason}') affect {scope}. Relations in that code may be incomplete."
-        };
     }
 
     private static DeadCandidateUncertainty MakePublicSurfaceUncertainty(string symbolId)

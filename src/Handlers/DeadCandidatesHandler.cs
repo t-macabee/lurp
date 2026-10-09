@@ -8,14 +8,6 @@ internal static class DeadCandidatesHandler
 {
     private const int DefaultLimit = 50;
 
-    private static readonly string[] IncomingEdgeKindsChecked = DeadCandidateLiveness.LiveEdgeKinds.ToArray();
-
-    private static readonly string[] TypeUseEdgeKindsChecked = DeadCandidateLiveness.TypeUseEdgeKinds.ToArray();
-
-    private static readonly string[] LiveProvenanceRank = DeadCandidateLiveness.StrongProvenance.ToArray();
-
-    private static readonly string[] UncertainProvenance = DeadCandidateLiveness.UncertainProvenance.ToArray();
-
     public static void Run(string[] args)
     {
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
@@ -77,56 +69,16 @@ internal static class DeadCandidatesHandler
                 include_tests = includeTests
             };
 
-            var candidates = page.Candidates.Select(e => new
-            {
-                symbol_id = e.SymbolId,
-                fqn = e.Fqn,
-                kind = e.Kind,
-                accessibility = e.Accessibility,
-                document_path = e.DocumentPath,
-                locations = e.Locations.Select(l => new
-                {
-                    document_path = l.DocumentPath,
-                    start_line = l.StartLine,
-                    start_column = l.StartColumn,
-                    end_line = l.EndLine,
-                    end_column = l.EndColumn,
-                    is_generated = l.IsGenerated
-                }).ToList(),
-                project_name = e.ProjectName,
-                declaration_count = e.DeclarationCount,
-                is_generated = e.IsGenerated,
-                status = e.Status,
-                reason = e.Reason,
-                uncertainties = e.Uncertainties.Select(u => new
-                {
-                    symbol_ids = u.SymbolIds,
-                    relationship_kind = u.RelationshipKind,
-                    description = u.Description,
-                    boundary_id = u.BoundaryId
-                }).ToList(),
-                incoming_edge_summary = new
-                {
-                    live_strong = e.IncomingEdgeSummary.LiveStrong,
-                    live_weak = e.IncomingEdgeSummary.LiveWeak,
-                    provenance_breakdown = e.IncomingEdgeSummary.ProvenanceBreakdown,
-                    kind_breakdown = e.IncomingEdgeSummary.KindBreakdown
-                },
-                declaration_span = e.Locations.Count > 0 ? new
-                {
-                    start_line = e.Locations[0].StartLine,
-                    end_line = e.Locations[0].EndLine
-                } : null
-            }).ToList();
+            var candidates = DeadCandidatePayload.Candidates(page);
 
             var meta = new
             {
                 snapshot_id = snapshotId,
                 filters,
-                incoming_edge_kinds_checked = IncomingEdgeKindsChecked,
-                type_use_edge_kinds_checked = TypeUseEdgeKindsChecked,
-                live_provenance_rank = LiveProvenanceRank,
-                uncertain_provenance = UncertainProvenance,
+                incoming_edge_kinds_checked = DeadCandidateLiveness.LiveEdgeKinds,
+                type_use_edge_kinds_checked = DeadCandidateLiveness.TypeUseEdgeKinds,
+                live_provenance_rank = DeadCandidateLiveness.StrongProvenance,
+                uncertain_provenance = DeadCandidateLiveness.UncertainProvenance,
                 candidate_count = page.CandidateCount,
                 dead_count = page.DeadCount,
                 uncertain_count = page.UncertainCount,
@@ -138,12 +90,12 @@ internal static class DeadCandidatesHandler
             switch (outputMode)
             {
                 case OutputMode.Summary:
-                    foreach (var c in candidates)
+                    foreach (var e in page.Candidates)
                     {
-                        var loc = c.document_path != null ? $"{c.document_path}:{c.locations.FirstOrDefault()?.start_line ?? 0}" : "<no-doc>";
-                        Console.WriteLine($"{c.kind,-12} {c.accessibility ?? "unknown",-18} {c.fqn ?? c.symbol_id}  {loc}  {c.reason}  {c.status}");
+                        var loc = e.DocumentPath != null ? $"{e.DocumentPath}:{e.Locations.FirstOrDefault()?.StartLine ?? 0}" : "<no-doc>";
+                        Console.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
                     }
-                    Console.WriteLine($"-- {candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                    Console.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
@@ -158,10 +110,10 @@ internal static class DeadCandidatesHandler
                         {
                             snapshot_id = snapshotId,
                             filters,
-                            incoming_edge_kinds_checked = IncomingEdgeKindsChecked,
-                            type_use_edge_kinds_checked = TypeUseEdgeKindsChecked,
-                            live_provenance_rank = LiveProvenanceRank,
-                            uncertain_provenance = UncertainProvenance,
+                            incoming_edge_kinds_checked = DeadCandidateLiveness.LiveEdgeKinds,
+                            type_use_edge_kinds_checked = DeadCandidateLiveness.TypeUseEdgeKinds,
+                            live_provenance_rank = DeadCandidateLiveness.StrongProvenance,
+                            uncertain_provenance = DeadCandidateLiveness.UncertainProvenance,
                             candidate_count = page.CandidateCount,
                             dead_count = page.DeadCount,
                             uncertain_count = page.UncertainCount,
