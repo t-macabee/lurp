@@ -38,11 +38,7 @@ public static class IndexRunner
                 sink.WriteLine("Workspace load skipped: stored snapshot is still current.");
 
                 WriteIncrementalSummary(store, sink, new IncrementalIndexer.IncrementalResult(builtSnapshot.SnapshotId, builtSnapshot.SnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty));
-
-                sink.Write("Pruning old snapshots... ");
-                store.DeleteIncompleteSnapshots();
-                store.PruneOldSnapshots();
-                sink.WriteLine("done.");
+                PruneAndRecord(store, sink, null);
 
                 totalSw.Stop();
                 sink.WriteLine($"  Total time (incremental): {totalSw.ElapsedMilliseconds} ms");
@@ -88,13 +84,7 @@ public static class IndexRunner
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, loadElapsed, cancellationToken);
 
                     WriteIncrementalSummary(store, sink, result);
-
-                    sink.Write("Pruning old snapshots... ");
-
-                    store.DeleteIncompleteSnapshots();
-                    store.PruneOldSnapshots();
-
-                    sink.WriteLine("done.");
+                    PruneAndRecord(store, sink, result.SnapshotWritten ? result.NewSnapshotId : null, new SnapshotTimingRow(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds));
 
                     totalSw.Stop();
 
@@ -109,29 +99,25 @@ public static class IndexRunner
             }
         }
 
+        string? newSnapshotId = null;
         if (strategy == FullStrategy)
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
                 new("solution_load", loadElapsed),
-                new("workspace_info", swWorkspaceInfo.ElapsedMilliseconds)
+                new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
             };
-            await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+            newSnapshotId = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
         }
 
-        sink.Write("Pruning old snapshots... ");
-
-        store.DeleteIncompleteSnapshots();
-        store.PruneOldSnapshots();
-
-        sink.WriteLine("done.");
+        PruneAndRecord(store, sink, newSnapshotId);
 
         totalSw.Stop();
 
         sink.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
+    private static async Task<string?> RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
         bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
@@ -152,7 +138,7 @@ public static class IndexRunner
                 else
                 {
                     sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
-                    return;
+                    return null;
                 }
                 break;
             case ExistingSnapshotDisposition.Retry:
@@ -350,6 +336,8 @@ public static class IndexRunner
             {
                 sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
             }
+
+            return snapshotIdStr;
         }
         catch (Exception ex)
         {
@@ -385,6 +373,31 @@ public static class IndexRunner
             }
 
             throw;
+        }
+    }
+
+    private static void PruneAndRecord(IIndexStore store, IOutputSink sink, string? snapshotId, SnapshotTimingRow? extraRow = null)
+    {
+        var sw = Stopwatch.StartNew();
+        sink.Write("Pruning old snapshots... ");
+        store.DeleteIncompleteSnapshots();
+        store.PruneOldSnapshots();
+        sink.WriteLine("done.");
+        sw.Stop();
+
+        if (snapshotId == null) return;
+
+        var rows = new List<SnapshotTimingRow>();
+        if (extraRow != null) rows.Add(extraRow);
+        rows.Add(new SnapshotTimingRow(SnapshotTimingSteps.PruneSnapshots, sw.ElapsedMilliseconds));
+
+        try
+        {
+            store.SaveTimings(snapshotId, rows);
+        }
+        catch (Exception ex)
+        {
+            sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
         }
     }
 

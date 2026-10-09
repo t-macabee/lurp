@@ -5,6 +5,8 @@ public static class SnapshotTimingSteps
     public const string SemanticDiff = "semantic_diff";
     public const string FtsBuild = "fts_build";
     public const string PlannerStatistics = "planner_statistics";
+    public const string PruneSnapshots = "prune_snapshots";
+    public const string WorkspaceInfo = "workspace_info";
 
     /// <summary>
     ///     Zero-duration marker rows recording which path CrossDocumentEdgeRefresher.FindAffectedDocPaths

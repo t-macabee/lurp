@@ -325,7 +325,10 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
             _output.WriteErrorLine(warning);
         _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
-        return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped);
+        return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped)
+        {
+            SnapshotWritten = true
+        };
     }
 
     private async Task<Dictionary<string, (Project Project, Compilation Compilation)>> LoadAffectedCompilationsAsync(Solution solution, HashSet<string> affectedProjects, CancellationToken cancellationToken)
@@ -746,6 +749,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
     public sealed record IncrementalResult(string NewSnapshotId, string PreviousSnapshotId, int ChangedDocumentCount, int DeclarationsExtracted, int EdgesExtracted, int DiagnosticsExtracted, OrphanEdgeDropSummary OrphanEdgesDropped)
     {
+        /// <summary>True when this run wrote the snapshot named by <see cref="NewSnapshotId" />; false when it returned an existing snapshot (no change, or reuse).</summary>
+        public bool SnapshotWritten { get; init; }
+
         public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
     }
 }

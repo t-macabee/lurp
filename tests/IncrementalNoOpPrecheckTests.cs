@@ -1,6 +1,5 @@
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
-using System.Text;
 
 namespace Lurp.Tests;
 
@@ -25,7 +24,7 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     private async Task<string> RunIncrementalAsync(bool force = false)
     {
         using var store = OpenStore(DbPath);
-        var sink = new CapturingSink();
+        var sink = new CapturingOutputSink();
         await IndexRunner.RunAsync(store, SolutionPath, [], null, "incremental", false, sink, false, force, CancellationToken.None);
         return sink.Output.ToString();
     }
@@ -152,25 +151,5 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
         Assert.Equal(workspaceInfo.Id.Value, precheckWorkspaceId.Value);
-    }
-
-    private sealed class CapturingSink : IOutputSink
-    {
-        public StringBuilder Output { get; } = new();
-
-        public void Write(string message)
-        {
-            Output.Append(message);
-        }
-
-        public void WriteLine(string message = "")
-        {
-            Output.AppendLine(message);
-        }
-
-        public void WriteErrorLine(string message = "")
-        {
-            Output.AppendLine(message);
-        }
     }
 }
