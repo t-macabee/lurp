@@ -10,7 +10,7 @@ public sealed class Migration_022_BindingIncompleteness : IMigration
     {
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS binding_incompleteness (
+            CREATE TABLE binding_incompleteness (
                 snapshot_id TEXT NOT NULL,
                 project_name TEXT NOT NULL,
                 document_path TEXT NOT NULL DEFAULT '',
@@ -19,7 +19,7 @@ public sealed class Migration_022_BindingIncompleteness : IMigration
                 extractor_version TEXT NOT NULL,
                 PRIMARY KEY (snapshot_id, project_name, document_path, reason)
             );
-            CREATE INDEX IF NOT EXISTS idx_binding_incompleteness_snapshot_reason
+            CREATE INDEX idx_binding_incompleteness_snapshot_reason
                 ON binding_incompleteness (snapshot_id, reason);
         ";
         command.ExecuteNonQuery();

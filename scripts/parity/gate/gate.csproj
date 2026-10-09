@@ -37,11 +37,12 @@
   <!-- `recall` must resolve symbol ids and open the workspace exactly as the tool
        does: SymbolIdFactory normalizes reduced extension methods and C# 14
        extension-block members, LurpCache redirects design-time intermediates out of
-       the analyzed tree (IndexRunLock supplies its key). Linked, not copied. -->
+       the analyzed tree (PathIdentity supplies its key). Linked, not copied. -->
   <ItemGroup>
     <Compile Include="..\..\..\src\Shared\SymbolIdFactory.cs" Link="SymbolIdFactory.cs" />
     <Compile Include="..\..\..\src\Workspace\LurpCache.cs" Link="LurpCache.cs" />
     <Compile Include="..\..\..\src\Workspace\IndexRunLock.cs" Link="IndexRunLock.cs" />
+    <Compile Include="..\..\..\src\Workspace\PathIdentity.cs" Link="PathIdentity.cs" />
   </ItemGroup>
 
 </Project>

@@ -34,7 +34,7 @@ internal static class LurpCache
     /// </summary>
     public static string ResolveSolutionCacheDir(string solutionPath)
     {
-        var key = IndexRunLock.NormalizeKey(solutionPath);
+        var key = PathIdentity.CanonicalKey(solutionPath);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrEmpty(root))

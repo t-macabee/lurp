@@ -11,7 +11,7 @@ namespace Lurp.Storage.Migrations
             using var command = connection.CreateCommand();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS graph_nodes (
+                CREATE TABLE graph_nodes (
                     node_id TEXT PRIMARY KEY,
                     node_kind TEXT NOT NULL
                 );
@@ -19,7 +19,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS snapshot_graph_nodes (
+                CREATE TABLE snapshot_graph_nodes (
                     snapshot_id TEXT NOT NULL,
                     node_id TEXT NOT NULL,
                     PRIMARY KEY (snapshot_id, node_id)
@@ -28,7 +28,7 @@ namespace Lurp.Storage.Migrations
             command.ExecuteNonQuery();
 
             command.CommandText = @"
-                CREATE INDEX IF NOT EXISTS idx_snapshot_graph_nodes_node_id
+                CREATE INDEX idx_snapshot_graph_nodes_node_id
                 ON snapshot_graph_nodes (node_id);
             ";
             command.ExecuteNonQuery();

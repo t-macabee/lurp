@@ -16,6 +16,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     private readonly string _root;
     private readonly string _outputDir;
     private readonly string _dbPath;
+    private readonly string _sourceDb;
 
     public SchemaVersionGuardTests()
     {
@@ -25,10 +26,10 @@ public sealed class SchemaVersionGuardTests : IDisposable
         _dbPath = Path.Combine(_outputDir, "index.db");
 
         // Build a current-schema database, copy it, and downgrade the copy's marker to v29.
-        var sourceDb = Path.Combine(_root, "source", "index.db");
-        Directory.CreateDirectory(Path.GetDirectoryName(sourceDb)!);
-        new MigrationRunner(sourceDb).RunMigrations();
-        File.Copy(sourceDb, _dbPath);
+        _sourceDb = Path.Combine(_root, "source", "index.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(_sourceDb)!);
+        new MigrationRunner(_sourceDb).RunMigrations();
+        File.Copy(_sourceDb, _dbPath);
 
         using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
         connection.Open();
@@ -36,6 +37,10 @@ public sealed class SchemaVersionGuardTests : IDisposable
         command.CommandText = $"DELETE FROM schema_metadata WHERE version > {StaleVersion};";
         command.ExecuteNonQuery();
     }
+
+    // The constructor downgrades only the marker, so a test that needs a current database
+    // takes a fresh copy of the source and never runs migrations on the downgraded one.
+    private void UseCurrentSchemaDatabase() => File.Copy(_sourceDb, _dbPath, overwrite: true);
 
     public void Dispose()
     {
@@ -115,7 +120,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     [Fact]
     public async Task McpAdvancePin_OnStaleSchema_FailsWithMessage_AndKeepsOldStore()
     {
-        new MigrationRunner(_dbPath).RunMigrations();
+        UseCurrentSchemaDatabase();
         var snapshotId = "snap-guard";
         using (var store = new SqliteIndexStore(_dbPath))
         {
@@ -158,7 +163,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     [Fact]
     public async Task McpRefresh_OnNewerSchema_FailsWithMessage_AndDoesNotChangeIt()
     {
-        new MigrationRunner(_dbPath).RunMigrations();
+        UseCurrentSchemaDatabase();
         var snapshotId = "snap-refresh-guard";
         using (var store = new SqliteIndexStore(_dbPath))
         {
@@ -198,7 +203,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     [Fact]
     public async Task McpRetract_OnStaleSchema_FailsWithMessage_KeepsAnnotationAndSchema()
     {
-        new MigrationRunner(_dbPath).RunMigrations();
+        UseCurrentSchemaDatabase();
         var snapshotId = "snap-retract-guard";
         long annotationId;
         using (var store = new SqliteIndexStore(_dbPath))
