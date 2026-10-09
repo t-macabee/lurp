@@ -514,6 +514,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _declReader!.GetDocumentVersionIdsBySymbol(snapshotId);
     }
 
+    public Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId)
+    {
+        EnsureOpen();
+        return _declReader!.GetSymbolDiffInfoBySymbol(snapshotId);
+    }
+
     public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
     {
         EnsureOpen();

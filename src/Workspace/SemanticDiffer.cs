@@ -29,6 +29,11 @@ public class SemanticDiffer
     // common symbol they let skip the source/location reads saves ~0.5 ms. Break-even is ~57.
     private const int DocumentVersionMapPreloadCutoff = 64;
 
+    // Loading both symbol-info maps costs about 4 µs per snapshot symbol; a per-symbol
+    // GetSymbolInfo call costs about 26 µs, two per common symbol (B42 M1b, 16x). Preloading
+    // pays off once the common symbols reach about 1/13 of both snapshots' symbols.
+    private const int SymbolInfoPreloadDivisor = 13;
+
     private readonly IDeclarationStore _declarationStore;
     private readonly IEdgeStore _edgeStore;
     private readonly ISemanticDiffReadStore _readStore;
@@ -99,13 +104,23 @@ public class SemanticDiffer
             toDocumentVersionsBySymbol = _declarationStore.GetDocumentVersionIdsBySymbol(toSnapshotId);
         }
 
+        Dictionary<string, SymbolDiffInfo>? fromSymbolInfo = null;
+        Dictionary<string, SymbolDiffInfo>? toSymbolInfo = null;
+        if (changedSymbolIds == null || commonList.Count * SymbolInfoPreloadDivisor >= fromSymbols.Count + toSymbols.Count)
+        {
+            fromSymbolInfo = _declarationStore.GetSymbolDiffInfoBySymbol(fromSnapshotId);
+            toSymbolInfo = _declarationStore.GetSymbolDiffInfoBySymbol(toSnapshotId);
+        }
+
         foreach (var symbolId in commonList)
         {
             List<string>? fromDocumentVersionIds = null;
             List<string>? toDocumentVersionIds = null;
             fromDocumentVersionsBySymbol?.TryGetValue(symbolId, out fromDocumentVersionIds);
             toDocumentVersionsBySymbol?.TryGetValue(symbolId, out toDocumentVersionIds);
-            var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromSnapshotId, toSnapshotId, fromDocumentVersionIds, toDocumentVersionIds);
+            var fromInfo = fromSymbolInfo != null ? fromSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, fromSnapshotId);
+            var toInfo = toSymbolInfo != null ? toSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, toSnapshotId);
+            var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromInfo, toInfo, fromSnapshotId, toSnapshotId, fromDocumentVersionIds, toDocumentVersionIds);
             changes.AddRange(symbolChanges);
             skippedComparisons += symbolSkipped;
         }
@@ -126,13 +141,10 @@ public class SemanticDiffer
         return (changes, skippedComparisons);
     }
 
-    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, string fromSnapshotId, string toSnapshotId, List<string>? fromDocumentVersionIds, List<string>? toDocumentVersionIds)
+    private (List<SemanticChange> Changes, int SkippedComparisons) ComputeSymbolDiff(string symbolId, SymbolDiffInfo? fromInfo, SymbolDiffInfo? toInfo, string fromSnapshotId, string toSnapshotId, List<string>? fromDocumentVersionIds, List<string>? toDocumentVersionIds)
     {
         var changes = new List<SemanticChange>();
         var skippedComparisons = 0;
-
-        var fromInfo = _declarationStore.GetSymbolInfo(symbolId, fromSnapshotId);
-        var toInfo = _declarationStore.GetSymbolInfo(symbolId, toSnapshotId);
 
         if (fromInfo == null || toInfo == null)
         {
@@ -143,7 +155,7 @@ public class SemanticDiffer
         }
 
         if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
-            fromInfo.SymbolId.DocCommentId == toInfo.SymbolId.DocCommentId)
+            fromInfo.DocCommentId == toInfo.DocCommentId)
         {
             var fromSimple = GetSimpleNameFromFqn(fromInfo.FullyQualifiedName);
             var toSimple = GetSimpleNameFromFqn(toInfo.FullyQualifiedName);
@@ -338,6 +350,12 @@ public class SemanticDiffer
     private List<string> GetSymbolIdsInSnapshot(string snapshotId)
     {
         return _snapshotStore.GetSymbolIdsInSnapshot(snapshotId);
+    }
+
+    private SymbolDiffInfo? ReadSymbolDiffInfo(string symbolId, string snapshotId)
+    {
+        var info = _declarationStore.GetSymbolInfo(symbolId, snapshotId);
+        return info == null ? null : new SymbolDiffInfo(info.SymbolId.DocCommentId, info.FullyQualifiedName, info.MetadataJson);
     }
 
     private static List<SemanticChange> CompareMetadata(string symbolId, string? fromJson, string? toJson, string fromSnapshotId, string toSnapshotId)

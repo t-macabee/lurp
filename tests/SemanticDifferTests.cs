@@ -1092,6 +1092,54 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.True(countingStore.DeclarationLocationCalls("M:Ns.BodyOnly|asm1") > 0);
     }
 
+    [Fact]
+    public void FullDiff_PreloadsSymbolInfo_WithoutPerSymbolCalls()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
+        var differ = new SemanticDiffer(store, store, countingStore, store);
+
+        _ = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+
+        Assert.Equal(2, countingStore.SymbolDiffInfoPreloads);
+        Assert.Equal(0, countingStore.SymbolInfoCalls);
+    }
+
+    [Fact]
+    public void ScopedDiff_BelowSymbolInfoThreshold_ReadsPerSymbol_AndMatchesFullDiff()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
+        var scopedDiffer = new SemanticDiffer(store, store, countingStore, store);
+
+        // One common symbol: 1 × 13 = 13 < 7 + 7 = 14, so the per-symbol path runs.
+        var (scopedChanges, _) = scopedDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
+            new HashSet<string> { "M:Ns.SigEdit|asm1" });
+
+        Assert.Equal(0, countingStore.SymbolDiffInfoPreloads);
+        Assert.Equal(2, countingStore.SymbolInfoCalls);
+
+        var fullDiffer = new SemanticDiffer(store, store, store, store);
+        var (fullChanges, _) = fullDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+
+        var scopedSigEdit = scopedChanges.Where(c => c.SymbolId == "M:Ns.SigEdit|asm1").ToList();
+        var fullSigEdit = fullChanges.Where(c => c.SymbolId == "M:Ns.SigEdit|asm1").ToList();
+        Assert.Equal(fullSigEdit.Count, scopedSigEdit.Count);
+        for (var i = 0; i < scopedSigEdit.Count; i++)
+        {
+            Assert.Equal(fullSigEdit[i].ChangeType, scopedSigEdit[i].ChangeType);
+            Assert.Equal(fullSigEdit[i].DetailJson, scopedSigEdit[i].DetailJson);
+        }
+
+        Assert.Contains(scopedChanges, c => c.ChangeType == ChangeType.SignatureChanged);
+    }
+
     private sealed class CountingDeclarationStore(IDeclarationStore inner, bool fastPathEnabled) : IDeclarationStore
     {
         private readonly Dictionary<string, int> _declarationLocationCalls = [];
@@ -1099,6 +1147,8 @@ public sealed class SemanticDifferTests : IDisposable
 
         public int SymbolSourceCalls(string symbolId) => _symbolSourceCalls.GetValueOrDefault(symbolId);
         public int DeclarationLocationCalls(string symbolId) => _declarationLocationCalls.GetValueOrDefault(symbolId);
+        public int SymbolInfoCalls { get; private set; }
+        public int SymbolDiffInfoPreloads { get; private set; }
 
         public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
         {
@@ -1107,11 +1157,20 @@ public sealed class SemanticDifferTests : IDisposable
                 : new Dictionary<string, List<string>>(StringComparer.Ordinal);
         }
 
+        public Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId)
+        {
+            SymbolDiffInfoPreloads++;
+            return inner.GetSymbolDiffInfoBySymbol(snapshotId);
+        }
+
         public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations) =>
             inner.SaveDeclarations(snapshotId, declarations);
 
-        public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId) =>
-            inner.GetSymbolInfo(symbolId, snapshotId);
+        public IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
+        {
+            SymbolInfoCalls++;
+            return inner.GetSymbolInfo(symbolId, snapshotId);
+        }
 
         public string? GetSymbolSource(string symbolId, string snapshotId, ViewKind viewKind, bool includeGenerated = false)
         {

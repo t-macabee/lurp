@@ -9,6 +9,7 @@ public interface IDeclarationStore
     string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines);
     List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false);
     Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId);
+    Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId);
 
     void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds);
     List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);

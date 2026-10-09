@@ -195,6 +195,30 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return result;
     }
 
+    internal Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.symbol_id, s.doc_comment_id, ss.fqn, ss.metadata_json
+            FROM snapshot_symbols ss
+            JOIN symbols s ON s.symbol_id = ss.symbol_id
+            WHERE ss.snapshot_id = @snapshotId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new Dictionary<string, SymbolDiffInfo>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(reader.GetString(0), new SymbolDiffInfo(
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
+        }
+
+        return result;
+    }
+
     private List<SymbolSpanContent> GetSymbolSpanContents(string symbolId, string snapshotId, string startCol, string endCol, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();

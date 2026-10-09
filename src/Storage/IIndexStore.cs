@@ -56,6 +56,9 @@ public sealed class IndexedSymbolInfo
     public bool IsPartial { get; }
 }
 
+/// <summary>The per-snapshot symbol fields that the semantic differ compares.</summary>
+public sealed record SymbolDiffInfo(string DocCommentId, string? FullyQualifiedName, string? MetadataJson);
+
 public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore, ISemanticDiffReadStore, IBindingIncompletenessStore
 {
     /// <summary>
