@@ -7,6 +7,16 @@ public static class SnapshotTimingSteps
     public const string PlannerStatistics = "planner_statistics";
     public const string PruneSnapshots = "prune_snapshots";
     public const string WorkspaceInfo = "workspace_info";
+    public const string IncrementalPrecheck = "incremental_precheck";
+    public const string ConfigurationCheck = "configuration_check";
+
+    /// <summary>
+    ///     Incremental only: prune of symbols removed from the changed documents, and the
+    ///     symbol and path sets that the FTS rebuild and the semantic diff share.
+    /// </summary>
+    public const string ChangeScope = "change_scope";
+
+    public const string OrphanEdgeCleanup = "orphan_edge_cleanup";
 
     /// <summary>
     ///     Zero-duration marker rows recording which path CrossDocumentEdgeRefresher.FindAffectedDocPaths

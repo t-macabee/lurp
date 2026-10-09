@@ -28,11 +28,17 @@ public static class IndexRunner
 
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
 
+        long? precheckMs = null;
+
         if (strategy == IncrementalStrategy && !force)
         {
+            var swPrecheck = Stopwatch.StartNew();
             var precheckWorkspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(solutionPath));
+            var currentSnapshot = WorkspaceFreshness.CanSkipIncrementalIndex(store, store, store, store, precheckWorkspaceId, gitRoot, sink);
+            swPrecheck.Stop();
+            precheckMs = swPrecheck.ElapsedMilliseconds;
 
-            if (WorkspaceFreshness.CanSkipIncrementalIndex(store, store, store, store, precheckWorkspaceId, gitRoot, sink) is { } builtSnapshot)
+            if (currentSnapshot is { } builtSnapshot)
             {
                 sink.WriteLine("No changes detected. Skipping incremental index.");
                 sink.WriteLine("Workspace load skipped: stored snapshot is still current.");
@@ -84,7 +90,13 @@ public static class IndexRunner
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, loadElapsed, cancellationToken);
 
                     WriteIncrementalSummary(store, sink, result);
-                    PruneAndRecord(store, sink, result.SnapshotWritten ? result.NewSnapshotId : null, new SnapshotTimingRow(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds));
+                    var incrementalTimings = new List<SnapshotTimingRow>
+                    {
+                        new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
+                    };
+                    if (precheckMs is { } precheckElapsed)
+                        incrementalTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, precheckElapsed));
+                    PruneAndRecord(store, sink, result.SnapshotWritten ? result.NewSnapshotId : null, incrementalTimings);
 
                     totalSw.Stop();
 
@@ -107,6 +119,8 @@ public static class IndexRunner
                 new("solution_load", loadElapsed),
                 new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
             };
+            if (precheckMs is { } precheckElapsed)
+                setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, precheckElapsed));
             newSnapshotId = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
         }
 
@@ -277,8 +291,11 @@ public static class IndexRunner
             // Runs before the semantic diff so the diff compares the new snapshot's
             // post-cleanup edge set against the previous snapshot's post-cleanup set,
             // matching the incremental path's phase order.
+            var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
+            swOrphans.Stop();
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
             if (!skipDiff && previousManifest != null && previousManifest.SnapshotId != snapshotIdStr)
             {
@@ -376,7 +393,7 @@ public static class IndexRunner
         }
     }
 
-    private static void PruneAndRecord(IIndexStore store, IOutputSink sink, string? snapshotId, SnapshotTimingRow? extraRow = null)
+    private static void PruneAndRecord(IIndexStore store, IOutputSink sink, string? snapshotId, IReadOnlyList<SnapshotTimingRow>? extraRows = null)
     {
         var sw = Stopwatch.StartNew();
         sink.Write("Pruning old snapshots... ");
@@ -388,7 +405,7 @@ public static class IndexRunner
         if (snapshotId == null) return;
 
         var rows = new List<SnapshotTimingRow>();
-        if (extraRow != null) rows.Add(extraRow);
+        if (extraRows != null) rows.AddRange(extraRows);
         rows.Add(new SnapshotTimingRow(SnapshotTimingSteps.PruneSnapshots, sw.ElapsedMilliseconds));
 
         try

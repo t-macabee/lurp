@@ -23,6 +23,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, long solutionLoadMs = 0, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var swConfig = Stopwatch.StartNew();
         var previousSnapshotId = previousManifest.SnapshotId;
         var previousRichManifest = SnapshotManifest.FromStorageManifest(previousManifest);
         var timings = new List<SnapshotTimingRow>
@@ -46,6 +47,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                     null,
                     null)
             ]);
+
+        swConfig.Stop();
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.ConfigurationCheck, swConfig.ElapsedMilliseconds));
 
         // Step 1: Change Detection
         cancellationToken.ThrowIfCancellationRequested();
@@ -246,6 +250,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
 
             // Step 6b: Prune symbols that were in changed documents' old versions
             // but are no longer present after re-extraction
+            var swScope = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var prunedSymbolIds = PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
 
@@ -270,6 +275,9 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
                 workspaceInfo,
                 new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
                 changeScope);
+
+            swScope.Stop();
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.ChangeScope, swScope.ElapsedMilliseconds));
 
             // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
             cancellationToken.ThrowIfCancellationRequested();
@@ -521,6 +529,7 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         var crossDocEdgesProcessed = await RefreshCrossDocumentEdgesAsync(context, timings, cancellationToken);
 
         // Step 7b: Remove edges targeting symbols not declared in this snapshot
+        var swOrphans = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
         var orphanEdgesDropped = _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
 
@@ -530,6 +539,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // masking genuinely orphaned edges in DeleteOrphanEdges (ARCH-006).
         cancellationToken.ThrowIfCancellationRequested();
         _store.PruneSnapshotGraphNodes(context.Snapshots.ToSnapshotId);
+        swOrphans.Stop();
+        timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
         // Step 8a: FTS Rebuild (incremental)
         RebuildSearchIndex(context, timings);

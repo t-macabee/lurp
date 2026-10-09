@@ -5,9 +5,10 @@ using Microsoft.Build.Locator;
 namespace Lurp.Tests;
 
 /// <summary>
-///     Index runs record the snapshot prune as a <c>prune_snapshots</c> timing row and, on the
-///     incremental path, the workspace-info cost as a <c>workspace_info</c> row on the snapshot
-///     the run wrote. A no-op incremental run writes no snapshot and therefore no timing row.
+///     Index runs record one timing row per runner step on the snapshot the run wrote. Both
+///     paths write <c>workspace_info</c>, <c>orphan_edge_cleanup</c> and <c>prune_snapshots</c>;
+///     the incremental path also writes <c>incremental_precheck</c>, <c>configuration_check</c>
+///     and <c>change_scope</c>. A no-op incremental run writes no snapshot and therefore no timing row.
 /// </summary>
 public sealed class PruneTimingTests : IntegrationTestBase
 {
@@ -33,7 +34,7 @@ public sealed class PruneTimingTests : IntegrationTestBase
         """;
 
     [SkippableFact]
-    public async Task FullIndex_WritesOnePruneSnapshotsRow()
+    public async Task FullIndex_WritesOneRowPerRunnerStep()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
@@ -44,10 +45,14 @@ public sealed class PruneTimingTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         Assert.Equal(1L, CountStepRows(snapshotId, SnapshotTimingSteps.PruneSnapshots));
+        Assert.Equal(1L, CountStepRows(snapshotId, SnapshotTimingSteps.OrphanEdgeCleanup));
+        Assert.Equal(0L, CountStepRows(snapshotId, SnapshotTimingSteps.IncrementalPrecheck));
+        Assert.Equal(0L, CountStepRows(snapshotId, SnapshotTimingSteps.ConfigurationCheck));
+        Assert.Equal(0L, CountStepRows(snapshotId, SnapshotTimingSteps.ChangeScope));
     }
 
     [SkippableFact]
-    public async Task IncrementalIndex_WritesOnePruneSnapshotsRowAndOneWorkspaceInfoRow()
+    public async Task IncrementalIndex_WritesOneRowPerRunnerStep()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
@@ -64,6 +69,10 @@ public sealed class PruneTimingTests : IntegrationTestBase
         Assert.NotEqual(fullSnapshotId, newSnapshotId);
         Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.PruneSnapshots));
         Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.WorkspaceInfo));
+        Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.IncrementalPrecheck));
+        Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.ConfigurationCheck));
+        Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.ChangeScope));
+        Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.OrphanEdgeCleanup));
     }
 
     [SkippableFact]
@@ -104,6 +113,8 @@ public sealed class PruneTimingTests : IntegrationTestBase
         var snapshotsBefore = CountSnapshots();
         var pruneRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.PruneSnapshots);
         var workspaceInfoRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.WorkspaceInfo);
+        var precheckRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.IncrementalPrecheck);
+        var configCheckRowsBefore = CountStepRowsInDatabase(SnapshotTimingSteps.ConfigurationCheck);
 
         // A build input (.csproj) newer than the snapshot defeats the precheck
         // (WorkspaceFreshness.HasNoNewSourcesOrBuildInputs), but the content hashes are
@@ -117,6 +128,8 @@ public sealed class PruneTimingTests : IntegrationTestBase
         Assert.Equal(snapshotsBefore, CountSnapshots());
         Assert.Equal(pruneRowsBefore, CountStepRowsInDatabase(SnapshotTimingSteps.PruneSnapshots));
         Assert.Equal(workspaceInfoRowsBefore, CountStepRowsInDatabase(SnapshotTimingSteps.WorkspaceInfo));
+        Assert.Equal(precheckRowsBefore, CountStepRowsInDatabase(SnapshotTimingSteps.IncrementalPrecheck));
+        Assert.Equal(configCheckRowsBefore, CountStepRowsInDatabase(SnapshotTimingSteps.ConfigurationCheck));
         Assert.Contains("Hashing documents and detecting changes", output);
         Assert.DoesNotContain("Workspace load skipped: stored snapshot is still current.", output);
     }
