@@ -1,7 +1,6 @@
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -143,26 +142,6 @@ public sealed class PruneTimingTests : IntegrationTestBase
     private static void Touch(string fullPath)
     {
         File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddSeconds(10));
-    }
-
-    private long CountStepRows(string snapshotId, string stepName)
-    {
-        using var connection = OpenDbConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;";
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@stepName", stepName);
-        return (long)command.ExecuteScalar()!;
-    }
-
-    private long CountStepRowsInDatabase(string stepName)
-    {
-        using var connection = OpenDbConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM snapshot_timings WHERE step_name = @stepName;";
-        command.Parameters.AddWithValue("@stepName", stepName);
-        return (long)command.ExecuteScalar()!;
     }
 
     private long CountSnapshots()

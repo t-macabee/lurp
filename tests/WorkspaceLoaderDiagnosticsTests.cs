@@ -1,4 +1,3 @@
-using System.Text;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 
@@ -14,7 +13,7 @@ public sealed class WorkspaceLoaderDiagnosticsTests
     [Fact]
     public async Task LoadAsync_ReportsFailureDiagnosticsAndSkipsWarnings()
     {
-        var sink = new CapturingSink();
+        var sink = new CapturingOutputSink();
         var diagnostics = new[]
         {
             new WorkspaceDiagnostic(WorkspaceDiagnosticKind.Warning, "warning that must not be printed"),
@@ -25,15 +24,15 @@ public sealed class WorkspaceLoaderDiagnosticsTests
         using var loader = CreateLoader(workspace, sink, diagnostics);
         await loader.LoadAsync("unused.sln", CancellationToken.None);
 
-        Assert.Contains("workspace load reported 1 failure-level diagnostic(s):", sink.ErrorOutput.ToString());
-        Assert.Contains("  WARNING: design-time build failed", sink.ErrorOutput.ToString());
-        Assert.DoesNotContain("warning that must not be printed", sink.ErrorOutput.ToString());
+        Assert.Contains(sink.ErrorLines, l => l.Contains("workspace load reported 1 failure-level diagnostic(s):"));
+        Assert.Contains(sink.ErrorLines, l => l.Contains("  WARNING: design-time build failed"));
+        Assert.DoesNotContain(sink.ErrorLines, l => l.Contains("warning that must not be printed"));
     }
 
     [Fact]
     public async Task LoadAsync_WarningOnlyDiagnostics_WritesNothingToErrorOutput()
     {
-        var sink = new CapturingSink();
+        var sink = new CapturingOutputSink();
         var diagnostics = new[]
         {
             new WorkspaceDiagnostic(WorkspaceDiagnosticKind.Warning, "normal load noise")
@@ -43,36 +42,14 @@ public sealed class WorkspaceLoaderDiagnosticsTests
         using var loader = CreateLoader(workspace, sink, diagnostics);
         await loader.LoadAsync("unused.sln", CancellationToken.None);
 
-        Assert.Equal("", sink.ErrorOutput.ToString());
+        Assert.Empty(sink.ErrorLines);
     }
 
-    private static WorkspaceLoader CreateLoader(AdhocWorkspace workspace, CapturingSink sink, IReadOnlyList<WorkspaceDiagnostic> diagnostics)
+    private static WorkspaceLoader CreateLoader(AdhocWorkspace workspace, CapturingOutputSink sink, IReadOnlyList<WorkspaceDiagnostic> diagnostics)
     {
         return new WorkspaceLoader(
             (_, _) => Task.FromResult(workspace.CurrentSolution),
             sink,
             diagnostics);
-    }
-
-    private sealed class CapturingSink : IOutputSink
-    {
-        public StringBuilder Output { get; } = new();
-
-        public StringBuilder ErrorOutput { get; } = new();
-
-        public void Write(string message)
-        {
-            Output.Append(message);
-        }
-
-        public void WriteLine(string message = "")
-        {
-            Output.AppendLine(message);
-        }
-
-        public void WriteErrorLine(string message = "")
-        {
-            ErrorOutput.AppendLine(message);
-        }
     }
 }

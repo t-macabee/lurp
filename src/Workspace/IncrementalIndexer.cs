@@ -751,7 +751,5 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
     {
         /// <summary>True when this run wrote the snapshot named by <see cref="NewSnapshotId" />; false when it returned an existing snapshot (no change, or reuse).</summary>
         public bool SnapshotWritten { get; init; }
-
-        public bool HasChanges => ChangedDocumentCount > 0 || DeclarationsExtracted > 0 || EdgesExtracted > 0;
     }
 }

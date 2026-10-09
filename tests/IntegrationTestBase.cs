@@ -265,6 +265,28 @@ public abstract class IntegrationTestBase : IDisposable
         return (long)command.ExecuteScalar()!;
     }
 
+    /// <summary>Number of snapshot_timings rows for the given snapshot and step in the database at <see cref="DbPath" />.</summary>
+    public long CountStepRows(string snapshotId, string stepName)
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@stepName", stepName);
+        return (long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>Number of snapshot_timings rows for the given step across all snapshots in the database at <see cref="DbPath" />.</summary>
+    public long CountStepRowsInDatabase(string stepName)
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM snapshot_timings WHERE step_name = @stepName;";
+        command.Parameters.AddWithValue("@stepName", stepName);
+        return (long)command.ExecuteScalar()!;
+    }
+
     /// <summary>
     ///     Drops the planner statistics of the database at <see cref="DbPath" />, so the next
     ///     connection plans as on a database indexed before the product wrote statistics.

@@ -405,14 +405,14 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // compilation-options fingerprint must hash exactly the documents
         // BuildDocumentMap keeps, not the generated obj/ documents it filters
         // out, so the identity must not change when no source changed.
-        var sink = new CapturingSink();
+        var sink = new CapturingOutputSink();
         using var store = OpenStore(DbPath);
         await IndexRunner.RunAsync(
             store, SolutionPath,
             [], null, "full",
             false, sink, false, false, CancellationToken.None);
 
-        Assert.Contains("Identical complete snapshot", sink.Output);
+        Assert.Contains("Identical complete snapshot", sink.Output.ToString());
 
         var latest = store.LoadLatestSnapshot()
                      ?? throw new InvalidOperationException("No snapshot after the second index.");
@@ -768,27 +768,5 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
         var solution = await workspace.OpenSolutionAsync(SolutionPath);
         return new WorkspaceInfo(solution, TestDir);
-    }
-
-    private sealed class CapturingSink : IOutputSink
-    {
-        private readonly List<string> _lines = [];
-
-        public string Output => string.Join("\n", _lines);
-
-        public void Write(string message)
-        {
-            _lines.Add(message);
-        }
-
-        public void WriteLine(string message = "")
-        {
-            _lines.Add(message);
-        }
-
-        public void WriteErrorLine(string message = "")
-        {
-            _lines.Add(message);
-        }
     }
 }

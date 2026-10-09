@@ -51,7 +51,7 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
     ///     from <c>document.FilePath</c>, so the placeholder in-memory <see cref="SourceText" />
     ///     never matters.
     /// </summary>
-    private (WorkspaceInfo Info, RecordingOutputSink Sink) BuildWorkspaceInfo(IReadOnlyDictionary<string, byte[]> rawFiles)
+    private (WorkspaceInfo Info, CapturingOutputSink Sink) BuildWorkspaceInfo(IReadOnlyDictionary<string, byte[]> rawFiles)
     {
         using var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -78,7 +78,7 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
 
         workspace.TryApplyChanges(solution);
 
-        var sink = new RecordingOutputSink();
+        var sink = new CapturingOutputSink();
         var info = new WorkspaceInfo(workspace.CurrentSolution, _tempDir, sink);
         return (info, sink);
     }
@@ -340,23 +340,5 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
         var manifest = store.LoadLatestSnapshot();
         Assert.NotNull(manifest);
         Assert.Equal(snapshotId, manifest!.SnapshotId);
-    }
-
-    private sealed class RecordingOutputSink : IOutputSink
-    {
-        public List<string> ErrorLines { get; } = [];
-
-        public void Write(string message)
-        {
-        }
-
-        public void WriteLine(string message = "")
-        {
-        }
-
-        public void WriteErrorLine(string message = "")
-        {
-            ErrorLines.Add(message);
-        }
     }
 }

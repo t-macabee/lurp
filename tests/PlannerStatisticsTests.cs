@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Microsoft.Build.Locator;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -71,18 +70,6 @@ public sealed class PlannerStatisticsTests : IntegrationTestBase
     private void AssertPlannerStatisticsWritten(string snapshotId)
     {
         Assert.True(CountPlannerStatisticsRows() > 0);
-        Assert.Equal(1L, CountRows(snapshotId, SnapshotTimingSteps.PlannerStatistics));
-    }
-
-    private long CountRows(string snapshotId, string stepName)
-    {
-        using var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;";
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@stepName", stepName);
-        return (long)command.ExecuteScalar()!;
+        Assert.Equal(1L, CountStepRows(snapshotId, SnapshotTimingSteps.PlannerStatistics));
     }
 }
