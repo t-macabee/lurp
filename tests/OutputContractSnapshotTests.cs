@@ -59,7 +59,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.manifest.compilation_options_fingerprints",
         // SnapshotCompleteness.ActiveTfms: keys are target framework monikers.
         "$.manifest.completeness.active_tfms",
-        // StatusHandler.ManifestJson metadata_reference_counts (--detail=references off): keys are project names.
+        // SnapshotManifestJson.Render metadata_reference_counts (--detail=references off): keys are project names.
         "$.manifest.metadata_reference_counts",
         // SnapshotManifest.ProjectDocuments: keys are project names.
         "$.manifest.project_documents",
@@ -86,7 +86,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.detail.manifest.assembly_names",
         // SnapshotCompleteness.ActiveTfms: keys are target framework monikers ("net8.0").
         "$.detail.manifest.completeness.active_tfms",
-        // StatusHandler.ManifestJson metadata_reference_counts (--detail=references off): keys are project names.
+        // SnapshotManifestJson.Render metadata_reference_counts (sections=references off): keys are project names.
         "$.detail.manifest.metadata_reference_counts",
         // SnapshotCompleteness.ActiveTfms (capsule's completeness): keys are target framework monikers.
         "$.capsule.completeness.active_tfms"

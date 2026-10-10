@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -182,7 +181,7 @@ internal sealed class StatusTool
                         contract_version = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                         latest_snapshot_id = snapshotId,
                         manifest = latestRow != null
-                            ? ManifestJson(WithBindingCompleteness(store, latestRow, includeCompleteness), includeDocuments: includeDocumentsInManifest, includeReferences: includeReferences)
+                            ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness), includeDocumentsInManifest, includeReferences, "sections=all", "sections=references")
                             : null,
                         git_root = latestRow?.GitRoot,
                         solution_path = latestRow?.SolutionPath
@@ -439,75 +438,6 @@ internal sealed class StatusTool
                 default: return false;
             }
         }
-        var t = detail.GetType().Name;
-        if (t == "JsonElement")
-        {
-            try
-            {
-                var je = (JsonElement)detail;
-                if (je.ValueKind == JsonValueKind.True) return true;
-                if (je.ValueKind == JsonValueKind.False) return false;
-            }
-            catch { }
-        }
         return false;
-    }
-
-    private static SnapshotManifest WithBindingCompleteness(SqliteIndexStore store, SnapshotRow snapshot, bool includeDetail)
-    {
-        var manifest = SnapshotManifest.FromStorageManifest(snapshot);
-        var records = store.GetBindingIncompleteness(snapshot.SnapshotId);
-        manifest.Completeness = manifest.Completeness?.WithBindingIncompleteness(records, includeDetail);
-        return manifest;
-    }
-
-    private static JsonNode? ManifestJson(SnapshotManifest manifest, bool includeDocuments, bool includeReferences)
-    {
-        try
-        {
-            var node = JsonSerializer.SerializeToNode(manifest, LurpJsonOptions.CompactIgnoreNull);
-            if (node is not JsonObject obj)
-                return node;
-
-            if (!includeDocuments)
-            {
-                var docCount = (obj["document_versions"] as JsonObject)?.Count ?? 0;
-                obj.Remove("document_versions");
-                obj["document_count"] = docCount;
-            }
-
-            if (!includeReferences && obj["metadata_reference_identities"] is JsonObject refsObj)
-            {
-                var counts = new JsonObject();
-                int total = 0;
-                foreach (var kvp in refsObj)
-                {
-                    var cnt = (kvp.Value as JsonArray)?.Count ?? 0;
-                    counts[kvp.Key] = cnt;
-                    total += cnt;
-                }
-                obj.Remove("metadata_reference_identities");
-                obj["metadata_reference_counts"] = counts;
-                obj["metadata_reference_total"] = total;
-                obj["metadata_reference_note"] = "Full identities omitted; pass sections=references to include them.";
-            }
-
-            return node;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static JsonNode? ManifestJson(SnapshotRow row, bool includeDocuments, bool includeReferences)
-    {
-        return ManifestJson(SnapshotManifest.FromStorageManifest(row), includeDocuments, includeReferences);
-    }
-
-    // Back-compat overload for callers that still use single bool
-    private static JsonNode? ManifestJson(SnapshotRow row, bool includeDocuments)
-    {
-        return ManifestJson(row, includeDocuments, includeReferences: false);
     }
 }

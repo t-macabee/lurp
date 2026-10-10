@@ -295,6 +295,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.True(detail.TryGetProperty("manifest", out var manifest));
         Assert.Equal(JsonValueKind.Object, manifest.ValueKind);
         Assert.True(manifest.TryGetProperty("document_count", out _), "manifest should contain document_count");
+        Assert.True(manifest.TryGetProperty("documents_note", out var documentsNote), "manifest should contain documents_note when documents are omitted");
+        Assert.Contains("sections=all", documentsNote.GetString());
         Assert.False(manifest.TryGetProperty("document_versions", out _), "manifest should not contain document_versions when sections=manifest");
         Assert.True(manifest.TryGetProperty("metadata_reference_counts", out _), "should contain counts");
         Assert.True(manifest.TryGetProperty("metadata_reference_total", out _));
