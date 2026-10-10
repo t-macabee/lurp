@@ -130,6 +130,23 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
+    public void RoundTrip_Migration036_EdgeIndexSet()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_snapshot_id', 'idx_edges_snapshot_target', 'idx_edges_document', 'ux_edges_relation');";
+        Assert.Equal(4L, (long)command.ExecuteScalar()!);
+
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_source', 'idx_edges_target');";
+        Assert.Equal(0L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
     public void ValidateSchema_AfterRunMigrations_DoesNotThrow()
     {
         var runner = new MigrationRunner(_dbPath);

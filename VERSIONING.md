@@ -4,6 +4,8 @@
 
 It is intentionally separate from `DatabaseSchemaVersion` (SQLite schema), `OutputSchemaVersion` (capsule JSON shape), and `ExtractorVersion` (semantic fact derivation). Those cover storage and derivation; this covers the *invocation* shape.
 
+`VersionConstants.ExtractorVersion` must be bumped with every change to any extractor's output; the per-extractor versions alone do not trigger a new snapshot.
+
 It is surfaced programmatically so callers can check it without scraping help text:
 
 - **CLI**: `status --json` / `status --output=json` includes `contract_version` alongside `schema_version` in every branch — never-indexed, snapshot-only, and freshness-checked. The human-readable `status` summary also prints `Contract version: N`.

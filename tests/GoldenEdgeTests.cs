@@ -256,6 +256,26 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ParameterDependenciesEdge_DelegateParameterReferencesTypeFromDelegate()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Payload { }
+                                                public class Result { }
+                                                public delegate Result Handler(Payload p, int n);
+                                                """));
+
+        // The delegate type owns its signature: a delegate's implicit Invoke names its
+        // parameter types in the delegate declaration, so the edge source is Handler.
+        var edge = extraction.SingleEdge("References", "global::N.Handler", "global::N.Payload");
+        AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+
+        var invokeId = extraction.ResolveId("global::N.Handler.Invoke");
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "References" && e.SourceSymbolId == invokeId);
+    }
+
+    [Fact]
     public async Task ExtensionReceiverEdge_ReceiverTypeBindsToExtensionMethod()
     {
         var extraction = await ExtractAsync(One("""

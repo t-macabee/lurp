@@ -16,18 +16,23 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                 if (member is not IMethodSymbol method)
                     continue;
 
-                if (member.IsImplicitlyDeclared)
+                var isDelegateInvoke = method.MethodKind == MethodKind.DelegateInvoke;
+                if (member.IsImplicitlyDeclared && !isDelegateInvoke)
                     continue;
 
-                if (!context.IsMemberInScope(method))
+                // A delegate's implicit Invoke names its parameter types in the delegate
+                // declaration, so the delegate type is the source.
+                var sourceSymbol = isDelegateInvoke ? (ISymbol)method.ContainingType! : method;
+
+                if (!context.IsMemberInScope(sourceSymbol))
                     continue;
 
-                var methodId = context.MakeSymbolId(method);
-                if (methodId == null)
+                var sourceId = context.MakeSymbolId(sourceSymbol);
+                if (sourceId == null)
                     continue;
 
-                var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
-                var loc = context.GetMemberSourceLocation(method);
+                var sourceSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol);
+                var loc = context.GetMemberSourceLocation(sourceSymbol);
                 foreach (var param in method.Parameters)
                 {
                     foreach (var usedType in ExtractionUtils.TypeUses(param.Type))
@@ -36,13 +41,13 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                         if (usedTypeId == null)
                             continue;
 
-                        context.RecordFilteredExternal(usedType, methodSyntax);
+                        context.RecordFilteredExternal(usedType, sourceSyntax);
 
-                        var key = (methodId, usedTypeId, nameof(EdgeKind.References));
+                        var key = (sourceId, usedTypeId, nameof(EdgeKind.References));
                         if (!seen.Add(key))
                             continue;
 
-                        edges.Add(context.MakeEdge(methodId, usedTypeId, nameof(EdgeKind.References),
+                        edges.Add(context.MakeEdge(sourceId, usedTypeId, nameof(EdgeKind.References),
                             ExtractorConstants.ParameterDependenciesExtractor, loc));
                     }
                 }

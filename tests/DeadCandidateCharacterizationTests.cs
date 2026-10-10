@@ -763,6 +763,41 @@ public static class Api { public static void Go() => Host.Run(null!); }
     }
 
     [SkippableFact]
+    public async Task DelegateParameterType_HasStrongReferenceEdge_NotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B54: a type used only as a delegate's parameter type gets a strong References
+        // edge from the delegate type, so it must not surface as a proved-dead candidate.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Handler.cs"] = """
+                             namespace TestProject;
+
+                             internal class Payload { }
+                             internal delegate void Handler(Payload p);
+                             internal class Use { internal static void M(Handler h) { } }
+                             """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            var payloadType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.Payload"));
+            Assert.Null(payloadType);
+            Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.Use"));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
     public async Task TypeLiveness_DeadTypeWithSelfCallingMembersStaysDead()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
