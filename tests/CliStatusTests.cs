@@ -49,6 +49,38 @@ public sealed class CliStatusTests : IntegrationTestBase
         Assert.True(doc.RootElement.GetProperty("mismatches_total").GetInt32() > 1);
     }
 
+    [Fact]
+    public async Task Status_UnknownDetail_FailsBeforeReadingDatabase()
+    {
+        var result = await RunStatusCapturedAsync([$"--output-dir={TestDir}", "--json", "--detail=bogus"]);
+
+        Assert.NotNull(result.Failure);
+        Assert.Contains("--detail", result.Failure!.Message);
+        Assert.Contains("documents, references, completeness or all", result.Failure.Message);
+    }
+
+    [Fact]
+    public async Task Status_DetailUnion_RestoresDocumentsAndReferences()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["One.cs"] = "namespace App { public class One { public void M() {} } }"
+        });
+        await RunFullIndexAsync(DbPath);
+
+        var result = await RunStatusCapturedAsync([
+            $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json", "--detail=documents,references"
+        ]);
+
+        Assert.Null(result.Failure);
+        using var doc = JsonDocument.Parse(result.Stdout);
+        var manifest = doc.RootElement.GetProperty("manifest");
+        Assert.True(manifest.TryGetProperty("document_versions", out var docVers));
+        Assert.Equal(JsonValueKind.Object, docVers.ValueKind);
+        Assert.True(manifest.TryGetProperty("metadata_reference_identities", out var ids));
+        Assert.Equal(JsonValueKind.Object, ids.ValueKind);
+    }
+
     private static async Task<(string Stdout, CliExitException? Failure)> RunStatusCapturedAsync(string[] args)
     {
         var stdout = new StringWriter();

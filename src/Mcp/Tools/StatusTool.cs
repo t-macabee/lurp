@@ -30,7 +30,7 @@ internal sealed class StatusTool
     public async Task<string> LurpStatus(
         string? snapshot_id = null,
         object? detail = null,
-        string? sections = null,
+        [Description("Sections to include, comma-separated: freshness, manifest, documents, references, completeness or all. Values combine as a union; documents returns the per-document version map. Unknown values are an error.")] string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
         object? documents = null,
@@ -65,10 +65,10 @@ internal sealed class StatusTool
             }
 
             var resolvedSections = ResolveSections(detail, sections);
-            var includeManifest = resolvedSections != "freshness";
-            var includeReferences = resolvedSections == "references" || resolvedSections == "all";
-            var includeDocumentsInManifest = resolvedSections == "all";
-            var includeCompleteness = resolvedSections == "completeness" || resolvedSections == "all";
+            var includeManifest = resolvedSections.Manifest;
+            var includeReferences = resolvedSections.References;
+            var includeDocumentsInManifest = resolvedSections.Documents;
+            var includeCompleteness = resolvedSections.Completeness;
             var includeMismatches = includeManifest;
 
             if (projectFilter != null && !includeManifest)
@@ -142,7 +142,7 @@ internal sealed class StatusTool
                     var schemaVersion = store.GetCurrentSchemaVersion();
                     var dbPath = _session.DbPath;
                     manifestNode = latestRow != null
-                        ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness, projectFilter), includeDocumentsInManifest, includeReferences, "sections=all", "sections=references")
+                        ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness, projectFilter), includeDocumentsInManifest, includeReferences, "sections=documents", "sections=references")
                         : null;
                     detailObj = new
                     {
@@ -263,39 +263,17 @@ internal sealed class StatusTool
         return result;
     }
 
-    private static string ResolveSections(object? detail, string? sections)
+    private static StatusSectionSet ResolveSections(object? detail, string? sections)
     {
         if (!string.IsNullOrWhiteSpace(sections))
         {
-            var lower = sections.Trim().ToLowerInvariant();
-            var parts = lower.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            // NormalizeKnown values
-            bool hasAll = parts.Contains("all");
-            if (hasAll) return "all";
-            // Priority: references > completeness > manifest > freshness > documents
-            if (parts.Contains("references")) return "references";
-            if (parts.Contains("completeness")) return "completeness";
-            if (parts.Contains("manifest")) return "manifest";
-            if (parts.Contains("freshness")) return "freshness";
-            if (parts.Contains("documents")) return "manifest"; // documents is handled as manifest variant
-            // Single unknown value: map known aliases, else fresh
-            var single = parts.FirstOrDefault();
-            return single switch
-            {
-                "freshness" => "freshness",
-                "manifest" => "manifest",
-                "references" => "references",
-                "completeness" => "completeness",
-                "all" => "all",
-                _ => "freshness"
-            };
+            if (!StatusSections.TryParse(sections, allowSurfaceNames: true, out var parsed, out var badValue))
+                throw new McpProtocolException($"sections: unknown value '{badValue}'. Use {StatusSections.Vocabulary(true)}.", McpErrorCode.InvalidParams);
+            return parsed;
         }
-        if (detail != null)
-        {
-            if (IsDetail(detail)) return "manifest";
-            else return "freshness";
-        }
-        return "freshness";
+        if (detail != null && IsDetail(detail))
+            return new StatusSectionSet(Manifest: true, Documents: false, References: false, Completeness: false);
+        return default;
     }
 
     private static List<string>? ParseDocuments(object? documents)

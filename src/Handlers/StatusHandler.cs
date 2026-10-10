@@ -28,6 +28,15 @@ internal static class StatusHandler
                 defaultMode: args.Contains("--json") ? OutputMode.Json : OutputMode.Summary)
             == OutputMode.Json;
 
+        // Parse --detail= once, before any database access, so a bad value fails the
+        // same way whatever the database state (B51). An empty or missing value means
+        // no extra sections.
+        var detailSections = default(StatusSectionSet);
+        var detailArg = HandlerBootstrap.GetArgValue(args, "--detail=");
+        if (!string.IsNullOrWhiteSpace(detailArg)
+            && !StatusSections.TryParse(detailArg, allowSurfaceNames: false, out detailSections, out var badDetail))
+            HandlerBootstrap.Fail($"ERROR: --detail: unknown value '{badDetail}'. Use {StatusSections.Vocabulary(false)}.");
+
         if (!File.Exists(dbPath))
         {
             ReportNeverIndexed(dbPath, asJson);
@@ -53,9 +62,9 @@ internal static class StatusHandler
                 return;
             }
 
-            var includeDocuments = WantsDetail(args, "documents");
-            var includeReferences = WantsDetail(args, "references");
-            var includeCompleteness = WantsDetail(args, "completeness");
+            var includeDocuments = detailSections.Documents;
+            var includeReferences = detailSections.References;
+            var includeCompleteness = detailSections.Completeness;
             var maxMismatches = ParseMaxArg(args, "--max-mismatches=", 50);
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
                                   ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
@@ -257,20 +266,5 @@ internal static class StatusHandler
         if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) || value < 1)
             HandlerBootstrap.Fail($"ERROR: {prefix.TrimEnd('=')} must be a positive integer.");
         return value;
-    }
-
-    /// <summary>
-    ///     True when <c>--detail=</c> names <paramref name="section" /> (comma-separated, or
-    ///     <c>all</c>).
-    /// </summary>
-    private static bool WantsDetail(string[] args, string section)
-    {
-        var raw = HandlerBootstrap.GetArgValue(args, "--detail=");
-        if (string.IsNullOrEmpty(raw))
-            return false;
-
-        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(part => string.Equals(part, section, StringComparison.OrdinalIgnoreCase)
-                         || string.Equals(part, "all", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -457,7 +457,7 @@ Show the current database status.
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
 | `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
-| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. |
+| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. Unknown values are an error. |
 | `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
 
 `status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
@@ -465,7 +465,9 @@ Show the current database status.
 The manifest always carries a completeness block (`binding_incompleteness_summary`
 plus `binding_incompleteness_total`); `--detail=completeness` (or `all`) adds the
 per-document `binding_incompleteness` rows. This matches the MCP `lurp_status`
-`sections=completeness` behavior.
+`sections=completeness` behavior. MCP `lurp_status` `sections` uses the same union —
+`freshness`, `manifest`, `documents`, `references`, `completeness` or `all` — and an
+unknown value is an `InvalidParams` error.
 
 Batch document freshness — checking a specific list of documents against the
 snapshot, the MCP `lurp_status` `documents`, `projects` and `max_bytes`
@@ -673,6 +675,11 @@ available from both surfaces (`--mode=retract-annotation` and
 `full:true` to run the MSBuild workspace check (which requires serve
 `--solution=`). This keeps an agent's frequent status polls from loading the
 workspace on every call.
+
+`sections` accepts `freshness`, `manifest`, `documents`, `references`,
+`completeness` or `all`, comma-separated and case-insensitive; the values combine
+as a union, so `documents` returns the per-document `document_versions` map and
+`references` the full identities. An unknown value is an `InvalidParams` error.
 
 `lurp_status` responses are capped at `max_bytes` UTF-8 bytes (default 40,000, at
 most 400,000; the default keeps a reference-heavy response under a 25,000-token

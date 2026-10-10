@@ -298,6 +298,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
 
         var json = await tool.LurpStatus(sections: "freshness");
         using var doc = JsonDocument.Parse(json);
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("detail").ValueKind);
         // detail may be null or missing manifest — must not contain document_versions / identities
         if (doc.RootElement.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.Object)
         {
@@ -331,7 +332,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.Equal(JsonValueKind.Object, manifest.ValueKind);
         Assert.True(manifest.TryGetProperty("document_count", out _), "manifest should contain document_count");
         Assert.True(manifest.TryGetProperty("documents_note", out var documentsNote), "manifest should contain documents_note when documents are omitted");
-        Assert.Contains("sections=all", documentsNote.GetString());
+        Assert.Contains("sections=documents", documentsNote.GetString());
         Assert.False(manifest.TryGetProperty("document_versions", out _), "manifest should not contain document_versions when sections=manifest");
         Assert.True(manifest.TryGetProperty("metadata_reference_counts", out _), "should contain counts");
         Assert.True(manifest.TryGetProperty("metadata_reference_total", out _));
@@ -371,6 +372,56 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.Equal(JsonValueKind.Object, docVers.ValueKind);
         Assert.True(manifest.TryGetProperty("metadata_reference_identities", out var ids));
         Assert.Equal(JsonValueKind.Object, ids.ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_Sections_UnknownValue_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var exFoo = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(sections: "foo"));
+        Assert.Equal(McpErrorCode.InvalidParams, exFoo.ErrorCode);
+        Assert.Contains("sections: unknown value", exFoo.Message);
+
+        var exList = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(sections: "manifest,foo"));
+        Assert.Equal(McpErrorCode.InvalidParams, exList.ErrorCode);
+        Assert.Contains("sections: unknown value", exList.Message);
+    }
+
+    [Fact]
+    public async Task Status_Sections_Documents_ReturnsDocumentVersions()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "documents", max_bytes: 400000);
+        using var doc = JsonDocument.Parse(json);
+        var manifest = doc.RootElement.GetProperty("detail").GetProperty("manifest");
+        Assert.True(manifest.TryGetProperty("document_versions", out var docVers));
+        Assert.Equal(JsonValueKind.Object, docVers.ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_Sections_CompletenessAndReferences_ReturnsBoth()
+    {
+        var (_, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "completeness,references", max_bytes: 400000);
+        using var doc = JsonDocument.Parse(json);
+        var manifest = doc.RootElement.GetProperty("detail").GetProperty("manifest");
+        Assert.True(manifest.TryGetProperty("metadata_reference_identities", out var ids));
+        Assert.Equal(JsonValueKind.Object, ids.ValueKind);
+        Assert.True(ids.EnumerateObject().Any(), "identities should be present for sections=completeness,references");
+        Assert.True(manifest.GetProperty("completeness").GetProperty("binding_incompleteness").GetArrayLength() > 0,
+            "completeness rows should be present for sections=completeness,references");
     }
 
     [Fact]
