@@ -1,6 +1,7 @@
 using System.Globalization;
 using Lurp.Storage;
 using System.Text.Json;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -67,7 +68,7 @@ internal static class GrepHandler
                 match_count = page.TotalCount,
                 result_count = page.Items.Count,
                 next_cursor = page.NextCursor,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = FreshnessJson.Cheap(freshness)
             };
 
             switch (outputMode)
@@ -97,7 +98,7 @@ internal static class GrepHandler
                             results,
                             match_count = page.TotalCount,
                             next_cursor = page.NextCursor,
-                            freshness = HandlerBootstrap.FreshnessJson(freshness)
+                            freshness = FreshnessJson.Cheap(freshness)
                         },
                         HandlerBootstrap.IndentedJson));
                     break;

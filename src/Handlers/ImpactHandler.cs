@@ -60,7 +60,7 @@ internal static class ImpactHandler
 
             var response = ImpactPaging.BuildSymbolsResponse(
                 snapshotId,
-                HandlerBootstrap.FreshnessJson(freshness),
+                FreshnessJson.Cheap(freshness),
                 resolvedSymbolId,
                 direction,
                 maxDepth,

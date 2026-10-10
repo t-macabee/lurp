@@ -193,8 +193,7 @@ internal static class StatusHandler
         {
             var timings = store.GetTimings(latestSnapshotId);
 
-            var mismatchesCapped = freshness.Mismatches.Take(maxMismatches).ToList();
-            var mismatchesTruncated = freshness.Mismatches.Count > mismatchesCapped.Count;
+            var capped = FreshnessJson.CapMismatches(freshness.Mismatches, maxMismatches);
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {
@@ -209,15 +208,9 @@ internal static class StatusHandler
                 previous_pinned_snapshot_id = pinnedRow?.PreviousPinnedSnapshotId,
                 pin_active = pinActive ? true : (bool?)null,
                 is_fresh = freshness.IsFresh,
-                mismatches = mismatchesCapped.Select(m => new
-                {
-                    kind = m.Kind.ToString(),
-                    description = m.Description,
-                    document = m.Document?.ToString(),
-                    detail = m.Detail
-                }),
-                mismatches_truncated = mismatchesTruncated ? true : (bool?)null,
-                mismatches_total = freshness.Mismatches.Count,
+                mismatches = capped.Rows,
+                mismatches_truncated = capped.Truncated ? true : (bool?)null,
+                mismatches_total = capped.Total,
                 timing_summary = timings is { Count: > 0 } ? timings.Select(t => new { step = t.StepName, elapsed_ms = t.ElapsedMs }) : null,
                 timing_total_ms = timings is { Count: > 0 } ? timings.Sum(t => t.ElapsedMs) : (long?)null,
                 manifest = SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestSnapshot, includeCompleteness), includeDocuments, includeReferences, "--detail=documents", "--detail=references"),

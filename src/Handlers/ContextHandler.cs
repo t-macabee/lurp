@@ -159,7 +159,7 @@ internal static class ContextHandler
         var meta = new
         {
             snapshot_id = snapshotId,
-            freshness = HandlerBootstrap.FreshnessJson(freshness),
+            freshness = FreshnessJson.Cheap(freshness),
             symbol_id = page.SymbolId,
             fully_qualified_name = page.FullyQualifiedName,
             kind = page.Kind,

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -38,7 +39,7 @@ internal static class FindSymbolHandler
                 declaration_count = info.DeclarationCount,
                 is_partial = info.IsPartial,
                 snapshot_id = snapshotId,
-                freshness = HandlerBootstrap.FreshnessJson(freshness),
+                freshness = FreshnessJson.Cheap(freshness),
                 locations
             };
 

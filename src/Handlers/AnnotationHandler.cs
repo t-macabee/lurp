@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -153,7 +154,7 @@ internal static class AnnotationHandler
                 kind = kindFilter,
                 annotation_count = page.TotalCount,
                 next_cursor = page.NextCursor,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = FreshnessJson.Cheap(freshness)
             };
 
             switch (outputMode)
@@ -172,7 +173,7 @@ internal static class AnnotationHandler
 
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, symbol_id = resolvedSymbol, document = normalizedDocument, kind = kindFilter, annotations, annotation_count = page.TotalCount, next_cursor = page.NextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, symbol_id = resolvedSymbol, document = normalizedDocument, kind = kindFilter, annotations, annotation_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

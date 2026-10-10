@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -84,7 +85,7 @@ internal static class SearchHandler
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 
-            var meta = new { snapshot_id = snapshotId, query = queryArg, type = typeArg, result_count = results.Count, next_cursor = nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) };
+            var meta = new { snapshot_id = snapshotId, query = queryArg, type = typeArg, result_count = results.Count, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) };
 
             switch (outputMode)
             {
@@ -103,7 +104,7 @@ internal static class SearchHandler
                 // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

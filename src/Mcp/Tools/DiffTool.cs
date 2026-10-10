@@ -57,7 +57,7 @@ internal sealed class DiffTool
             };
 
             var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, to_snapshot, FreshnessMode.Auto);
-            var freshness = HandlerBootstrap.FreshnessJson(freshnessStamp);
+            var freshness = FreshnessJson.Cheap(freshnessStamp);
             var isPinned = string.Equals(to_snapshot, _session.PinnedSnapshotId, StringComparison.Ordinal);
 
             var envelope = new

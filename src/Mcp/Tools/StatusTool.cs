@@ -95,7 +95,6 @@ internal sealed class StatusTool
             object freshness;
             FreshnessStamp? cheapStampForDoc = null;
             WorkspaceFreshness.FreshnessResult? fullResultForDoc = null;
-            string freshnessScope = "documents_only";
 
             if (full == true && !string.IsNullOrEmpty(_session.SolutionPath) && File.Exists(_session.SolutionPath))
             {
@@ -103,68 +102,7 @@ internal sealed class StatusTool
                 {
                     var result = await CheckFullFreshnessAsync(store, snapshotId, cancellationToken);
                     fullResultForDoc = result;
-                    var state = result.IsFresh ? "fresh" : "stale";
-                    var count = result.Mismatches.Count;
-                    var mismatchesCapped = includeMismatches ? result.Mismatches.Take(maxMism).ToList() : new List<SnapshotMismatch>();
-                    var mismatchesTruncated = result.Mismatches.Count > mismatchesCapped.Count;
-
-                    List<string>? sample = null;
-                    bool sampleTruncated = false;
-                    if (includeMismatches && count > 0)
-                    {
-                        // Gap1: drop sample when mismatches present (redundant)
-                        sample = null;
-                    }
-                    else
-                    {
-                        var sampleRaw = result.Mismatches
-                            .Select(m => m.Document?.ToString() ?? m.Description)
-                            .Where(s => !string.IsNullOrEmpty(s))
-                            .ToList();
-                        var capped = sampleRaw.Take(maxDocs).ToList();
-                        sampleTruncated = sampleRaw.Count > capped.Count;
-                        sample = capped;
-                    }
-
-                    var freshnessDict = new Dictionary<string, object?>
-                    {
-                        ["state"] = state,
-                        ["method"] = "full",
-                        ["changed_document_count"] = count,
-                        ["checked_at_utc"] = DateTime.UtcNow,
-                        ["snapshot_id"] = snapshotId,
-                        ["scope"] = "full",
-                        ["is_fresh"] = result.IsFresh
-                    };
-                    if (sample != null)
-                    {
-                        freshnessDict["changed_documents_sample"] = sample;
-                        if (sampleTruncated)
-                            freshnessDict["changed_documents_sample_truncated"] = true;
-                    }
-                    else
-                    {
-                        // still include empty or null sample field for parity; include as null so consumer knows it's omitted due to mismatches
-                        freshnessDict["changed_documents_sample"] = null;
-                    }
-                    if (includeMismatches)
-                    {
-                        freshnessDict["mismatches"] = mismatchesCapped.Select(m => new
-                        {
-                            kind = m.Kind.ToString(),
-                            description = m.Description,
-                            document = m.Document?.ToString(),
-                            detail = m.Detail
-                        }).ToList();
-                        if (mismatchesTruncated)
-                            freshnessDict["mismatches_truncated"] = true;
-                    }
-                    else
-                    {
-                        freshnessDict["mismatches"] = null;
-                    }
-                    freshness = freshnessDict;
-                    freshnessScope = "full";
+                    freshness = FreshnessJson.ForStatus(snapshotId, result, DateTime.UtcNow, maxDocs, maxMism, includeMismatches);
                 }
                 catch (OperationCanceledException)
                 {
@@ -174,16 +112,14 @@ internal sealed class StatusTool
                 {
                     var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                     cheapStampForDoc = stamp;
-                    freshness = McpSessionContext.GetFreshnessJsonWithStamp(stamp, maxDocs);
-                    freshnessScope = stamp.Scope;
+                    freshness = FreshnessJson.ForStatus(stamp, maxDocs);
                 }
             }
             else
             {
                 var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                 cheapStampForDoc = stamp;
-                freshness = McpSessionContext.GetFreshnessJsonWithStamp(stamp, maxDocs);
-                freshnessScope = stamp.Scope;
+                freshness = FreshnessJson.ForStatus(stamp, maxDocs);
             }
 
             object? detailObj = null;

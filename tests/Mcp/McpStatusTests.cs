@@ -166,6 +166,26 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
+    public async Task Status_Freshness_SameKeysOnCheapAndFullPath()
+    {
+        await IndexAsync();
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var cheapJson = await tool.LurpStatus();
+        var fullJson = await tool.LurpStatus(full: true);
+        using var cheapDoc = JsonDocument.Parse(cheapJson);
+        using var fullDoc = JsonDocument.Parse(fullJson);
+        var cheapKeys = cheapDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
+        var fullKeys = fullDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
+
+        Assert.Equal(cheapKeys, fullKeys);
+        Assert.True(cheapDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
+        Assert.True(fullDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
+    }
+
+    [Fact]
     public async Task Status_Full_AfterEdit_IsStale_ReportsOneChangedDocument()
     {
         var snapshotId = await IndexAsync();

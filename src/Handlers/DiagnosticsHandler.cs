@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -80,7 +81,7 @@ internal static class DiagnosticsHandler
                 include_generated = includeGenerated,
                 diagnostic_count = page.TotalCount,
                 next_cursor = page.NextCursor,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = FreshnessJson.Cheap(freshness)
             };
 
             switch (outputMode)
@@ -99,7 +100,7 @@ internal static class DiagnosticsHandler
 
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

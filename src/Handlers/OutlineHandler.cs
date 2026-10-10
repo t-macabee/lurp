@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -71,7 +72,7 @@ internal static class OutlineHandler
                 document = documentArg,
                 declaration_count = page.TotalCount,
                 next_cursor = page.NextCursor,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = FreshnessJson.Cheap(freshness)
             };
 
             switch (outputMode)
@@ -90,7 +91,7 @@ internal static class OutlineHandler
 
                 default:
                     Console.WriteLine(JsonSerializer.Serialize(
-                        new { snapshot_id = snapshotId, document = documentArg, declarations, declaration_count = page.TotalCount, next_cursor = page.NextCursor, freshness = HandlerBootstrap.FreshnessJson(freshness) },
+                        new { snapshot_id = snapshotId, document = documentArg, declarations, declaration_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }

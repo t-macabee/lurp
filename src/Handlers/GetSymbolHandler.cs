@@ -85,7 +85,7 @@ internal static class GetSymbolHandler
             declaration_count = info.DeclarationCount,
             is_partial = info.IsPartial,
             snapshot_id = snapshotId,
-            freshness = HandlerBootstrap.FreshnessJson(freshness),
+            freshness = FreshnessJson.Cheap(freshness),
             locations
         }, HandlerBootstrap.IndentedJson);
 

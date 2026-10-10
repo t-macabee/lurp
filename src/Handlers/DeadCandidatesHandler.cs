@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Handlers;
 
@@ -84,7 +85,7 @@ internal static class DeadCandidatesHandler
                 uncertain_count = page.UncertainCount,
                 unresolved_count = page.UnresolvedCount,
                 next_cursor = page.NextCursor,
-                freshness = HandlerBootstrap.FreshnessJson(freshness)
+                freshness = FreshnessJson.Cheap(freshness)
             };
 
             switch (outputMode)
@@ -120,7 +121,7 @@ internal static class DeadCandidatesHandler
                             unresolved_count = page.UnresolvedCount,
                             candidates,
                             next_cursor = page.NextCursor,
-                            freshness = HandlerBootstrap.FreshnessJson(freshness)
+                            freshness = FreshnessJson.Cheap(freshness)
                         },
                         HandlerBootstrap.IndentedJson));
                     break;

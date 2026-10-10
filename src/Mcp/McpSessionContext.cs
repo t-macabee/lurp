@@ -115,30 +115,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
 
     public static object GetFreshnessJson(SqliteIndexStore store, string snapshotId, int maxDocuments = 10)
     {
-        return GetFreshnessJsonInternal(GetFreshness(store, snapshotId), maxDocuments);
-    }
-
-    internal static object GetFreshnessJsonWithStamp(FreshnessStamp stamp, int maxDocuments)
-    {
-        return GetFreshnessJsonInternal(stamp, maxDocuments);
-    }
-
-    private static object GetFreshnessJsonInternal(FreshnessStamp stamp, int maxDocuments)
-    {
-        var fullSample = stamp.ChangedDocumentsSample;
-        var cappedSample = fullSample.Take(maxDocuments).ToList();
-        var truncated = fullSample.Count > cappedSample.Count;
-        return new
-        {
-            state = stamp.State,
-            method = stamp.Method,
-            changed_document_count = stamp.ChangedDocumentCount,
-            changed_documents_sample = cappedSample,
-            changed_documents_sample_truncated = truncated ? true : (bool?)null,
-            checked_at_utc = stamp.CheckedAtUtc,
-            snapshot_id = stamp.SnapshotId,
-            scope = stamp.Scope
-        };
+        return FreshnessJson.Cheap(GetFreshness(store, snapshotId), maxDocuments);
     }
 
     public string? GetLatestSnapshotId()
