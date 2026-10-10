@@ -152,11 +152,6 @@ public sealed class PruneTimingTests : IntegrationTestBase
         return snapshot.SnapshotId;
     }
 
-    private static void Touch(string fullPath)
-    {
-        File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddSeconds(10));
-    }
-
     private long CountSnapshots()
     {
         using var connection = OpenDbConnection();

@@ -27,32 +27,27 @@ internal sealed class DeadCandidateStore
     ///     The declaration query of <see cref="FetchDeclarationInfo" />. One owner: the
     ///     plan tests pin this text, so a change here is what they see.
     /// </summary>
-    internal static string DeclarationSql(int idCount)
-    {
-        var paramNames = Enumerable.Range(0, idCount).Select(static i => $"@p{i}");
-        return $"""
-            SELECT d.symbol_id, d.document_version_id, d.full_start, d.full_end, COALESCE(d.is_generated,0), d.is_partial
-            FROM declarations d
-            CROSS JOIN snapshot_documents sd
-            WHERE sd.snapshot_id = @snapshotId
-              AND sd.document_version_id = d.document_version_id
-              AND d.symbol_id IN ({string.Join(",", paramNames)});
-            """;
-    }
+    internal static string DeclarationSql() => """
+        SELECT d.symbol_id, d.document_version_id, d.full_start, d.full_end, COALESCE(d.is_generated,0), d.is_partial
+        FROM declarations d
+        CROSS JOIN snapshot_documents sd
+        WHERE sd.snapshot_id = @snapshotId
+          AND sd.document_version_id = d.document_version_id
+          AND d.symbol_id IN (SELECT value FROM json_each(@symbolIds));
+        """;
 
     /// <summary>
     ///     The incoming-edge query of <see cref="FetchIncomingEdgesBatched" />, for one
-    ///     chunk of <paramref name="idCount" /> symbol ids and one edge-kind list.
+    ///     edge-kind list and one JSON array of symbol ids.
     /// </summary>
-    internal static string IncomingEdgesSql(IReadOnlyList<string> kinds, int idCount)
+    internal static string IncomingEdgesSql(IReadOnlyList<string> kinds)
     {
-        var paramNames = Enumerable.Range(0, idCount).Select(static i => $"@p{i}");
         var kindList = string.Join(",", kinds.Select(k => $"'{k}'"));
         return $"""
             SELECT edge_id, source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, source_document_path, source_start_line, source_start_column, source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json
             FROM edges
             WHERE snapshot_id = @snapshotId
-              AND target_symbol_id IN ({string.Join(",", paramNames)})
+              AND target_symbol_id IN (SELECT value FROM json_each(@symbolIds))
               AND kind IN ({kindList});
             """;
     }
@@ -516,35 +511,27 @@ internal sealed class DeadCandidateStore
     {
         var result = new Dictionary<string, List<EdgeRecord>>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;
-        // Chunk symbolIds to avoid SQLITE_MAX_VARIABLE_NUMBER
-        const int ChunkSize = 900;
         // edge_id is selected so each target's list can be ordered by it in C#. The old
         // ORDER BY edge_id forced the planner onto idx_edges_snapshot_id (whose implicit
-        // rowid ordering satisfies the sort) and scanned the full snapshot edge set per
-        // chunk; without it the planner probes idx_edges_snapshot_target per target id.
+        // rowid ordering satisfies the sort) and scanned the full snapshot edge set; without
+        // it the planner probes idx_edges_snapshot_target per target id.
         // Order still matters: GetStrongestWeak resolves equal-rank ties by first occurrence.
         var byTarget = new Dictionary<string, List<(long EdgeId, EdgeRecord Record)>>(StringComparer.Ordinal);
-        for (var i = 0; i < symbolIds.Count; i += ChunkSize)
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = IncomingEdgesSql(edgeKinds);
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(cmd, "@symbolIds", symbolIds);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
         {
-            var chunk = symbolIds.Skip(i).Take(ChunkSize).ToList();
-            using var cmd = _connection.CreateCommand();
-            var paramNames = chunk.Select((_, idx) => $"@p{idx}").ToList();
-            cmd.CommandText = IncomingEdgesSql(edgeKinds, chunk.Count);
-            cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-            for (var idx = 0; idx < chunk.Count; idx++)
-                cmd.Parameters.AddWithValue(paramNames[idx], chunk[idx]);
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
+            var edgeId = reader.GetInt64(0);
+            var rec = EdgeRecordReader.Read(reader, 1);
+            if (!byTarget.TryGetValue(rec.TargetSymbolId, out var lst))
             {
-                var edgeId = reader.GetInt64(0);
-                var rec = EdgeRecordReader.Read(reader, 1);
-                if (!byTarget.TryGetValue(rec.TargetSymbolId, out var lst))
-                {
-                    lst = [];
-                    byTarget[rec.TargetSymbolId] = lst;
-                }
-                lst.Add((edgeId, rec));
+                lst = [];
+                byTarget[rec.TargetSymbolId] = lst;
             }
+            lst.Add((edgeId, rec));
         }
         foreach (var (target, list) in byTarget)
         {
@@ -558,117 +545,106 @@ internal sealed class DeadCandidateStore
     {
         var result = new Dictionary<string, DeclInfo>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;
-        const int ChunkSize = 800;
         // document_version_id -> (relative_path, line_starts, content), filled once per distinct
-        // document across all chunks. The old per-chunk four-way join re-read the same
-        // content/line_starts blobs for every chunk whose symbols shared a document.
+        // document by the document query below.
         var documentCache = new Dictionary<string, (string DocPath, int[]? LineStarts, byte[]? Content)>(StringComparer.Ordinal);
-        for (var i = 0; i < symbolIds.Count; i += ChunkSize)
+        // Declarations only, driven from the symbol ids. CROSS JOIN pins declarations as the
+        // outer table so that with no sqlite_stat1 rows the planner cannot start from
+        // snapshot_documents and probe the IN list once per document row.
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = DeclarationSql();
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(cmd, "@symbolIds", symbolIds);
+
+        var perSymbol = new Dictionary<string, List<(string DocVersionId, int? FullStart, int? FullEnd, int IsGenerated)>>(StringComparer.Ordinal);
+        var pendingDocIds = new List<string>();
+        var pendingDocIdSet = new HashSet<string>(StringComparer.Ordinal);
+        using (var reader = cmd.ExecuteReader())
         {
-            var chunk = symbolIds.Skip(i).Take(ChunkSize).ToList();
-            var paramNames = chunk.Select((_, idx) => $"@p{idx}").ToList();
-            // Declarations only, driven from the symbol ids. CROSS JOIN pins declarations as the
-            // outer table so that with no sqlite_stat1 rows the planner cannot start from
-            // snapshot_documents and probe the IN list once per document row.
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = DeclarationSql(chunk.Count);
-            cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-            for (var idx = 0; idx < chunk.Count; idx++)
-                cmd.Parameters.AddWithValue(paramNames[idx], chunk[idx]);
-
-            var perSymbol = new Dictionary<string, List<(string DocVersionId, int? FullStart, int? FullEnd, int IsGenerated)>>(StringComparer.Ordinal);
-            var pendingDocIds = new List<string>();
-            var pendingDocIdSet = new HashSet<string>(StringComparer.Ordinal);
-            using (var reader = cmd.ExecuteReader())
+            while (reader.Read())
             {
-                while (reader.Read())
+                var sid = reader.GetString(0);
+                var docVersionId = reader.GetString(1);
+                var fs = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+                var fe = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
+                var isGen = reader.GetInt32(4);
+                if (pendingDocIdSet.Add(docVersionId))
+                    pendingDocIds.Add(docVersionId);
+                if (!perSymbol.TryGetValue(sid, out var lst))
                 {
-                    var sid = reader.GetString(0);
-                    var docVersionId = reader.GetString(1);
-                    var fs = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
-                    var fe = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
-                    var isGen = reader.GetInt32(4);
-                    if (!documentCache.ContainsKey(docVersionId) && pendingDocIdSet.Add(docVersionId))
-                        pendingDocIds.Add(docVersionId);
-                    if (!perSymbol.TryGetValue(sid, out var lst))
-                    {
-                        lst = [];
-                        perSymbol[sid] = lst;
-                    }
-                    lst.Add((docVersionId, fs, fe, isGen));
+                    lst = [];
+                    perSymbol[sid] = lst;
                 }
+                lst.Add((docVersionId, fs, fe, isGen));
+            }
+        }
+
+        // Content and line_starts load once per distinct document_version_id, not once per
+        // declaration row.
+        if (pendingDocIds.Count > 0)
+        {
+            using var docCmd = _connection.CreateCommand();
+            docCmd.CommandText = """
+                SELECT dv.document_version_id, doc.relative_path, dv.line_starts, dv.content
+                FROM document_versions dv
+                JOIN documents doc ON doc.document_id = dv.document_id
+                WHERE dv.document_version_id IN (SELECT value FROM json_each(@documentVersionIds));
+                """;
+            SqlIdList.Bind(docCmd, "@documentVersionIds", pendingDocIds);
+            using var docReader = docCmd.ExecuteReader();
+            while (docReader.Read())
+            {
+                var docVersionId = docReader.GetString(0);
+                var docPath = docReader.GetString(1);
+                var lineStartsJson = docReader.IsDBNull(2) ? null : docReader.GetString(2);
+                var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId);
+                var content = docReader.IsDBNull(3) ? null : (byte[])docReader[3];
+                documentCache[docVersionId] = (docPath, lineStarts, content);
+            }
+        }
+
+        foreach (var kv in perSymbol)
+        {
+            var sid = kv.Key;
+            var rows = kv.Value;
+            // The old query only returned rows that joined document_versions/documents;
+            // keep rows without document data out of locations while still counting them
+            // (the old separate COUNT(*) query had no such join either).
+            var locatedRows = new List<(string DocPath, string DocVersionId, int? FullStart, int? FullEnd, int[]? LineStarts, byte[]? Content, int IsGenerated)>();
+            foreach (var r in rows)
+            {
+                if (documentCache.TryGetValue(r.DocVersionId, out var doc))
+                    locatedRows.Add((doc.DocPath, r.DocVersionId, r.FullStart, r.FullEnd, doc.LineStarts, doc.Content, r.IsGenerated));
             }
 
-            // Content and line_starts load once per distinct document_version_id (chunked for
-            // SQLITE_MAX_VARIABLE_NUMBER), not once per declaration row.
-            for (var docOffset = 0; docOffset < pendingDocIds.Count; docOffset += ChunkSize)
+            // Same order as the old ORDER BY d.symbol_id, doc.relative_path, d.full_start:
+            // ordinal path (SQLite BINARY), NULL full_start first.
+            locatedRows.Sort(static (a, b) =>
             {
-                var docChunk = pendingDocIds.Skip(docOffset).Take(ChunkSize).ToList();
-                var docParamNames = docChunk.Select((_, idx) => $"@d{idx}").ToList();
-                using var docCmd = _connection.CreateCommand();
-                docCmd.CommandText = $"""
-                    SELECT dv.document_version_id, doc.relative_path, dv.line_starts, dv.content
-                    FROM document_versions dv
-                    JOIN documents doc ON doc.document_id = dv.document_id
-                    WHERE dv.document_version_id IN ({string.Join(",", docParamNames)});
-                    """;
-                for (var idx = 0; idx < docChunk.Count; idx++)
-                    docCmd.Parameters.AddWithValue(docParamNames[idx], docChunk[idx]);
-                using var docReader = docCmd.ExecuteReader();
-                while (docReader.Read())
-                {
-                    var docVersionId = docReader.GetString(0);
-                    var docPath = docReader.GetString(1);
-                    var lineStartsJson = docReader.IsDBNull(2) ? null : docReader.GetString(2);
-                    var lineStarts = SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId);
-                    var content = docReader.IsDBNull(3) ? null : (byte[])docReader[3];
-                    documentCache[docVersionId] = (docPath, lineStarts, content);
-                }
-            }
+                var byPath = string.CompareOrdinal(a.DocPath, b.DocPath);
+                return byPath != 0 ? byPath : Comparer<int?>.Default.Compare(a.FullStart, b.FullStart);
+            });
 
-            foreach (var kv in perSymbol)
+            var isGeneratedOverall = locatedRows.Any(static r => r.IsGenerated == 1);
+            var declCount = locatedRows.Count > 0 ? rows.Count : 0;
+            var locations = new List<DeclarationLocation>();
+            var docPaths = new List<string>();
+            foreach (var r in locatedRows)
             {
-                var sid = kv.Key;
-                var rows = kv.Value;
-                // The old query only returned rows that joined document_versions/documents;
-                // keep rows without document data out of locations while still counting them
-                // (the old separate COUNT(*) query had no such join either).
-                var locatedRows = new List<(string DocPath, string DocVersionId, int? FullStart, int? FullEnd, int[]? LineStarts, byte[]? Content, int IsGenerated)>();
-                foreach (var r in rows)
-                {
-                    if (documentCache.TryGetValue(r.DocVersionId, out var doc))
-                        locatedRows.Add((doc.DocPath, r.DocVersionId, r.FullStart, r.FullEnd, doc.LineStarts, doc.Content, r.IsGenerated));
-                }
-
-                // Same order as the old ORDER BY d.symbol_id, doc.relative_path, d.full_start:
-                // ordinal path (SQLite BINARY), NULL full_start first.
-                locatedRows.Sort(static (a, b) =>
-                {
-                    var byPath = string.CompareOrdinal(a.DocPath, b.DocPath);
-                    return byPath != 0 ? byPath : Comparer<int?>.Default.Compare(a.FullStart, b.FullStart);
-                });
-
-                var isGeneratedOverall = locatedRows.Any(static r => r.IsGenerated == 1);
-                var declCount = locatedRows.Count > 0 ? rows.Count : 0;
-                var locations = new List<DeclarationLocation>();
-                var docPaths = new List<string>();
-                foreach (var r in locatedRows)
-                {
-                    var location = SourceLineMap.MapDeclaration(
-                        r.DocPath, r.FullStart, r.FullEnd, r.LineStarts, r.Content, r.IsGenerated == 1, r.DocVersionId, sid);
-                    if (location != null)
-                        locations.Add(location);
-                    if (!docPaths.Contains(r.DocPath, StringComparer.Ordinal)) docPaths.Add(r.DocPath);
-                }
-                result[sid] = new DeclInfo { IsGenerated = isGeneratedOverall, Locations = locations, DeclarationCount = declCount, DocumentPaths = docPaths };
+                var location = SourceLineMap.MapDeclaration(
+                    r.DocPath, r.FullStart, r.FullEnd, r.LineStarts, r.Content, r.IsGenerated == 1, r.DocVersionId, sid);
+                if (location != null)
+                    locations.Add(location);
+                if (!docPaths.Contains(r.DocPath, StringComparer.Ordinal)) docPaths.Add(r.DocPath);
             }
+            result[sid] = new DeclInfo { IsGenerated = isGeneratedOverall, Locations = locations, DeclarationCount = declCount, DocumentPaths = docPaths };
+        }
 
-            // Ensure symbols with no declarations (should not happen for snapshot_symbols but could for synthetic) still have entry
-            foreach (var sid in chunk)
-            {
-                if (!result.ContainsKey(sid))
-                    result[sid] = new DeclInfo { IsGenerated = false, Locations = [], DeclarationCount = 0, DocumentPaths = [] };
-            }
+        // Ensure symbols with no declarations (should not happen for snapshot_symbols but could for synthetic) still have entry
+        foreach (var sid in symbolIds)
+        {
+            if (!result.ContainsKey(sid))
+                result[sid] = new DeclInfo { IsGenerated = false, Locations = [], DeclarationCount = 0, DocumentPaths = [] };
         }
         return result;
     }

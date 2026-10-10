@@ -29,11 +29,6 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         return sink.Output.ToString();
     }
 
-    private static void Touch(string fullPath)
-    {
-        File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddSeconds(10));
-    }
-
     [Fact]
     public async Task UnchangedWorkspace_SkipsWorkspaceLoad()
     {

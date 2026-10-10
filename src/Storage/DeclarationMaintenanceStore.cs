@@ -19,16 +19,12 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             command.Transaction = transaction;
             command.CommandText = """
                 DELETE FROM declarations
-                WHERE document_version_id IN (
-                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-            )
+                WHERE document_version_id IN (SELECT value FROM json_each(@documentVersionIds))
                   AND document_version_id NOT IN (
                       SELECT DISTINCT document_version_id FROM snapshot_documents
                   );
-            """;
-            var i = 0;
-            foreach (var id in idList)
-                command.Parameters.AddWithValue($"@p{i++}", id);
+                """;
+            SqlIdList.Bind(command, "@documentVersionIds", idList);
             command.ExecuteNonQuery();
             transaction.Commit();
         }
@@ -39,6 +35,17 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         }
     }
 
+    // CROSS JOIN pins declarations as the outer table: the JSON list has no row estimate, so the
+    // planner would otherwise scan the whole snapshot's snapshot_symbols (B16 U1b).
+    internal static string SymbolIdsByDocumentVersionIdsSql() => """
+        SELECT DISTINCT ss.symbol_id
+        FROM declarations d
+        CROSS JOIN snapshot_symbols ss
+        WHERE ss.symbol_id = d.symbol_id
+          AND ss.snapshot_id = @snapshotId
+          AND d.document_version_id IN (SELECT value FROM json_each(@documentVersionIds));
+        """;
+
     internal List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
     {
         var idList = documentVersionIds as IReadOnlyCollection<string> ?? [.. documentVersionIds];
@@ -46,19 +53,9 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             return [];
 
         using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT DISTINCT ss.symbol_id
-            FROM snapshot_symbols ss
-            JOIN declarations d ON d.symbol_id = ss.symbol_id
-            WHERE ss.snapshot_id = @snapshotId
-              AND d.document_version_id IN (
-            """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-        );
-        """;
+        command.CommandText = SymbolIdsByDocumentVersionIdsSql();
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var i = 0;
-        foreach (var id in idList)
-            command.Parameters.AddWithValue($"@p{i++}", id);
+        SqlIdList.Bind(command, "@documentVersionIds", idList);
         var results = new List<string>();
         using var reader = command.ExecuteReader();
         while (reader.Read())

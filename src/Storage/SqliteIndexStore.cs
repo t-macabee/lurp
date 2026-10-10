@@ -1,5 +1,4 @@
 using Microsoft.Data.Sqlite;
-using System.Data;
 
 namespace Lurp.Storage;
 
@@ -832,34 +831,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         using var transaction = _connection!.BeginTransaction();
         try
         {
-            using (var setupCmd = _connection.CreateCommand())
-            {
-                setupCmd.Transaction = transaction;
-                setupCmd.CommandText = "CREATE TEMP TABLE IF NOT EXISTS lurp_stale_doc_paths (path TEXT NOT NULL); DELETE FROM lurp_stale_doc_paths;";
-                setupCmd.ExecuteNonQuery();
-            }
-
-            using (var insertCmd = _connection.CreateCommand())
-            {
-                insertCmd.Transaction = transaction;
-                insertCmd.CommandText = "INSERT INTO lurp_stale_doc_paths (path) VALUES (@path);";
-                var pathParam = insertCmd.Parameters.Add(new SqliteParameter("@path", DbType.String));
-                foreach (var path in pathList)
-                {
-                    pathParam.Value = path;
-                    insertCmd.ExecuteNonQuery();
-                }
-            }
-
             using (var deleteEdgesCmd = _connection.CreateCommand())
             {
                 deleteEdgesCmd.Transaction = transaction;
-                deleteEdgesCmd.CommandText = """
-                        DELETE FROM edges
-                        WHERE snapshot_id = @snapshotId
-                          AND source_document_path IN (SELECT path FROM lurp_stale_doc_paths);
-                        """;
+                deleteEdgesCmd.CommandText = EdgeOperationsStore.DeleteEdgesByDocumentPathsSql();
                 deleteEdgesCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                SqlIdList.Bind(deleteEdgesCmd, "@documentPaths", pathList);
                 deleteEdgesCmd.ExecuteNonQuery();
             }
 
@@ -869,9 +846,10 @@ public class SqliteIndexStore : IIndexStore, IDisposable
                 deleteBindingCmd.CommandText = """
                         DELETE FROM binding_incompleteness
                         WHERE snapshot_id = @snapshotId
-                          AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
+                          AND document_path IN (SELECT value FROM json_each(@documentPaths));
                         """;
                 deleteBindingCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                SqlIdList.Bind(deleteBindingCmd, "@documentPaths", pathList);
                 deleteBindingCmd.ExecuteNonQuery();
             }
 
@@ -881,17 +859,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
                 deleteAnnotationsCmd.CommandText = """
                         DELETE FROM annotations
                         WHERE snapshot_id = @snapshotId
-                          AND document_path IN (SELECT path FROM lurp_stale_doc_paths);
+                          AND document_path IN (SELECT value FROM json_each(@documentPaths));
                         """;
                 deleteAnnotationsCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                SqlIdList.Bind(deleteAnnotationsCmd, "@documentPaths", pathList);
                 deleteAnnotationsCmd.ExecuteNonQuery();
-            }
-
-            using (var clearCmd = _connection.CreateCommand())
-            {
-                clearCmd.Transaction = transaction;
-                clearCmd.CommandText = "DELETE FROM lurp_stale_doc_paths;";
-                clearCmd.ExecuteNonQuery();
             }
 
             transaction.Commit();

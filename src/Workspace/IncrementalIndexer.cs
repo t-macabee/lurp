@@ -371,9 +371,8 @@ public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSe
         // must always be scoped to exactly the same set; documents outside it
         // keep their copied-forward edges intact.
         if (extractionScopePaths.Count > 0)
-            // Batched: one temp table populated once, joined by all three deletes,
-            // instead of each store rebuilding its own IN-list (or, for
-            // binding-incompleteness, issuing one DELETE per path) over the same set.
+            // Batched: one call deletes edges, binding-incompleteness rows and annotations
+            // for the whole path set, each with one statement over the JSON path list.
             _store.DeleteFactsByDocumentPaths(newSnapshotIdStr, extractionScopePaths);
 
         // Null-path edges (from symbols with no DeclaringSyntaxReferences, e.g. an

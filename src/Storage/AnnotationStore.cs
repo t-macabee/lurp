@@ -235,14 +235,10 @@ internal sealed class AnnotationStore
             command.CommandText = """
                 DELETE FROM annotations
                 WHERE snapshot_id = @snapshotId
-                  AND document_path IN (
-                """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
-            );
-            """;
+                  AND document_path IN (SELECT value FROM json_each(@documentPaths));
+                """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            var i = 0;
-            foreach (var path in pathList)
-                command.Parameters.AddWithValue($"@p{i++}", path);
+            SqlIdList.Bind(command, "@documentPaths", pathList);
             command.ExecuteNonQuery();
             transaction.Commit();
         }

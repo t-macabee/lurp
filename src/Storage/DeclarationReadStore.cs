@@ -305,22 +305,12 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE ss.snapshot_id = @snapshotId
-              AND s.symbol_id IN (@symbolIds)
+              AND s.symbol_id IN (SELECT value FROM json_each(@symbolIds))
               AND (d.is_generated = 0 OR d.is_generated IS NULL)
             ORDER BY s.symbol_id, doc.relative_path, d.signature_start;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        var paramNames = new List<string>();
-        var idx = 0;
-        foreach (var symbolId in symbolIds)
-        {
-            var paramName = $"@sid{idx++}";
-            paramNames.Add(paramName);
-            command.Parameters.AddWithValue(paramName, symbolId);
-        }
-
-        command.CommandText = command.CommandText.Replace("@symbolIds", string.Join(",", paramNames));
+        SqlIdList.Bind(command, "@symbolIds", symbolIds);
 
         var declarationsBySymbol = new Dictionary<string, List<DeclarationFingerprint>>(StringComparer.Ordinal);
         var symbolMeta = new Dictionary<string, (IndexedSymbolKind Kind, string AssemblyIdentity, string? Fqn)>(StringComparer.Ordinal);

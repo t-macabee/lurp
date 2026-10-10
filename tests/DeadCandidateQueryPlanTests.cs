@@ -1,5 +1,6 @@
 using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
@@ -9,7 +10,7 @@ namespace Lurp.Tests;
 ///     caused by the planner's cost model (not C# code): with no sqlite_stat1 rows it
 ///     drove the declaration query from snapshot_documents and satisfied the incoming
 ///     edge ORDER BY via idx_edges_snapshot_id, scanning the full snapshot edge set per
-///     chunk. The product writes statistics after each index run, so the test pins the
+///     query. The product writes statistics after each index run, so the test pins the
 ///     plans with them. It then drops sqlite_stat1 and pins the plans an older database
 ///     gets, which was indexed before the product wrote statistics. The SQL texts are the
 ///     store's own <see cref="Lurp.Storage.DeadCandidateStore.DeclarationSql" /> and
@@ -18,15 +19,13 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
 {
-    private const int ProbeIdCount = 3;
+    private static readonly string DeclarationQuerySql = Lurp.Storage.DeadCandidateStore.DeclarationSql();
 
-    private static readonly string DeclarationQuerySql = Lurp.Storage.DeadCandidateStore.DeclarationSql(ProbeIdCount);
-
-    private static readonly string IncomingEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.LiveEdgeKinds, ProbeIdCount);
+    private static readonly string IncomingEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.LiveEdgeKinds);
 
     // B25: the type-use query is a second batched query with the same shape, one kind list
     // narrower. It is the same store text with TypeUseEdgeKinds.
-    private static readonly string TypeUseEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds, ProbeIdCount);
+    private static readonly string TypeUseEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds);
 
     [SkippableFact]
     public async Task Plans_WithAndWithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
@@ -71,9 +70,10 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
 
     private static Dictionary<string, object> DeadCandidateParameters(string snapshotId, string[] symbolIds)
     {
-        var parameters = new Dictionary<string, object> { ["@snapshotId"] = snapshotId };
-        for (var i = 0; i < symbolIds.Length; i++)
-            parameters[$"@p{i}"] = symbolIds[i];
-        return parameters;
+        return new Dictionary<string, object>
+        {
+            ["@snapshotId"] = snapshotId,
+            ["@symbolIds"] = JsonSerializer.Serialize(symbolIds)
+        };
     }
 }

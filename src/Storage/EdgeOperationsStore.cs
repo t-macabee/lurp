@@ -370,6 +370,14 @@ internal sealed class EdgeOperationsStore
         return ReadEdgeRecords(command);
     }
 
+    // The unary + keeps the planner off idx_edges_snapshot_id, so the path list drives
+    // idx_edges_document (B16 U1b).
+    internal static string DeleteEdgesByDocumentPathsSql() => """
+        DELETE FROM edges
+        WHERE +snapshot_id = @snapshotId
+          AND source_document_path IN (SELECT value FROM json_each(@documentPaths));
+        """;
+
     public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
         var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
@@ -381,17 +389,9 @@ internal sealed class EdgeOperationsStore
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                DELETE FROM edges
-                WHERE snapshot_id = @snapshotId
-                  AND source_document_path IN (
-                """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
-            );
-            """;
+            command.CommandText = DeleteEdgesByDocumentPathsSql();
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            var i = 0;
-            foreach (var path in pathList)
-                command.Parameters.AddWithValue($"@p{i++}", path);
+            SqlIdList.Bind(command, "@documentPaths", pathList);
             command.ExecuteNonQuery();
             transaction.Commit();
         }
@@ -413,18 +413,20 @@ internal sealed class EdgeOperationsStore
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND source_document_path IS NULL
-              AND (
-            """ + string.Join(" OR ", identityList.Select((_, i) => $"source_symbol_id LIKE @p{i} ESCAPE '\\'")) + """
-        );
-        """;
+              AND EXISTS (
+                  SELECT 1 FROM json_each(@patterns)
+                  WHERE edges.source_symbol_id LIKE json_each.value ESCAPE '\'
+              );
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var i = 0;
+        var patterns = new List<string>(identityList.Count);
         foreach (var identity in identityList)
         {
             var escaped = identity.Replace(@"\", @"\\").Replace(@"%", @"\%").Replace(@"_", @"\_");
-            command.Parameters.AddWithValue($"@p{i++}", "%|" + escaped);
+            patterns.Add("%|" + escaped);
         }
 
+        SqlIdList.Bind(command, "@patterns", patterns);
         command.ExecuteNonQuery();
     }
 
@@ -439,14 +441,10 @@ internal sealed class EdgeOperationsStore
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
               AND source_document_path IS NULL
-              AND source_symbol_id IN (
-            """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-        );
-        """;
+              AND source_symbol_id IN (SELECT value FROM json_each(@symbolIds));
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var i = 0;
-        foreach (var id in idList)
-            command.Parameters.AddWithValue($"@p{i++}", id);
+        SqlIdList.Bind(command, "@symbolIds", idList);
         command.ExecuteNonQuery();
     }
 

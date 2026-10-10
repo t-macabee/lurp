@@ -147,14 +147,10 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
             WHERE sd.snapshot_id = @snapshotId
-              AND d.relative_path IN (
-            """ + string.Join(", ", pathList.Select((_, i) => $"@p{i}")) + """
-        );
-        """;
+              AND d.relative_path IN (SELECT value FROM json_each(@documentPaths));
+            """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var i = 0;
-        foreach (var path in pathList)
-            command.Parameters.AddWithValue($"@p{i++}", path);
+        SqlIdList.Bind(command, "@documentPaths", pathList);
         var results = new List<string>();
         using var reader = command.ExecuteReader();
         while (reader.Read())

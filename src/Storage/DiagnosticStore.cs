@@ -318,6 +318,13 @@ internal sealed class DiagnosticStore
         command.ExecuteNonQuery();
     }
 
+    // The unary + lets the project list drive idx_diagnostics_project instead of idx_diagnostics_snapshot_id.
+    internal static string DeleteDiagnosticsByProjectNamesSql() => """
+        DELETE FROM diagnostics
+        WHERE +snapshot_id = @snapshotId
+          AND project_name IN (SELECT value FROM json_each(@projectNames));
+        """;
+
     public void DeleteDiagnosticsByProjectNames(string snapshotId, IEnumerable<string> projectNames)
     {
         var nameList = projectNames as IReadOnlyCollection<string> ?? [.. projectNames];
@@ -325,17 +332,9 @@ internal sealed class DiagnosticStore
             return;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = """
-            DELETE FROM diagnostics
-            WHERE snapshot_id = @snapshotId
-              AND project_name IN (
-            """ + string.Join(", ", nameList.Select((_, i) => $"@p{i}")) + """
-        );
-        """;
+        command.CommandText = DeleteDiagnosticsByProjectNamesSql();
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var i = 0;
-        foreach (var name in nameList)
-            command.Parameters.AddWithValue($"@p{i++}", name);
+        SqlIdList.Bind(command, "@projectNames", nameList);
         command.ExecuteNonQuery();
     }
 }

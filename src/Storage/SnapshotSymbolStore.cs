@@ -86,17 +86,13 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
             command.CommandText = """
                 DELETE FROM snapshot_symbols
                 WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (
-                """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-            );
-            """;
+                  AND symbol_id IN (SELECT value FROM json_each(@symbolIds));
+                """;
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            var i = 0;
-            foreach (var id in idList)
-                command.Parameters.AddWithValue($"@p{i++}", id);
+            SqlIdList.Bind(command, "@symbolIds", idList);
             command.ExecuteNonQuery();
 
-            DeleteTargetFrameworkRows(command, idList);
+            DeleteTargetFrameworkRows(command, snapshotId, idList);
             transaction.Commit();
         }
         catch
@@ -117,12 +113,8 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            var i = 0;
-            foreach (var id in idList)
-                command.Parameters.AddWithValue($"@p{i++}", id);
 
-            DeleteTargetFrameworkRows(command, idList);
+            DeleteTargetFrameworkRows(command, snapshotId, idList);
             transaction.Commit();
         }
         catch
@@ -132,17 +124,18 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         }
     }
 
-    // The one symbol_target_frameworks delete text. Both delete methods bind
-    // @snapshotId and @p{i} on their own command, then run this.
-    private static void DeleteTargetFrameworkRows(SqliteCommand command, IReadOnlyCollection<string> idList)
+    // The one symbol_target_frameworks delete text. It binds its own parameters
+    // (@snapshotId and one JSON array of symbol ids), so both callers run it as-is.
+    private static void DeleteTargetFrameworkRows(SqliteCommand command, string snapshotId, IReadOnlyCollection<string> idList)
     {
+        command.Parameters.Clear();
         command.CommandText = """
             DELETE FROM symbol_target_frameworks
             WHERE snapshot_id = @snapshotId
-              AND symbol_id IN (
-        """ + string.Join(", ", idList.Select((_, i) => $"@p{i}")) + """
-        );
-        """;
+              AND symbol_id IN (SELECT value FROM json_each(@symbolIds));
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(command, "@symbolIds", idList);
         command.ExecuteNonQuery();
     }
 

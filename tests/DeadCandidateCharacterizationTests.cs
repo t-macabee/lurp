@@ -1110,12 +1110,12 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         // Architectural invariant (Q5, lurp-phases-report.md Phase 3): the
         // dead-candidate store must never call IEdgeStore.GetIncomingEdges per
         // candidate — incoming LIVE edges are fetched via one batched
-        // `target_symbol_id IN (...)` query per page
-        // (DeadCandidateStore.FetchIncomingLiveEdgesBatched), chunked at 900 under
-        // SQLITE_MAX_VARIABLE_NUMBER=999. Verified two ways: (1) a static source
-        // scan below asserts the per-candidate call site does not exist in
-        // DeadCandidateStore.cs; (2) a multi-candidate page still returns correct
-        // per-candidate results, so the batching isn't silently dropping rows.
+        // `target_symbol_id IN (SELECT value FROM json_each(@symbolIds))` query
+        // per page in DeadCandidateStore.FetchIncomingEdgesBatched. Verified two
+        // ways: (1) a static source scan below asserts the per-candidate call
+        // site does not exist in DeadCandidateStore.cs; (2) a multi-candidate page
+        // still returns correct per-candidate results, so the batching isn't
+        // silently dropping rows.
         AssertNoPerCandidateGetIncomingEdgesCallSite();
 
         var files = new Dictionary<string, string>();

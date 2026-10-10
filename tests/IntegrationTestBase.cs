@@ -137,6 +137,12 @@ public abstract class IntegrationTestBase : IDisposable
         File.WriteAllText(Path.Combine(TestDir, "src", projectName, fileName), content);
     }
 
+    /// <summary>Moves the file's last write time forward so the change detector sees an edit.</summary>
+    public static void Touch(string fullPath)
+    {
+        File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddSeconds(10));
+    }
+
     /// <summary>Deletes a source file under the project's directory.</summary>
     public void DeleteFile(string projectName, string fileName)
     {
