@@ -141,6 +141,31 @@ public sealed class FreshnessJsonTests
         Assert.Equal("A.cs", row.GetProperty("document").GetString());
     }
 
+    [Fact]
+    public void DescribeFullCheckFailure_OrdinaryException_TypeNameAndMessage()
+    {
+        var text = FreshnessJson.DescribeFullCheckFailure(new InvalidOperationException("boom"));
+
+        Assert.Equal("InvalidOperationException: boom", text);
+    }
+
+    [Fact]
+    public void DescribeFullCheckFailure_WorkspaceUnreadable_MessageOnly()
+    {
+        var text = FreshnessJson.DescribeFullCheckFailure(new WorkspaceUnreadableException("no bindable compilation"));
+
+        Assert.Equal("no bindable compilation", text);
+    }
+
+    [Fact]
+    public void DescribeFullCheckFailure_LongMessage_CapsAt503EndingInEllipsis()
+    {
+        var text = FreshnessJson.DescribeFullCheckFailure(new InvalidOperationException(new string('x', 2000)));
+
+        Assert.Equal(503, text.Length);
+        Assert.EndsWith("...", text);
+    }
+
     private static WorkspaceFreshness.FreshnessResult MixedResult()
     {
         return new WorkspaceFreshness.FreshnessResult(false,

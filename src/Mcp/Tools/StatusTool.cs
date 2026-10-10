@@ -95,7 +95,7 @@ internal sealed class StatusTool
                 }
             }
 
-            object freshness;
+            Dictionary<string, object?> freshness;
             FreshnessStamp? cheapStampForDoc = null;
             WorkspaceFreshness.FreshnessResult? fullResultForDoc = null;
 
@@ -106,16 +106,18 @@ internal sealed class StatusTool
                     var result = await CheckFullFreshnessAsync(store, snapshotId, cancellationToken);
                     fullResultForDoc = result;
                     freshness = FreshnessJson.ForStatus(snapshotId, result, DateTime.UtcNow, maxDocs, maxMism, includeMismatches);
+                    FreshnessJson.AddFullCheckError(freshness, null);
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
                 }
-                catch
+                catch (Exception ex)
                 {
                     var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                     cheapStampForDoc = stamp;
                     freshness = FreshnessJson.ForStatus(stamp, maxDocs);
+                    FreshnessJson.AddFullCheckError(freshness, FreshnessJson.DescribeFullCheckFailure(ex));
                 }
             }
             else
@@ -123,6 +125,8 @@ internal sealed class StatusTool
                 var stamp = McpSessionContext.GetFreshness(store, snapshotId);
                 cheapStampForDoc = stamp;
                 freshness = FreshnessJson.ForStatus(stamp, maxDocs);
+                if (full == true)
+                    FreshnessJson.AddFullCheckError(freshness, FreshnessJson.FullCheckNotRun);
             }
 
             object? detailObj = null;

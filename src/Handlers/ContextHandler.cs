@@ -90,7 +90,7 @@ internal static class ContextHandler
             var assemblyOptions = new ContextAssemblyOptions(
                 intent, budget, maxHops, includeGenerated,
                 scopeArg, affectedProjects, gitRoot, includeCompletenessDetail);
-            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store);
 
             HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
 

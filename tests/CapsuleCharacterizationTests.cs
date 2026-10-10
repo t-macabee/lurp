@@ -730,6 +730,60 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         Assert.Contains(capsule.Uncertainties, u => u.RelationshipKind == "unmodeled_mediatr_pattern");
     }
 
+    // ── B23 ─────────────────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task Capsule_Paths_CarrySemanticCauses_OfTheAnchor()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("CauseProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                namespace CauseProj {
+                    public class Foo {
+                        public void Bar() {}
+                        public void Caller() { Bar(); }
+                    }
+                }
+                """
+        });
+        await RunFullIndexAsync(DbPath);
+
+        // A signature change gives the anchor a semantic cause against the previous snapshot.
+        WriteFile("CauseProj", "Models.cs", """
+            namespace CauseProj {
+                public class Foo {
+                    public void Bar(int x) {}
+                    public void Caller() { Bar(1); }
+                }
+            }
+            """);
+        var snapshotId = await RunIncrementalIndexAsync();
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var barId = store.GetSymbolIdsInSnapshot(snapshotId)
+                .First(id => store.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName?.Contains("CauseProj.Foo.Bar") == true);
+            var lookup = new ContextLookup(snapshotId, barId, null, null);
+            var options = DefaultOptions(5000, 1);
+
+            var withCauses = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
+            var paths = withCauses.IncomingPaths.Concat(withCauses.OutgoingPaths).ToList();
+            Assert.True(paths.Any(path => path.SemanticCauses.Count >= 1),
+                "Expected the anchor's semantic causes on at least one incoming or outgoing path.");
+
+            var withoutCauses = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+            Assert.All(withoutCauses.IncomingPaths.Concat(withoutCauses.OutgoingPaths),
+                path => Assert.Empty(path.SemanticCauses));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     // ── T7 ──────────────────────────────────────────────────────────────
 
     /// <summary>

@@ -290,15 +290,7 @@ internal sealed class DeadCandidateStore
             {
                 // Weak-only incoming
                 var best = GetStrongestWeak(incoming);
-                if (best == null)
-                {
-                    // Should not happen, but fallback to proved
-                    status = DeadCandidateStatus.ProvedDead;
-                    reason = DeadCandidateReason.NoIncomingLiveEdges;
-                    uncertainties = [];
-                    deadCount++;
-                }
-                else if (best.Provenance == Provenance.Possible && string.Equals(best.Kind, nameof(EdgeKind.MayDispatchTo), StringComparison.Ordinal))
+                if (best.Provenance == Provenance.Possible && string.Equals(best.Kind, nameof(EdgeKind.MayDispatchTo), StringComparison.Ordinal))
                 {
                     status = DeadCandidateStatus.UncertainDead;
                     reason = DeadCandidateReason.PossibleDispatch;
@@ -942,7 +934,7 @@ internal sealed class DeadCandidateStore
         return new DeadCandidateIncomingSummary(strong, weak, prov, kind);
     }
 
-    private static EdgeRecord? GetStrongestWeak(List<EdgeRecord> incoming)
+    private static EdgeRecord GetStrongestWeak(List<EdgeRecord> incoming)
     {
         EdgeRecord? best = null;
         var bestRank = -2;
@@ -957,7 +949,9 @@ internal sealed class DeadCandidateStore
                 best = e;
             }
         }
-        return best;
+        // The caller enters the weak-only branch only for a candidate with at least
+        // one incoming edge and no strong one, so a weak edge always sets best.
+        return best!;
     }
 
     private static DeadCandidateUncertainty MakeBindingIncompletenessUncertainty(string symbolId, List<BindingIncompletenessRecord> all, ProjectFacts projectFacts, List<string> docPaths, string assemblyName)

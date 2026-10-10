@@ -3,6 +3,7 @@ using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using Lurp.Storage;
+using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 using ModelContextProtocol;
 
@@ -72,6 +73,74 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.Equal("full", method);
         var scope = freshness.GetProperty("scope").GetString();
         Assert.Equal("full", scope);
+    }
+
+    [Fact]
+    public async Task Status_FullTrue_Success_HasNullFullCheckError()
+    {
+        var snapshotId = await IndexAsync();
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus(full: true);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
+        var freshness = doc.RootElement.GetProperty("freshness");
+        Assert.Equal("full", freshness.GetProperty("method").GetString());
+        Assert.True(freshness.TryGetProperty("full_check_error", out var error));
+        Assert.Equal(JsonValueKind.Null, error.ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_FullTrue_WithoutSolution_ReportsNotRun()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus(full: true);
+        using var doc = JsonDocument.Parse(json);
+        var freshness = doc.RootElement.GetProperty("freshness");
+        Assert.Equal("documents_only", freshness.GetProperty("scope").GetString());
+        Assert.Equal(FreshnessJson.FullCheckNotRun, freshness.GetProperty("full_check_error").GetString());
+    }
+
+    [Fact]
+    public async Task Status_FullTrue_BrokenSolution_ReportsError()
+    {
+        await IndexAsync();
+        var broken = Path.Combine(TestDir, "broken.sln");
+        File.WriteAllText(broken, "not a solution");
+        var args = new[] { $"--solution={broken}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+        var json = await tool.LurpStatus(full: true);
+        using var doc = JsonDocument.Parse(json);
+        var freshness = doc.RootElement.GetProperty("freshness");
+        Assert.Equal("documents_only", freshness.GetProperty("scope").GetString());
+        var error = freshness.GetProperty("full_check_error").GetString();
+        Assert.False(string.IsNullOrEmpty(error));
+    }
+
+    [Fact]
+    public async Task Status_FullFalse_HasNoFullCheckError()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var missing = await tool.LurpStatus();
+        using (var doc = JsonDocument.Parse(missing))
+        {
+            Assert.False(doc.RootElement.GetProperty("freshness").TryGetProperty("full_check_error", out _));
+        }
+
+        var explicitFalse = await tool.LurpStatus(full: false);
+        using (var doc = JsonDocument.Parse(explicitFalse))
+        {
+            Assert.False(doc.RootElement.GetProperty("freshness").TryGetProperty("full_check_error", out _));
+        }
     }
 
     [Fact]
@@ -180,7 +249,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var cheapKeys = cheapDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
         var fullKeys = fullDoc.RootElement.GetProperty("freshness").EnumerateObject().Select(p => p.Name).ToArray();
 
-        Assert.Equal(cheapKeys, fullKeys);
+        Assert.Equal(cheapKeys, fullKeys.Where(k => k != "full_check_error").ToArray());
+        Assert.Equal("full_check_error", fullKeys[^1]);
         Assert.True(cheapDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
         Assert.True(fullDoc.RootElement.GetProperty("freshness").GetProperty("is_fresh").GetBoolean());
     }

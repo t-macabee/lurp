@@ -135,6 +135,21 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ChangedContentWithPreservedMtime_DoesNotSkipWorkspaceLoad()
+    {
+        Seed();
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile(Project, "Widget.cs", WidgetSource + Environment.NewLine + "public class Extra { }");
+        File.SetLastWriteTimeUtc(Path.Combine(TestDir, "src", Project, "Widget.cs"), DateTime.UtcNow.AddYears(-1));
+
+        var output = await RunIncrementalAsync();
+
+        Assert.DoesNotContain("Workspace load skipped", output);
+        Assert.Contains("Loading solution...", output);
+    }
+
+    [Fact]
     public async Task PrecheckWorkspaceId_MatchesWorkspaceInfoIdAfterRealLoad()
     {
         Seed();

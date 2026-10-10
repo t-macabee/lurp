@@ -206,6 +206,34 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void CliFlagValidation_ValueFlagTwice_Throws()
+    {
+        var entry = new Program.ModeRegistryEntry("context", "help", ["--symbol="], _ => Task.CompletedTask);
+        var ex = Assert.Throws<CliExitException>(() =>
+            CliFlagValidation.Validate(entry, ["--symbol=a", "--symbol=b"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("given more than once", ex.Message);
+        Assert.Contains("--symbol=", ex.Message);
+    }
+
+    [Fact]
+    public void CliFlagValidation_BooleanSwitchTwice_DoesNotThrow()
+    {
+        var entry = new Program.ModeRegistryEntry("status", "help", ["--json"], _ => Task.CompletedTask);
+        CliFlagValidation.Validate(entry, ["--json", "--json"]);
+    }
+
+    [Fact]
+    public void CliFlagValidation_RepeatableValueFlagTwice_DoesNotThrow()
+    {
+        var index = new Program.ModeRegistryEntry("index", "help", ["--skip-adapter="], _ => Task.CompletedTask);
+        CliFlagValidation.Validate(index, ["--skip-adapter=A", "--skip-adapter=B"]);
+
+        var context = new Program.ModeRegistryEntry("context", "help", ["--affected-project="], _ => Task.CompletedTask);
+        CliFlagValidation.Validate(context, ["--affected-project=A", "--affected-project=B"]);
+    }
+
+    [Fact]
     public async Task StatusHandler_OutputMode_MatchesDocumentedVocabulary()
     {
         // The refactor routes status through HandlerBootstrap.ParseOutputMode; this pins the

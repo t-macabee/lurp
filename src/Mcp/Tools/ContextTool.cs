@@ -203,7 +203,7 @@ internal sealed class ContextTool
                 scope, affectedProjects, gitRoot, completenessDetail);
 
             cancellationToken.ThrowIfCancellationRequested();
-            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store);
 
             var capsuleJson = ContextCapsuleJson.Serialize(capsule);
             using var capsuleDoc = JsonDocument.Parse(capsuleJson);

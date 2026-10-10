@@ -277,5 +277,28 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         }
     }
 
+    [Fact]
+    public async Task HashFreshness_DetectsChangedContentWithPreservedMtime()
+    {
+        Seed();
+        await RunFullIndexAsync(DbPath);
+
+        // Replace the content but date the file before the snapshot, so the stat-only
+        // shortcut sees no change while the hash still differs.
+        WriteFile(Project, "Widget.cs", MutatedSource);
+        File.SetLastWriteTimeUtc(Path.Combine(TestDir, "src", Project, "Widget.cs"), DateTime.UtcNow.AddYears(-1));
+
+        var auto = RunCaptured(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=auto"], false, false)));
+        Assert.Contains("freshness: state=fresh", auto.Stderr);
+        Assert.Equal("fresh", FreshnessState(auto.Stdout));
+
+        var hash = RunCaptured(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=hash"], false, false)));
+        Assert.Contains("freshness: state=stale", hash.Stderr);
+        Assert.Equal("stale", FreshnessState(hash.Stdout));
+        using var doc = JsonDocument.Parse(hash.Stdout);
+        var sample = doc.RootElement.GetProperty("freshness").GetProperty("changed_documents_sample");
+        Assert.Contains(Document, sample.EnumerateArray().Select(e => e.GetString()));
+    }
+
     private sealed record RunResult(string Stdout, string Stderr, CliExitException? Failure);
 }

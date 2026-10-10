@@ -65,11 +65,10 @@ public static class WorkspaceFreshness
                 }
 
                 var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
-                if (lastWriteUtc <= builtAtUtc)
-                    continue;
-
                 if (mode == FreshnessMode.Auto)
                 {
+                    if (lastWriteUtc <= builtAtUtc)
+                        continue;
                     changed.Add(relativePath);
                     continue;
                 }
@@ -155,7 +154,8 @@ public static class WorkspaceFreshness
 
     /// <summary>
     /// Checks whether an incremental index run can be safely skipped without loading the workspace.
-    /// Known limit: a file changed with a preserved old mtime is not detected.
+    /// The cheap check runs in FreshnessMode.Hash, so it hashes every tracked document and a file
+    /// changed with a preserved old mtime is still detected.
     /// An untracked .cs file under the root or a .cs file that is not valid text disables the shortcut (safe fallback).
     /// </summary>
     public static SnapshotRow? CanSkipIncrementalIndex(ISnapshotPinStore pins, ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, IEdgeStore edges, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)

@@ -73,6 +73,12 @@ internal sealed class ContextAssembler
     /// </summary>
     public ISnapshotManifestStore? SnapshotStore { get; init; }
 
+    /// <summary>
+    ///     Optional semantic-diff reader. When it is absent the capsule's path
+    ///     <c>semantic_causes</c> stay empty.
+    /// </summary>
+    public ISemanticDiffStore? SemanticDiffStore { get; init; }
+
     public string SnapshotId { get; init; } = string.Empty;
     public SymbolId SymbolId { get; init; } = null!;
     public ContextIntent Intent { get; init; }
@@ -166,7 +172,7 @@ internal sealed class ContextAssembler
                 + "'unresolved' means the relation could not be observed. It is NOT evidence that "
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
 
-        var reachability = new ImpactReachability(EdgeStore, SnapshotId);
+        var reachability = new ImpactReachability(EdgeStore, SnapshotId, SemanticDiffStore);
         var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops);
         var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
@@ -455,7 +461,7 @@ internal sealed class ContextAssembler
     }
 
     public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null,
-        ISnapshotManifestStore? snapshotStore = null)
+        ISnapshotManifestStore? snapshotStore = null, ISemanticDiffStore? semanticDiffStore = null)
     {
         if (!string.IsNullOrEmpty(lookup.SymbolArg))
         {
@@ -466,6 +472,7 @@ internal sealed class ContextAssembler
                 DeclarationStore = declarationStore,
                 BindingIncompletenessStore = bindingIncompletenessStore,
                 SnapshotStore = snapshotStore,
+                SemanticDiffStore = semanticDiffStore,
                 SnapshotId = lookup.SnapshotId,
                 SymbolId = symbolId,
                 Intent = options.Intent,
@@ -537,6 +544,7 @@ internal sealed class ContextAssembler
             DeclarationStore = declarationStore,
             BindingIncompletenessStore = bindingIncompletenessStore,
             SnapshotStore = snapshotStore,
+            SemanticDiffStore = semanticDiffStore,
             SnapshotId = lookup.SnapshotId,
             SymbolId = resolvedSymbolId,
             Intent = options.Intent,

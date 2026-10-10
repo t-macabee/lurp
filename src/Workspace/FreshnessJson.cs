@@ -5,6 +5,7 @@ namespace Lurp.Workspace;
 ///     <see cref="Cheap" /> keeps the eight-key shape the read-only surfaces have
 ///     always emitted; the two <see cref="ForStatus" /> overloads emit the twelve-key
 ///     shape <c>lurp_status</c> uses, with every key always present.
+///     <c>full_check_error</c> is added only when the caller asked for the full check.
 /// </summary>
 internal static class FreshnessJson
 {
@@ -22,6 +23,25 @@ internal static class FreshnessJson
             snapshot_id = stamp.SnapshotId,
             scope = stamp.Scope
         };
+    }
+
+    /// <summary>The text <c>full_check_error</c> carries when the full check was asked for but no solution is available.</summary>
+    public const string FullCheckNotRun = "full check not run: no solution is available (start serve with --solution=)";
+
+    /// <summary>Adds <c>full_check_error</c>; only a caller that asked for the full check calls this.</summary>
+    public static void AddFullCheckError(Dictionary<string, object?> freshness, string? error)
+    {
+        freshness["full_check_error"] = error;
+    }
+
+    /// <summary>
+    ///     Describes a failed full check: <c>"&lt;TypeName&gt;: &lt;message&gt;"</c>, or the message
+    ///     alone for a <see cref="WorkspaceUnreadableException" />; capped at 500 characters.
+    /// </summary>
+    public static string DescribeFullCheckFailure(Exception ex)
+    {
+        var text = ex is WorkspaceUnreadableException ? ex.Message : $"{ex.GetType().Name}: {ex.Message}";
+        return text.Length > 500 ? text[..500] + "..." : text;
     }
 
     public readonly record struct CappedMismatches(IReadOnlyList<object> Rows, bool Truncated, int Total);

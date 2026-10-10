@@ -33,10 +33,23 @@ internal static class CliFlagValidation
     ];
 
     /// <summary>
+    ///     Value flags a handler reads as a list, so a caller may pass each once per item. Every
+    ///     other value flag may appear at most once (F15); a repeated list flag is expected, not
+    ///     an error.
+    /// </summary>
+    private static readonly HashSet<string> RepeatableFlags = new(StringComparer.Ordinal)
+    {
+        "--skip-adapter=",
+        "--affected-project="
+    };
+
+    /// <summary>
     ///     Validates <paramref name="args" /> against the inventory <paramref name="entry" />
     ///     declares, and fails with the mode's valid flags listed. Only dash-prefixed tokens are
     ///     checked: no mode takes positional arguments today, and leaving bare tokens alone keeps
     ///     this from rejecting something a caller passes for reasons the registry cannot see.
+    ///     A value flag (a token ending in <c>=</c>) may appear only once unless it is in
+    ///     <see cref="RepeatableFlags" />; a bare switch may repeat.
     /// </summary>
     public static void Validate(Program.ModeRegistryEntry entry, string[] args)
     {
@@ -59,6 +72,21 @@ internal static class CliFlagValidation
                 continue;
 
             HandlerBootstrap.Fail(BuildError(entry, token, allowed));
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var arg in args)
+        {
+            var separator = arg.IndexOf('=');
+            if (!arg.StartsWith('-') || separator < 0)
+                continue;
+
+            var token = arg[..(separator + 1)];
+            if (RepeatableFlags.Contains(token))
+                continue;
+
+            if (!seen.Add(token))
+                HandlerBootstrap.Fail($"ERROR: flag '{token}' given more than once for --mode={entry.Name}. Pass it once.");
         }
     }
 
