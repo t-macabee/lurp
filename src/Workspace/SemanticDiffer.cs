@@ -25,9 +25,11 @@ public class SemanticDiffer
         new(SymbolMetadataKeys.Attributes, ChangeType.AttributeChanged, MetadataComparisonKind.Array)
     ];
 
-    // Loading both per-symbol document-version maps is a fixed cost (~30 ms on eNoteV2); each
-    // common symbol they let skip the source/location reads saves ~0.5 ms. Break-even is ~57.
-    private const int DocumentVersionMapPreloadCutoff = 64;
+    // Reading only the changed symbols' edges and declaration document versions costs about
+    // as much as loading the whole snapshot once the changed symbols reach about a quarter of
+    // one snapshot's symbols (B47 proof, 16x). With two snapshots: read scoped while
+    // changed × 8 < from + to symbols.
+    private const int ScopedReadDivisor = 8;
 
     // Loading both symbol-info maps costs about 4 µs per snapshot symbol; a per-symbol
     // GetSymbolInfo call costs about 26 µs, two per common symbol (B42 M1b, 16x). Preloading
@@ -96,13 +98,16 @@ public class SemanticDiffer
             common = common.Where(changedSymbolIds.Contains);
         var commonList = common.ToList();
 
-        Dictionary<string, List<string>>? fromDocumentVersionsBySymbol = null;
-        Dictionary<string, List<string>>? toDocumentVersionsBySymbol = null;
-        if (changedSymbolIds == null || commonList.Count >= DocumentVersionMapPreloadCutoff)
-        {
-            fromDocumentVersionsBySymbol = _declarationStore.GetDocumentVersionIdsBySymbol(fromSnapshotId);
-            toDocumentVersionsBySymbol = _declarationStore.GetDocumentVersionIdsBySymbol(toSnapshotId);
-        }
+        var scope = changedSymbolIds != null && changedSymbolIds.Count * ScopedReadDivisor < fromSymbols.Count + toSymbols.Count
+            ? changedSymbolIds
+            : null;
+
+        var fromDocumentVersionsBySymbol = scope != null
+            ? _declarationStore.GetDocumentVersionIdsBySymbol(fromSnapshotId, commonList)
+            : _declarationStore.GetDocumentVersionIdsBySymbol(fromSnapshotId);
+        var toDocumentVersionsBySymbol = scope != null
+            ? _declarationStore.GetDocumentVersionIdsBySymbol(toSnapshotId, commonList)
+            : _declarationStore.GetDocumentVersionIdsBySymbol(toSnapshotId);
 
         Dictionary<string, SymbolDiffInfo>? fromSymbolInfo = null;
         Dictionary<string, SymbolDiffInfo>? toSymbolInfo = null;
@@ -116,8 +121,8 @@ public class SemanticDiffer
         {
             List<string>? fromDocumentVersionIds = null;
             List<string>? toDocumentVersionIds = null;
-            fromDocumentVersionsBySymbol?.TryGetValue(symbolId, out fromDocumentVersionIds);
-            toDocumentVersionsBySymbol?.TryGetValue(symbolId, out toDocumentVersionIds);
+            fromDocumentVersionsBySymbol.TryGetValue(symbolId, out fromDocumentVersionIds);
+            toDocumentVersionsBySymbol.TryGetValue(symbolId, out toDocumentVersionIds);
             var fromInfo = fromSymbolInfo != null ? fromSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, fromSnapshotId);
             var toInfo = toSymbolInfo != null ? toSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, toSnapshotId);
             var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromInfo, toInfo, fromSnapshotId, toSnapshotId, fromDocumentVersionIds, toDocumentVersionIds);
@@ -127,13 +132,22 @@ public class SemanticDiffer
 
         MatchTransitions(changes, fromSnapshotId, toSnapshotId);
 
-        var fromEdges = _edgeStore.GetEdges(fromSnapshotId);
-        var toEdges = _edgeStore.GetEdges(toSnapshotId);
-
-        if (changedSymbolIds != null)
+        List<EdgeRecord> fromEdges;
+        List<EdgeRecord> toEdges;
+        if (scope != null)
         {
-            fromEdges = [.. fromEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
-            toEdges = [.. toEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
+            fromEdges = _edgeStore.GetEdgesTouchingSymbols(fromSnapshotId, scope);
+            toEdges = _edgeStore.GetEdgesTouchingSymbols(toSnapshotId, scope);
+        }
+        else
+        {
+            fromEdges = _edgeStore.GetEdges(fromSnapshotId);
+            toEdges = _edgeStore.GetEdges(toSnapshotId);
+            if (changedSymbolIds != null)
+            {
+                fromEdges = [.. fromEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
+                toEdges = [.. toEdges.Where(e => changedSymbolIds.Contains(e.SourceSymbolId) || changedSymbolIds.Contains(e.TargetSymbolId))];
+            }
         }
 
         DiffEdges(fromEdges, toEdges, fromSnapshotId, toSnapshotId, changes);

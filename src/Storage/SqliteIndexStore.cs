@@ -513,6 +513,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _declReader!.GetDocumentVersionIdsBySymbol(snapshotId);
     }
 
+    public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        EnsureOpen();
+        return _declReader!.GetDocumentVersionIdsBySymbol(snapshotId, symbolIds);
+    }
+
     public Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId)
     {
         EnsureOpen();
@@ -573,6 +579,12 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     {
         EnsureOpen();
         return _edgeOps!.GetEdges(snapshotId, symbolId);
+    }
+
+    public List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        EnsureOpen();
+        return _edgeOps!.GetEdgesTouchingSymbols(snapshotId, symbolIds);
     }
 
     public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)

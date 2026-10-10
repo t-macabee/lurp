@@ -268,17 +268,18 @@ internal sealed class EdgeOperationsStore
         memberCmd.ExecuteNonQuery();
     }
 
+    private const string EdgeRecordColumns =
+        "source_symbol_id, target_symbol_id, kind, provenance, snapshot_id, extractor_version, " +
+        "source_document_path, source_start_line, source_start_column, source_end_line, " +
+        "source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json";
+
     public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
     {
         using var command = _connection.CreateCommand();
         if (symbolId != null)
         {
-            command.CommandText = """
-                SELECT source_symbol_id, target_symbol_id, kind, provenance,
-                       snapshot_id, extractor_version,
-                       source_document_path, source_start_line, source_start_column,
-                       source_end_line, source_end_column,
-                       is_cross_generated, type_arguments_json, receiver_type_constraints_json
+            command.CommandText = $"""
+                SELECT {EdgeRecordColumns}
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                   AND (source_symbol_id = @symbolId OR target_symbol_id = @symbolId)
@@ -288,12 +289,8 @@ internal sealed class EdgeOperationsStore
         }
         else
         {
-            command.CommandText = """
-                SELECT source_symbol_id, target_symbol_id, kind, provenance,
-                       snapshot_id, extractor_version,
-                       source_document_path, source_start_line, source_start_column,
-                       source_end_line, source_end_column,
-                       is_cross_generated, type_arguments_json, receiver_type_constraints_json
+            command.CommandText = $"""
+                SELECT {EdgeRecordColumns}
                 FROM edges
                 WHERE snapshot_id = @snapshotId
                 ORDER BY edge_id;
@@ -302,6 +299,32 @@ internal sealed class EdgeOperationsStore
 
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
+        return ReadEdgeRecords(command);
+    }
+
+    /// <summary>
+    ///     Returns the snapshot's edges whose source or target is in the list, in
+    ///     <c>edge_id</c> order. It returns the same rows as a full <see cref="GetEdges(string)" />
+    ///     filtered in memory; the <c>CROSS JOIN</c> keeps the list as the outer loop (B47).
+    /// </summary>
+    internal static string EdgesTouchingSymbolsSql() => $"""
+        SELECT {EdgeRecordColumns}
+        FROM edges
+        WHERE edge_id IN (
+            SELECT e.edge_id FROM json_each(@symbolIds) j CROSS JOIN edges e
+            WHERE e.snapshot_id = @snapshotId AND e.source_symbol_id = j.value
+            UNION
+            SELECT e.edge_id FROM json_each(@symbolIds) j CROSS JOIN edges e
+            WHERE e.snapshot_id = @snapshotId AND e.target_symbol_id = j.value)
+        ORDER BY edge_id;
+        """;
+
+    public List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = EdgesTouchingSymbolsSql();
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(command, "@symbolIds", symbolIds);
         return ReadEdgeRecords(command);
     }
 
@@ -316,12 +339,8 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT source_symbol_id, target_symbol_id, kind, provenance,
-                   snapshot_id, extractor_version,
-                   source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
+        command.CommandText = $"""
+            SELECT {EdgeRecordColumns}
             FROM edges
             WHERE snapshot_id = @snapshotId AND kind = @kind
             ORDER BY edge_id;
@@ -335,12 +354,8 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT source_symbol_id, target_symbol_id, kind, provenance,
-                   snapshot_id, extractor_version,
-                   source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
+        command.CommandText = $"""
+            SELECT {EdgeRecordColumns}
             FROM edges
             WHERE snapshot_id = @snapshotId AND target_symbol_id = @symbolId
             ORDER BY edge_id;
@@ -354,12 +369,8 @@ internal sealed class EdgeOperationsStore
     public List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT source_symbol_id, target_symbol_id, kind, provenance,
-                   snapshot_id, extractor_version,
-                   source_document_path, source_start_line, source_start_column,
-                   source_end_line, source_end_column,
-                   is_cross_generated, type_arguments_json, receiver_type_constraints_json
+        command.CommandText = $"""
+            SELECT {EdgeRecordColumns}
             FROM edges
             WHERE snapshot_id = @snapshotId AND source_symbol_id = @symbolId
             ORDER BY edge_id;

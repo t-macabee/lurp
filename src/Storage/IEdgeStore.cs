@@ -7,6 +7,7 @@ public interface IEdgeStore
     void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations);
 
     List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null);
+    List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds);
     List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null);
     List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
 

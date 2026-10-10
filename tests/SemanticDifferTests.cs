@@ -1140,6 +1140,109 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Contains(scopedChanges, c => c.ChangeType == ChangeType.SignatureChanged);
     }
 
+    [Fact]
+    public void ScopedDiff_BelowScopedReadThreshold_ReadsScopedDocumentVersionMaps()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
+        var differ = new SemanticDiffer(store, store, countingStore, store);
+
+        // One changed symbol: 1 × 8 = 8 < 7 + 7 = 14, so both maps are read scoped.
+        var (changes, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
+            new HashSet<string> { "M:Ns.SigEdit|asm1" });
+
+        Assert.Equal(2, countingStore.DocumentVersionMapScopedLoads);
+        Assert.Equal(0, countingStore.DocumentVersionMapFullLoads);
+        Assert.Contains(changes, c => c.ChangeType == ChangeType.SignatureChanged && c.SymbolId == "M:Ns.SigEdit|asm1");
+    }
+
+    [Fact]
+    public void ScopedDiff_AtScopedReadThreshold_LoadsFullMaps_AndMatchesBelowThreshold()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
+        var differ = new SemanticDiffer(store, store, countingStore, store);
+
+        // Two changed symbols: 2 × 8 = 16 >= 7 + 7 = 14, so both maps are read in full.
+        var symbols = new HashSet<string> { "M:Ns.SigEdit|asm1", "M:Ns.BodyOnly|asm1" };
+        var (fullMapChanges, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId, symbols);
+
+        Assert.Equal(2, countingStore.DocumentVersionMapFullLoads);
+        Assert.Equal(0, countingStore.DocumentVersionMapScopedLoads);
+
+        // Each symbol on its own is below the threshold, so it reads a scoped map; the
+        // scoped read must not change the emitted changes.
+        foreach (var symbolId in symbols)
+        {
+            var (scopedChanges, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
+                new HashSet<string> { symbolId });
+            var expected = fullMapChanges.Where(c => c.SymbolId == symbolId).ToList();
+            var actual = scopedChanges.Where(c => c.SymbolId == symbolId).ToList();
+            Assert.Equal(expected.Count, actual.Count);
+            for (var i = 0; i < expected.Count; i++)
+            {
+                Assert.Equal(expected[i].ChangeType, actual[i].ChangeType);
+                Assert.Equal(expected[i].DetailJson, actual[i].DetailJson);
+            }
+        }
+    }
+
+    [Fact]
+    public void ScopedDiff_ReadsOnlyEdgesTouchingChangedSymbols()
+    {
+        using var store = OpenStore();
+        SaveFastPathSnapshots(store);
+        SaveFastPathDeclarations(store);
+
+        store.SaveEdges(FastPathFromSnapshotId, [
+            new EdgeRecord { SourceSymbolId = "M:Ns.SigEdit|asm1", TargetSymbolId = "M:Ns.Shared.Keep|asm1", Kind = "Calls", Provenance = "compiler_proved" },
+            new EdgeRecord { SourceSymbolId = "M:Ns.BodyOnly|asm1", TargetSymbolId = "M:Ns.Shared.Keep|asm1", Kind = "Calls", Provenance = "compiler_proved" }
+        ]);
+        store.SaveEdges(FastPathToSnapshotId, [
+            new EdgeRecord { SourceSymbolId = "M:Ns.SigEdit|asm1", TargetSymbolId = "M:Ns.Shared.Meta|asm1", Kind = "Calls", Provenance = "compiler_proved" },
+            new EdgeRecord { SourceSymbolId = "M:Ns.BodyOnly|asm1", TargetSymbolId = "M:Ns.Shared.Meta|asm1", Kind = "Calls", Provenance = "compiler_proved" }
+        ]);
+
+        var differ = new SemanticDiffer(store, store, store, store);
+        var (scopedChanges, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
+            new HashSet<string> { "M:Ns.SigEdit|asm1" });
+
+        var scopedEdgeChanges = scopedChanges
+            .Where(c => c.ChangeType is ChangeType.EdgeAdded or ChangeType.EdgeRemoved)
+            .ToList();
+
+        var removed = Assert.Single(scopedEdgeChanges, c => c.ChangeType == ChangeType.EdgeRemoved);
+        Assert.Equal("M:Ns.SigEdit|asm1", removed.SymbolId);
+        Assert.Contains("\"target\":\"M:Ns.Shared.Keep|asm1\"", removed.DetailJson!);
+
+        var added = Assert.Single(scopedEdgeChanges, c => c.ChangeType == ChangeType.EdgeAdded);
+        Assert.Equal("M:Ns.SigEdit|asm1", added.SymbolId);
+        Assert.Contains("\"target\":\"M:Ns.Shared.Meta|asm1\"", added.DetailJson!);
+
+        Assert.DoesNotContain(scopedEdgeChanges, c => c.SymbolId == "M:Ns.BodyOnly|asm1");
+
+        var fullDiffer = new SemanticDiffer(store, store, store, store);
+        var (fullChanges, _) = fullDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
+        var fullEdgeChanges = fullChanges
+            .Where(c => c.ChangeType is ChangeType.EdgeAdded or ChangeType.EdgeRemoved)
+            .Where(c => c.DetailJson!.Contains("M:Ns.SigEdit|asm1", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(fullEdgeChanges.Count, scopedEdgeChanges.Count);
+        for (var i = 0; i < fullEdgeChanges.Count; i++)
+        {
+            Assert.Equal(fullEdgeChanges[i].ChangeType, scopedEdgeChanges[i].ChangeType);
+            Assert.Equal(fullEdgeChanges[i].SymbolId, scopedEdgeChanges[i].SymbolId);
+            Assert.Equal(fullEdgeChanges[i].DetailJson, scopedEdgeChanges[i].DetailJson);
+        }
+    }
+
     private sealed class CountingDeclarationStore(IDeclarationStore inner, bool fastPathEnabled) : IDeclarationStore
     {
         private readonly Dictionary<string, int> _declarationLocationCalls = [];
@@ -1149,11 +1252,22 @@ public sealed class SemanticDifferTests : IDisposable
         public int DeclarationLocationCalls(string symbolId) => _declarationLocationCalls.GetValueOrDefault(symbolId);
         public int SymbolInfoCalls { get; private set; }
         public int SymbolDiffInfoPreloads { get; private set; }
+        public int DocumentVersionMapFullLoads { get; private set; }
+        public int DocumentVersionMapScopedLoads { get; private set; }
 
         public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
         {
+            DocumentVersionMapFullLoads++;
             return fastPathEnabled
                 ? inner.GetDocumentVersionIdsBySymbol(snapshotId)
+                : new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        }
+
+        public Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId, IEnumerable<string> symbolIds)
+        {
+            DocumentVersionMapScopedLoads++;
+            return fastPathEnabled
+                ? inner.GetDocumentVersionIdsBySymbol(snapshotId, symbolIds)
                 : new Dictionary<string, List<string>>(StringComparer.Ordinal);
         }
 

@@ -423,6 +423,11 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
+        public List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds)
+        {
+            throw new NotSupportedException();
+        }
+
         public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
         {
             throw new NotSupportedException();

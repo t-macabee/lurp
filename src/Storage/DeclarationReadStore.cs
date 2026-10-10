@@ -178,6 +178,30 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
+        return ReadDocumentVersionIdsBySymbol(command);
+    }
+
+    // The scoped form of the full map above: the same rows restricted to the listed symbols.
+    internal static string DocumentVersionIdsBySymbolsSql() => """
+        SELECT d.symbol_id, d.document_version_id
+        FROM json_each(@symbolIds) j
+        CROSS JOIN declarations d ON d.symbol_id = j.value
+        JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id AND sd.snapshot_id = @snapshotId
+        ORDER BY d.symbol_id, d.document_version_id;
+        """;
+
+    internal Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId, IEnumerable<string> symbolIds)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = DocumentVersionIdsBySymbolsSql();
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(command, "@symbolIds", symbolIds);
+
+        return ReadDocumentVersionIdsBySymbol(command);
+    }
+
+    private static Dictionary<string, List<string>> ReadDocumentVersionIdsBySymbol(SqliteCommand command)
+    {
         var result = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         using var reader = command.ExecuteReader();
         while (reader.Read())
