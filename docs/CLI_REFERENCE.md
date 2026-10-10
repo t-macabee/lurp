@@ -690,10 +690,11 @@ summary) or left out, largest first; `truncated` is true and
 `budget_exhausted`. `projects` (project names, the keys of `target_frameworks`)
 builds the manifest from those projects only. Both are echoed in
 `detail.filters`. `max_documents`, `max_mismatches` and `documents` are returned
-as requested, even when they exceed the cap. The CLI `status --json` has no cap
-and no `projects` flag; use `--detail=` there.
+as requested, up to those bounds, even when they exceed the cap. The CLI
+`status --json` has no cap and no `projects` flag; use `--detail=` there.
 
-Traversal and paging inputs are bounded: `limit`/`tier_limit` ≤ 500,
+Size-driving inputs are bounded: `limit`/`tier_limit` ≤ 500,
+`max_documents`/`max_mismatches` ≤ 500, the length of `documents` ≤ 500,
 `content_budget` ≤ 200000, `max_hops`/`max_depth` ≤ 20, `snippet_tokens` ≤ 2000,
 `max_bytes` ≤ 400000.
 A larger value is rejected with an invalid-params error instead of producing a

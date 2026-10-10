@@ -683,6 +683,69 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
+    public async Task Status_MaxDocuments_OverLimit_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_documents: 501));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("max_documents must be <= 500", ex.Message);
+
+        await tool.LurpStatus(max_documents: 500);
+    }
+
+    [Fact]
+    public async Task Status_MaxMismatches_OverLimit_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_mismatches: 501));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("max_mismatches must be <= 500", ex.Message);
+
+        await tool.LurpStatus(max_mismatches: 500);
+    }
+
+    [Fact]
+    public async Task Status_Documents_OverLimit_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var overLimit = Enumerable.Range(0, 501).Select(i => $"a{i}.cs").ToArray();
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(documents: overLimit));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("documents length must be <= 500", ex.Message);
+
+        var atLimit = Enumerable.Range(0, 500).Select(i => $"a{i}.cs").ToArray();
+        var json = await tool.LurpStatus(documents: atLimit);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(500, doc.RootElement.GetProperty("document_freshness").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Status_Projects_WithFreshness_MessageDoesNotListSections()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await tool.LurpStatus(sections: "freshness", projects: _statusProjProjects));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("except freshness", ex.Message);
+    }
+
+    [Fact]
     public async Task Status_DetailTrue_MapsToManifestNotAll()
     {
         await IndexAsync();

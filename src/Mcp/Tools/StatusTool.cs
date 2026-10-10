@@ -50,6 +50,8 @@ internal sealed class StatusTool
                 throw new McpProtocolException("max-documents must be a positive integer.", McpErrorCode.InvalidParams);
             if (maxMism < 1)
                 throw new McpProtocolException("max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(max_documents, McpLimits.MaxLimit, "max_documents");
+            McpLimits.RequireAtMost(max_mismatches, McpLimits.MaxLimit, "max_mismatches");
 
             var maxBytes = max_bytes ?? DefaultMaxBytes;
             if (maxBytes < 1)
@@ -72,11 +74,12 @@ internal sealed class StatusTool
             var includeMismatches = includeManifest;
 
             if (projectFilter != null && !includeManifest)
-                throw new McpProtocolException("projects needs a manifest section: sections=manifest, completeness, references or all.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("projects needs a manifest section: use any sections value except freshness.", McpErrorCode.InvalidParams);
 
             var requestedDocs = ParseDocuments(documents);
             if (documents != null && requestedDocs == null)
                 throw new McpProtocolException("documents must be an array of strings.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(requestedDocs?.Count, McpLimits.MaxLimit, "documents length");
 
             // Normalize requested docs early for validation and later use
             List<string>? normalizedRequested = null;
