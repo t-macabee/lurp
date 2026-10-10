@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
@@ -9,6 +10,9 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpStatusTests : IntegrationTestBase
 {
+    private static readonly string[] _statusProjProjects = ["StatusProj"];
+    private static readonly string[] _unknownProjects = ["NoSuchProject"];
+
     private async Task<string> IndexAsync()
     {
         CreateProject("StatusProj", new Dictionary<string, string>
@@ -16,6 +20,17 @@ public sealed class McpStatusTests : IntegrationTestBase
             ["Models.cs"] = "namespace StatusProj { public class Foo { public void Bar() {} } }"
         });
         return await RunFullIndexAsync(DbPath);
+    }
+
+    /// <summary>Indexes <c>StatusProj</c> plus a second project, and returns the snapshot id of the second run.</summary>
+    private async Task<string> IndexTwoProjectsAsync()
+    {
+        await IndexAsync();
+        CreateProject("StatusProj2", new Dictionary<string, string>
+        {
+            ["Models.cs"] = "namespace StatusProj2 { public class Bar { public void Baz() {} } }"
+        });
+        return await RunFullIndexNoDeleteAsync(DbPath);
     }
 
     [Fact]
@@ -311,7 +326,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
 
-        var json = await tool.LurpStatus(sections: "references");
+        var json = await tool.LurpStatus(sections: "references", max_bytes: 400000);
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.TryGetProperty("detail", out var detail));
         Assert.True(detail.TryGetProperty("manifest", out var manifest));
@@ -328,7 +343,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
 
-        var json = await tool.LurpStatus(sections: "all");
+        var json = await tool.LurpStatus(sections: "all", max_bytes: 400000);
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.TryGetProperty("detail", out var detail));
         Assert.True(detail.TryGetProperty("manifest", out var manifest));
@@ -412,41 +427,188 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
-    public async Task Status_EnvelopeCap_TruncatesWhenOversized()
+    public async Task Status_MaxBytes_Default_IsFortyThousand()
     {
         await IndexAsync();
-        // Create many projects to exceed 80k with sections=all — 30 projects with 2 docs each → ~60 docs + ~1800 identities
-        for (int i = 0; i < 30; i++)
-        {
-            CreateProject($"StatusHuge{i}", new Dictionary<string, string>
-            {
-                ["A.cs"] = $"namespace StatusHuge{i} {{ public class C{i} {{ public void M() {{}} }} }}",
-                ["B.cs"] = $"namespace StatusHuge{i} {{ public class D{i} {{ public void N() {{}} }} }}"
-            });
-        }
-        await RunFullIndexNoDeleteAsync(DbPath);
         var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
-        var json = await tool.LurpStatus(sections: "all");
+
+        var json = await tool.LurpStatus(sections: "manifest");
         using var doc = JsonDocument.Parse(json);
-        // The truncated envelope is small (<80k) after manifest omission, so check the flag, not the returned length
-        if (doc.RootElement.TryGetProperty("truncated", out var trunc) && trunc.GetBoolean())
+        var filters = doc.RootElement.GetProperty("detail").GetProperty("filters");
+        Assert.Equal(40000, filters.GetProperty("max_bytes").GetInt32());
+        Assert.Equal(JsonValueKind.Null, filters.GetProperty("projects").ValueKind);
+    }
+
+    [Fact]
+    public async Task Status_MaxBytes_OutOfRange_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var exZero = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_bytes: 0));
+        Assert.Equal(McpErrorCode.InvalidParams, exZero.ErrorCode);
+        Assert.Contains("max_bytes", exZero.Message);
+
+        var exHigh = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_bytes: 400001));
+        Assert.Equal(McpErrorCode.InvalidParams, exHigh.ErrorCode);
+        Assert.Contains("max_bytes", exHigh.Message);
+    }
+
+    [Fact]
+    public async Task Status_MaxBytes_CapBelowAll_SummarizesLargestPart()
+    {
+        var snapshotId = await IndexTwoProjectsAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var unbounded = await tool.LurpStatus(sections: "all", max_bytes: 400000);
+        var l = Encoding.UTF8.GetByteCount(unbounded);
+
+        // The response echoes detail.filters.max_bytes, so the cap's own width is part of the
+        // payload: a cap one byte under L reproduces exactly L - 1 bytes. Step one byte further
+        // so the un-fitted payload is strictly over the cap.
+        var cap = l - 2;
+        var json = await tool.LurpStatus(sections: "all", max_bytes: cap);
+        Assert.True(Encoding.UTF8.GetByteCount(json) <= l - 2);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.TryGetProperty("truncated", out var truncated));
+        Assert.True(truncated.GetBoolean());
+
+        var detail = doc.RootElement.GetProperty("detail");
+        Assert.False(detail.TryGetProperty("note", out _));
+
+        var manifest = detail.GetProperty("manifest");
+        Assert.Equal(snapshotId, manifest.GetProperty("snapshot_id").GetString());
+
+        var omitted = manifest.GetProperty("omitted_fields");
+        Assert.True(omitted.GetArrayLength() > 0);
+        Assert.Equal("metadata_reference_identities", omitted[0].GetProperty("category").GetString());
+        Assert.Equal("summarized", omitted[0].GetProperty("reason").GetString());
+        // On a small fixture the markers can outweigh the gain of one step, so the fitter may go on to
+        // a second part. The invariant that holds at any size: a part that is not listed in
+        // omitted_fields is still in the manifest. ("Smaller parts stay when one step is enough" is
+        // pinned in SnapshotManifestJsonTests.)
+        var categories = omitted.EnumerateArray()
+            .Select(entry => entry.GetProperty("category").GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var part in new[] { "metadata_reference_counts", "document_versions" })
+            Assert.True(manifest.TryGetProperty(part, out _) || categories.Contains(part), $"{part} is neither in the manifest nor listed in omitted_fields");
+    }
+
+    [Fact]
+    public async Task Status_MaxBytes_TinyCap_OmitsEveryFullPart()
+    {
+        await IndexTwoProjectsAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        // The full render names which parts exist; a tiny cap must remove every one it can.
+        var full = await tool.LurpStatus(sections: "all", max_bytes: 400000);
+        using var fullDoc = JsonDocument.Parse(full);
+        var fullManifest = fullDoc.RootElement.GetProperty("detail").GetProperty("manifest");
+        var presentParts = new List<string>();
+        foreach (var part in new[]
+                 {
+                     "document_versions", "metadata_reference_identities", "project_documents", "project_graph",
+                     "compilation_options_fingerprints", "assembly_names"
+                 })
+            if (fullManifest.TryGetProperty(part, out _))
+                presentParts.Add(part);
+        if (fullManifest.TryGetProperty("completeness", out var fullCompleteness))
         {
-            Assert.True(doc.RootElement.TryGetProperty("detail", out var detail));
-            Assert.True(detail.TryGetProperty("note", out var note));
-            Assert.Contains("manifest omitted", note.GetString(), StringComparison.OrdinalIgnoreCase);
+            if (fullCompleteness.TryGetProperty("active_tfms", out _))
+                presentParts.Add("completeness.active_tfms");
+            if (fullCompleteness.TryGetProperty("binding_incompleteness_summary", out _))
+                presentParts.Add("completeness.binding_incompleteness_summary");
         }
-        else
-        {
-            // If fixture still not large enough to trigger the cap, at least verify sections=all succeeds and contains manifest
-            Assert.True(doc.RootElement.TryGetProperty("detail", out var detail));
-            Assert.True(detail.TryGetProperty("manifest", out var manifest));
-            Assert.True(manifest.TryGetProperty("document_versions", out _));
-            Assert.True(manifest.TryGetProperty("metadata_reference_identities", out _));
-            // Also verify the raw size would be large — if this path is taken, the fixture may need growing
-            // We don't fail here; the truncation guarantee is best-effort with the current fixture
-        }
+
+        var json = await tool.LurpStatus(sections: "all", max_bytes: 1000);
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("truncated").GetBoolean());
+        var detail = doc.RootElement.GetProperty("detail");
+        Assert.False(detail.TryGetProperty("note", out _));
+        var manifest = detail.GetProperty("manifest");
+        Assert.True(manifest.TryGetProperty("snapshot_id", out _));
+        Assert.True(manifest.TryGetProperty("target_frameworks", out _));
+
+        var omitted = manifest.GetProperty("omitted_fields").EnumerateArray()
+            .Select(entry => entry.GetProperty("category").GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(presentParts);
+        foreach (var part in presentParts)
+            Assert.Contains(part, omitted);
+    }
+
+    [Fact]
+    public async Task Status_FreshnessSection_MaxBytesTiny_NoTruncatedMarker()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "freshness", max_bytes: 100);
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.TryGetProperty("truncated", out _));
+    }
+
+    [Fact]
+    public async Task Status_Projects_ScopesManifestToNamedProject()
+    {
+        await IndexTwoProjectsAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var json = await tool.LurpStatus(sections: "references", projects: _statusProjProjects, max_bytes: 400000);
+        using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.TryGetProperty("truncated", out _));
+
+        var detail = doc.RootElement.GetProperty("detail");
+        var manifest = detail.GetProperty("manifest");
+        var identities = manifest.GetProperty("metadata_reference_identities");
+        Assert.True(identities.TryGetProperty("StatusProj", out _));
+        Assert.Single(identities.EnumerateObject());
+        Assert.Single(manifest.GetProperty("target_frameworks").EnumerateObject());
+
+        var filtersProjects = detail.GetProperty("filters").GetProperty("projects");
+        Assert.Equal(JsonValueKind.Array, filtersProjects.ValueKind);
+        Assert.Equal(_statusProjProjects, filtersProjects.EnumerateArray().Select(e => e.GetString()!).ToArray());
+    }
+
+    [Fact]
+    public async Task Status_Projects_UnknownProject_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await tool.LurpStatus(sections: "manifest", projects: _unknownProjects));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("unknown project", ex.Message);
+    }
+
+    [Fact]
+    public async Task Status_Projects_WithoutManifestSection_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await tool.LurpStatus(sections: "freshness", projects: _statusProjProjects));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("manifest section", ex.Message);
     }
 
     [Fact]

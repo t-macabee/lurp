@@ -88,6 +88,10 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.detail.manifest.completeness.active_tfms",
         // SnapshotManifestJson.Render metadata_reference_counts (sections=references off): keys are project names.
         "$.detail.manifest.metadata_reference_counts",
+        // SnapshotManifest.DocumentVersions (MCP sections=all): keys are document paths.
+        "$.detail.manifest.document_versions",
+        // SnapshotManifest.MetadataReferenceIdentities (MCP sections=references|all): keys are project names.
+        "$.detail.manifest.metadata_reference_identities",
         // SnapshotCompleteness.ActiveTfms (capsule's completeness): keys are target framework monikers.
         "$.capsule.completeness.active_tfms"
     };
@@ -324,6 +328,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         var statusTool = new StatusTool(session);
         foreach (var sections in new[] { "freshness", "manifest", "references", "completeness", "all" })
             await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: sections), $"sections={sections}");
+        await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(sections: "references", projects: CallShapesAppProject, max_bytes: 100_000), "sections=references,projects,max_bytes");
         await ExtractToolShapeAsync("lurp_status", () => statusTool.LurpStatus(full: true), "full");
 
         ExtractToolShape("lurp_timings", () => new TimingsTool(session).LurpTimings());

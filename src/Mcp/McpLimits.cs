@@ -25,6 +25,12 @@ internal static class McpLimits
     public const int MaxSnippetTokens = 2_000;
 
     /// <summary>
+    ///     Cap for <c>max_bytes</c> on <c>lurp_status</c>. MCP clients cut larger results
+    ///     without counting them (Claude Code: 4 × its 25,000-token limit, in characters).
+    /// </summary>
+    public const int MaxStatusBytes = 400_000;
+
+    /// <summary>
     ///     Rejects a value above <paramref name="max" /> with the MCP invalid-params
     ///     code. Null and below-maximum values pass through untouched.
     /// </summary>

@@ -468,9 +468,9 @@ per-document `binding_incompleteness` rows. This matches the MCP `lurp_status`
 `sections=completeness` behavior.
 
 Batch document freshness — checking a specific list of documents against the
-snapshot, the MCP `lurp_status` `documents` parameter — has **no CLI
-equivalent**: `--documents=` is not a flag of `--mode=status` (and would be
-rejected as unknown). To check one document from the CLI, read its freshness via
+snapshot, the MCP `lurp_status` `documents`, `projects` and `max_bytes`
+parameters — has **no CLI equivalent**: `--documents=` is not a flag of
+`--mode=status` (and would be rejected as unknown). To check one document from the CLI, read its freshness via
 a read mode's stderr line / `--require-fresh` exit code instead.
 
 ---
@@ -674,8 +674,21 @@ available from both surfaces (`--mode=retract-annotation` and
 `--solution=`). This keeps an agent's frequent status polls from loading the
 workspace on every call.
 
+`lurp_status` responses are capped at `max_bytes` UTF-8 bytes (default 40,000, at
+most 400,000; the default keeps a reference-heavy response under a 25,000-token
+client output limit). Over the cap, the largest manifest parts are summarized
+(identities to counts, document versions to a count, binding rows to their
+summary) or left out, largest first; `truncated` is true and
+`detail.manifest.omitted_fields` lists each part with the reason `summarized` or
+`budget_exhausted`. `projects` (project names, the keys of `target_frameworks`)
+builds the manifest from those projects only. Both are echoed in
+`detail.filters`. `max_documents`, `max_mismatches` and `documents` are returned
+as requested, even when they exceed the cap. The CLI `status --json` has no cap
+and no `projects` flag; use `--detail=` there.
+
 Traversal and paging inputs are bounded: `limit`/`tier_limit` ≤ 500,
-`content_budget` ≤ 200000, `max_hops`/`max_depth` ≤ 20, `snippet_tokens` ≤ 2000.
+`content_budget` ≤ 200000, `max_hops`/`max_depth` ≤ 20, `snippet_tokens` ≤ 2000,
+`max_bytes` ≤ 400000.
 A larger value is rejected with an invalid-params error instead of producing a
 response whose size and latency the caller did not anticipate.
 

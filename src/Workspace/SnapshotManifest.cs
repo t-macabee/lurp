@@ -193,11 +193,25 @@ public sealed partial class SnapshotManifest
         };
     }
 
-    internal static SnapshotManifest FromStorageManifest(SnapshotRow storage)
+    /// <summary>
+    ///     Rebuilds the rich manifest from a stored snapshot row. With <paramref name="projects" />,
+    ///     the manifest holds only those projects, their documents and their TFMs.
+    /// </summary>
+    internal static SnapshotManifest FromStorageManifest(SnapshotRow storage, IReadOnlySet<string>? projects = null)
     {
+        var selectedProjects = projects == null
+            ? storage.Projects
+            : storage.Projects.Where(project => projects.Contains(project.Name)).ToList();
+        HashSet<string>? selectedDocuments = projects == null
+            ? null
+            : selectedProjects.SelectMany(project => project.DocumentPaths ?? []).ToHashSet(StringComparer.Ordinal);
+
         var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
         foreach (var doc in storage.Documents)
         {
+            if (selectedDocuments != null && !selectedDocuments.Contains(doc.FilePath))
+                continue;
+
             var docId = new DocumentId(doc.FilePath);
             var versionId = new DocumentVersionId(doc.FilePath, doc.ContentHash);
             documentVersions[docId] = versionId;
@@ -209,7 +223,7 @@ public sealed partial class SnapshotManifest
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
         var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        foreach (var project in storage.Projects)
+        foreach (var project in selectedProjects)
         {
             targetFrameworks[project.Name] = project.TargetFramework;
             projectGraph[project.Name] = [.. project.References];

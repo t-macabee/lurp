@@ -16,7 +16,7 @@ public sealed class CliMcpContractSnapshotTests
     [Fact]
     public void ContractVersion_IsExpected()
     {
-        Assert.Equal(4, VersionConstants.CliMcpContractVersion);
+        Assert.Equal(5, VersionConstants.CliMcpContractVersion);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public sealed class CliMcpContractSnapshotTests
             "lurp_refresh(ack,snapshot_id)",
             "lurp_retract_annotation(annotation_id,snapshot_id)",
             "lurp_search(query,type,kind,limit,snippet_tokens,cursor,include_generated,snapshot_id)",
-            "lurp_status(snapshot_id,detail,sections,max_documents,max_mismatches,documents,full)",
+            "lurp_status(snapshot_id,detail,sections,max_documents,max_mismatches,documents,full,projects,max_bytes)",
             "lurp_timings(snapshot_id)",
         };
 

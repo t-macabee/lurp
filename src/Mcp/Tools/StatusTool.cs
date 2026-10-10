@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -16,7 +18,7 @@ internal sealed class StatusTool
     private readonly McpSessionContext _session;
     private const int DefaultMaxDocuments = 50;
     private const int DefaultMaxMismatches = 50;
-    private const int EnvelopeCapBytes = 80000;
+    private const int DefaultMaxBytes = 40_000;
 
     public StatusTool(McpSessionContext session)
     {
@@ -24,7 +26,7 @@ internal sealed class StatusTool
     }
 
     [McpServerTool(Name = "lurp_status", Title = "Lurp Status", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). Supports sections and caps to bound payload.")]
+    [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). The response is capped at max_bytes (default 40000): over the cap, the largest manifest parts are summarized or left out, truncated is true and detail.manifest.omitted_fields names them; pass projects to narrow the manifest to named projects.")]
     public async Task<string> LurpStatus(
         string? snapshot_id = null,
         object? detail = null,
@@ -33,6 +35,8 @@ internal sealed class StatusTool
         int? max_mismatches = null,
         object? documents = null,
         bool? full = null,
+        [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs sections=manifest, completeness, references or all.")] string[]? projects = null,
+        [Description("Response size cap in UTF-8 bytes (default 40000, at most 400000). Over the cap, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Above about 44000 bytes of reference identities, MCP clients with a 25000-token output limit may flag the result as truncated.")] int? max_bytes = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -47,12 +51,28 @@ internal sealed class StatusTool
             if (maxMism < 1)
                 throw new McpProtocolException("max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
 
+            var maxBytes = max_bytes ?? DefaultMaxBytes;
+            if (maxBytes < 1)
+                throw new McpProtocolException("max_bytes must be a positive integer.", McpErrorCode.InvalidParams);
+            McpLimits.RequireAtMost(max_bytes, McpLimits.MaxStatusBytes, "max_bytes");
+
+            HashSet<string>? projectFilter = null;
+            if (projects != null)
+            {
+                var names = projects.Where(v => !string.IsNullOrWhiteSpace(v)).ToArray();
+                if (names.Length > 0)
+                    projectFilter = new HashSet<string>(names, StringComparer.Ordinal);
+            }
+
             var resolvedSections = ResolveSections(detail, sections);
             var includeManifest = resolvedSections != "freshness";
             var includeReferences = resolvedSections == "references" || resolvedSections == "all";
             var includeDocumentsInManifest = resolvedSections == "all";
             var includeCompleteness = resolvedSections == "completeness" || resolvedSections == "all";
             var includeMismatches = includeManifest;
+
+            if (projectFilter != null && !includeManifest)
+                throw new McpProtocolException("projects needs a manifest section: sections=manifest, completeness, references or all.", McpErrorCode.InvalidParams);
 
             var requestedDocs = ParseDocuments(documents);
             if (documents != null && requestedDocs == null)
@@ -167,25 +187,46 @@ internal sealed class StatusTool
             }
 
             object? detailObj = null;
+            JsonNode? manifestNode = null;
             if (includeManifest)
             {
                 try
                 {
                     var latestRow = store.LoadSnapshot(snapshotId);
+                    if (projectFilter != null && latestRow != null)
+                    {
+                        var knownProjects = latestRow.Projects.Select(project => project.Name).ToHashSet(StringComparer.Ordinal);
+                        foreach (var name in projectFilter)
+                        {
+                            if (!knownProjects.Contains(name))
+                                throw new McpProtocolException($"projects: unknown project '{name}'. Use the keys of detail.manifest.target_frameworks.", McpErrorCode.InvalidParams);
+                        }
+                    }
+
                     var schemaVersion = store.GetCurrentSchemaVersion();
                     var dbPath = _session.DbPath;
+                    manifestNode = latestRow != null
+                        ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness, projectFilter), includeDocumentsInManifest, includeReferences, "sections=all", "sections=references")
+                        : null;
                     detailObj = new
                     {
                         database_path = dbPath,
                         schema_version = schemaVersion,
                         contract_version = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                         latest_snapshot_id = snapshotId,
-                        manifest = latestRow != null
-                            ? SnapshotManifestJson.Render(SnapshotManifestJson.WithBindingCompleteness(store, latestRow, includeCompleteness), includeDocumentsInManifest, includeReferences, "sections=all", "sections=references")
-                            : null,
+                        manifest = manifestNode,
+                        filters = new
+                        {
+                            projects = projectFilter?.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+                            max_bytes = maxBytes
+                        },
                         git_root = latestRow?.GitRoot,
                         solution_path = latestRow?.SolutionPath
                     };
+                }
+                catch (McpProtocolException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -205,40 +246,32 @@ internal sealed class StatusTool
                 documentFreshness = ComputeDocumentFreshness(store, snapshotId, cheapStampForDoc, fullResultForDoc, normalizedRequested);
             }
 
-            var envelope = new Dictionary<string, object?>
+            string Serialize(bool truncated)
             {
-                ["snapshot_id"] = snapshotId,
-                ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
-                ["freshness"] = freshness,
-                ["pinned"] = true,
-                ["detail"] = detailObj
-            };
-            if (documentFreshness != null)
-                envelope["document_freshness"] = documentFreshness;
-
-            var json = JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
-
-            // Hard envelope cap per Gap1 step 5
-            if (json.Length > EnvelopeCapBytes)
-            {
-                // Rebuild with manifest stripped and truncation marker
-                var truncatedDetail = new
-                {
-                    note = $"payload truncated at {EnvelopeCapBytes} bytes; manifest omitted. Use sections=references or max_documents/max_mismatches to request specific data."
-                };
-                var truncatedEnvelope = new Dictionary<string, object?>
+                var envelope = new Dictionary<string, object?>
                 {
                     ["snapshot_id"] = snapshotId,
                     ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                     ["freshness"] = freshness,
                     ["pinned"] = true,
-                    ["detail"] = includeManifest ? truncatedDetail : detailObj,
-                    ["truncated"] = true
+                    ["detail"] = detailObj
                 };
                 if (documentFreshness != null)
-                    truncatedEnvelope["document_freshness"] = documentFreshness;
-                json = JsonSerializer.Serialize(truncatedEnvelope, LurpJsonOptions.Indented);
+                    envelope["document_freshness"] = documentFreshness;
+                if (truncated)
+                    envelope["truncated"] = true;
+                return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
+
+            bool Fits() => Encoding.UTF8.GetByteCount(Serialize(true)) <= maxBytes;
+
+            var omittedNote = $"Parts listed in omitted_fields were summarized or left out to keep this response under {maxBytes} bytes. Pass projects=[...] (keys of target_frameworks) to narrow the manifest, or a larger max_bytes (at most {McpLimits.MaxStatusBytes}). CLI 'status --json --detail=all' has no size cap.";
+
+            var json = Serialize(false);
+            if (Encoding.UTF8.GetByteCount(json) > maxBytes
+                && manifestNode is JsonObject manifestObject
+                && SnapshotManifestJson.FitToSize(manifestObject, Fits, omittedNote).Count > 0)
+                json = Serialize(true);
 
             return json;
         }
