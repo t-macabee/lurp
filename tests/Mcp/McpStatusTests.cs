@@ -765,6 +765,87 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         Assert.True(manifest.TryGetProperty("document_count", out _));
     }
 
+    [Theory]
+    [InlineData("no")]
+    [InlineData("foo")]
+    [InlineData("all")]
+    [InlineData("documents")]
+    [InlineData("1")]
+    public async Task Status_Detail_UnsupportedString_ThrowsInvalidParams(string detail)
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(detail: detail));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("detail: unsupported value", ex.Message);
+    }
+
+    [Fact]
+    public async Task Status_Detail_UnsupportedJson_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        foreach (var text in new[] { "2", "1.5", "99999999999", "{}", "[]" })
+        {
+            using var parsed = JsonDocument.Parse(text);
+            var detail = parsed.RootElement.Clone();
+            var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(detail: detail));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Contains("detail: unsupported value", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task Status_Detail_Supported_Works()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        using var jsonOne = JsonDocument.Parse("1");
+        foreach (var detail in new object?[] { true, "true", "TRUE", jsonOne.RootElement.Clone() })
+        {
+            var json = await tool.LurpStatus(detail: detail);
+            using var doc = JsonDocument.Parse(json);
+            Assert.True(doc.RootElement.TryGetProperty("detail", out var detailEl));
+            Assert.True(detailEl.TryGetProperty("manifest", out var manifest));
+            Assert.True(manifest.TryGetProperty("document_count", out _));
+        }
+
+        using var jsonZero = JsonDocument.Parse("0");
+        foreach (var detail in new object?[] { false, "false", "", jsonZero.RootElement.Clone(), null })
+        {
+            var json = await tool.LurpStatus(detail: detail);
+            using var doc = JsonDocument.Parse(json);
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("detail").ValueKind);
+        }
+    }
+
+    [Fact]
+    public async Task Status_Detail_Unsupported_WithSections_ThrowsInvalidParams()
+    {
+        await IndexAsync();
+        var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var tool = new StatusTool(session);
+
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await tool.LurpStatus(detail: "foo", sections: "all"));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("detail: unsupported value", ex.Message);
+
+        var json = await tool.LurpStatus(detail: true, sections: "freshness");
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("detail").ValueKind);
+    }
+
     [Fact]
     public async Task Status_MaxDocuments_ZeroAndNegative_ThrowsInvalidParams()
     {

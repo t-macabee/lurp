@@ -29,13 +29,13 @@ internal sealed class StatusTool
     [Description("Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). The response is capped at max_bytes (default 40000): over the cap, the largest manifest parts are summarized or left out, truncated is true and detail.manifest.omitted_fields names them; pass projects to narrow the manifest to named projects.")]
     public async Task<string> LurpStatus(
         string? snapshot_id = null,
-        object? detail = null,
+        [Description("Legacy; use sections. true selects sections=manifest; false or omitted selects none. Accepts true, false, 1 or 0; any other value is an error.")] object? detail = null,
         [Description("Sections to include, comma-separated: freshness, manifest, documents, references, completeness or all. Values combine as a union; documents returns the per-document version map. Unknown values are an error.")] string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
         object? documents = null,
         bool? full = null,
-        [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs sections=manifest, completeness, references or all.")] string[]? projects = null,
+        [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs a manifest section: any sections value except freshness.")] string[]? projects = null,
         [Description("Response size cap in UTF-8 bytes (default 40000, at most 400000). Over the cap, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Above about 44000 bytes of reference identities, MCP clients with a 25000-token output limit may flag the result as truncated.")] int? max_bytes = null,
         CancellationToken cancellationToken = default)
     {
@@ -268,13 +268,16 @@ internal sealed class StatusTool
 
     private static StatusSectionSet ResolveSections(object? detail, string? sections)
     {
+        var detailValue = false;
+        if (detail != null && !TryParseDetail(detail, out detailValue))
+            throw new McpProtocolException("detail: unsupported value. Use true, false, 1 or 0, or use sections.", McpErrorCode.InvalidParams);
         if (!string.IsNullOrWhiteSpace(sections))
         {
             if (!StatusSections.TryParse(sections, allowSurfaceNames: true, out var parsed, out var badValue))
                 throw new McpProtocolException($"sections: unknown value '{badValue}'. Use {StatusSections.Vocabulary(true)}.", McpErrorCode.InvalidParams);
             return parsed;
         }
-        if (detail != null && IsDetail(detail))
+        if (detailValue)
             return new StatusSectionSet(Manifest: true, Documents: false, References: false, Completeness: false);
         return default;
     }
@@ -360,34 +363,48 @@ internal sealed class StatusTool
         return WorkspaceFreshness.CheckFreshness(workspaceInfo, manifest);
     }
 
-    private static bool IsDetail(object? detail)
+    private static bool TryParseDetail(object? detail, out bool value)
     {
-        if (detail == null) return false;
-        if (detail is bool b) return b;
-        if (detail is string s)
+        value = false;
+        switch (detail)
         {
-            if (bool.TryParse(s, out var parsed)) return parsed;
-            if (string.Equals(s, "all", StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(s, "documents", StringComparison.OrdinalIgnoreCase)) return true;
-            return !string.IsNullOrWhiteSpace(s);
+            case null:
+                return true;
+            case bool b:
+                value = b;
+                return true;
+            case string s:
+                if (string.IsNullOrWhiteSpace(s))
+                    return true;
+                return bool.TryParse(s, out value);
+            case int i:
+                if (i is not (0 or 1))
+                    return false;
+                value = i == 1;
+                return true;
+            case JsonElement e:
+                switch (e.ValueKind)
+                {
+                    case JsonValueKind.True:
+                        value = true;
+                        return true;
+                    case JsonValueKind.False:
+                        return true;
+                    case JsonValueKind.Null:
+                    case JsonValueKind.Undefined:
+                        return true;
+                    case JsonValueKind.String:
+                        return TryParseDetail(e.GetString(), out value);
+                    case JsonValueKind.Number:
+                        if (!e.TryGetInt32(out var n) || n is not (0 or 1))
+                            return false;
+                        value = n == 1;
+                        return true;
+                    default:
+                        return false;
+                }
+            default:
+                return false;
         }
-        if (detail is JsonElement e)
-        {
-            switch (e.ValueKind)
-            {
-                case JsonValueKind.True: return true;
-                case JsonValueKind.False: return false;
-                case JsonValueKind.String:
-                    var str = e.GetString();
-                    if (bool.TryParse(str, out var pb)) return pb;
-                    if (string.Equals(str, "all", StringComparison.OrdinalIgnoreCase)) return true;
-                    return !string.IsNullOrEmpty(str);
-                case JsonValueKind.Number:
-                    return e.GetInt32() != 0;
-                default: return false;
-            }
-        }
-        return false;
     }
 }

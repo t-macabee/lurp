@@ -681,6 +681,10 @@ workspace on every call.
 as a union, so `documents` returns the per-document `document_versions` map and
 `references` the full identities. An unknown value is an `InvalidParams` error.
 
+The legacy `detail` parameter accepts `true`, `false`, `1` or `0`; `true` is the
+same as `sections=manifest`, and `sections` wins when both are given. Any other
+value is an `InvalidParams` error.
+
 `lurp_status` responses are capped at `max_bytes` UTF-8 bytes (default 40,000, at
 most 400,000; the default keeps a reference-heavy response under a 25,000-token
 client output limit). Over the cap, the largest manifest parts are summarized
