@@ -160,7 +160,15 @@ public sealed class McpImpactTests : IntegrationTestBase
         // semantic_causes is top level (Bar has a signature change against the previous snapshot)
         var jsonUpBar = impact.LurpImpact(symbol: barId, direction: "upstream", max_depth: 3, limit: 50);
         using var docUpBar = JsonDocument.Parse(jsonUpBar);
-        Assert.True(docUpBar.RootElement.GetProperty("semantic_causes").GetArrayLength() >= 1);
+        var upBarCauses = docUpBar.RootElement.GetProperty("semantic_causes");
+        Assert.True(upBarCauses.GetArrayLength() >= 1);
+
+        // The item shape of lurp_impact (B60): these five keys, nothing else.
+        var expectedCauseKeys = new[] { "change_type", "detail", "from_snapshot_id", "symbol_id", "to_snapshot_id" };
+        foreach (var cause in upBarCauses.EnumerateArray())
+            Assert.Equal(
+                expectedCauseKeys,
+                cause.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -733,7 +734,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     // ── B23 ─────────────────────────────────────────────────────────────
 
     [SkippableFact]
-    public async Task Capsule_Paths_CarrySemanticCauses_OfTheAnchor()
+    public async Task Capsule_CarriesAnchorSemanticCausesOnce_AtTheTopLevel()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
@@ -770,13 +771,107 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             var options = DefaultOptions(5000, 1);
 
             var withCauses = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
-            var paths = withCauses.IncomingPaths.Concat(withCauses.OutgoingPaths).ToList();
-            Assert.True(paths.Any(path => path.SemanticCauses.Count >= 1),
-                "Expected the anchor's semantic causes on at least one incoming or outgoing path.");
+            using var document = JsonDocument.Parse(ContextCapsuleJson.Serialize(withCauses));
+            var root = document.RootElement;
+
+            var pathCount = root.GetProperty("incoming_paths").GetArrayLength() + root.GetProperty("outgoing_paths").GetArrayLength();
+            Assert.True(pathCount >= 1, "The fixture needs at least one path, or the check that no path carries causes proves nothing.");
+
+            var causes = root.GetProperty("semantic_causes");
+            Assert.True(causes.GetArrayLength() >= 1, "Expected the anchor's semantic causes at the top level.");
+            Assert.All(causes.EnumerateArray(), cause => Assert.Equal(barId, cause.GetProperty("symbol_id").GetString()));
+
+            // Each path carries no causes of its own: the list is written once for the capsule.
+            foreach (var name in new[] { "incoming_paths", "outgoing_paths" })
+                if (root.TryGetProperty(name, out var paths))
+                    Assert.All(paths.EnumerateArray(), path => Assert.False(path.TryGetProperty("semantic_causes", out _)));
 
             var withoutCauses = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
-            Assert.All(withoutCauses.IncomingPaths.Concat(withoutCauses.OutgoingPaths),
-                path => Assert.Empty(path.SemanticCauses));
+            using var emptyDocument = JsonDocument.Parse(ContextCapsuleJson.Serialize(withoutCauses));
+            Assert.Empty(emptyDocument.RootElement.GetProperty("semantic_causes").EnumerateArray());
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task Capsule_ManySemanticCauses_AreBoundedToTen_UnderBudget()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("CauseProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                namespace CauseProj {
+                    public class Foo {
+                        public void Bar() {}
+                        public void Caller1() { Bar(); }
+                        public void Caller2() { Bar(); }
+                        public void Caller3() { Bar(); }
+                        public void Caller4() { Bar(); }
+                    }
+                }
+                """
+        });
+        var fromSnapshotId = await RunFullIndexAsync(DbPath);
+
+        WriteFile("CauseProj", "Models.cs", """
+            namespace CauseProj {
+                public class Foo {
+                    public void Bar(int x) {}
+                    public void Caller1() { Bar(1); }
+                    public void Caller2() { Bar(1); }
+                    public void Caller3() { Bar(1); }
+                    public void Caller4() { Bar(1); }
+                }
+            }
+            """);
+        var snapshotId = await RunIncrementalIndexAsync();
+
+        string barId;
+        using (var lookupStore = OpenStore(DbPath))
+            barId = lookupStore.GetSymbolIdsInSnapshot(snapshotId)
+                .First(id => lookupStore.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName?.Contains("CauseProj.Foo.Bar") == true);
+
+        // The signature change gives one cause. Eleven more for the same anchor make twelve,
+        // so the anchor has more than the ten causes the capsule keeps under budget.
+        using (var connection = OpenDbConnection())
+        {
+            var extraCauses = Enumerable.Range(1, 11).Select(i => new SemanticChange
+            {
+                ChangeId = $"b60-extra-cause-{i:D2}",
+                FromSnapshotId = fromSnapshotId,
+                ToSnapshotId = snapshotId,
+                ChangeType = "signature_changed",
+                SymbolId = barId,
+                DetailJson = $"{{\"n\":{i}}}",
+                CreatedAtUtc = DateTime.UtcNow
+            }).ToList();
+            new SemanticDiffStore(connection).SaveSemanticChanges(fromSnapshotId, snapshotId, extraCauses);
+        }
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, barId, null, null);
+
+            // Unbudgeted, the capsule keeps every path and every cause; its measure is the budget basis.
+            var full = ContextAssembler.ResolveAndAssemble(store, store, lookup, DefaultOptions(1_000_000, 1), store, store, store);
+            Assert.True(full.IncomingPaths.Count > 3, "The fixture needs more than three incoming paths.");
+
+            var bounded = ContextAssembler.ResolveAndAssemble(store, store, lookup, DefaultOptions(full.EstimatedTokens - 1, 1), store, store, store);
+            using var document = JsonDocument.Parse(ContextCapsuleJson.Serialize(bounded));
+            var root = document.RootElement;
+
+            Assert.Equal(10, root.GetProperty("semantic_causes").GetArrayLength());
+            Assert.Contains(root.GetProperty("omitted_tiers").EnumerateArray(),
+                entry => entry.GetProperty("category").GetString() == "semantic_causes"
+                         && entry.GetProperty("reason").GetString() == "summarized");
+
+            var incoming = root.GetProperty("incoming_paths");
+            Assert.InRange(incoming.GetArrayLength(), 1, 3);
         }
         finally
         {

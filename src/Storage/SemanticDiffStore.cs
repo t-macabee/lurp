@@ -64,7 +64,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         using var command = _connection.CreateCommand();
         command.CommandText = SemanticChangesSelect + """
             WHERE from_snapshot_id = @fromSnapshotId AND to_snapshot_id = @toSnapshotId
-            ORDER BY created_at_utc;
+            ORDER BY created_at_utc, change_id;
             """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
@@ -77,7 +77,7 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         using var command = _connection.CreateCommand();
         command.CommandText = SemanticChangesSelect + """
             WHERE to_snapshot_id = @toSnapshotId
-            ORDER BY created_at_utc;
+            ORDER BY created_at_utc, change_id;
             """;
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
 

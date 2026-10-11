@@ -318,6 +318,8 @@ internal sealed class ContextCapsule
 
     [JsonPropertyName("outgoing_paths")] public List<ImpactPath> OutgoingPaths { get; init; } = [];
 
+    [JsonPropertyName("semantic_causes")] public List<SemanticCauseJson> SemanticCauses { get; init; } = [];
+
     [JsonPropertyName("constraints")] public List<CapsuleConstraint> Constraints { get; init; } = [];
 
     [JsonPropertyName("inclusion_reasons")]

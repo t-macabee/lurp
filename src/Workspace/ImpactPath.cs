@@ -48,13 +48,12 @@ public sealed class ImpactHop
 public sealed class ImpactPath
 {
     [JsonConstructor]
-    public ImpactPath(List<ImpactHop> hops, bool truncated = false, string? truncationReason = null, List<SemanticChange>? semanticCauses = null)
+    public ImpactPath(List<ImpactHop> hops, bool truncated = false, string? truncationReason = null)
     {
         Hops = hops ?? throw new ArgumentNullException(nameof(hops));
         Truncated = truncated;
         TruncationReason = truncationReason;
         TotalSteps = hops.Count;
-        SemanticCauses = semanticCauses ?? [];
     }
 
     [JsonPropertyName("hops")] public List<ImpactHop> Hops { get; }
@@ -65,6 +64,4 @@ public sealed class ImpactPath
     public string? TruncationReason { get; }
 
     [JsonPropertyName("total_steps")] public int TotalSteps { get; }
-
-    [JsonPropertyName("semantic_causes")] public List<SemanticChange> SemanticCauses { get; }
 }

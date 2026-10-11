@@ -147,6 +147,28 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
+    public void RoundTrip_Migration037_DocumentVersionsDocumentIdIndex()
+    {
+        var runner = new MigrationRunner(_dbPath);
+        runner.RunMigrations();
+
+        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_document_id';";
+        Assert.Equal("document_versions", command.ExecuteScalar());
+
+        command.CommandText = "SELECT name FROM pragma_index_info('idx_document_versions_document_id');";
+        using var reader = command.ExecuteReader();
+        var columns = new List<string>();
+        while (reader.Read())
+            columns.Add(reader.GetString(0));
+        Assert.Single(columns);
+        Assert.Equal("document_id", columns[0]);
+    }
+
+    [Fact]
     public void ValidateSchema_AfterRunMigrations_DoesNotThrow()
     {
         var runner = new MigrationRunner(_dbPath);
@@ -230,6 +252,100 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             SqliteConnection.ClearAllPools();
             if (File.Exists(dbPath)) File.Delete(dbPath);
         }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV1Schema_RecomposesReferencedDocumentVersionId()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-e4-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
+            {
+                connection.Open();
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                new Migration_001_InitialSchema().Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (1, '2025-01-01T00:00:00.0000000Z', 'Migration_001_InitialSchema');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws-e4', '/repo/e4', '/repo/e4/E4.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('snap-e4', 'ws-e4', '2025-01-01T00:00:00.0000000Z', '10.0.100', 1, 1);
+
+                    INSERT INTO documents (document_id, relative_path)
+                    VALUES ('doc-e4', 'src/E4Project/E4.cs');
+
+                    INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count)
+                    VALUES ('dv-e4', 'doc-e4', 'abc123', X'010203', 'utf-8', 3);
+
+                    INSERT INTO snapshot_documents (snapshot_id, document_version_id)
+                    VALUES ('snap-e4', 'dv-e4');
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            var finalVersion = new MigrationRunner(dbPath).GetCurrentSchemaVersion();
+            Assert.Equal(VersionConstants.DatabaseSchemaVersion, finalVersion);
+
+            using var verify = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly;Pooling=False");
+            verify.Open();
+
+            using var childCommand = verify.CreateCommand();
+            childCommand.CommandText = "SELECT document_version_id FROM snapshot_documents WHERE snapshot_id = 'snap-e4';";
+            Assert.Equal("doc-e4:abc123", childCommand.ExecuteScalar());
+
+            using var parentCommand = verify.CreateCommand();
+            parentCommand.CommandText = "SELECT document_version_id FROM document_versions WHERE document_id = 'doc-e4';";
+            Assert.Equal("doc-e4:abc123", parentCommand.ExecuteScalar());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
+    {
+        new MigrationRunner(_dbPath).RunMigrations();
+        SqliteConnection.ClearAllPools();
+
+        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                PRAGMA foreign_keys = OFF;
+                DELETE FROM schema_metadata WHERE version = 37;
+                DROP INDEX idx_document_versions_document_id;
+                INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
+                """;
+            command.ExecuteNonQuery();
+        }
+        SqliteConnection.ClearAllPools();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new MigrationRunner(_dbPath).RunMigrations());
+        Assert.Contains("snapshot_documents", ex.Message);
+        Assert.Equal(VersionConstants.DatabaseSchemaVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+
+        using var verify = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly;Pooling=False");
+        verify.Open();
+        using var indexCommand = verify.CreateCommand();
+        indexCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_document_id';";
+        Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);
     }
 }
 

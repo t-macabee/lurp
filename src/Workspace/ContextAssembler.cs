@@ -74,8 +74,8 @@ internal sealed class ContextAssembler
     public ISnapshotManifestStore? SnapshotStore { get; init; }
 
     /// <summary>
-    ///     Optional semantic-diff reader. When it is absent the capsule's path
-    ///     <c>semantic_causes</c> stay empty.
+    ///     Optional semantic-diff reader. When it is absent the capsule's top-level
+    ///     <c>semantic_causes</c> stays empty.
     /// </summary>
     public ISemanticDiffStore? SemanticDiffStore { get; init; }
 
@@ -177,6 +177,8 @@ internal sealed class ContextAssembler
         var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
+        // Both traces return the anchor's causes; the capsule writes that list once, at the top level.
+        capsule.SemanticCauses.AddRange(incoming.SemanticCauses.Select(SemanticCauseJson.From));
 
         foreach (var annotation in EdgeStore.GetAnnotations(SnapshotId)
                      .Where(annotation =>

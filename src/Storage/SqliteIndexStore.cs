@@ -76,6 +76,9 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         {
             DataSource = _dbPath,
             Mode = mode,
+            // Foreign keys are enforced on every connection; the setting is explicit so it
+            // does not depend on the SQLite build's default.
+            ForeignKeys = true,
             // Read connections are short-lived per MCP tool call, so pooling keeps their
             // open cost low. Writer connections are long-lived for the run (or one-shot
             // writes) and are closed for real, so the database file is released when the

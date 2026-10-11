@@ -4,7 +4,7 @@
 
 It is intentionally separate from `DatabaseSchemaVersion` (SQLite schema), `OutputSchemaVersion` (capsule JSON shape), and `ExtractorVersion` (semantic fact derivation). Those cover storage and derivation; this covers the *invocation* shape.
 
-`VersionConstants.ExtractorVersion` must be bumped with every change to any extractor's output; the per-extractor versions alone do not trigger a new snapshot.
+Bump the version of each edge extractor whose output changes (`ExtractorConstants`, or an adapter's version). Bump `ExtractorVersion` for every other change to extraction output: declarations, symbol metadata, structural edges, binding-incompleteness rows. Both versions are part of the snapshot identity, so either bump produces a new snapshot.
 
 It is surfaced programmatically so callers can check it without scraping help text:
 

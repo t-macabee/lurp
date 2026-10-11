@@ -345,8 +345,7 @@ public sealed class ImpactReachabilityResult
 
             leaves.Add(new ImpactPath(WitnessPath(symbol.SymbolId),
                 symbol.IsFrontier,
-                symbol.IsFrontier ? "max depth reached" : null,
-                SemanticCauses));
+                symbol.IsFrontier ? "max depth reached" : null));
         }
 
         return leaves

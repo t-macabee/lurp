@@ -12,8 +12,8 @@ namespace Lurp.Workspace;
 // framing (symbol ids, fully-qualified names, edge kinds, provenance,
 // coordinates) is navigation metadata and is not counted as content.
 //
-// Over-budget capsules first bound the path sections (a "summarized"
-// entry), then bound tier-item source text to a per-item cap, then clear the
+// Over-budget capsules first bound the path and semantic-cause sections (a
+// "summarized" entry), then bound tier-item source text to a per-item cap, then clear the
 // lowest-priority sections greedily; every omitted/summarized category is
 // recorded in omitted_tiers and truncated_categories. surrounding_source is
 // low-value bulk (sibling declarations that heavily overlap the anchor) and
@@ -35,6 +35,7 @@ internal static class CapsuleBudgetEnforcer
 {
     private const int MaxBoundPaths = 3;
     private const int MaxBoundHopsPerPath = 3;
+    private const int MaxBoundCauses = 10;
     private const int MaxItemSourceChars = 800;
     private const string SourceTruncationMarker = "\n// … source truncated by token budget …";
 
@@ -54,8 +55,9 @@ internal static class CapsuleBudgetEnforcer
             // The serialized path sections dominate a capsule and are the most
             // compressible content. Bound them first so that lower-priority
             // sections are not dropped merely to preserve an unbounded path blob.
-            foreach (var category in (string[])["incoming_paths", "outgoing_paths"])
-                if (trimmer.BoundPathSection(category) is { } bounded)
+            // Causes are one capsule-level list; they are bounded the same way (B60).
+            foreach (var category in (string[])["incoming_paths", "outgoing_paths", "semantic_causes"])
+                if (trimmer.BoundSection(category) is { } bounded)
                     RecordTruncation(capsule, bounded);
 
             // Then bound tier-item source text. Keeping every required section
@@ -180,6 +182,8 @@ internal static class CapsuleBudgetEnforcer
         chars += SectionSourceChars(capsule.AffectedPublicSurfaces);
         chars += SerializedChars(capsule.IncomingPaths);
         chars += SerializedChars(capsule.OutgoingPaths);
+        // The causes were part of the path sections before B60; they stay in the measure.
+        chars += SerializedChars(capsule.SemanticCauses);
         chars += SerializedChars(capsule.Constraints);
         chars += SerializedChars(capsule.InclusionReasons);
         chars += SerializedChars(capsule.LikelyChangeSites);
@@ -335,6 +339,17 @@ internal static class CapsuleBudgetEnforcer
         };
     }
 
+    private static Func<ContextCapsule, bool> CauseBoundStep(List<SemanticCauseJson> causes)
+    {
+        return _ =>
+        {
+            if (causes.Count <= MaxBoundCauses)
+                return false;
+            causes.RemoveRange(MaxBoundCauses, causes.Count - MaxBoundCauses);
+            return true;
+        };
+    }
+
     private static Func<ContextCapsule, bool> BoundSourceStep(List<CapsuleItem> items, int maxChars)
     {
         return _ =>
@@ -396,6 +411,7 @@ internal static class CapsuleBudgetEnforcer
                 TrimmableSection.Clear("suggested_verification", capsule.SuggestedVerification),
                 TrimmableSection.Clear("incoming_paths", capsule.IncomingPaths),
                 TrimmableSection.Clear("outgoing_paths", capsule.OutgoingPaths),
+                TrimmableSection.Clear("semantic_causes", capsule.SemanticCauses),
                 TrimmableSection.WithSteps("topology",
                     new TrimStep("budget_exhausted", TopologyResetStep(capsule))),
                 TrimmableSection.Clear("constraints", capsule.Constraints),
@@ -442,14 +458,14 @@ internal static class CapsuleBudgetEnforcer
             return null;
         }
 
-        public TruncationEntry? BoundPathSection(string category)
+        public TruncationEntry? BoundSection(string category)
         {
             foreach (var section in _sections)
             {
                 if (!string.Equals(section.Name, category, StringComparison.Ordinal))
                     continue;
-                var paths = PathItems(_capsule, category);
-                if (paths != null && PathBoundStep(paths)(_capsule))
+                var bound = BoundStepFor(_capsule, category);
+                if (bound != null && bound(_capsule))
                     return new TruncationEntry(section.Name, "summarized");
                 return null;
             }
@@ -471,12 +487,13 @@ internal static class CapsuleBudgetEnforcer
             return null;
         }
 
-        private static List<ImpactPath>? PathItems(ContextCapsule capsule, string category)
+        private static Func<ContextCapsule, bool>? BoundStepFor(ContextCapsule capsule, string category)
         {
             return category switch
             {
-                "incoming_paths" => capsule.IncomingPaths,
-                "outgoing_paths" => capsule.OutgoingPaths,
+                "incoming_paths" => PathBoundStep(capsule.IncomingPaths),
+                "outgoing_paths" => PathBoundStep(capsule.OutgoingPaths),
+                "semantic_causes" => CauseBoundStep(capsule.SemanticCauses),
                 _ => null
             };
         }

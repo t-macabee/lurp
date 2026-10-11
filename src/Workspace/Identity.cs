@@ -103,7 +103,8 @@ public sealed record SnapshotIdentityInput(
     string SdkVersion,
     string CompilerVersion,
     string ExtractorVersion,
-    IReadOnlySet<string> SkipAdapters)
+    IReadOnlySet<string> SkipAdapters,
+    IReadOnlyDictionary<string, string> ExtractorVersions)
 {
     public static SnapshotIdentityInput FromWorkspace(WorkspaceInfo workspace, IReadOnlySet<string>? skipAdapters)
     {
@@ -125,7 +126,8 @@ public sealed record SnapshotIdentityInput(
             workspace.SdkVersion,
             workspace.CompilerVersion.ToString(),
             workspace.ExtractorVersion,
-            skipAdapters ?? new HashSet<string>(StringComparer.Ordinal));
+            skipAdapters ?? new HashSet<string>(StringComparer.Ordinal),
+            ExtractorRegistry.All.ToDictionary(e => e.Name, e => e.Version, StringComparer.Ordinal));
     }
 }
 
@@ -155,6 +157,14 @@ public static class SnapshotIdentity
         WriteField(writer, "sdkVersion", input.SdkVersion);
         WriteField(writer, "compilerVersion", input.CompilerVersion);
         WriteField(writer, "extractorVersion", input.ExtractorVersion);
+
+        writer.Write("extractorVersions");
+        writer.Write(input.ExtractorVersions.Count);
+        foreach (var kvp in input.ExtractorVersions.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "extractor", kvp.Key);
+            WriteField(writer, "version", kvp.Value);
+        }
 
         writer.Write("targetFrameworks");
         writer.Write(input.TargetFrameworks.Count);

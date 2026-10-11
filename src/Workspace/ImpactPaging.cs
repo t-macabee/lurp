@@ -1,6 +1,4 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Lurp.Storage;
 
 namespace Lurp.Workspace;
 
@@ -30,7 +28,7 @@ internal sealed record ImpactResponse(
     int frontier_count,
     int offset,
     IReadOnlyList<ImpactSymbolGroup> groups,
-    IReadOnlyList<object> semantic_causes,
+    IReadOnlyList<SemanticCauseJson> semantic_causes,
     object? truncated,
     IReadOnlyList<object> symbols);
 
@@ -84,7 +82,7 @@ internal static class ImpactPaging
             frontier_count: allSymbols.Count(static symbol => symbol.IsFrontier),
             offset: offset,
             groups: BuildFirstHopGroups(allSymbols, reachability),
-            semantic_causes: reachability.SemanticCauses.Select(ToSemanticCauseJson).ToList(),
+            semantic_causes: reachability.SemanticCauses.Select(SemanticCauseJson.From).ToList(),
             truncated: truncated,
             symbols: page.Select(symbol => ToSymbolJson(symbol, reachability.WitnessPath(symbol.SymbolId))).ToList());
     }
@@ -148,18 +146,6 @@ internal static class ImpactPaging
             provenance = hop.Provenance,
             source_document = hop.SourceDocument,
             source_line = hop.SourceLine
-        };
-    }
-
-    private static object ToSemanticCauseJson(SemanticChange cause)
-    {
-        return new
-        {
-            from_snapshot_id = cause.FromSnapshotId,
-            to_snapshot_id = cause.ToSnapshotId,
-            change_type = cause.ChangeType,
-            symbol_id = cause.SymbolId,
-            detail = cause.DetailJson != null ? JsonSerializer.Deserialize<object>(cause.DetailJson) : null
         };
     }
 

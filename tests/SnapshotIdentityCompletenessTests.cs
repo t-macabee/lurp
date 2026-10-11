@@ -763,6 +763,62 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         return result;
     }
 
+    [SkippableFact]
+    public async Task SnapshotIdentity_ChangesWhenOnePerExtractorVersionChanges()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("P", new Dictionary<string, string>
+        {
+            ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
+        }, []);
+        await RestoreSolutionAsync();
+
+        var input = SnapshotIdentityInput.FromWorkspace(await LoadWorkspaceInfoAsync(), new HashSet<string>());
+
+        // Only one per-extractor version changes. Only the ExtractorVersions map can make the ids differ.
+        var versions = new Dictionary<string, string>(input.ExtractorVersions, StringComparer.Ordinal);
+        var name = versions.Keys.OrderBy(k => k, StringComparer.Ordinal).First();
+        versions[name] += ".1";
+
+        Assert.NotEqual(SnapshotIdentity.Create(input), SnapshotIdentity.Create(input with { ExtractorVersions = versions }));
+    }
+
+    [SkippableFact]
+    public async Task SnapshotIdentityInput_ExtractorVersions_CoverTheRegistry()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("P", new Dictionary<string, string>
+        {
+            ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
+        }, []);
+        await RestoreSolutionAsync();
+
+        var input = SnapshotIdentityInput.FromWorkspace(await LoadWorkspaceInfoAsync(), new HashSet<string>());
+
+        Assert.Equal(ExtractorRegistry.All.Count, input.ExtractorVersions.Count);
+        foreach (var extractor in ExtractorRegistry.All)
+            Assert.Equal(extractor.Version, input.ExtractorVersions[extractor.Name]);
+    }
+
+    [SkippableFact]
+    public async Task SnapshotIdentity_IsStableForEqualInputs()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("P", new Dictionary<string, string>
+        {
+            ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
+        }, []);
+        await RestoreSolutionAsync();
+
+        var first = SnapshotIdentity.Create(await LoadWorkspaceInfoAsync(), new HashSet<string>());
+        var second = SnapshotIdentity.Create(await LoadWorkspaceInfoAsync(), new HashSet<string>());
+
+        Assert.Equal(first, second);
+    }
+
     private async Task<WorkspaceInfo> LoadWorkspaceInfoAsync()
     {
         using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));

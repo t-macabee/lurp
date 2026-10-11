@@ -223,8 +223,8 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.Parameters.AddWithValue("@sid", snapshotId);
         cmd.ExecuteNonQuery();
 
-        // Foreign-key enforcement is not enabled on the store connection, so
-        // explicitly reclaim document data that no retained snapshot references.
+        // Foreign keys are enforced, but they declare no ON DELETE action, so document
+        // data that no retained snapshot references is reclaimed explicitly.
         cmd.CommandText = """
             DELETE FROM document_versions
             WHERE document_version_id NOT IN (

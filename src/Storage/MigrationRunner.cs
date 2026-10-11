@@ -17,10 +17,14 @@ public class MigrationRunner
 
     public void RunMigrations()
     {
+        // Foreign keys are off for the whole run: SQLite ignores the pragma inside a transaction,
+        // and a table rebuild fails with them on while child rows still name the old table.
+        // The check below replaces the enforcement.
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = _dbPath,
             Mode = SqliteOpenMode.ReadWriteCreate,
+            ForeignKeys = false,
             Pooling = false
         }.ConnectionString);
         connection.Open();
@@ -43,19 +47,18 @@ public class MigrationRunner
 
         var currentVersion = GetCurrentSchemaVersion(connection);
         var migrations = GetMigrations().OrderBy(m => m.Version).ToList();
+        var pending = migrations.Where(m => m.Version > currentVersion).ToList();
 
-        foreach (var migration in migrations)
+        foreach (var migration in pending)
         {
-            if (migration.Version <= currentVersion)
-                continue;
-
             using var transaction = connection.BeginTransaction();
             try
             {
                 migration.Up(connection);
                 UpdateSchemaVersion(connection, migration.Version, migration.GetType().Name, transaction);
+                if (ReferenceEquals(migration, pending[^1]))
+                    ThrowOnForeignKeyViolation(connection, transaction);
                 transaction.Commit();
-                currentVersion = migration.Version;
             }
             catch
             {
@@ -117,6 +120,25 @@ public class MigrationRunner
         command.ExecuteNonQuery();
     }
 
+    private static void ThrowOnForeignKeyViolation(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var violations = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "PRAGMA foreign_key_check;";
+            using var reader = command.ExecuteReader();
+            while (violations.Count < 5 && reader.Read())
+            {
+                var rowid = reader.IsDBNull(1) ? "(no rowid)" : reader.GetInt64(1).ToString(CultureInfo.InvariantCulture);
+                violations.Add($"{reader.GetString(0)} row {rowid} -> {reader.GetString(2)}");
+            }
+        }
+
+        if (violations.Count > 0)
+            throw new InvalidOperationException("Foreign key check failed after the migrations: " + string.Join("; ", violations));
+    }
+
     private static List<IMigration> GetMigrations()
     {
         return
@@ -156,7 +178,8 @@ public class MigrationRunner
             new Migration_033_SnapshotMetrics(),
             new Migration_034_ProjectAssemblyName(),
             new Migration_035_DeclarationIndexes(),
-            new Migration_036_DropUnusedEdgeIndexes()
+            new Migration_036_DropUnusedEdgeIndexes(),
+            new Migration_037_DocumentVersionsDocumentIdIndex()
         ];
     }
 }

@@ -10,9 +10,7 @@ namespace Lurp.Storage.Migrations
         {
             using var command = connection.CreateCommand();
 
-            command.CommandText = "PRAGMA foreign_keys = OFF;";
-            command.ExecuteNonQuery();
-
+            // The runner runs migrations with foreign keys off, so the child keys can change before the parent key.
             command.CommandText = @"
                 UPDATE declarations
                 SET document_version_id = (
@@ -45,9 +43,6 @@ namespace Lurp.Storage.Migrations
                 UPDATE document_versions
                 SET document_version_id = document_id || ':' || content_hash;
             ";
-            command.ExecuteNonQuery();
-
-            command.CommandText = "PRAGMA foreign_keys = ON;";
             command.ExecuteNonQuery();
         }
     }
