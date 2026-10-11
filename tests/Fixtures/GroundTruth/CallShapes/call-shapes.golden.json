@@ -1424,6 +1424,104 @@
       "target": "T:CallShapes.Core.ShapeEnumerator",
       "reason": "Member-signature return type: references T:CallShapes.Core.ShapeEnumerator. B36: the member is the source of every member-signature References edge.",
       "id": "gt-206"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromLocalFunctionSignature",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeNumber",
+      "reason": "Local function parameter type: the local function Wrap is not a snapshot symbol, so its enclosing member references T:CallShapes.Core.ShapeNumber. B58 (R23): local-function signature References edge.",
+      "id": "gt-207"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromLocalFunctionSignature",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Local function return type: the local function Wrap is not a snapshot symbol, so its enclosing member references T:CallShapes.Core.ShapeText. B58 (R23): local-function signature References edge.",
+      "id": "gt-208"
+    },
+    {
+      "source": "F:CallShapes.Core.ShapeUnsafe.CellToText",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCell",
+      "reason": "Function pointer parameter type: references T:CallShapes.Core.ShapeCell from the field's delegate* signature. B58 (R23): function-pointer References edge.",
+      "id": "gt-209"
+    },
+    {
+      "source": "F:CallShapes.Core.ShapeUnsafe.CellToText",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Function pointer return type: references T:CallShapes.Core.ShapeText from the field's delegate* signature. B58 (R23): function-pointer References edge.",
+      "id": "gt-210"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeUnsafe.ReadCell(CallShapes.Core.ShapeCell*)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCell",
+      "reason": "Pointer parameter type: references the pointed-at T:CallShapes.Core.ShapeCell. B58 (R23): pointer References edge.",
+      "id": "gt-211"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeUnsafe.CountCells",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCell",
+      "reason": "Function pointer local variable type: references T:CallShapes.Core.ShapeCell from the local's delegate* signature. B58 (R23): function-pointer References edge.",
+      "id": "gt-212"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Extension block receiver: the block declares the receiver ShapeText, not the member's parameter list. B58 (R23): block receiver References edge.",
+      "id": "gt-213"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockLength(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Extension block receiver of the BlockLength getter: the block declares the receiver ShapeText. B58 (R23): block receiver References edge.",
+      "id": "gt-214"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockTag(CallShapes.Core.ShapeText)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Extension block receiver of the BlockTag getter: the block declares the receiver ShapeText. B58 (R23): block receiver References edge.",
+      "id": "gt-215"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.set_BlockTag(CallShapes.Core.ShapeText,System.String)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Extension block receiver of the BlockTag setter: the block declares the receiver ShapeText. B58 (R23): block receiver References edge.",
+      "id": "gt-216"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.BlockUnbox``1(CallShapes.Core.ShapeBox{``0})",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeBox`1",
+      "reason": "Generic extension block receiver: the block declares the receiver ShapeBox<T>. B58 (R23): block receiver References edge.",
+      "id": "gt-217"
+    },
+    {
+      "source": "M:CallShapes.Core.ShapeTextExtensions.get_BlockHasItem``1(CallShapes.Core.ShapeBox{``0})",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeBox`1",
+      "reason": "Generic extension block receiver of the BlockHasItem getter: the block declares the receiver ShapeBox<T>. B58 (R23): block receiver References edge.",
+      "id": "gt-218"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromTypedLambdaToDelegate",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCell",
+      "reason": "Explicitly typed lambda parameter: the lambda (ShapeCell cell) => 0 names T:CallShapes.Core.ShapeCell in the source, so the enclosing member references it. B63 (R26): typed-lambda References edge.",
+      "id": "gt-219"
+    },
+    {
+      "source": "M:CallShapes.App.ShapeCallers.FromTypedLambdaToDelegate",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeText",
+      "reason": "Explicit lambda return type: the lambda ShapeText? () => null names T:CallShapes.Core.ShapeText in the source, so the enclosing member references it. B63 (R26): typed-lambda References edge.",
+      "id": "gt-220"
     }
   ],
   "excluded": [

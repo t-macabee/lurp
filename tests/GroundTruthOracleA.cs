@@ -428,6 +428,21 @@ internal static class OperationShapeOracle
                     case IDefaultValueOperation defaultValue when defaultValue.Syntax is DefaultExpressionSyntax:
                         AddTypeUses(ownerId, defaultValue.Type, operation.Syntax);
                         break;
+                    case ILocalFunctionOperation localFunction:
+                        foreach (var parameter in localFunction.Symbol.Parameters)
+                            AddTypeUses(ownerId, parameter.Type, operation.Syntax);
+                        AddTypeUses(ownerId, localFunction.Symbol.ReturnType, operation.Syntax);
+                        break;
+                    // B63: explicitly typed lambda parameters and an explicit return type are named in the source.
+                    case IAnonymousFunctionOperation anonymousFunction:
+                        foreach (var parameter in anonymousFunction.Symbol.Parameters)
+                        {
+                            if (parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is ParameterSyntax { Type: not null })
+                                AddTypeUses(ownerId, parameter.Type, operation.Syntax);
+                        }
+                        if (anonymousFunction.Syntax is ParenthesizedLambdaExpressionSyntax { ReturnType: not null })
+                            AddTypeUses(ownerId, anonymousFunction.Symbol.ReturnType, operation.Syntax);
+                        break;
                 }
             }
         }
@@ -515,11 +530,26 @@ internal static class OperationShapeOracle
                         foreach (var nested in TypeUses(argument))
                             yield return nested;
                     break;
+                case IPointerTypeSymbol pointer:
+                    foreach (var nested in TypeUses(pointer.PointedAtType))
+                        yield return nested;
+                    break;
+                case IFunctionPointerTypeSymbol functionPointer:
+                    foreach (var nested in TypeUses(functionPointer.Signature.ReturnType))
+                        yield return nested;
+                    foreach (var parameter in functionPointer.Signature.Parameters)
+                        foreach (var nested in TypeUses(parameter.Type))
+                            yield return nested;
+                    break;
             }
         }
 
         private static IEnumerable<INamedTypeSymbol> TypeUses(ITypeSymbol type)
         {
+            // `void` names no type (B61); the same rule as ExtractionUtils.TypeUses.
+            if (type.SpecialType == SpecialType.System_Void)
+                yield break;
+
             if (type is INamedTypeSymbol named && named.TypeKind != TypeKind.Error && !named.IsAnonymousType)
                 yield return named.OriginalDefinition;
 

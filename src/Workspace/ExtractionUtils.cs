@@ -69,11 +69,28 @@ internal static class ExtractionUtils
                     foreach (var nested in TypeUses(argument))
                         yield return nested;
                 break;
+            // B58: a pointer and a function pointer name the types they point at or
+            // carry in their signature.
+            case IPointerTypeSymbol pointer:
+                foreach (var nested in TypeUses(pointer.PointedAtType))
+                    yield return nested;
+                break;
+            case IFunctionPointerTypeSymbol functionPointer:
+                foreach (var nested in TypeUses(functionPointer.Signature.ReturnType))
+                    yield return nested;
+                foreach (var parameter in functionPointer.Signature.Parameters)
+                    foreach (var nested in TypeUses(parameter.Type))
+                        yield return nested;
+                break;
         }
     }
 
     internal static IEnumerable<INamedTypeSymbol> TypeUses(ITypeSymbol type)
     {
+        // `void` names no type; ReturnsEdgeExtractor and AspNetCoreAdapter skip it too.
+        if (type.SpecialType == SpecialType.System_Void)
+            yield break;
+
         if (type is INamedTypeSymbol named && named.TypeKind != TypeKind.Error && !named.IsAnonymousType)
             yield return named.OriginalDefinition;
 

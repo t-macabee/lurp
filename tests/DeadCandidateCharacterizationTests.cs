@@ -798,6 +798,131 @@ public static class Api { public static void Go() => Host.Run(null!); }
     }
 
     [SkippableFact]
+    public async Task LocalFunctionParameterType_HasStrongReferenceEdge_NotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B58: a type used only in a local function's signature gets a strong References
+        // edge from the enclosing member, so it must not surface as a proved-dead candidate.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["LocalFunction.cs"] = """
+                                   namespace TestProject;
+
+                                   internal class LocalPayload { }
+                                   internal class Use
+                                   {
+                                       internal static void M()
+                                       {
+                                           static int L(LocalPayload p) => 0;
+                                           _ = L(null!);
+                                       }
+                                   }
+                                   internal class Orphan { }
+                                   """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            var payloadType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.LocalPayload"));
+            Assert.Null(payloadType);
+            Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.Orphan"));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task TypedLambdaParameterType_HasStrongReferenceEdge_NotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B63: a type named only as an explicitly typed lambda parameter gets a strong References
+        // edge from the enclosing member, so it must not surface as a proved-dead candidate.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Lambda.cs"] = """
+                            namespace TestProject;
+
+                            internal class HandlerDto { }
+                            internal class Orphan { }
+                            internal class Host { internal static void Take(System.Delegate d) { } }
+                            internal class Use
+                            {
+                                internal static void M()
+                                {
+                                    Host.Take((HandlerDto h) => 1);
+                                }
+                            }
+                            """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            var dtoType = page.Candidates.FirstOrDefault(c => c.SymbolId.Contains("T:TestProject.HandlerDto"));
+            Assert.Null(dtoType);
+            Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.Orphan"));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
+    public async Task ExtensionBlockReceiverType_HasStrongReferenceEdge_NotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        // B58: a type used only as a C# 14 extension block receiver gets a strong References
+        // edge from the block members, so it must not surface as a proved-dead candidate.
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["BlockReceiver.cs"] = """
+                                   namespace TestProject;
+
+                                   internal class ReceiverOnly { }
+                                   internal static class ReceiverOnlyExtensions
+                                   {
+                                       extension(ReceiverOnly r)
+                                       {
+                                           internal int Size() => 0;
+                                       }
+                                   }
+                                   internal class Orphan { }
+                                   """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
+
+            var receiverType = page.Candidates.FirstOrDefault(c => c.SymbolId.Split('|')[0] == "T:TestProject.ReceiverOnly");
+            Assert.Null(receiverType);
+            Assert.Single(page.Candidates, c => c.SymbolId.Contains("T:TestProject.Orphan"));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
     public async Task TypeLiveness_DeadTypeWithSelfCallingMembersStaysDead()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
@@ -1348,6 +1473,76 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         {
             store.Close();
         }
+    }
+
+    /// <summary>
+    ///     B62: an unused C# 14 extension-block member is a dead candidate, a used one is
+    ///     not. The implementation on the outer class is the declared symbol (B3 step 2a);
+    ///     Roslyn marks it implicit, so its metadata must not drop it from the universe.
+    /// </summary>
+    [SkippableFact]
+    public async Task ExtensionBlockMembers_UnusedAreCandidates_UsedAreNot()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Text.cs"] = """
+                          namespace TestProject;
+                          internal sealed class Text { internal string Value = ""; }
+                          internal sealed class Plain { internal int Unread => 1; }
+                          internal static class TextExt
+                          {
+                              extension(Text t)
+                              {
+                                  internal int UnusedMethod() => 0;
+                                  internal int UsedMethod() => 1;
+                                  internal int UnusedLength => 0;
+                                  internal static int UnusedStatic() => 0;
+                              }
+                          }
+                          internal static class Use { internal static int Go(Text t) => t.UsedMethod(); }
+                          """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, true, true, true, 200, null);
+
+            var unusedMethod = Assert.Single(page.Candidates, c => c.SymbolId.Contains("TextExt.UnusedMethod(", StringComparison.Ordinal));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, unusedMethod.Status);
+
+            var unusedStatic = Assert.Single(page.Candidates, c => c.SymbolId.Contains("TextExt.UnusedStatic", StringComparison.Ordinal));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, unusedStatic.Status);
+
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Contains("TextExt.UsedMethod(", StringComparison.Ordinal));
+
+            // The block property and its implementation getter must have the same shape
+            // as the control property Plain.Unread (B24: an accessor inherits its property).
+            Assert.Equal(ShapeOf(page, "Unread"), ShapeOf(page, "UnusedLength"));
+
+            // A block method's marker name never reaches the candidate list.
+            Assert.DoesNotContain(page.Candidates,
+                c => c.SymbolId.StartsWith("M:", StringComparison.Ordinal) && c.SymbolId.Contains("<G>$", StringComparison.Ordinal));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    /// <summary>
+    ///     The candidate kinds (property, method, getter, setter) that name <paramref name="member" />.
+    /// </summary>
+    private static string[] ShapeOf(DeadCandidatePage page, string member)
+    {
+        return page.Candidates
+            .Where(c => c.SymbolId.Contains(member, StringComparison.Ordinal))
+            .Select(c => c.SymbolId.Split(':')[0] + (c.SymbolId.Contains("get_", StringComparison.Ordinal) ? ".get" : ""))
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
     }
 
     [SkippableFact]

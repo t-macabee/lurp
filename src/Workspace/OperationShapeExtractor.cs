@@ -396,6 +396,26 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 case IDefaultValueOperation defaultValue when defaultValue.Syntax is DefaultExpressionSyntax:
                     AddTypeUses(ownerId, defaultValue.Type, operation.Syntax, edges, seen);
                     break;
+
+                // B58: a local function is not a snapshot symbol, so the enclosing member
+                // names the types in its signature.
+                case ILocalFunctionOperation localFunction:
+                    foreach (var parameter in localFunction.Symbol.Parameters)
+                        AddTypeUses(ownerId, parameter.Type, operation.Syntax, edges, seen);
+                    AddTypeUses(ownerId, localFunction.Symbol.ReturnType, operation.Syntax, edges, seen);
+                    break;
+
+                // B63: a lambda or anonymous method names its explicitly typed parameters and its explicit
+                // return type in the source. An implicitly typed parameter names no type, so it adds no edge.
+                case IAnonymousFunctionOperation anonymousFunction:
+                    foreach (var parameter in anonymousFunction.Symbol.Parameters)
+                    {
+                        if (parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is ParameterSyntax { Type: not null })
+                            AddTypeUses(ownerId, parameter.Type, operation.Syntax, edges, seen);
+                    }
+                    if (anonymousFunction.Syntax is ParenthesizedLambdaExpressionSyntax { ReturnType: not null })
+                        AddTypeUses(ownerId, anonymousFunction.Symbol.ReturnType, operation.Syntax, edges, seen);
+                    break;
             }
         }
     }

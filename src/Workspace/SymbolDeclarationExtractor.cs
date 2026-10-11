@@ -20,10 +20,16 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
     // B24/B3: a C# 14 extension block property is declared on the marker type (the nested
     // extension type), and its accessors there carry an AssociatedExtensionImplementation that
-    // names the real accessor on the outer static class. The implementation accessor has no
-    // AssociatedSymbol of its own, so this map (implementation accessor -> block property) is
-    // how its metadata gets an associated_symbol. Built once per ExtractAll.
-    private readonly Dictionary<IMethodSymbol, IPropertySymbol> _extensionImplementationAccessors = new(SymbolEqualityComparer.Default);
+    // names the real accessor on the outer static class. The implementation accessor is an ordinary
+    // method there, with no MethodKind and no AssociatedSymbol of its own, so this map (implementation
+    // accessor -> block accessor) is how its metadata gets its accessor_kind and associated_symbol.
+    // Built once per ExtractAll.
+    private readonly Dictionary<IMethodSymbol, IMethodSymbol> _extensionImplementationAccessors = new(SymbolEqualityComparer.Default);
+
+    // B62: every implementation of a block member (methods, static members and accessors).
+    // Roslyn marks these implicit, but they are user code, so BuildMetadataJson does not
+    // write is_implicitly_declared for them.
+    private readonly HashSet<IMethodSymbol> _extensionImplementations = new(SymbolEqualityComparer.Default);
 
     private static readonly SymbolDisplayFormat SignatureFormat = new(
         SymbolDisplayGlobalNamespaceStyle.Omitted,
@@ -42,14 +48,14 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     {
         var results = new List<SymbolDeclaration>();
 
-        BuildExtensionImplementationAccessorMap();
+        BuildExtensionImplementationMaps();
 
         foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace)) ExtractTypeDeclarations(typeSymbol, results);
 
         return results;
     }
 
-    private void BuildExtensionImplementationAccessorMap()
+    private void BuildExtensionImplementationMaps()
     {
         foreach (var typeSymbol in ExtractionUtils.GetAllNamedTypes(context.Compilation.Assembly.GlobalNamespace))
         {
@@ -58,6 +64,9 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
             foreach (var member in typeSymbol.GetMembers())
             {
+                if (member is IMethodSymbol { AssociatedExtensionImplementation: IMethodSymbol methodImplementation })
+                    _extensionImplementations.Add(methodImplementation);
+
                 if (member is not IPropertySymbol property)
                     continue;
 
@@ -67,7 +76,9 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                         continue;
 
                     if (accessor.AssociatedExtensionImplementation is IMethodSymbol implementation)
-                        _extensionImplementationAccessors[implementation] = property;
+                    {
+                        _extensionImplementationAccessors[implementation] = accessor;
+                    }
                 }
             }
         }
@@ -102,7 +113,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
         var fqn = BuildFullyQualifiedName(symbol);
         var kind = MapKind(symbol);
-        var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors);
+        var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors, _extensionImplementations);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
         var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 } typeSymbol;
@@ -184,11 +195,13 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         };
     }
 
-    private static string? BuildMetadataJson(ISymbol symbol, Compilation compilation, IMethodSymbol? entryPointMethod, Dictionary<IMethodSymbol, IPropertySymbol> extensionImplementations)
+    private static string? BuildMetadataJson(ISymbol symbol, Compilation compilation, IMethodSymbol? entryPointMethod, Dictionary<IMethodSymbol, IMethodSymbol> extensionImplementationAccessors, HashSet<IMethodSymbol> extensionImplementations)
     {
         var metadata = new Dictionary<string, object?>();
 
-        if (symbol.IsImplicitlyDeclared)
+        // B62: the implementation of a block member is user code. Roslyn marks it implicit only because
+        // the compiler emits it on the outer class, so it is not written as implicitly declared.
+        if (symbol.IsImplicitlyDeclared && !(symbol is IMethodSymbol implementation && extensionImplementations.Contains(implementation)))
             metadata[SymbolMetadataKeys.IsImplicitlyDeclared] = true;
 
         switch (symbol)
@@ -208,13 +221,13 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                     metadata[SymbolMetadataKeys.IsEntryPoint] = true;
                 if (method.MethodKind == MethodKind.StaticConstructor)
                     metadata[SymbolMetadataKeys.IsStaticConstructor] = true;
-                var accessorKind = AccessorKindOf(method);
+                // B24: an implementation accessor takes its kind and its property from the block accessor.
+                var blockAccessor = extensionImplementationAccessors.GetValueOrDefault(method);
+                var accessorKind = AccessorKindOf(blockAccessor ?? method);
                 if (accessorKind != null)
                 {
                     metadata[SymbolMetadataKeys.AccessorKind] = accessorKind;
-                    var associatedSymbol = extensionImplementations.TryGetValue(method, out var blockProperty)
-                        ? blockProperty
-                        : method.AssociatedSymbol;
+                    var associatedSymbol = blockAccessor?.AssociatedSymbol ?? method.AssociatedSymbol;
                     var associatedId = associatedSymbol?.GetDocumentationCommentId();
                     if (!string.IsNullOrEmpty(associatedId))
                         metadata[SymbolMetadataKeys.AssociatedSymbol] = associatedId;

@@ -136,6 +136,20 @@ public sealed partial class ShapeCallers
 
     public static int FromBlockExtension(ShapeText text) => text.BlockWordCount();
 
+    public static int FromLocalFunctionSignature()
+    {
+        return Wrap(default) is null ? 0 : 1;
+
+        static ShapeText? Wrap(ShapeNumber number) => null;
+    }
+
+    public static int FromTypedLambdaToDelegate()
+    {
+        System.Delegate handler = (ShapeCell cell) => 0;
+        System.Delegate maker = ShapeText? () => null;
+        return handler is null || maker is null ? 0 : 1;
+    }
+
     public static int FromContract(IShapeContract contract) => contract.ContractValue();
 
     public static int FromDefaultInterface(IShapeDefault value) => value.DefaultValue();

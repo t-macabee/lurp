@@ -33,9 +33,14 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
 
                 var sourceSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol);
                 var loc = context.GetMemberSourceLocation(sourceSymbol);
-                foreach (var param in method.Parameters)
+                var signatureTypes = method.Parameters.Select(param => param.Type);
+                // B58: a block member's receiver is declared on the block, not in the member's parameter list.
+                if (method.ContainingType is { IsExtension: true, ExtensionParameter: { } receiver })
+                    signatureTypes = signatureTypes.Append(receiver.Type);
+
+                foreach (var signatureType in signatureTypes)
                 {
-                    foreach (var usedType in ExtractionUtils.TypeUses(param.Type))
+                    foreach (var usedType in ExtractionUtils.TypeUses(signatureType))
                     {
                         var usedTypeId = context.MakeSymbolId(usedType);
                         if (usedTypeId == null)

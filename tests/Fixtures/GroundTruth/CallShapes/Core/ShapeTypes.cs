@@ -124,9 +124,24 @@ public ref struct ShapeRefStruct
     public int Read() => Value;
 }
 
+public struct ShapeCell
+{
+    public int Value;
+}
+
 public static unsafe class ShapeUnsafe
 {
     public static int Read(int* pointer) => *pointer;
+
+    public static delegate*<ShapeCell, ShapeText> CellToText;
+
+    public static int ReadCell(ShapeCell* cell) => cell->Value;
+
+    public static int CountCells()
+    {
+        delegate*<ShapeCell, void> sink = null;
+        return sink == null ? 0 : 1;
+    }
 }
 
 public sealed class ShapeText

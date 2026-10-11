@@ -276,6 +276,125 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task OperationShapesEdge_LocalFunctionSignatureReferencesTypesFromEnclosingMember()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class P { }
+                                                public class R { }
+                                                public class Host
+                                                {
+                                                    public void M() { static R? L(P? p) => null; }
+                                                }
+                                                """));
+
+        // B58: a local function is not a snapshot symbol, so its parameter and return
+        // types are References edges from the enclosing member.
+        var fromParameter = extraction.SingleEdge("References", "global::N.Host.M", "global::N.P");
+        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+
+        var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
+        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+
+        // A local function is neither a declared symbol nor a type, so it can be neither
+        // the source nor the target of a References edge.
+        var declaredIds = extraction.FqnToSymbolId.Values.ToHashSet();
+        Assert.All(extraction.EdgesOf("References"),
+            e =>
+            {
+                Assert.Contains(e.SourceSymbolId, declaredIds);
+                Assert.Contains(e.TargetSymbolId, declaredIds);
+            });
+    }
+
+    [Fact]
+    public async Task ParameterDependenciesEdge_ExtensionBlockReceiverReferencesType()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class P { }
+                                                public static class PExtensions
+                                                {
+                                                    extension(P p)
+                                                    {
+                                                        public int Size() => 0;
+                                                        public int Length => 0;
+                                                        public static int Make() => 0;
+                                                    }
+                                                }
+                                                """));
+
+        // B58: a block member's receiver is declared on the block, not in the member's
+        // parameter list, so the edge comes from the outer-class implementation method.
+        foreach (var implementation in new[] { "global::N.PExtensions.Size", "global::N.PExtensions.get_Length", "global::N.PExtensions.Make" })
+        {
+            var edge = extraction.SingleEdge("References", implementation, "global::N.P");
+            AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+        }
+    }
+
+    [Fact]
+    public async Task VoidReturns_AreNotReferencesTargets()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class H
+                                                {
+                                                    public void M() { static void L() { } }
+                                                }
+                                                """));
+
+        // B61: void names no type, so neither M's return nor the local function's return
+        // may become a References target.
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "References" && e.TargetSymbolId.Contains("System.Void"));
+    }
+
+    [Fact]
+    public async Task OperationShapesEdge_TypedLambdaParameterReferencesTypeFromEnclosingMember()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class P { }
+                                                public class R { }
+                                                public static class Host
+                                                {
+                                                    public static void Take(System.Delegate d) { }
+                                                    public static void M() { Take((P p) => 1); Take(R? () => null); }
+                                                }
+                                                """));
+
+        // B63: a lambda names its explicitly typed parameters and its explicit return type in the
+        // source, so the enclosing member is the References source for each of them.
+        var fromParameter = extraction.SingleEdge("References", "global::N.Host.M", "global::N.P");
+        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+
+        var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
+        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+    }
+
+    [Fact]
+    public async Task OperationShapesEdge_ImplicitlyTypedLambdaParameterAddsNoReference()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Q { }
+                                                public static class Host
+                                                {
+                                                    public static void Run(System.Func<Q, int> f) { }
+                                                    public static void M() { Run(q => 1); }
+                                                }
+                                                """));
+
+        // B63 (D2): an implicitly typed parameter is not named in the source, so M gets no edge to Q.
+        // Run's own signature names Q, but that edge starts at Run, not at M.
+        var mId = extraction.ResolveId("global::N.Host.M");
+        var qId = extraction.ResolveId("global::N.Q");
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "References" && e.SourceSymbolId == mId && e.TargetSymbolId == qId);
+    }
+
+    [Fact]
     public async Task ExtensionReceiverEdge_ReceiverTypeBindsToExtensionMethod()
     {
         var extraction = await ExtractAsync(One("""
