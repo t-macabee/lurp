@@ -249,4 +249,19 @@ public sealed class McpContextTests : IntegrationTestBase
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
         }
     }
+
+    // Covers the entry check only: it passes with or without the token forwarded into assembly.
+    [Fact]
+    public async Task Context_PreCancelledToken_Throws()
+    {
+        await IndexFixtureAndGetSnapshot();
+        var (session, tool) = CreateSessionTool();
+        await using (session)
+        {
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            Assert.ThrowsAny<OperationCanceledException>(() =>
+                tool.LurpContext(symbol: "CtxProj.Foo", cancellationToken: cts.Token));
+        }
+    }
 }

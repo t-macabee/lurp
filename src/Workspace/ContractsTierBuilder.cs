@@ -31,6 +31,8 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var symbolId in context.EffectiveSymbolIds)
+        {
+            context.ThrowIfCancellationRequested();
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
                 if (!_allowedKinds.Contains(edge.Kind))
@@ -55,6 +57,7 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
                 if (external != null)
                     results.Add(external);
             }
+        }
 
         return results;
     }

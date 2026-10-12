@@ -1,6 +1,6 @@
 namespace Lurp.Workspace;
 
-internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated)
+internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore declarationStore, string snapshotId, SymbolId symbolId, int maxHops, bool includeGenerated, CancellationToken cancellationToken = default)
 {
     private readonly Dictionary<(string CandidateTypeId, string ReceiverTypeId), bool> _assignabilityCache = [];
     private readonly Dictionary<(string SymbolId, bool IncludeGenerated), DeclarationLocation?> _locationCache = [];
@@ -12,6 +12,12 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     internal SymbolId SymbolId { get; } = symbolId;
     internal int MaxHops { get; } = maxHops;
     internal bool IncludeGenerated { get; } = includeGenerated;
+    internal CancellationToken CancellationToken { get; } = cancellationToken;
+
+    // Tier builders call this at each loop that reads the store, so a cancelled
+    // request stops inside the assembly. The context is per request and never
+    // shared, so holding the token here is safe.
+    internal void ThrowIfCancellationRequested() => CancellationToken.ThrowIfCancellationRequested();
 
     // Member-level facts (Calls, Constructs, MayDispatchTo, TestedBy) are
     // persisted on member symbol IDs; a type anchor carries none of them. Tier
@@ -138,6 +144,7 @@ internal sealed class ContextTierContext(IEdgeStore edgeStore, IDeclarationStore
     internal CapsuleItem? BuildCapsuleItem(string symbolId, string edgeKind, string provenance, string? inclusionReason = null,
         string? relationship = null, bool? direct = null)
     {
+        ThrowIfCancellationRequested();
         var info = DeclarationStore.GetSymbolInfo(symbolId, SnapshotId);
         if (info == null)
             return null;

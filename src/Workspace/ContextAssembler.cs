@@ -90,9 +90,9 @@ internal sealed class ContextAssembler
     public string? GitRoot { get; init; }
     public bool IncludeCompletenessDetail { get; init; }
 
-    public ContextCapsule Assemble()
+    public ContextCapsule Assemble(CancellationToken cancellationToken = default)
     {
-        var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated);
+        var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated, cancellationToken);
         var anchor = BuildAnchor();
         var capsule = new ContextCapsule(anchor)
         {
@@ -121,12 +121,15 @@ internal sealed class ContextAssembler
         var tiers = GetTierBuilders(context);
         var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget - nonTierReserve,
             EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
+        cancellationToken.ThrowIfCancellationRequested();
         capsule.EstimatedTokens = runningTotal;
 
-        PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete);
+        PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness);
         uncertaintyDetector.PopulateSuggestedVerification(capsule);
+        cancellationToken.ThrowIfCancellationRequested();
 
         // The tier budgeter bounds tier item source; this final pass measures the
         // emitted capsule representation itself and trims/summarizes every
@@ -143,7 +146,7 @@ internal sealed class ContextAssembler
         return capsule;
     }
 
-    private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<IContextTierBuilder> tiers, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete)
+    private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<IContextTierBuilder> tiers, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete, CancellationToken cancellationToken)
     {
         // Each tier owns its inclusion-reason text; emit them in the canonical
         // registry order (TierNames) so the reason set is stable regardless of
@@ -173,8 +176,8 @@ internal sealed class ContextAssembler
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
 
         var reachability = new ImpactReachability(EdgeStore, SnapshotId, SemanticDiffStore);
-        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops);
-        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops);
+        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
+        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
         // Both traces return the anchor's causes; the capsule writes that list once, at the top level.
@@ -220,6 +223,7 @@ internal sealed class ContextAssembler
                      capsule.Anchor.Provenance, "anchor", capsule.Anchor.Source,
                      capsule.Anchor.Locations.FirstOrDefault(), "anchor declaration")))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var metadata = DeclarationStore.GetSymbolInfo(candidate.SymbolId, SnapshotId)?.MetadataJson;
             if (IsPublicSurface(metadata, candidate.SymbolId) && capsule.AffectedPublicSurfaces.All(item => item.SymbolId != candidate.SymbolId))
                 capsule.AffectedPublicSurfaces.Add(candidate);
@@ -345,12 +349,14 @@ internal sealed class ContextAssembler
         int maxHops,
         bool includeGenerated,
         int offset,
-        int limit)
+        int limit,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var info = declarationStore.GetSymbolInfo(symbolId.Value, snapshotId)
                    ?? throw new InvalidOperationException($"Symbol '{symbolId.Value}' not found in snapshot '{snapshotId}'.");
 
-        var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated);
+        var context = new ContextTierContext(edgeStore, declarationStore, snapshotId, symbolId, maxHops, includeGenerated, cancellationToken);
         var builder = ResolveTierBuilder(context, tierName)
                       ?? throw new ArgumentException($"Unknown tier '{tierName}'. Valid tiers: {string.Join(", ", TierNames)}.");
 
@@ -463,7 +469,7 @@ internal sealed class ContextAssembler
     }
 
     public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null,
-        ISnapshotManifestStore? snapshotStore = null, ISemanticDiffStore? semanticDiffStore = null)
+        ISnapshotManifestStore? snapshotStore = null, ISemanticDiffStore? semanticDiffStore = null, CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrEmpty(lookup.SymbolArg))
         {
@@ -486,10 +492,11 @@ internal sealed class ContextAssembler
                 GitRoot = options.GitRoot,
                 IncludeCompletenessDetail = options.IncludeCompletenessDetail
             };
-            return assembler.Assemble();
+            return assembler.Assemble(cancellationToken);
         }
 
         var resolvedId = declarationStore.ResolveSymbolByLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (resolvedId == null)
         {
@@ -558,6 +565,6 @@ internal sealed class ContextAssembler
             GitRoot = options.GitRoot,
             IncludeCompletenessDetail = options.IncludeCompletenessDetail
         };
-        return resolvedAssembler.Assemble();
+        return resolvedAssembler.Assemble(cancellationToken);
     }
 }

@@ -34,6 +34,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
 
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
+            context.ThrowIfCancellationRequested();
             var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
             foreach (var edge in incomingEdges)
             {
@@ -55,7 +56,9 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
 
         void AddCallersOf(string targetSymbolId, string? inclusionReason, string? dispatchProvenance = null)
         {
-            var reached = reachability.Trace(targetSymbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1);
+            context.ThrowIfCancellationRequested();
+            var reached = reachability.Trace(targetSymbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: 1,
+                cancellationToken: context.CancellationToken);
             foreach (var symbol in reached.Symbols)
             {
                 var callerId = symbol.SymbolId;

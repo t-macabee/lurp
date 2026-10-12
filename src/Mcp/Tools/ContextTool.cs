@@ -156,7 +156,7 @@ internal sealed class ContextTool
                 var offset = cursorObj?.Offset ?? 0;
                 var page = ContextAssembler.BuildTierPage(
                     store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tier,
-                    maxHops, includeGenerated, offset, tierLimit);
+                    maxHops, includeGenerated, offset, tierLimit, cancellationToken);
 
                 var nextCursor = page.HasMore
                     ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
@@ -203,7 +203,7 @@ internal sealed class ContextTool
                 scope, affectedProjects, gitRoot, completenessDetail);
 
             cancellationToken.ThrowIfCancellationRequested();
-            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store, cancellationToken);
 
             var capsuleJson = ContextCapsuleJson.Serialize(capsule);
             using var capsuleDoc = JsonDocument.Parse(capsuleJson);

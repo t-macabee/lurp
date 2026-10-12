@@ -20,6 +20,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         };
 
         foreach (var symbolId in context.EffectiveSymbolIds)
+        {
+            context.ThrowIfCancellationRequested();
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
                 if (!allowedKinds.Contains(edge.Kind))
@@ -31,12 +33,16 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                     "Direct call or construction target of the anchor.",
                     CapsuleRelationship.DirectCallee, true);
             }
+        }
 
         // Dispatch projections run after the direct pass and only for targets
         // not already present as direct callees (the shared seen set skips them).
         foreach (var symbolId in context.EffectiveSymbolIds)
+        {
+            context.ThrowIfCancellationRequested();
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId).Where(edge => edge.Kind == nameof(EdgeKind.Calls)))
                 AddMayDispatchTargets(edge);
+        }
 
         return results;
 
@@ -53,6 +59,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 
         void AddMayDispatchTargets(EdgeRecord callEdge)
         {
+            context.ThrowIfCancellationRequested();
             var receiverAlternatives = ReceiverTypeConstraints.Deserialize(callEdge.ReceiverTypeConstraintsJson)
                 .Select(static alternative => alternative.AsReadOnly())
                 .ToList();
@@ -61,6 +68,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 
             foreach (var edge in context.GetMayDispatchEdges(callEdge.TargetSymbolId))
             {
+                context.ThrowIfCancellationRequested();
                 var declaringTypes = context.GetDeclaringTypeIds(edge.TargetSymbolId);
                 if (!declaringTypes.Any(candidateTypeId =>
                         context.IsReceiverCompatible(candidateTypeId, receiverAlternatives)))

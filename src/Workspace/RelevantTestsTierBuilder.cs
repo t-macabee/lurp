@@ -34,17 +34,20 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
         void AddTestsFor(string productionOrTestSymbolId)
         {
+            context.ThrowIfCancellationRequested();
             foreach (var candidateId in TestSymbolDiscovery.ExpandProductionSymbolIds(productionOrTestSymbolId))
                 QueryTestedBy(candidateId);
         }
 
         void AddTestsForUpstreamCallers(string symbolId)
         {
+            context.ThrowIfCancellationRequested();
             var reached = reachability.Trace(
                 symbolId,
                 ImpactDirection.Upstream,
                 allowedKinds,
-                maxDepth: context.MaxHops);
+                maxDepth: context.MaxHops,
+                cancellationToken: context.CancellationToken);
 
             foreach (var symbol in reached.Symbols)
                 AddTestsFor(symbol.SymbolId);
@@ -52,6 +55,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
         void QueryTestedBy(string symbolId)
         {
+            context.ThrowIfCancellationRequested();
             var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
             foreach (var edge in outgoingEdges)
             {

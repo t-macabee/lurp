@@ -42,7 +42,9 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
 
         void AddUpstreamNeighbors(string symbolId, string? inclusionReason, string? dispatchProvenance = null)
         {
-            var reached = reachability.Trace(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops);
+            context.ThrowIfCancellationRequested();
+            var reached = reachability.Trace(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops,
+                cancellationToken: context.CancellationToken);
             foreach (var symbol in reached.Symbols)
             {
                 var neighborId = symbol.SymbolId;

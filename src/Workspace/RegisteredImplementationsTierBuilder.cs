@@ -37,6 +37,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
         // expands a type anchor to its declared members.
         foreach (var symbolId in RegistrationScopeIds())
         {
+            context.ThrowIfCancellationRequested();
             var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
             foreach (var edge in incomingEdges)
             {
@@ -78,6 +79,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
+            context.ThrowIfCancellationRequested();
             if (seen.Add(symbolId))
                 ids.Add(symbolId);
 
