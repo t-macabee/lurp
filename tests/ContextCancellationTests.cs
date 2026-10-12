@@ -108,38 +108,112 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, cancelling, cts.Token));
     }
 
+    [SkippableFact]
+    public async Task Uncertainties_CancelledInsideNeighborhoodLoops_StopsEarly()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        var snapshotId = await IndexChainAsync();
+        var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
+        var lookup = new ContextLookup(snapshotId, typeId, null, null);
+        var options = new ContextAssemblyOptions(ContextIntent.Inspect, 8000, 5);
+        var symbolId = SymbolId.Parse(typeId);
+
+        using var store = OpenStore(DbPath);
+
+        var (fullEdges, fullProbe) = NewProbe(store, null);
+        var fullCapsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
+        new UncertaintyDetector(fullEdges, store, snapshotId, symbolId, false, null, [], CancellationToken.None)
+            .PopulateUncertainties(fullCapsule);
+        var fullReads = fullProbe.Reads;
+
+        Assert.True(fullReads >= 20, $"The uncancelled uncertainty stage made {fullReads} edge reads; the fixture needs at least 20 to show depth.");
+
+        var failures = new List<string>();
+
+        // Every cancel point is tried: a loop without a check leaks only for the k values inside that loop (R49 sample points missed one).
+        for (var k = 1; k <= fullReads; k++)
+        {
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
+            using var cts = new CancellationTokenSource();
+            var (cancelledEdges, cancelledProbe) = NewProbe(store, cts);
+            cancelledProbe.CancelAtRead = k;
+            var threw = false;
+            try
+            {
+                new UncertaintyDetector(cancelledEdges, store, snapshotId, symbolId, false, null, [], cts.Token)
+                    .PopulateUncertainties(capsule);
+            }
+            catch (OperationCanceledException)
+            {
+                threw = true;
+            }
+
+            if (!threw || cancelledProbe.Reads - k > 2)
+                failures.Add($"k={k} (reads {cancelledProbe.Reads}, threw {threw})");
+        }
+
+        Assert.True(failures.Count == 0,
+            $"The uncertainty stage did not stop within two reads of a cancel at every cancel point from 1 to {fullReads} (uncancelled reads {fullReads}): " + string.Join("; ", failures));
+    }
+
+    [SkippableFact]
+    public async Task SuggestedVerification_PreCancelledToken_Throws()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        var snapshotId = await IndexChainAsync();
+        var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
+        var lookup = new ContextLookup(snapshotId, typeId, null, null);
+        var options = new ContextAssemblyOptions(ContextIntent.Inspect, 8000, 5);
+        var symbolId = SymbolId.Parse(typeId);
+
+        using var store = OpenStore(DbPath);
+        var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
+
+        // Depth is not testable on the chain fixture: it has no TestedBy edge, so the method makes one read.
+        new UncertaintyDetector(store, store, snapshotId, symbolId, false, null, [], CancellationToken.None)
+            .PopulateSuggestedVerification(capsule);
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            new UncertaintyDetector(store, store, snapshotId, symbolId, false, null, [], cancelled.Token)
+                .PopulateSuggestedVerification(capsule));
+    }
+
     private async Task<string> IndexChainAsync()
     {
         CreateProject("TestProject", new Dictionary<string, string> { ["Chain.cs"] = ChainSource });
         return await RunFullIndexAsync(DbPath);
     }
 
-    private static (IEdgeStore Edges, EdgeReadProbe Probe) NewProbe(IEdgeStore target, CancellationTokenSource? cancelOnFirstRead)
+    private static (IEdgeStore Edges, EdgeReadProbe Probe) NewProbe(IEdgeStore target, CancellationTokenSource? cancelSource)
     {
         var edges = DispatchProxy.Create<IEdgeStore, EdgeReadProbe>();
         var probe = (EdgeReadProbe)edges;
         probe.Target = target;
-        probe.CancelOnFirstRead = cancelOnFirstRead;
+        probe.CancelSource = cancelSource;
         return (edges, probe);
     }
 
     /// <summary>
     ///     Forwards every <see cref="IEdgeStore" /> call to the target and counts the
-    ///     <c>Get*</c> reads. The first read cancels <see cref="CancelOnFirstRead" />, so a
-    ///     check that follows that read must throw.
+    ///     <c>Get*</c> reads. Read number <see cref="CancelAtRead" /> (1 by default) cancels
+    ///     <see cref="CancelSource" />, so a check that follows that read must throw.
     /// </summary>
     public class EdgeReadProbe : DispatchProxy
     {
         public IEdgeStore Target { get; set; } = null!;
 
-        public CancellationTokenSource? CancelOnFirstRead { get; set; }
+        public CancellationTokenSource? CancelSource { get; set; }
+
+        public int CancelAtRead { get; set; } = 1;
 
         public int Reads { get; private set; }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod!.Name.StartsWith("Get", StringComparison.Ordinal) && ++Reads == 1)
-                CancelOnFirstRead?.Cancel();
+            if (targetMethod!.Name.StartsWith("Get", StringComparison.Ordinal) && ++Reads == CancelAtRead)
+                CancelSource?.Cancel();
 
             try
             {

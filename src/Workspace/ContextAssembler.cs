@@ -127,7 +127,7 @@ internal sealed class ContextAssembler
         PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness);
+        var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness, cancellationToken);
         uncertaintyDetector.PopulateSuggestedVerification(capsule);
         cancellationToken.ThrowIfCancellationRequested();
 

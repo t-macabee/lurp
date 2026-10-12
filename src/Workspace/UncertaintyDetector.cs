@@ -3,6 +3,7 @@ namespace Lurp.Workspace;
 internal sealed class UncertaintyDetector
 {
     private readonly IReadOnlyList<BindingIncompletenessRecord> _bindingIncompleteness;
+    private readonly CancellationToken _cancellationToken;
     private readonly IDeclarationStore _declarationStore;
     private readonly IEdgeStore _edgeStore;
     private readonly string? _gitRoot;
@@ -20,7 +21,8 @@ internal sealed class UncertaintyDetector
         SymbolId symbolId,
         bool includeGenerated,
         string? gitRoot = null,
-        IReadOnlyList<BindingIncompletenessRecord>? bindingIncompleteness = null)
+        IReadOnlyList<BindingIncompletenessRecord>? bindingIncompleteness = null,
+        CancellationToken cancellationToken = default)
     {
         _edgeStore = edgeStore;
         _declarationStore = declarationStore;
@@ -29,6 +31,7 @@ internal sealed class UncertaintyDetector
         _includeGenerated = includeGenerated;
         _gitRoot = gitRoot;
         _bindingIncompleteness = bindingIncompleteness ?? [];
+        _cancellationToken = cancellationToken;
     }
 
     internal void PopulateUncertainties(ContextCapsule capsule)
@@ -82,6 +85,7 @@ internal sealed class UncertaintyDetector
     {
         foreach (var symbolId in neighborhood)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
                 .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
 
@@ -98,6 +102,7 @@ internal sealed class UncertaintyDetector
     {
         foreach (var symbolId in neighborhood)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var outgoing = _edgeStore.GetOutgoingEdges(_snapshotId, symbolId);
             foreach (var edge in outgoing)
             {
@@ -116,6 +121,8 @@ internal sealed class UncertaintyDetector
     {
         var seen = new HashSet<(string Source, string Target)>();
         foreach (var symbolId in neighborhood)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
             foreach (var call in _edgeStore.GetOutgoingEdges(_snapshotId, symbolId))
             {
                 if (call.Kind != nameof(EdgeKind.Calls) ||
@@ -123,6 +130,7 @@ internal sealed class UncertaintyDetector
                     !seen.Add((call.SourceSymbolId, call.TargetSymbolId)))
                     continue;
 
+                _cancellationToken.ThrowIfCancellationRequested();
                 var hasDispatchRelation = _edgeStore.GetOutgoingEdges(_snapshotId, call.TargetSymbolId)
                     .Any(edge => edge.Kind == nameof(EdgeKind.MayDispatchTo));
                 if (!hasDispatchRelation)
@@ -136,6 +144,7 @@ internal sealed class UncertaintyDetector
                     "dispatch, or generic constraints the persisted type graph cannot prove; query the called " +
                     "member's global implementations separately if needed."));
             }
+        }
     }
 
     private void CollectFrameworkConventionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
@@ -149,6 +158,7 @@ internal sealed class UncertaintyDetector
 
         foreach (var symbolId in neighborhood)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
                 .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
 
@@ -169,6 +179,7 @@ internal sealed class UncertaintyDetector
     {
         foreach (var symbolId in neighborhood)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var edges = _edgeStore.GetIncomingEdges(_snapshotId, symbolId)
                 .Concat(_edgeStore.GetOutgoingEdges(_snapshotId, symbolId));
 
@@ -263,6 +274,7 @@ internal sealed class UncertaintyDetector
     {
         foreach (var symbolId in neighborhood)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var hasGeneratedSource = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration, true);
             var hasNonGeneratedSource = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration);
 
@@ -313,6 +325,7 @@ internal sealed class UncertaintyDetector
         var tests = new List<(string TestId, string? ClassId)>();
         foreach (var productionId in TestSymbolDiscovery.ExpandProductionSymbolIds(_symbolId.Value))
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var outgoingEdges = _edgeStore.GetOutgoingEdges(_snapshotId, productionId);
             foreach (var edge in outgoingEdges)
             {
@@ -361,6 +374,7 @@ internal sealed class UncertaintyDetector
 
     private void AddTestSuggestion(ContextCapsule capsule, string testId)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
         var testName = testInfo?.FullyQualifiedName ?? testId;
         var projectPath = ResolveOwningProject(testId);
@@ -378,6 +392,7 @@ internal sealed class UncertaintyDetector
 
     private void AddClassSuggestion(ContextCapsule capsule, string classId)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         var className = _declarationStore.GetSymbolInfo(classId, _snapshotId)?.FullyQualifiedName;
         if (string.IsNullOrEmpty(className))
             className = DeriveTypeName(classId);
@@ -415,6 +430,7 @@ internal sealed class UncertaintyDetector
 
     private string? ResolveOwningProject(string symbolId)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(_gitRoot))
             return null;
         var location = _declarationStore.GetDeclarationLocations(symbolId, _snapshotId, _includeGenerated).FirstOrDefault();
