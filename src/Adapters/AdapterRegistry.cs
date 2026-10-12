@@ -12,6 +12,8 @@ internal static class AdapterRegistry
         new TestAdapter()
     ];
 
+    internal static readonly string[] Names = [.. _all.Select(adapter => adapter.Name)];
+
     public static IFrameworkAdapter[] GetAdapters(IReadOnlySet<string>? skipAdapters = null)
     {
         if (skipAdapters == null || skipAdapters.Count == 0)

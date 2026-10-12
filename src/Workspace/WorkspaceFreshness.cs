@@ -32,9 +32,9 @@ public static class WorkspaceFreshness
     /// <summary>
     ///     Cheap read-path freshness check: no Roslyn workspace load. Compares each
     ///     document's on-disk last-write time against the snapshot's build time;
-    ///     in <see cref="FreshnessMode.Hash" /> mode, files that look touched are
-    ///     re-hashed to confirm an actual content change (avoids false "stale" on
-    ///     a touch-but-unchanged file).
+    ///     in <see cref="FreshnessMode.Hash" /> mode, every document is re-hashed and
+    ///     compared with the stored content hash (a touched but unchanged file stays
+    ///     fresh; an edit that kept an old timestamp is caught).
     /// </summary>
     public static FreshnessStamp CheckFreshnessCheap(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, FreshnessMode mode)
     {

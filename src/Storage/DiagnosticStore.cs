@@ -5,6 +5,8 @@ namespace Lurp.Storage;
 
 internal sealed class DiagnosticStore
 {
+    internal static readonly string[] SeverityFilters = ["Hidden", "Info", "Warning", "Error", "all"];
+
     private readonly SqliteConnection _connection;
 
     public DiagnosticStore(SqliteConnection connection)
@@ -134,10 +136,7 @@ internal sealed class DiagnosticStore
             {
                 // wildcard: include every severity including Hidden — handled in SQL below
             }
-            else if (!string.Equals(severity, "Hidden", StringComparison.OrdinalIgnoreCase)
-                  && !string.Equals(severity, "Info", StringComparison.OrdinalIgnoreCase)
-                  && !string.Equals(severity, "Warning", StringComparison.OrdinalIgnoreCase)
-                  && !string.Equals(severity, "Error", StringComparison.OrdinalIgnoreCase))
+            else if (!SeverityFilters.Contains(severity, StringComparer.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Unknown severity '{severity}'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).", nameof(severity));
             }

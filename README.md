@@ -184,12 +184,11 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-2.0.0. Schema v32, extractor
-1.7.0, CLI/MCP contract v4, output schema v5. 2.0.0 is a breaking release for
+2.0.0. This source tree is <!-- generated:versions -->tool 2.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 2.0.0 is a breaking release for
 `impact` and the capsule topology, and an index built by 1.4.0 needs one
 `--mode=index` run before read commands accept it: see
 [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a manual real-parity gate on
-eNoteV2 (self-hosted runner, `workflow_dispatch`). Roadmap: surfacing the
+eNoteV2 (GitHub-hosted runner, `workflow_dispatch`). Roadmap: surfacing the
 per-symbol TFM set in reads and richer DI parameter-type matching are postponed
 by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
@@ -202,10 +201,4 @@ by design (see
 - [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes 16 read tools (`lurp_context`, `lurp_get_source`,
-`lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_grep`,
-`lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`,
-`lurp_diagnostics`, `lurp_status`, `lurp_timings`, `lurp_refresh`,
-`lurp_dead_candidates`) over stdio; `--enable-write-tools` additionally registers
-`lurp_index` and `lurp_retract_annotation` (background re-index and annotation
-retraction). Index first via CLI, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
+Also MCP: `--mode=serve` exposes <!-- generated:mcp-tools:read -->16 read tools (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_grep`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`)<!-- /generated:mcp-tools:read --> over stdio; `--enable-write-tools` additionally registers <!-- generated:mcp-tools:write -->`lurp_index` and `lurp_retract_annotation`<!-- /generated:mcp-tools:write --> (background re-index and annotation retraction). Index first via CLI, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).

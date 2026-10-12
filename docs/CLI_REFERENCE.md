@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--mode=index). A bare `Yes` in a table's `Required` column always still accepts the matching env var as an alternative.
 
-**This document describes the CLI as of schema v30 / CLI-MCP contract v4 / output schema v5 / tool `2.0.0`.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 2.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->.** For the changes from 1.x, see [RELEASE_NOTES_2.0.0.md](RELEASE_NOTES_2.0.0.md). Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -35,12 +35,14 @@ Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symb
 `--mode=navigate`, `--mode=outline`, `--mode=diagnostics`,
 `--mode=get-annotations`, and `--mode=dead-candidates`.
 
+<!-- generated:flags:read-options -->
 | Argument | Required | Description |
 |---|---|---|
 | `--output=<summary\|json\|jsonl>` | No | Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{"type":"meta"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document. |
 | `--quiet` | No | Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself. |
 | `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes every document; `off` skips the check. An unknown value is an error. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
+<!-- /generated:flags:read-options -->
 
 `--output=` applies to modes whose payload is a JSON sequence (`search`, `grep`,
 `find-symbol`, `impact`, `context`, `outline`, `diagnostics`, `get-annotations`, `dead-candidates`).
@@ -66,6 +68,8 @@ Freshness is delivered in two tiers, because two payload shapes exist:
 
 ## Modes
 
+Every mode needs a database location: `--output-dir=<path>` (or `LURP_OUTPUT_DIR`), or else `--solution=<path>` (or `LURP_SOLUTION_PATH`), which selects the default cache location (see `--mode=index`). Without one the mode fails. The tables below leave out `--output-dir=`.
+
 A value flag (`--name=`) given more than once is an error. The flags that take a
 list may repeat: `--skip-adapter=` and `--affected-project=`.
 
@@ -77,16 +81,19 @@ Index a solution and store facts in the database.
 --mode=index --solution=<path> [--output-dir=<path>] [options]
 ```
 
+<!-- generated:flags:index -->
 | Argument | Required | Description |
 |---|---|---|
 | `--solution=<path>` | Yes, or `LURP_SOLUTION_PATH` | Path to the `.sln` or `.slnx` file. |
-| `--output-dir=<path>` | No | Directory where `index.db` is stored. When omitted, `--solution=` (or `LURP_SOLUTION_PATH`) resolves the default cache location `%LOCALAPPDATA%\lurp\<sha256-12 of the canonical solution path>\`. Also accepted via `LURP_OUTPUT_DIR`. |
-| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. |
-| `--output-json=<path>` | No | Also write the snapshot manifest as JSON. |
-| `--skip-adapter=<name>` | No | Skip a named framework adapter. Valid: `ASP.NET Core`, `Dependency Injection`, `MediatR`, `EF Core`, `Serialization`, `Test`. |
+| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` is the definition of correctness: use it to recover a known-good index. |
+| `--output-json=<path>` | No | Also write the snapshot manifest as JSON (a one-way export; never read back as authority). |
+| `--skip-adapter=<ASP.NET Core\|Dependency Injection\|MediatR\|EF Core\|Serialization\|Test>` | No | Skip a named framework adapter. May be repeated. |
+| `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. `--mode=diff` still computes the diff live. |
 | `--verbose` | No | Emit per-extractor timing lines to stderr. |
-| `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. |
-| `--force` | No | Re-extract even when the deterministic snapshot id already exists as a completed snapshot; a full reindex needs `--strategy=full --force`. Does not bypass identity computation: an identical workspace produces the same snapshot id. |
+| `--force` | No | Re-extract even when the deterministic snapshot id already exists as a completed snapshot; a full reindex needs `--strategy=full --force`, which deletes the identical snapshot and re-extracts it. With the incremental strategy it re-runs the incremental re-extraction in place (a no-op when no document changed). Does not bypass identity computation: an identical workspace produces the same snapshot id. |
+<!-- /generated:flags:index -->
+
+`--output-dir=<path>`: directory where `index.db` is stored. When omitted, `--solution=` (or `LURP_SOLUTION_PATH`) resolves the default cache location `%LOCALAPPDATA%\lurp\<sha256-12 of the canonical solution path>\`. Also accepted via `LURP_OUTPUT_DIR`.
 
 `--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
 
@@ -104,14 +111,15 @@ Retrieve source text for a document.
 --mode=get-source --document=<relative-path> --output-dir=<path> [--start-line=<n>] [--end-line=<n>] [--context-lines=<n>] [--snapshot=<id>]
 ```
 
+<!-- generated:flags:get-source -->
 | Argument | Required | Description |
 |---|---|---|
 | `--document=<relative-path>` | Yes | Relative path of the document within the solution. |
-| `--start-line=<n>` | No | 1-based start line for line window. |
-| `--end-line=<n>` | No | 1-based end line for line window. |
+| `--start-line=<n>` | No | 1-based start line for line window (inclusive). |
+| `--end-line=<n>` | No | 1-based end line for line window (inclusive). |
 | `--context-lines=<n>` | No | Lines of context (symmetric expansion). Requires `--start-line=` or `--end-line=`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:get-source -->
 
 Accepts the shared [read-command options](#read-command-options) except `--output=` (the source is written to stdout verbatim, so freshness is signaled on stderr and via `--require-fresh`'s exit code, never as a JSON wrapper). There is no CLI `--outline` flag for this mode; the MCP tool `lurp_get_source` offers an `outline` parameter instead.
 
@@ -125,14 +133,15 @@ List declarations in a document with line spans.
 --mode=outline --document=<relative-path> --output-dir=<path> [--include-generated] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
 ```
 
+<!-- generated:flags:outline -->
 | Argument | Required | Description |
 |---|---|---|
 | `--document=<relative-path>` | Yes | Relative path of the document within the solution. |
 | `--include-generated` | No | Include source-generated declarations. |
 | `--limit=<n>` | No | Max declarations per page (default: 100). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:outline -->
 
 Also accepts the shared [read-command options](#read-command-options). Output includes `symbol_id`, `kind`, `fully_qualified_name`, `start_line`, `end_line`, `signature_start_line`, `name_start_line`, `is_partial`, `is_generated`, `declaration_count`, and `next_cursor` for pagination. `declaration_count` is the **total** number of declarations matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page).
 
@@ -143,20 +152,21 @@ Also accepts the shared [read-command options](#read-command-options). Output in
 List diagnostics captured at index time for the snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (`Project.AnalyzerReferences`, e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. `EnforceCodeStyleInBuild` plus an `.editorconfig` severity) — confirmed 2026-08-20 against a live target: Roslyn's build-time compilation additionally gates `IDE0005` behind `GenerateDocumentationFile=true`, independent of anything Lurp does. **For unused-using-directive detection, query the compiler diagnostic instead: `--severity=hidden --id=CS8019`** ("Unnecessary using directive") — Lurp always captures this regardless of the target's analyzer/code-style configuration.
 
 ```
---mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=] [--id=] [--include-generated] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
+--mode=diagnostics --output-dir=<path> [--document=] [--project=] [--severity=<level>] [--id=] [--include-generated] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>]
 ```
 
+<!-- generated:flags:diagnostics -->
 | Argument | Required | Description |
 |---|---|---|
 | `--document=<relative-path>` | No | Filter to diagnostics in this document. |
 | `--project=<name>` | No | Filter to diagnostics in this project. |
-| `--severity=<level>` | No | Filter by severity (Roslyn `DiagnosticSeverity` names: `Hidden`, `Info`, `Warning`, `Error`; matched case-insensitively, or `all` for every severity including `Hidden`). When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result. |
+| `--severity=<Hidden\|Info\|Warning\|Error\|all>` | No | Filter by severity: Roslyn `DiagnosticSeverity` names, matched case-insensitively, or `all` for every severity including `Hidden`. When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result. |
 | `--id=<code>` | No | Filter by diagnostic ID (e.g. `CS8933`). |
-| `--include-generated` | No | Include diagnostics located in generated files (matches the same `obj/**`, `*.g.cs`, `*.generated.cs`, `*.Designer.cs`, `*ModelSnapshot.cs` patterns as every other read mode's `--include-generated`). Default excludes them, same as `search`/`grep`/`outline`/`get-symbol`/`find-symbol`/`navigate`/`context`/`dead-candidates` — `diagnostics` used to be the one mode where this filter did not exist and everything came back unfiltered; it is not an outlier anymore. |
 | `--limit=<n>` | No | Max diagnostics per page (default: 100). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--include-generated` | No | Include diagnostics located in generated files (the same `obj/**`, `*.g.cs`, `*.generated.cs`, `*.Designer.cs`, `*ModelSnapshot.cs` patterns as every other read mode's `--include-generated`). Default excludes them. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:diagnostics -->
 
 Also accepts the shared [read-command options](#read-command-options). The response includes `snapshot_id`, `document`, `project`, `severity`, `id`, `diagnostics` (array with `project_name`, `document_path`, `in_snapshot`, `severity`, `id`, `message`, `start_line`, `start_column`, `end_line`, `end_column`), `diagnostic_count`, and `next_cursor` for pagination. `diagnostic_count` is the **total** number of diagnostics matching the filter across every page, not the number of items on the current page — do not use it to drive a pagination loop; use `next_cursor` (a `null`/absent `next_cursor` marks the last page). Diagnostics reflect compiler and analyzer state at index time, not re-evaluated diagnostics. See the column-number-base note above: `start_column`/`end_column` are 0-based.
 
@@ -172,14 +182,15 @@ Look up symbol metadata or source by view kind.
 --mode=get-symbol --symbol=<id> --view=<kind> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:get-symbol -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to look up. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
-| `--view=<kind>` | Yes | View kind: `metadata`, `signature`, `body`, `declaration`, `containing-type`, `surrounding`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to read from (default: latest). |
+| `--symbol=<id>` | Yes | The symbol ID to look up. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
+| `--view=<metadata\|signature\|body\|declaration\|containing-type\|surrounding>` | Yes | What to return. |
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
 | `--include-generated` | No | Include source-generated symbols. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:get-symbol -->
 
 Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, end_line, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`).
 
@@ -193,17 +204,18 @@ Full-text search over source text and symbols.
 --mode=search --query=<term> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:search -->
 | Argument | Required | Description |
 |---|---|---|
 | `--query=<term>` | Yes | Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count). |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). An unknown value is an error. |
 | `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
 | `--limit=<n>` | No | Max results per scope (default: 20). |
 | `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |
-| `--snapshot=<id>` | No | Snapshot to search (default: latest). |
-| `--include-generated` | No | Include source-generated symbols. |
 | `--cursor=<token>` | No | Continue from a previous page's `nextCursor` (`--type=symbol` only). |
+| `--include-generated` | No | Include source-generated symbols. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:search -->
 
 Punctuation in queries is quoted as an FTS5 phrase literal (`SearchUtils.ToFtsPhrase`), so dotted names like `CourseService.CreateAsync` and queries containing `"`, `*`, `:`, `()`, `<>` no longer throw `fts5: syntax error`.
 
@@ -219,15 +231,16 @@ Literal/exact-text search over source content with per-occurrence line numbers.
 --mode=grep --query=<term> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:grep -->
 | Argument | Required | Description |
 |---|---|---|
 | `--query=<term>` | Yes | Exact substring to find. The match is byte-exact, including punctuation and spacing. Case-sensitive by default; pass `--ignore-case` for case-insensitive. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--limit=<n>` | No | Max matches per page (default: 50). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
 | `--ignore-case` | No | Make the search case-insensitive (default: case-sensitive). |
 | `--include-generated` | No | Include source-generated documents. |
-| `--snapshot=<id>` | No | Snapshot to search (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:grep -->
 
 Also accepts the shared [read-command options](#read-command-options).
 
@@ -243,12 +256,13 @@ Resolve a symbol by fully qualified name.
 --mode=find-symbol --symbol=<name> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:find-symbol -->
 | Argument | Required | Description |
 |---|---|---|
 | `--symbol=<name>` | Yes | Fully qualified name to resolve. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to search (default: latest). |
 | `--include-generated` | No | Include source-generated symbols. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:find-symbol -->
 
 Also accepts the shared [read-command options](#read-command-options).
 
@@ -266,13 +280,14 @@ Resolve an indexed declaration by file and line.
 --mode=navigate --file=<path> --line=<n> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:navigate -->
 | Argument | Required | Description |
 |---|---|---|
 | `--file=<path>` | Yes | Source file path relative to the solution root. |
-| `--line=<n>` | Yes | 1-based line number in the source file. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--line=<n>` | Yes | 1-based line number in the source file. Every emitted line number is 1-based too, so a reported `start_line` feeds straight back into `--line=`. |
 | `--include-generated` | No | Include source-generated declarations. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:navigate -->
 
 Accepts the shared [read-command options](#read-command-options) except `--output=`; the JSON payload embeds the `freshness` block.
 
@@ -288,11 +303,12 @@ Show semantic changes between two snapshots.
 --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=<path>
 ```
 
+<!-- generated:flags:diff -->
 | Argument | Required | Description |
 |---|---|---|
 | `--from-snapshot=<id>` | Yes | Base snapshot ID. |
 | `--to-snapshot=<id>` | Yes | Target snapshot ID. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
+<!-- /generated:flags:diff -->
 
 Output is JSON with change records (added, removed, modified symbols and their detail).
 
@@ -306,17 +322,20 @@ Trace the impact of a changed symbol as a set of reached symbols.
 --mode=impact --symbol=<id> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:impact -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
+| `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol. |
-| `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--kinds=<list>` | No | Comma-separated edge kinds to follow. |
-| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Live-observed (eNoteV2, `IEntity.Id` pure inherited-only via `BaseEntity`): `all`:1, `compiler_proved`:0, `possible`:1 vs. direct `ICurrentUserService.UserId` 9/9/0 — confirms the filter; eCommerce's `IBaseCRUDService` is mixed (has direct impls) so its 242→186→1 progression is not a filter bug. |
+| `--provenance=<list>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. |
+| `--max-depth=<n>` | No | Maximum traversal depth (default: 3). |
 | `--limit=<n>` | No | Symbols per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`. |
 | `--cursor=<token>` | No | Continue from a previous page's `truncated.cursor`. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:impact -->
+
+Live-observed (eNoteV2, `IEntity.Id` pure inherited-only via `BaseEntity`): `all`:1, `compiler_proved`:0, `possible`:1 vs. direct `ICurrentUserService.UserId` 9/9/0 — confirms the filter; eCommerce's `IBaseCRUDService` is mixed (has direct impls) so its 242→186→1 progression is not a filter bug.
 
 Also accepts the shared [read-command options](#read-command-options).
 
@@ -336,23 +355,24 @@ Assemble a context capsule for a symbol or source location.
 --mode=context (--symbol=<id> | --file=<path> --line=<n>) --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:context -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes* | Symbol ID to anchor on. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
+| `--symbol=<id>` | Yes* | Symbol ID to anchor on. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
 | `--file=<path>` | Yes* | Source file path (use with `--line`). |
 | `--line=<n>` | Yes* | Line number in the source file. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--content-budget=<n>` | No | Token budget for capsule **content** (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens` (see [Capsule token estimates](#capsule-token-estimates)). Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule content (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens`. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--scope=<label>` | No | Logical scope label recorded on the anchor (default: the symbol ID). |
-| `--affected-project=<name>` | No | Repeatable. A project affected by the change. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
-| `--include-generated` | No | Include source-generated symbols. |
-| `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
-| `--tier=<name>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omitted_tiers` `budget_exhausted` entry is acted on. Valid: `contracts`, `direct_callees`, `direct_callers`, `registered_implementations`, `relevant_tests`, `second_degree_context`, `surrounding_source`. |
+| `--affected-project=<name>` | No | Repeatable. A project affected by the change. May be repeated. |
+| `--tier=<contracts\|direct_callees\|direct_callers\|registered_implementations\|relevant_tests\|second_degree_context\|surrounding_source>` | No | Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omitted_tiers` `budget_exhausted` entry is acted on. |
 | `--tier-limit=<n>` | No | Items per tier page (default: 25). |
 | `--cursor=<token>` | No | Continue a tier from its `next_cursor` (`--tier` only). |
+| `--completeness-detail` | No | Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total. |
+| `--include-generated` | No | Include source-generated symbols. |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:context -->
 
 \* Either `--symbol` or both `--file` and `--line` must be provided.
 
@@ -454,14 +474,15 @@ Show the current database status.
 --mode=status --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:status -->
 | Argument | Required | Description |
 |---|---|---|
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--solution=<path>` | No | If provided, compares the current workspace against the latest snapshot and reports freshness mismatches. |
+| `--detail=<documents\|references\|completeness\|all>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. Unknown values are an error. |
 | `--json` | No | Emit structured JSON instead of plain text. Back-compat alias for `--output=json`. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
-| `--detail=<list>` | No | Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. Unknown values are an error. |
 | `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
+<!-- /generated:flags:status -->
 
 `status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
 
@@ -488,11 +509,12 @@ Show step-by-step timing data for a snapshot.
 --mode=timings --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:timings -->
 | Argument | Required | Description |
 |---|---|---|
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to inspect (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 | `--json` | No | Emit structured JSON instead of plain text. |
+<!-- /generated:flags:timings -->
 
 `--json` adds a `metrics` object (metric name → value) next to `steps`; `total_ms`
 and `percent` are computed from timing rows only. `peak_working_set_mb` covers the
@@ -510,13 +532,14 @@ Attach a user-authored annotation to a symbol.
 --mode=annotate --symbol=<id> --annotation-kind=<kind> --value=<text> --output-dir=<path> [options]
 ```
 
+<!-- generated:flags:annotate -->
 | Argument | Required | Description |
 |---|---|---|
 | `--symbol=<id>` | Yes | The symbol ID to annotate. |
 | `--annotation-kind=<kind>` | Yes | Annotation kind. |
 | `--value=<text>` | Yes | Annotation value. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:annotate -->
 
 ---
 
@@ -528,15 +551,16 @@ Retrieve annotations by symbol, document, or snapshot (with kind filtering and k
 --mode=get-annotations (--symbol=<id> | --document=<path>) --output-dir=<path> [--kind=<kind>] [--limit=<n>] [--cursor=<token>] [options]
 ```
 
+<!-- generated:flags:get-annotations -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | No | The symbol ID to query. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`. |
+| `--symbol=<id>` | No | The symbol ID to query. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`. |
 | `--document=<relative-path>` | No | Relative path of the document within the solution. Mutually exclusive with `--symbol=`. |
 | `--kind=<kind>` | No | Filter to one annotation kind. |
 | `--limit=<n>` | No | Max annotations per page (default: 100; positive integer). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
+<!-- /generated:flags:get-annotations -->
 
 Accepts the shared [read-command options](#read-command-options). `--symbol=` and
 `--document=` are enforced as mutually exclusive. With neither, all annotations in
@@ -562,11 +586,12 @@ Retract one annotation by surrogate id, scoped to exactly one snapshot. The dele
 --mode=retract-annotation --annotation-id=<n> --output-dir=<path> [--snapshot=<id>]
 ```
 
+<!-- generated:flags:retract-annotation -->
 | Argument | Required | Description |
 |---|---|---|
 | `--annotation-id=<n>` | Yes | Surrogate PK from `get-annotations` annotation_id (positive integer). |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to act on (default: latest). The DELETE is `WHERE snapshot_id=@snapshot AND annotation_id=@id` — one row only, no cross-snapshot effect. Copy-forward clones (`CopyAnnotationsToSnapshot`) allocate fresh ids, so retracting in one snapshot does not delete its clone in another. |
+| `--snapshot=<id>` | No | Snapshot to act on (default: latest, or the pinned snapshot when one is set). The DELETE is `WHERE snapshot_id=@snapshot AND annotation_id=@id` — one row only, no cross-snapshot effect. Copy-forward clones (`CopyAnnotationsToSnapshot`) allocate fresh ids, so retracting in one snapshot does not delete its clone in another. |
+<!-- /generated:flags:retract-annotation -->
 
 JSON output is `{ status:"ok", snapshot_id, annotation_id, retracted:true }`. On no such row in that snapshot the mode exits 1 with `ERROR: annotation_id <n> not found in snapshot <id>.` Use `--snapshot=` explicitly when you have more than one snapshot pinned.
 
@@ -580,18 +605,19 @@ List dead-code candidates: symbols with no incoming LIVE edge after suppression-
 --mode=dead-candidates --output-dir=<path> [--project=<name>] [--document=<path>] [--kind=<Type|Method|Property|Field|Event>] [--limit=<n>] [--cursor=<token>] [--snapshot=<id>] [--include-public] [--include-generated] [--include-tests]
 ```
 
+<!-- generated:flags:dead-candidates -->
 | Argument | Required | Description |
 |---|---|---|
 | `--project=<name>` | No | Filter to this project (assembly simple name, e.g. `eNote.API`). |
-| `--document=<relative-path>` | No | Filter to symbols declared in this document (forward-slash, relative to the solution root — see [Document-path base](#read-command-options) above, not the repo root). |
-| `--kind=<kind>` | No | Filter by symbol kind: `Type`, `Method`, `Property`, `Field`, `Event` (case-insensitive). |
+| `--document=<relative-path>` | No | Filter to symbols declared in this document (forward-slash, relative to the solution root, not the repo root). |
+| `--kind=<Type\|Method\|Property\|Field\|Event>` | No | Filter by symbol kind (case-insensitive). |
 | `--limit=<n>` | No | Max dead candidates per page (default: 50, max: 200). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--snapshot=<id>` | No | Snapshot to use (default: latest). |
+| `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 | `--include-public` | No | Include public/protected symbols with no internal LIVE incoming edge as `uncertain_dead` (reason: `public_surface`). Default excludes them from `proved_dead`. |
 | `--include-generated` | No | Include source-generated symbols (default excludes `is_generated=1`). Surfaced as `uncertain` reason `generated_excluded` when no other signal. |
-| `--include-tests` | No | Include test-project symbols (a project that references a test framework: `Microsoft.VisualStudio.TestPlatform.ObjectModel`, `Microsoft.Testing.Platform`, `xunit.core`, `xunit.v3.core`, `nunit.framework`, `Microsoft.VisualStudio.TestPlatform.TestFramework`) with no LIVE incoming edge as `uncertain` (reason: `test_harness`). Default excludes them. |
+| `--include-tests` | No | Include test-project symbols (a project that references a test framework: `Microsoft.VisualStudio.TestPlatform.ObjectModel`, `Microsoft.Testing.Platform`, `xunit.core`, `xunit.v3.core`, `nunit.framework`, `Microsoft.VisualStudio.TestPlatform.TestFramework`) with no LIVE incoming edge as `uncertain` (reason: `test_harness`). Default excludes them. Without it, test helpers reached only through xUnit reflection discovery would all appear dead. |
+<!-- /generated:flags:dead-candidates -->
 
 Also accepts the shared [read-command options](#read-command-options). Output is JSON with `snapshot_id`, `filters` (echo of project/document/kind/include_*), `incoming_edge_kinds_checked[15]` (frozen canonical LIVE ordering: `Calls, MethodGroupRef, Constructs, Reads, Writes, Handles, RoutesTo, Registers, MapsTo, MayDispatchTo, StaticallyCalls, TestedBy, ReflectionTypeRef, ReflectionMemberRef, ReflectionNameCandidate`), `type_use_edge_kinds_checked[5]` (type-use ordering: `References, Returns, Inherits, Implements, Throws`), `live_provenance_rank[3]` (`compiler_proved, framework_derived, global_implementation_relation`), `uncertain_provenance[4]` (`possible, convention, name_candidate, runtime_unknown`), `candidate_count` (total filtered universe before LIVE/suppression, not page length), `dead_count`/`uncertain_count`/`unresolved_count` (totals across all pages, not page length), `candidates[]` page window (ordered by `symbol_id ASC`, `limit` items, default 50) with `symbol_id, fqn, kind, accessibility, document_path, locations[], project_name, declaration_count, is_generated, status (proved_dead/uncertain_dead/unresolved/uncertain), reason (handler-enum: no_incoming_live_edges, binding_incompleteness, public_surface, ef_convention, serialization_convention, framework_convention, possible_dispatch, name_candidate, runtime_unknown, generated_excluded, test_harness, entry_point_convention, external_interface_implementation), uncertainties[] (verbatim `UncertaintyDetector`/`DeclaredBoundaries` wording), incoming_edge_summary {live_strong, live_weak, provenance_breakdown, kind_breakdown}, `declaration_span` {start_line, end_line} (null when the symbol has no location), and `next_cursor` for pagination; `freshness` block is embedded. `candidate_count`/`dead_count`/`uncertain_count`/`unresolved_count` are totals, not page size — do not use them to drive a loop; use `next_cursor` (`null`/absent marks last page). `next_cursor` drives pagination (keyset over `symbol_id`). The handler uses batched `WHERE target_symbol_id IN (...)` per page, never per-candidate `GetIncomingEdges`. Structural kinds (`References, Inherits, Implements, Contains, Declares, Overrides, Hides, Returns, Throws, ExtensionReceiver`) are explicitly excluded from LIVE, but a type candidate still inherits `References, Returns, Inherits, Implements, Throws` that enter it from outside its subtree. The candidate universe also excludes extension-block marker types and compiler-synthesized members (static constructors, implicitly declared members). Accessors inherit their property's or event's edges by role (getter: every edge except `Writes`; setter/init: `Writes` only; event accessor: every edge of the event). Suppression ladder, in the order the store checks it: (1) a strong LIVE edge (the candidate's own, or inherited as above) -> alive, not a candidate; (2) the candidate overlaps a binding_incompleteness `UnobservableReason` -> unresolved, reason `binding_incompleteness`; (3) the process entry point or the type that contains it (explicit static `Main` or the compiler-synthesized top-level-statements form; nothing in the repository calls it, whatever its accessibility) -> uncertain_dead, reason `entry_point_convention`; (4) explicit implementation of an interface member declared outside the compilation -> uncertain_dead, reason `external_interface_implementation`; (5) Public, Protected or protected internal -> excluded from proved_dead without `include_public`, uncertain_dead with reason `public_surface` when `include_public` is set; (6) generated symbol with `include_generated` -> uncertain, reason `generated_excluded`; (7) symbol of a test project with `include_tests` -> uncertain, reason `test_harness`; (8) when the candidate has only weak incoming edges, the strongest weak edge decides: `MayDispatchTo` with possible provenance -> uncertain_dead, reason `possible_dispatch`; convention provenance -> uncertain_dead, reason `framework_convention`; name_candidate provenance -> uncertain_dead, reason `name_candidate`; runtime_unknown provenance -> unresolved, reason `runtime_unknown`; any other weak provenance -> uncertain_dead, reason framework_convention; (9) when the candidate has no incoming LIVE edge at all, its own convention verdict: a private or private-protected method, property or field of a `MapsTo` entity -> uncertain_dead, reason `ef_convention`; a non-public property or field with an exact serialization opt-in attribute (`JsonInclude`, Newtonsoft `JsonProperty` or `DataMember`) -> uncertain_dead, reason `serialization_convention`; then the inherited verdict (an accessor takes the verdict of its property, a type takes the first verdict among its members); (10) otherwise proved_dead, reason `no_incoming_live_edges`. Every `reason` is a frozen handler-enum; renaming or removing a code is a contract break (bumps `CliMcpContractVersion`, see [VERSIONING.md](../VERSIONING.md)), adding a new one is not but still updates `tests/CliMcpContractSnapshotTests.cs` and this list. CLI `--output=summary` emits one line per candidate (`kind accessibility fqn document_path:start_line reason status`) plus `-- shown/total proved/uncertain/unresolved; more available (--cursor)`. CLI `--output=jsonl` emits `{"type":"meta", meta}` then `{"type":"candidate", candidate}` per entry. MCP tool `lurp_dead_candidates` mirrors CLI shape: `limit, cursor, snapshot_id, project, document, kind, include_public, include_generated, include_tests` plain properties; `Description` carries the same suppression ladder as this section (item #6 docs/tool mismatch not repeated).
 
@@ -607,12 +633,14 @@ Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destr
 --mode=pin-snapshot --snapshot=latest --output-dir=<path>  # alias for --clear
 ```
 
+<!-- generated:flags:pin-snapshot -->
 | Argument | Required | Description |
 |---|---|---|
 | `--snapshot=<id>` | Yes* | Snapshot ID to pin. Only snapshots with `status='complete'` can be pinned. The literal `latest` is an alias for `--clear`. |
 | `--clear` | No | Clear the pin; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`). |
-| `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
 | `--json` | No | Emit structured JSON instead of plain text. `--output=json` is an alias. |
+| `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
+<!-- /generated:flags:pin-snapshot -->
 
 \* Either `--snapshot=<id>` or `--clear` (or `--snapshot=latest`) must be provided.
 
@@ -655,12 +683,7 @@ Set once (e.g. in the shell profile an agent's session inherits) and every mode 
 
 ## MCP server (`--mode=serve`)
 
-Lurp runs as an MCP server over stdio, exposing 16 read tools via `tools/list`:
-`lurp_context, lurp_get_source, lurp_outline, lurp_navigate, lurp_find_symbol,
-lurp_search, lurp_grep, lurp_impact, lurp_diff, lurp_get_symbol, lurp_get_annotations,
-lurp_diagnostics, lurp_status, lurp_timings, lurp_refresh,
-lurp_dead_candidates`. Passing `--enable-write-tools` additionally registers
-`lurp_index` and `lurp_retract_annotation` (18 tools total). There
+Lurp runs as an MCP server over stdio, exposing <!-- generated:mcp-tools:read -->16 read tools (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_grep`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`)<!-- /generated:mcp-tools:read --> via `tools/list`. Passing `--enable-write-tools` additionally registers <!-- generated:mcp-tools:write -->`lurp_index` and `lurp_retract_annotation`<!-- /generated:mcp-tools:write --> (<!-- generated:mcp-tools:total -->18<!-- /generated:mcp-tools:total --> tools total). There
 is no `lurp_annotate` tool by design, and no `lurp_pin_snapshot` tool either —
 [`--mode=pin-snapshot`](#--mode=pin-snapshot) is CLI-only. Each tool call opens its
 own short-lived read-only connection (`Mode=ReadOnly` plus `PRAGMA query_only=ON`),
@@ -673,6 +696,38 @@ parameter. See
 Annotation *creation* remains CLI-only (`--mode=annotate`); *retraction* is
 available from both surfaces (`--mode=retract-annotation` and
 `lurp_retract_annotation`).
+
+Tool parameters (each is optional in the tool schema; a tool's description names the values it needs; the types and defaults come from the tool attributes):
+
+<!-- generated:mcp-tools:table -->
+| Tool | Access | Parameters | Description |
+|---|---|---|---|
+| `lurp_context` | read | `symbol` (string), `file` (string), `line` (int), `intent` (string), `content_budget` (int), `max_hops` (int), `scope` (string), `affected_project` (string[]), `include_generated` (bool), `completeness_detail` (bool), `tier` (string), `tier_limit` (int), `cursor` (string), `snapshot_id` (string) | Assemble a context capsule for a symbol or file location. Exactly one of symbol or file+line is required. Intent: inspect \| modify \| diagnose (default: inspect). Supports tier continuation via tier/cursor. |
+| `lurp_get_source` | read | `document` (string), `start_line` (int), `end_line` (int), `context_lines` (int), `snapshot_id` (string), `outline` (bool) | Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response. |
+| `lurp_outline` | read | `document` (string), `include_generated` (bool), `limit` (int), `cursor` (string), `snapshot_id` (string) | List declarations in a document with 1-based line spans. Ordered by full_start. Supports pagination via limit/cursor and filtering generated declarations. declaration_count is the total match count across all pages, not the page size — use next_cursor for pagination. |
+| `lurp_navigate` | read | `file` (string), `line` (int), `include_generated` (bool), `snapshot_id` (string) | Navigate to the declaration containing a file+line in the pinned snapshot. Null target is success, not an error. |
+| `lurp_find_symbol` | read | `symbol` (string), `include_generated` (bool), `snapshot_id` (string) | Resolve a symbol in the pinned snapshot. Accepts pipe-form docCommentId\|assemblyIdentity, bare T: docCommentId, or bare FQN. |
+| `lurp_search` | read | `query` (string), `type` (string), `kind` (string), `limit` (int), `snippet_tokens` (int), `cursor` (string), `include_generated` (bool), `snapshot_id` (string) | Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search. |
+| `lurp_impact` | read | `symbol` (string), `direction` (string), `kinds` (string[]), `provenance` (string[]), `max_depth` (int), `limit` (int), `cursor` (string), `snapshot_id` (string) | Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. |
+| `lurp_diff` | read | `from_snapshot` (string), `to_snapshot` (string) | Compute semantic diff between two snapshots. Both from_snapshot and to_snapshot are required. |
+| `lurp_get_symbol` | read | `symbol` (string), `view` (string), `context_lines` (int), `include_generated` (bool), `snapshot_id` (string) | Get symbol metadata and optional source. Accepts pipe-form docCommentId\|assemblyIdentity, bare T: docCommentId, or bare FQN. View summary\|source\|all controls payload. |
+| `lurp_get_annotations` | read | `symbol` (string), `document` (string), `kind` (string), `limit` (int), `cursor` (string), `snapshot_id` (string) | Get annotations in the pinned snapshot. Supports three modes: by symbol (resolved via docCommentId\|assemblyIdentity, bare T: docCommentId, or FQN), by document (git-relative forward-slashed path), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination. Annotations with document_path IS NULL (user-authored via lurp_annotate) are unreachable via document filter. |
+| `lurp_diagnostics` | read | `document` (string), `project` (string), `severity` (string), `id` (string), `limit` (int), `cursor` (string), `include_generated` (bool, default `false`), `snapshot_id` (string) | List diagnostics captured at index time for the pinned snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. EnforceCodeStyleInBuild plus an .editorconfig severity) — Roslyn's build-time compilation additionally gates IDE0005 behind GenerateDocumentationFile=true, independent of anything Lurp does. For unused-using-directive detection, query the compiler diagnostic instead: severity=hidden, id=CS8019 ("Unnecessary using directive") — Lurp always captures this regardless of the target's analyzer/code-style configuration. Filters: document (solution-relative path, not git-relative), project, severity (Hidden, Info, Warning, Error case-insensitive, or "all" for every severity including Hidden; default excludes Hidden), id (diagnostic code, e.g. CS8933), include_generated (default false: excludes diagnostics located in obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs — the same generated-file patterns every other read tool's include_generated excludes by default). Unknown severity values are rejected with an error instead of returning empty. Keyset pagination via limit/cursor, ordered by diagnostic_id. diagnostic_count is the total match count across all pages, not the page size. start_column/end_column are 0-based (unlike the 1-based start_line/end_line). Reports what the compiler and analyzers said at index time — not re-evaluated, ranked, or deduplicated. |
+| `lurp_grep` | read | `query` (string), `limit` (int), `cursor` (string), `ignore_case` (bool), `include_generated` (bool), `snapshot_id` (string) | Literal/exact-text search over source content in the pinned snapshot. Returns per-occurrence results with 1-based start_line/end_line and 0-based start_column/end_column plus the full line_text. Use this instead of lurp_search when you need the exact line where a string appears. Supports pagination via cursor and case-insensitive search via ignore_case. match_count is the total match count across all pages, not the page size — use next_cursor for pagination. |
+| `lurp_status` | read | `snapshot_id` (string), `detail` (object), `sections` (string), `max_documents` (int), `max_mismatches` (int), `documents` (object), `full` (bool), `projects` (string[]), `max_bytes` (int) | Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). The response is capped at max_bytes (default 40000): over the cap, the largest manifest parts are summarized or left out, truncated is true and detail.manifest.omitted_fields names them; pass projects to narrow the manifest to named projects. |
+| `lurp_timings` | read | `snapshot_id` (string) | Show step-by-step timing data and snapshot metrics for the pinned snapshot. |
+| `lurp_refresh` | read | `ack` (string), `snapshot_id` (string) | Check for a newer snapshot and optionally advance the pin. Without ack, reports old/new without moving. With ack equal to latest, closes and reopens store and re-pins. `changed` always reflects old_snapshot_id vs new_snapshot_id at the moment of the response, not whether this call just advanced the pin: after a successful ack advances the pin, new_snapshot_id catches up to the (now-current) pin so changed is reported as false, meaning 'no further pending change' — check the `pinned` field, not `changed`, to see whether this call advanced the pin. |
+| `lurp_dead_candidates` | read | `limit` (int), `cursor` (string), `snapshot_id` (string), `project` (string), `document` (string), `kind` (string), `include_public` (bool), `include_generated` (bool), `include_tests` (bool) | List dead-code candidates for the pinned snapshot: symbols of kind Type, Method, Property, Field, Event with no incoming LIVE edge (Calls, MethodGroupRef, Constructs, Reads, Writes, Handles, RoutesTo, Registers, MapsTo, MayDispatchTo, StaticallyCalls, TestedBy, ReflectionTypeRef, ReflectionMemberRef, ReflectionNameCandidate) of strong provenance (compiler_proved, framework_derived, global_implementation_relation). Inherited liveness: accessors take their property's or event's edges by role (a getter every edge except Writes; a setter or init only Writes; an event accessor every edge of the event); type candidates also take these edges from outside the type: References, Returns, Inherits, Implements, Throws. Suppression ladder, in the order the store checks it: (1) a strong LIVE edge (the candidate's own, or inherited as above) -> alive, not a candidate; (2) the candidate overlaps a binding_incompleteness UnobservableReason -> unresolved, reason binding_incompleteness; (3) the process entry point or the type that contains it (explicit static Main or the compiler-synthesized top-level-statements form; nothing in the repository calls it, whatever its accessibility) -> uncertain_dead, reason entry_point_convention; (4) explicit implementation of an interface member declared outside the compilation -> uncertain_dead, reason external_interface_implementation; (5) Public, Protected or protected internal -> excluded from proved_dead without include_public, uncertain_dead with reason public_surface when include_public is set; (6) generated symbol with include_generated -> uncertain, reason generated_excluded; (7) symbol of a test project with include_tests -> uncertain, reason test_harness; (8) when the candidate has only weak incoming edges, the strongest weak edge decides: MayDispatchTo with possible provenance -> uncertain_dead, reason possible_dispatch; convention provenance -> uncertain_dead, reason framework_convention; name_candidate provenance -> uncertain_dead, reason name_candidate; runtime_unknown provenance -> unresolved, reason runtime_unknown; any other weak provenance -> uncertain_dead, reason framework_convention; (9) when the candidate has no incoming LIVE edge at all, its own convention verdict: a private or private-protected method, property or field of a MapsTo entity -> uncertain_dead, reason ef_convention; a non-public property or field with an exact serialization opt-in attribute (JsonInclude, Newtonsoft JsonProperty or DataMember) -> uncertain_dead, reason serialization_convention; then the inherited verdict (an accessor takes the verdict of its property, a type takes the first verdict among its members); (10) otherwise proved_dead, reason no_incoming_live_edges. Default excludes compiler-synthesized members (static constructors, implicitly declared members), extension-block marker types, generated symbols and test-project symbols (a project that references a test framework: Microsoft.VisualStudio.TestPlatform.ObjectModel, Microsoft.Testing.Platform, xunit.core, xunit.v3.core, nunit.framework or Microsoft.VisualStudio.TestPlatform.TestFramework); lift with include_generated/include_tests (surfaced as uncertain reason generated_excluded/test_harness). Batched WHERE target_symbol_id IN (...) per page, never per-candidate GetIncomingEdges. Keyset pagination via limit/cursor ordered by symbol_id ASC; limit default 50 max 200. Filters: project (assembly name), document (forward-slash relative path), kind (Type/Method/Property/Field/Event). Response carries snapshot_id, filters, incoming_edge_kinds_checked[15], type_use_edge_kinds_checked[5], live_provenance_rank[3], uncertain_provenance[4], candidate_count (total filtered universe), dead_count/uncertain_count/unresolved_count (totals across all pages), candidates[] page window with symbol_id, fqn, kind, accessibility, document_path, locations[], project_name, declaration_count, is_generated, status (proved_dead/uncertain_dead/unresolved/uncertain), reason, uncertainties[] (verbatim UncertaintyDetector/DeclaredBoundaries wording), incoming_edge_summary, declaration_span {start_line, end_line} (null when the symbol has no location), plus next_cursor and freshness. |
+| `lurp_index` | write (needs `--enable-write-tools`) | `strategy` (string), `force` (bool), `operation_id` (string), `cancel` (bool) | Index or re-index the solution the serve session was started with (`--solution=`). Starts a background run (`strategy` full\|incremental, `force` to re-extract identical snapshot). Returns at once with {operation_id,status:running}. Progress is buffered; poll lurp_index with {operation_id} to read it. Cancel via MCP cancellation or by calling lurp_index with {operation_id,cancel:true}. On completion do not auto-pin — use lurp_refresh to advance. While running, other tools keep answering from the old pin. |
+| `lurp_retract_annotation` | write (needs `--enable-write-tools`) | `annotation_id` (long), `snapshot_id` (string) | Retract (hard-delete) one annotation by annotation_id, scoped to the pinned snapshot — any provenance, not limited to user-authored (lurp_annotate) rows; extractor-derived rows can be removed the same way. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone. |
+<!-- /generated:mcp-tools:table -->
+
+<!-- generated:flags:serve -->
+| Argument | Required | Description |
+|---|---|---|
+| `--solution=<path>` | No | The solution the session was started with. `lurp_index` indexes it, and `lurp_status` with `full:true` compares it to the snapshot. |
+| `--enable-write-tools` | No | Also register the write tools `lurp_index` and `lurp_retract_annotation`. Off by default, so an agent that follows prompt-injected text cannot start an index run or delete annotations. |
+<!-- /generated:flags:serve -->
 
 `lurp_status` defaults to the cheap stat-based freshness check; pass
 `full:true` to run the MSBuild workspace check (which requires serve

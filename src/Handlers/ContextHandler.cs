@@ -120,11 +120,11 @@ internal static class ContextHandler
             return;
         }
 
-        // Belt-and-suspenders: Run() already calls ValidateSymbolIdFormat(symbolArg) before
-        // ever dispatching here whenever --symbol is supplied (audited: this method is
-        // unreachable with an unvalidated user-supplied symbolArg today), and the file/line
-        // branch above always resolves to a well-formed persisted value. Re-validating here
-        // means this call stays safe even if a future caller stops going through Run()'s gate.
+        // Belt-and-suspenders: Run() resolves --symbol= to the canonical
+        // 'docCommentId|assemblyIdentity' form via HandlerBootstrap.ResolveSymbolArg before
+        // dispatching here, and the file/line branch above always resolves to a well-formed
+        // persisted value. Re-validating here means this call stays safe even if a future
+        // caller stops going through Run()'s resolution.
         ValidateSymbolIdFormat(resolvedSymbol);
 
         var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--tier-limit=", DefaultTierLimit);

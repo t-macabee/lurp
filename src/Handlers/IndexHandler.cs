@@ -1,3 +1,4 @@
+using Lurp.Adapters;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -34,10 +35,7 @@ internal static class IndexHandler
 
         if (skipAdapters.Count > 0)
         {
-            var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "ASP.NET Core", "Dependency Injection", "MediatR", "EF Core", "Serialization", "Test"
-            };
+            var knownNames = new HashSet<string>(AdapterRegistry.Names, StringComparer.OrdinalIgnoreCase);
             foreach (var name in skipAdapters.Where(name => !knownNames.Contains(name)))
                 Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
             Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
@@ -47,7 +45,7 @@ internal static class IndexHandler
         if (strategyArg != null)
         {
             var strategy = strategyArg.ToLowerInvariant();
-            if (strategy is not ("incremental" or "full")) HandlerBootstrap.Fail("ERROR: --strategy must be 'incremental' or 'full'.");
+            if (!IndexRunner.Strategies.Contains(strategy, StringComparer.Ordinal)) HandlerBootstrap.Fail("ERROR: --strategy must be 'incremental' or 'full'.");
         }
 
         var verbose = args.Contains("--verbose");

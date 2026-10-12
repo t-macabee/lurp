@@ -66,6 +66,10 @@ the `.actual` file, copy it over `output-contract.txt`, and re-run. Bump
 `[Trait("Category", "Slow")]`, so `dotnet test` skips it; run it with
 `dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutputContractSnapshotTests" --settings tests/full.runsettings`.
 
+A change to a flag or an MCP tool also changes the generated docs, so regenerate them with
+`$env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~DocsInSyncTests"`
+and review the diff.
+
 ## Reporting issues
 
 Strip any sensitive or proprietary code before sharing fixtures or logs.

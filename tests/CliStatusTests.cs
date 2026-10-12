@@ -13,7 +13,7 @@ public sealed class CliStatusTests : IntegrationTestBase
     [Fact]
     public void StatusRegistry_AcceptsMaxMismatches_RejectsMaxDocuments()
     {
-        var entry = Program.ModeRegistry.Single(e => e.Name == "status");
+        var entry = Program.FindMode("status")!;
 
         CliFlagValidation.Validate(entry, ["--output-dir=.", "--max-mismatches=5"]);
 

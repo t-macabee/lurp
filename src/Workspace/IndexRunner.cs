@@ -9,6 +9,8 @@ public static class IndexRunner
     private const string FullStrategy = "full";
     private const string IncrementalStrategy = "incremental";
 
+    internal static readonly string[] Strategies = [FullStrategy, IncrementalStrategy];
+
     public static async Task RunAsync(IIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
@@ -424,7 +426,7 @@ public static class IndexRunner
         {
             var strategy = strategyArg.ToLowerInvariant();
 
-            if (strategy != IncrementalStrategy && strategy != FullStrategy)
+            if (!Strategies.Contains(strategy, StringComparer.Ordinal))
                 // A caller-contract violation, not a CLI refusal: the Workspace layer
                 // must not exit the process. The CLI validates --strategy before
                 // reaching here (IndexHandler), so a throw means a misbehaving host.

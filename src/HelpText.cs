@@ -55,7 +55,7 @@ internal static class HelpText
             if (entry.Flags.Length == 0)
                 Console.WriteLine("      (no flags beyond --output-dir=)");
             foreach (var spec in entry.Specs)
-                WriteFlag(spec.Name, spec.Description);
+                WriteFlag(spec);
             if (ModeNotes.TryGetValue(entry.Name, out var note))
                 foreach (var line in WrapWords(PlainText(note), 72))
                     Console.WriteLine($"      {line}");
@@ -78,14 +78,28 @@ internal static class HelpText
     /// <summary>Removes the Markdown backticks from a flag description for the plain-text help.</summary>
     internal static string PlainText(string markdown) => markdown.Replace("`", "");
 
-    private static void WriteFlag(string flag, string description)
+    private static void WriteFlag(FlagSpec spec)
     {
-        var lines = WrapWords(PlainText(description), 52);
-        Console.WriteLine($"    {flag,-FlagColumn}{lines[0]}");
+        var text = spec.Description + ValuesSuffix(spec) + RequirementSuffix(spec);
+        var lines = WrapWords(PlainText(text), 52);
+        Console.WriteLine($"    {spec.Name,-FlagColumn}{lines[0]}");
         var continuationIndent = new string(' ', 4 + FlagColumn);
         for (var i = 1; i < lines.Count; i++)
             Console.WriteLine($"{continuationIndent}{lines[i]}");
     }
+
+    private static string ValuesSuffix(FlagSpec spec) =>
+        spec.AllowedValues is { Count: > 0 }
+            ? " Values: " + string.Join(", ", spec.AllowedValues) + "."
+            : "";
+
+    private static string RequirementSuffix(FlagSpec spec) => spec.Requirement switch
+    {
+        FlagRequirement.Required when spec.EnvironmentVariable is not null => $" Required (or set `{spec.EnvironmentVariable}`).",
+        FlagRequirement.Required => " Required.",
+        FlagRequirement.Conditional => " Required in some combinations; see the mode's section of docs/CLI_REFERENCE.md.",
+        _ => "",
+    };
 
     private static List<string> WrapWords(string text, int width)
     {

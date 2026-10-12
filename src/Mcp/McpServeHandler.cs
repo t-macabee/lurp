@@ -11,6 +11,30 @@ internal static class McpServeHandler
     /// <summary>How long shutdown waits for an in-flight index run to stop.</summary>
     internal static readonly TimeSpan ShutdownIndexWait = TimeSpan.FromSeconds(30);
 
+    /// <summary>Read tools registered on every serve session, in <c>tools/list</c> order.</summary>
+    internal static readonly Type[] ReadToolTypes =
+    [
+        typeof(ContextTool),
+        typeof(GetSourceTool),
+        typeof(OutlineTool),
+        typeof(NavigateTool),
+        typeof(FindSymbolTool),
+        typeof(SearchTool),
+        typeof(ImpactTool),
+        typeof(DiffTool),
+        typeof(GetSymbolTool),
+        typeof(AnnotationsTool),
+        typeof(DiagnosticsTool),
+        typeof(GrepTool),
+        typeof(StatusTool),
+        typeof(TimingsTool),
+        typeof(RefreshTool),
+        typeof(DeadCandidatesTool),
+    ];
+
+    /// <summary>Write tools registered only behind <c>--enable-write-tools</c>.</summary>
+    internal static readonly Type[] WriteToolTypes = [typeof(IndexTool), typeof(RetractAnnotationTool)];
+
     public static async Task Run(string[] args)
     {
         var enableWriteTools = args.Contains("--enable-write-tools");
@@ -33,29 +57,16 @@ internal static class McpServeHandler
         builder.Services.AddSingleton<McpIndexSessionState>();
         var mcp = builder.Services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithTools<ContextTool>()
-            .WithTools<GetSourceTool>()
-            .WithTools<OutlineTool>()
-            .WithTools<NavigateTool>()
-            .WithTools<FindSymbolTool>()
-            .WithTools<SearchTool>()
-            .WithTools<ImpactTool>()
-            .WithTools<DiffTool>()
-            .WithTools<GetSymbolTool>()
-            .WithTools<AnnotationsTool>()
-            .WithTools<DiagnosticsTool>()
-            .WithTools<GrepTool>()
-            .WithTools<StatusTool>()
-            .WithTools<TimingsTool>()
-            .WithTools<RefreshTool>()
-            .WithTools<DeadCandidatesTool>();
+            // The cast selects WithTools(IEnumerable<Type>). Without it the generic
+            // WithTools<TTool>(TTool target) overload binds the array as one tool instance
+            // and registers no tool.
+            .WithTools((IEnumerable<Type>)ReadToolTypes);
 
         // Write tools are opt-in: an agent that follows prompt-injected text must
         // not be able to start an index run or hard-delete annotations by default.
         if (enableWriteTools)
         {
-            mcp.WithTools<IndexTool>();
-            mcp.WithTools<RetractAnnotationTool>();
+            mcp.WithTools((IEnumerable<Type>)WriteToolTypes);
         }
 
         var host = builder.Build();

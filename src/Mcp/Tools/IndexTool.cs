@@ -91,7 +91,7 @@ internal sealed class IndexTool
             if (strategy != null)
             {
                 var s = strategy.ToLowerInvariant();
-                if (s != "full" && s != "incremental")
+                if (!IndexRunner.Strategies.Contains(s, StringComparer.Ordinal))
                     throw new McpProtocolException("strategy must be 'full' or 'incremental'.", McpErrorCode.InvalidParams);
             }
 

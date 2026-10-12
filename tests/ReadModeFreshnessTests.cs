@@ -154,7 +154,7 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
 
         foreach (var mode in required)
         {
-            var entry = Program.ModeRegistry.Single(e => e.Name == mode);
+            var entry = Program.FindMode(mode)!;
             Assert.Contains("--freshness=", entry.Flags);
             Assert.Contains("--require-fresh", entry.Flags);
             Assert.Contains("--quiet", entry.Flags);

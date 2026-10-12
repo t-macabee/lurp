@@ -416,35 +416,16 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
 
     private async Task<(string Args, string Stdout)> RunModeCore(string mode, bool includeSolution, string[] args)
     {
-        var entry = Program.ModeRegistry.FirstOrDefault(e => e.Name == mode)
-            ?? throw new InvalidOperationException($"No Program.ModeRegistry entry named '{mode}'.");
-
         var fullArgs = new List<string>(args);
         if (!fullArgs.Any(a => a.StartsWith("--output-dir=", StringComparison.Ordinal)))
             fullArgs.Add($"--output-dir={fixture.OutputDir}");
         if (includeSolution && !fullArgs.Any(a => a.StartsWith("--solution=", StringComparison.Ordinal)))
             fullArgs.Add($"--solution={fixture.SolutionPath}");
 
-        var stdout = new StringWriter();
-        var original = Console.Out;
-        try
-        {
-            Console.SetOut(stdout);
-            CliFlagValidation.Validate(entry, fullArgs.ToArray());
-            await entry.Handler(fullArgs.ToArray());
-        }
-        catch (CliExitException ex)
-        {
-            throw new InvalidOperationException(
-                $"Mode '{mode}' threw CliExitException for args [{string.Join(", ", fullArgs)}]. Captured stdout: {stdout}", ex);
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
+        var stdout = await CliModeRunner.RunAsync(mode, fullArgs.ToArray());
 
         coveredModes.Add(mode);
-        return ($"{mode} {string.Join(" ", fullArgs)}", stdout.ToString());
+        return ($"{mode} {string.Join(" ", fullArgs)}", stdout);
     }
 
     // T7: pick a real continuation cursor instead of inventing one. Each anchor is
@@ -1032,7 +1013,7 @@ public sealed class OutputContractFixture : IAsyncLifetime
         // T10: index must run through the same ModeRegistry + CliFlagValidation path every
         // other mode uses, so the snapshot proves the registry entry works, not just the
         // handler. IndexModeRan records that this path ran.
-        var entry = Program.ModeRegistry.FirstOrDefault(e => e.Name == "index")
+        var entry = Program.FindMode("index")
             ?? throw new InvalidOperationException("No Program.ModeRegistry entry named 'index'.");
         CliFlagValidation.Validate(entry, args);
 

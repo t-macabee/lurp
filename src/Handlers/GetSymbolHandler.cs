@@ -7,6 +7,7 @@ namespace Lurp.Handlers;
 
 internal static class GetSymbolHandler
 {
+    internal static readonly string[] ViewNames = ["metadata", "signature", "body", "declaration", "containing-type", "surrounding"];
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=get-symbol.");
@@ -29,7 +30,7 @@ internal static class GetSymbolHandler
         });
     }
 
-    private static ViewSelection ResolveViewSelection(string viewArg, string? contextLinesArg)
+    internal static ViewSelection ResolveViewSelection(string viewArg, string? contextLinesArg)
     {
         switch (viewArg.ToLowerInvariant())
         {
@@ -113,5 +114,5 @@ internal static class GetSymbolHandler
         Console.Write(source);
     }
 
-    private sealed record ViewSelection(ViewKind ViewKind, bool IsMetadataView, bool IsContainingType, bool IsSurrounding, int ContextLines);
+    internal sealed record ViewSelection(ViewKind ViewKind, bool IsMetadataView, bool IsContainingType, bool IsSurrounding, int ContextLines);
 }
