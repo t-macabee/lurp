@@ -27,7 +27,7 @@ public sealed class GateEvaluatorTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_tempDir, true); } catch { }
+        TestDatabase.DeleteDirectory(_tempDir);
         GC.SuppressFinalize(this);
     }
 

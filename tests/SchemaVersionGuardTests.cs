@@ -44,7 +44,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(_root, true); } catch { }
+        TestDatabase.DeleteDirectory(_root);
     }
 
     private string Message(int actualVersion)

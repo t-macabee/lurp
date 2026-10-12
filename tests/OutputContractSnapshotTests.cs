@@ -1012,12 +1012,9 @@ public sealed class OutputContractFixture : IAsyncLifetime
             SqliteConnection.ClearAllPools();
         }
         catch { }
-        try
-        {
-            if (Directory.Exists(TempDir))
-                Directory.Delete(TempDir, true);
-        }
-        catch { }
+        if (!string.IsNullOrEmpty(SolutionPath))
+            TestDatabase.DeleteSolutionCache(SolutionPath);
+        TestDatabase.DeleteDirectory(TempDir);
 
         return Task.CompletedTask;
     }

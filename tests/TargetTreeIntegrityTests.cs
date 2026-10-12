@@ -24,13 +24,13 @@ public sealed class TargetTreeIntegrityTests
         var fixtureRoot = LocateFixtureRoot();
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-tree-integrity-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
+        var solutionPath = Path.Combine(treeRoot, "CallShapes", "CallShapes.slnx");
         string? cacheDir = null;
         McpServeProcess? server = null;
 
         try
         {
             CopyTree(fixtureRoot, treeRoot);
-            var solutionPath = Path.Combine(treeRoot, "CallShapes", "CallShapes.slnx");
             Assert.True(File.Exists(solutionPath), $"Copied fixture solution missing: {solutionPath}");
 
             // Restore happens before the measured window: obj/ assets are part of
@@ -141,8 +141,8 @@ public sealed class TargetTreeIntegrityTests
         finally
         {
             server?.Dispose();
-            try { if (cacheDir != null && Directory.Exists(cacheDir)) Directory.Delete(cacheDir, true); } catch { }
-            try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
+            TestDatabase.DeleteSolutionCache(solutionPath);
+            TestDatabase.DeleteDirectory(testDir);
         }
     }
 

@@ -44,21 +44,28 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         var outDir = Path.Combine(TestDir, "shared-out");
         var dbPath = Path.Combine(outDir, "index.db");
 
-        var key = IndexRunLock.NormalizeKey(dbPath);
-        using (HoldLock(IndexRunLock.GetLockFilePath(key)))
+        try
         {
-            var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
+            var key = IndexRunLock.NormalizeKey(dbPath);
+            using (HoldLock(IndexRunLock.GetLockFilePath(key)))
+            {
+                var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
+                    [$"--solution={otherSolution}", $"--output-dir={outDir}"], CancellationToken.None));
+
+                var cli = Assert.IsType<CliExitException>(ex);
+                Assert.Contains("another Lurp index run is using database", cli.Message);
+                Assert.False(File.Exists(dbPath));
+            }
+
+            var after = await Record.ExceptionAsync(() => IndexHandler.Run(
                 [$"--solution={otherSolution}", $"--output-dir={outDir}"], CancellationToken.None));
-
-            var cli = Assert.IsType<CliExitException>(ex);
-            Assert.Contains("another Lurp index run is using database", cli.Message);
-            Assert.False(File.Exists(dbPath));
+            Assert.Null(after);
+            Assert.True(File.Exists(dbPath));
         }
-
-        var after = await Record.ExceptionAsync(() => IndexHandler.Run(
-            [$"--solution={otherSolution}", $"--output-dir={outDir}"], CancellationToken.None));
-        Assert.Null(after);
-        Assert.True(File.Exists(dbPath));
+        finally
+        {
+            TestDatabase.DeleteSolutionCache(otherSolution);
+        }
     }
 
     [Fact]

@@ -66,6 +66,7 @@ internal sealed class WorkspaceLoader : IDisposable
 
         _output.WriteLine($"done ({solution.Projects.Count()} projects).");
         ReportLoadDiagnostics();
+        ReportProjectsOutsideRedirect(solution, solutionPath);
         sw.Stop();
 
         // Restore compiler fidelity: MSBuildWorkspace can silently fall back to
@@ -98,6 +99,43 @@ internal sealed class WorkspaceLoader : IDisposable
         foreach (var failure in failures)
             _output.WriteErrorLine($"  WARNING: {failure.Message}");
         _output.WriteErrorLine();
+    }
+
+    /// <summary>
+    ///     Warns once per project whose design-time intermediate assembly did not land
+    ///     under the cache. That happens when a project moves its own intermediate path
+    ///     or assigns <c>CustomBeforeMicrosoftCommonTargets</c> in its own body, which
+    ///     overwrites the redirect installed by the props file. The project's own build
+    ///     hooks still run; only the redirect is lost.
+    /// </summary>
+    private void ReportProjectsOutsideRedirect(Solution solution, string solutionPath)
+    {
+        string? cacheObjDir = null;
+        foreach (var project in solution.Projects)
+        {
+            var assemblyPath = project.CompilationOutputInfo.AssemblyPath;
+            if (string.IsNullOrEmpty(assemblyPath))
+                continue;
+
+            cacheObjDir ??= Path.Combine(LurpCache.ResolveSolutionCacheDir(solutionPath), "obj");
+            if (IsUnder(assemblyPath, cacheObjDir))
+                continue;
+
+            _output.WriteErrorLine(
+                $"WARNING: Project '{project.Name}': the intermediate-output redirect was not applied, so its "
+                + $"design-time build files are written under '{Path.GetDirectoryName(assemblyPath)}' in the target tree. "
+                + "Declared boundary (intermediate_redirect_not_applied).");
+        }
+    }
+
+    private static bool IsUnder(string path, string directory)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullDirectory = Path.GetFullPath(directory);
+        var prefix = fullDirectory.EndsWith(Path.DirectorySeparatorChar)
+            ? fullDirectory
+            : fullDirectory + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 }
 

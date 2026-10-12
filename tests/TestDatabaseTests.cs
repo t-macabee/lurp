@@ -1,10 +1,15 @@
 using Lurp.Storage;
+using Lurp.Workspace;
 
 namespace Lurp.Tests;
 
 public sealed class TestDatabaseTests
 {
     private sealed class Probe : IntegrationTestBase
+    {
+    }
+
+    private sealed class CacheProbe : IntegrationTestBase
     {
     }
 
@@ -23,6 +28,42 @@ public sealed class TestDatabaseTests
 
         probe.Dispose();
 
+        Assert.False(Directory.Exists(probe.TestDir));
+    }
+
+    [Fact]
+    public void DeleteSolutionCache_RemovesTheCacheDirectoryOfASolution()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"lurp-testdb-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var solutionPath = Path.Combine(dir, "Test.slnx");
+        var cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
+        Directory.CreateDirectory(cacheDir);
+        File.WriteAllText(Path.Combine(cacheDir, "index.db"), "");
+
+        try
+        {
+            TestDatabase.DeleteSolutionCache(solutionPath);
+
+            Assert.False(Directory.Exists(cacheDir));
+        }
+        finally
+        {
+            TestDatabase.DeleteDirectory(dir);
+        }
+    }
+
+    [Fact]
+    public void IntegrationTestBase_Dispose_RemovesTheSolutionCacheDir()
+    {
+        var probe = new CacheProbe();
+        var cacheDir = LurpCache.ResolveSolutionCacheDir(probe.SolutionPath);
+        Directory.CreateDirectory(cacheDir);
+        File.WriteAllText(Path.Combine(cacheDir, "index.db"), "");
+
+        probe.Dispose();
+
+        Assert.False(Directory.Exists(cacheDir));
         Assert.False(Directory.Exists(probe.TestDir));
     }
 

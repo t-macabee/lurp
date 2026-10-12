@@ -111,15 +111,22 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         await IndexAsync();
         var broken = Path.Combine(TestDir, "broken.sln");
         File.WriteAllText(broken, "not a solution");
-        var args = new[] { $"--solution={broken}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
-        await using var session = McpSessionContext.Create(args);
-        var tool = new StatusTool(session);
-        var json = await tool.LurpStatus(full: true);
-        using var doc = JsonDocument.Parse(json);
-        var freshness = doc.RootElement.GetProperty("freshness");
-        Assert.Equal("documents_only", freshness.GetProperty("scope").GetString());
-        var error = freshness.GetProperty("full_check_error").GetString();
-        Assert.False(string.IsNullOrEmpty(error));
+        try
+        {
+            var args = new[] { $"--solution={broken}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+            await using var session = McpSessionContext.Create(args);
+            var tool = new StatusTool(session);
+            var json = await tool.LurpStatus(full: true);
+            using var doc = JsonDocument.Parse(json);
+            var freshness = doc.RootElement.GetProperty("freshness");
+            Assert.Equal("documents_only", freshness.GetProperty("scope").GetString());
+            var error = freshness.GetProperty("full_check_error").GetString();
+            Assert.False(string.IsNullOrEmpty(error));
+        }
+        finally
+        {
+            TestDatabase.DeleteSolutionCache(broken);
+        }
     }
 
     [Fact]

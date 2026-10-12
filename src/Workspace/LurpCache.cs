@@ -12,15 +12,54 @@ namespace Lurp.Workspace;
 internal static class LurpCache
 {
     private const string RedirectTargetsFileName = "intermediate-redirect.targets";
+    private const string RedirectPropsFileName = "intermediate-redirect.props";
 
-    // Imported by Microsoft.Common.CurrentVersion.targets through the
-    // CustomBeforeMicrosoftCommonTargets global property, i.e. in project context,
-    // where $(MSBuildProjectName) actually expands. A global property value cannot
-    // carry $(...) (verified: it stays literal), hence the hook file.
+    // Two files, imported in two stages. Stage 1 (a props file, imported right after
+    // the solution's Directory.Build.props through the CustomAfterDirectoryBuildProps
+    // global property) remembers the solution's own CustomBeforeMicrosoftCommonTargets
+    // value and points that property at the hook. Stage 2 (the hook) imports the
+    // remembered file -- or, when the solution set none, the machine-wide default, with
+    // the SDK's own path text -- then sets IntermediateOutputPath and OutputPath.
+    //
+    // The pair exists because a global property replaces the solution's own value at
+    // Microsoft.Common.CurrentVersion.targets:38, and the import at :43 then reads the
+    // replaced value; a global property value cannot carry $(...) (verified: it stays
+    // literal). Running after Directory.Build.props is what lets stage 1 read the
+    // solution's value before it is replaced.
+    //
+    // The hook must stay on CustomBeforeMicrosoftCommonTargets: the
+    // CustomBefore/AfterDirectoryBuildProps pair (Microsoft.Common.props:32,36) runs
+    // too early ($(TargetFramework) is empty), and CustomBefore/AfterDirectoryBuildTargets
+    // (Microsoft.Common.targets:58,62) runs after CurrentVersion.targets has derived
+    // properties from $(IntermediateOutputPath), so generated files (TargetRefPath, TFM
+    // attributes, app.config) go back into the target tree.
+    //
     // OutputPath is redirected too: PrepareForBuild makes $(OutDir), which would
     // otherwise leave empty bin/<config>/<tfm> directories in the target tree.
+    //
+    // Known limits: (a) a solution that sets CustomAfterDirectoryBuildProps itself loses
+    // that value to Lurp's global -- the redirect still applies and the loss is not
+    // detected; (b) a project that assigns CustomBeforeMicrosoftCommonTargets in its own
+    // body keeps that hook and loses the redirect -- WorkspaceLoader reports it as the
+    // intermediate_redirect_not_applied boundary; (c) no machine-wide
+    // Custom.Before.Microsoft.Common.targets exists on the development machine, so only
+    // the chained-value branch is exercised by the tests.
+    private const string RedirectPropsContent = """
+        <Project>
+          <PropertyGroup>
+            <_LurpPreviousCustomBefore>$(CustomBeforeMicrosoftCommonTargets)</_LurpPreviousCustomBefore>
+            <CustomBeforeMicrosoftCommonTargets>$(LurpHookFile)</CustomBeforeMicrosoftCommonTargets>
+          </PropertyGroup>
+        </Project>
+        """;
+
     private const string RedirectTargetsContent = """
         <Project>
+          <PropertyGroup>
+            <_LurpChain Condition="'$(_LurpPreviousCustomBefore)' != ''">$(_LurpPreviousCustomBefore)</_LurpChain>
+            <_LurpChain Condition="'$(_LurpChain)' == ''">$(MSBuildExtensionsPath)\v$(MSBuildToolsVersion)\Custom.Before.Microsoft.Common.targets</_LurpChain>
+          </PropertyGroup>
+          <Import Project="$(_LurpChain)" Condition="Exists('$(_LurpChain)')" />
           <PropertyGroup>
             <IntermediateOutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\$(TargetFramework)\</IntermediateOutputPath>
             <OutputPath>$(LurpIntermediateRootDir)\$(MSBuildProjectName)\$(TargetFramework)\bin\</OutputPath>
@@ -46,31 +85,36 @@ internal static class LurpCache
     /// <summary>
     ///     Global properties for <c>MSBuildWorkspace.Create</c> that redirect every
     ///     project's design-time intermediates into the cache instead of the target
-    ///     tree. <c>MSBuildProjectExtensionsPath</c> is deliberately left alone:
-    ///     it still points at the real <c>obj/</c>, so restore assets resolve. The
-    ///     redirect folder is named <c>obj</c> so relocated generated documents are
-    ///     still classified as build output by the existing path filter.
+    ///     tree. The <c>CustomAfterDirectoryBuildProps</c> props file (stage 1) chains
+    ///     the solution's own <c>CustomBeforeMicrosoftCommonTargets</c> into
+    ///     <c>LurpHookFile</c> (stage 2) before replacing it.
+    ///     <c>MSBuildProjectExtensionsPath</c> is deliberately left alone: it still
+    ///     points at the real <c>obj/</c>, so restore assets resolve. The redirect
+    ///     folder is named <c>obj</c> so relocated generated documents are still
+    ///     classified as build output by the existing path filter.
     /// </summary>
     public static Dictionary<string, string> CreateWorkspaceGlobalProperties(string solutionPath)
     {
         var cacheDir = ResolveSolutionCacheDir(solutionPath);
+        var hookFile = EnsureRedirectFile(cacheDir, RedirectTargetsFileName, RedirectTargetsContent);
         return new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CustomBeforeMicrosoftCommonTargets"] = EnsureRedirectTargetsFile(cacheDir),
+            ["CustomAfterDirectoryBuildProps"] = EnsureRedirectFile(cacheDir, RedirectPropsFileName, RedirectPropsContent),
+            ["LurpHookFile"] = hookFile,
             ["LurpIntermediateRootDir"] = Path.Combine(cacheDir, "obj")
         };
     }
 
-    private static string EnsureRedirectTargetsFile(string cacheDir)
+    private static string EnsureRedirectFile(string cacheDir, string fileName, string content)
     {
         Directory.CreateDirectory(cacheDir);
-        var path = Path.Combine(cacheDir, RedirectTargetsFileName);
-        if (File.Exists(path) && File.ReadAllText(path) == RedirectTargetsContent)
+        var path = Path.Combine(cacheDir, fileName);
+        if (File.Exists(path) && File.ReadAllText(path) == content)
             return path;
 
         try
         {
-            File.WriteAllText(path, RedirectTargetsContent);
+            File.WriteAllText(path, content);
         }
         catch (IOException) when (File.Exists(path))
         {

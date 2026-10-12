@@ -682,6 +682,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             "di_hosted_service",
             "di_options",
             "ef_convention",
+            "intermediate_redirect_not_applied",
             "masstransit_consumer",
             "mediatr_exception_handler",
             "mediatr_pipeline_behavior",

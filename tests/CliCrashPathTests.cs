@@ -28,7 +28,7 @@ public sealed class CliCrashPathTests
         }
         finally
         {
-            try { Directory.Delete(outputDir, true); } catch { }
+            TestDatabase.DeleteDirectory(outputDir);
         }
     }
 
@@ -48,7 +48,7 @@ public sealed class CliCrashPathTests
         }
         finally
         {
-            try { Directory.Delete(outputDir, true); } catch { }
+            TestDatabase.DeleteDirectory(outputDir);
         }
     }
 

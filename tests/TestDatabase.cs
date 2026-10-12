@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
@@ -34,5 +35,11 @@ internal static class TestDatabase
     {
         SqliteConnection.ClearAllPools();
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+
+    /// <summary>Clears the connection pools, then deletes the product cache directory of the solution at <paramref name="solutionPath" />. A locked file throws.</summary>
+    internal static void DeleteSolutionCache(string solutionPath)
+    {
+        DeleteDirectory(LurpCache.ResolveSolutionCacheDir(solutionPath));
     }
 }

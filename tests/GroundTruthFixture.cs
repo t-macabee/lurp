@@ -98,15 +98,10 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        try
-        {
-            if (_testDir != null && Directory.Exists(_testDir))
-                Directory.Delete(_testDir, true);
-        }
-        catch
-        {
-            // Best effort; the temp directory is outside the repo.
-        }
+        if (SolutionPath.Length > 0)
+            TestDatabase.DeleteSolutionCache(SolutionPath);
+        if (_testDir != null)
+            TestDatabase.DeleteDirectory(_testDir);
 
         return Task.CompletedTask;
     }

@@ -30,6 +30,7 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
 
     public void Dispose()
     {
+        TestDatabase.DeleteSolutionCache(Path.Combine(_tempDir, "Test.slnx"));
         TestDatabase.DeleteDirectory(_tempDir);
         GC.SuppressFinalize(this);
     }

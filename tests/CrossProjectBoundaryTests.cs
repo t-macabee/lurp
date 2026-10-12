@@ -22,16 +22,14 @@ public sealed class CrossProjectBoundaryTests
     {
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-nonCSharp-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
-        string? cacheDir = null;
+        var solutionPath = Path.Combine(treeRoot, "NonCSharp", "NonCSharp.slnx");
 
         try
         {
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
-            var solutionPath = Path.Combine(treeRoot, "NonCSharp", "NonCSharp.slnx");
             Assert.True(File.Exists(solutionPath), $"NonCSharp solution missing: {solutionPath}");
 
             GroundTruthFixture.RestoreSolution(solutionPath);
-            cacheDir = Lurp.Workspace.LurpCache.ResolveSolutionCacheDir(solutionPath);
 
             var index = TargetTreeIntegrityTests.RunCli(Timeout, "--mode=index", $"--solution={solutionPath}", "--strategy=full");
             var output = index.Stdout + index.Stderr;
@@ -43,8 +41,8 @@ public sealed class CrossProjectBoundaryTests
         }
         finally
         {
-            try { if (cacheDir != null && Directory.Exists(cacheDir)) Directory.Delete(cacheDir, true); } catch { }
-            try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
+            TestDatabase.DeleteSolutionCache(solutionPath);
+            TestDatabase.DeleteDirectory(testDir);
         }
     }
 
@@ -55,16 +53,14 @@ public sealed class CrossProjectBoundaryTests
 
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-multitfm-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
-        string? cacheDir = null;
+        var solutionPath = Path.Combine(treeRoot, "CrossProject", "CrossProject.CSharp.slnx");
 
         try
         {
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
-            var solutionPath = Path.Combine(treeRoot, "CrossProject", "CrossProject.CSharp.slnx");
             Assert.True(File.Exists(solutionPath), $"C#-only CrossProject solution missing: {solutionPath}");
 
             GroundTruthFixture.RestoreSolution(solutionPath);
-            cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
 
             using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(solutionPath));
             var solution = await workspace.OpenSolutionAsync(solutionPath);
@@ -90,8 +86,8 @@ public sealed class CrossProjectBoundaryTests
         }
         finally
         {
-            try { if (cacheDir != null && Directory.Exists(cacheDir)) Directory.Delete(cacheDir, true); } catch { }
-            try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
+            TestDatabase.DeleteSolutionCache(solutionPath);
+            TestDatabase.DeleteDirectory(testDir);
         }
     }
 }

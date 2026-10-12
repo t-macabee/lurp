@@ -87,6 +87,13 @@ internal static class DeclaredBoundaries
             "the graph."
         ),
         new(
+            "intermediate_redirect_not_applied",
+            "A project's build files set the intermediate output path after Lurp's redirect (or assign " +
+            "CustomBeforeMicrosoftCommonTargets in the project file), so its design-time build files are written " +
+            "under its own obj/ directory in the target tree. The project's own build hooks do take effect; the " +
+            "indexed compilation is not affected."
+        ),
+        new(
             "static_abstract_dispatch",
             "Static-abstract interface dispatch is not modeled as a direct edge to the implementation: a generic " +
             "method constrained to an interface with a static abstract member is extracted as a Calls edge to " +

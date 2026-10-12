@@ -21,12 +21,12 @@ public sealed class SymbolTargetFrameworkAttributionTests
     {
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-tfm-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
+        var solutionPath = Path.Combine(treeRoot, "CrossProject", "CrossProject.CSharp.slnx");
         string? cacheDir = null;
 
         try
         {
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
-            var solutionPath = Path.Combine(treeRoot, "CrossProject", "CrossProject.CSharp.slnx");
             Assert.True(File.Exists(solutionPath), $"CrossProject solution missing: {solutionPath}");
 
             GroundTruthFixture.RestoreSolution(solutionPath);
@@ -54,8 +54,8 @@ public sealed class SymbolTargetFrameworkAttributionTests
         }
         finally
         {
-            try { if (cacheDir != null && Directory.Exists(cacheDir)) Directory.Delete(cacheDir, true); } catch { }
-            try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
+            TestDatabase.DeleteSolutionCache(solutionPath);
+            TestDatabase.DeleteDirectory(testDir);
         }
     }
 }

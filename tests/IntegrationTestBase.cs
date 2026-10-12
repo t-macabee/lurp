@@ -33,6 +33,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     public void Dispose()
     {
+        TestDatabase.DeleteSolutionCache(SolutionPath);
         TestDatabase.DeleteDirectory(TestDir);
         GC.SuppressFinalize(this);
     }

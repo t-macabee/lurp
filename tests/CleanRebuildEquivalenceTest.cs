@@ -28,6 +28,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
     public void Dispose()
     {
+        TestDatabase.DeleteSolutionCache(_solutionPath);
         TestDatabase.DeleteDirectory(_testDir);
     }
 
