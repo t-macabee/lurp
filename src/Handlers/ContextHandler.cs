@@ -198,13 +198,18 @@ internal static class ContextHandler
 
     private static ContextIntent ParseIntent(string intentArg)
     {
-        return intentArg.ToLowerInvariant() switch
+        switch (intentArg.ToLowerInvariant())
         {
-            "inspect" => ContextIntent.Inspect,
-            "modify" => ContextIntent.Modify,
-            "diagnose" => ContextIntent.Diagnose,
-            _ => throw new ArgumentException("--intent must be one of: inspect, modify, diagnose.")
-        };
+            case "inspect":
+                return ContextIntent.Inspect;
+            case "modify":
+                return ContextIntent.Modify;
+            case "diagnose":
+                return ContextIntent.Diagnose;
+            default:
+                HandlerBootstrap.Fail("ERROR: --intent must be one of: inspect, modify, diagnose.");
+                return ContextIntent.Inspect;
+        }
     }
 
     // SymbolId.Parse throws an unhandled FormatException on anything without the

@@ -33,23 +33,13 @@ internal static class CliFlagValidation
     ];
 
     /// <summary>
-    ///     Value flags a handler reads as a list, so a caller may pass each once per item. Every
-    ///     other value flag may appear at most once (F15); a repeated list flag is expected, not
-    ///     an error.
-    /// </summary>
-    private static readonly HashSet<string> RepeatableFlags = new(StringComparer.Ordinal)
-    {
-        "--skip-adapter=",
-        "--affected-project="
-    };
-
-    /// <summary>
     ///     Validates <paramref name="args" /> against the inventory <paramref name="entry" />
     ///     declares, and fails with the mode's valid flags listed. Only dash-prefixed tokens are
     ///     checked: no mode takes positional arguments today, and leaving bare tokens alone keeps
     ///     this from rejecting something a caller passes for reasons the registry cannot see.
-    ///     A value flag (a token ending in <c>=</c>) may appear only once unless it is in
-    ///     <see cref="RepeatableFlags" />; a bare switch may repeat.
+    ///     A value flag (a token ending in <c>=</c>) may appear only once unless its record is
+    ///     <see cref="FlagSpec.Repeatable" />, a list flag a handler reads once per item (F15); a bare
+    ///     switch may repeat.
     /// </summary>
     public static void Validate(Program.ModeRegistryEntry entry, string[] args)
     {
@@ -74,6 +64,7 @@ internal static class CliFlagValidation
             HandlerBootstrap.Fail(BuildError(entry, token, allowed));
         }
 
+        var repeatable = entry.Specs.Where(static s => s.Repeatable).Select(static s => s.Name).ToHashSet(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var arg in args)
         {
@@ -82,7 +73,7 @@ internal static class CliFlagValidation
                 continue;
 
             var token = arg[..(separator + 1)];
-            if (RepeatableFlags.Contains(token))
+            if (repeatable.Contains(token))
                 continue;
 
             if (!seen.Add(token))

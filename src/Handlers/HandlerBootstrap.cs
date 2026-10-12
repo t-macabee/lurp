@@ -146,12 +146,21 @@ internal static class HandlerBootstrap
     public static FreshnessMode ParseFreshnessMode(string[] args)
     {
         var raw = GetArgValue(args, "--freshness=");
-        return raw?.ToLowerInvariant() switch
+        if (string.IsNullOrEmpty(raw))
+            return FreshnessMode.Auto;
+
+        switch (raw.ToLowerInvariant())
         {
-            "hash" => FreshnessMode.Hash,
-            "off" => FreshnessMode.Off,
-            _ => FreshnessMode.Auto
-        };
+            case "auto":
+                return FreshnessMode.Auto;
+            case "hash":
+                return FreshnessMode.Hash;
+            case "off":
+                return FreshnessMode.Off;
+            default:
+                Fail("ERROR: --freshness must be one of: auto, hash, off.");
+                return FreshnessMode.Auto;
+        }
     }
 
     public static FreshnessStamp ComputeFreshnessStamp(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, string[] args)

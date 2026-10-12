@@ -2,118 +2,15 @@
 // Owns: the human-readable mode/option reference printed by --help.
 // Must not contain: dispatch logic or handler calls.
 
-using Lurp.Workspace;
-
 namespace Lurp;
 
 internal static class HelpText
 {
     private const int FlagColumn = 24;
 
-    // Single source of the long-form flag prose. The set of flags each mode
-    // accepts is NOT declared here : it is read from Program.ModeRegistry[].Flags
-    // by PrintHelp, so the help inventory can never drift from the validator.
-    // A flag missing from this map is still listed (name only) by its mode.
-    private static readonly IReadOnlyDictionary<string, string> FlagHelp = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        // Modes that accept --symbol=: get-symbol, find-symbol, impact, context, annotate, and get-annotations.
-        ["--symbol="] = "Symbol ID: fully qualified name, doc-comment ID, or 'docCommentId|assemblyIdentity'.",
-        // Modes that accept --snapshot=: get-source, outline, get-symbol, search, find-symbol, navigate,
-        // impact, context, timings, pin-snapshot, annotate, retract-annotation, get-annotations,
-        // diagnostics, grep, and dead-candidates.
-        ["--snapshot="] = "Snapshot to use (default: latest; the literal value 'latest' is also accepted explicitly).",
-        // Modes that accept --include-public: dead-candidates.
-        ["--include-public"] = "Include public/protected symbols with no internal LIVE incoming edge as uncertain_dead (reason: public_surface). Default excludes them from proved_dead; without this flag a public helper with no callers is not flagged.",
-        // Modes that accept --include-tests: dead-candidates.
-        ["--include-tests"] = "Include test-project symbols (a project that references a test framework) with no LIVE incoming edge as uncertain (reason: test_harness). Default excludes them; test helpers reached only via xUnit reflection discovery would otherwise all appear dead.",
-        // Modes that accept --cursor=: outline, search, impact, context, get-annotations, diagnostics, grep, and dead-candidates.
-        ["--cursor="] = "Continue from a previous page's nextCursor / truncated.cursor.",
-        // Modes that accept --json: status, timings, and pin-snapshot.
-        ["--json"] = "Emit structured JSON instead of plain text.",
-        // Modes that accept --file=: navigate and context.
-        ["--file="] = "Source file path (paired with --line=) to anchor by location.",
-        // Modes that accept --line=: navigate and context.
-        ["--line="] = "1-based line number, paired with --file=. Every emitted line number (edge source_line, declaration locations) is 1-based too, so a reported start_line feeds straight back into --line=.",
-
-        // Read-command output controls (search, find-symbol, impact, context)
-        ["--output="] = "Payload rendering: summary | json | jsonl (default: json). 'jsonl' emits a {\"type\":\"meta\"} envelope then one compact object per result; it is rejected for a whole capsule.",
-        ["--quiet"] = "Emit only the payload: suppress the freshness stderr line, and for --mode=context print just the written capsule path.",
-        ["--freshness="] = "How hard to check the snapshot still matches the working tree: auto (stat only) | hash (re-hash suspect files) | off (default: auto).",
-        ["--require-fresh"] = "Exit 2 when the snapshot is not fresh.",
-
-        // Modes that accept --include-generated: outline, get-symbol, search, find-symbol,
-        // navigate, context, diagnostics, grep, and dead-candidates (not index).
-        ["--include-generated"] = "Include source-generated code (obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs); default excludes it. See CLI_REFERENCE.md's read-command options for live-observed evidence this isn't a no-op.",
-
-        // index
-        ["--solution="] = "Path to the .sln/.slnx to index (--mode=index); for --mode=status, the workspace to compare against the latest snapshot for freshness.",
-        ["--strategy="] =
-            "full | incremental. 'full' reindexes every document from scratch and is the DEFINITION OF CORRECTNESS (use it to recover a known-good index); 'incremental' re-indexes only changed documents. Default: 'full' on first run, 'incremental' afterward.",
-        ["--output-json="] = "Also write the snapshot manifest as JSON (a one-way export; never consulted as authority).",
-        ["--skip-adapter="] = "Skip a named framework adapter. Valid: ASP.NET Core, Dependency Injection, MediatR, EF Core, Serialization, Test.",
-        ["--skip-diff"] = "Skip computing and persisting the semantic diff against the previous snapshot (--mode=diff still recomputes live).",
-        ["--verbose"] = "Emit per-extractor [measure] timing lines to stderr.",
-        ["--force"] = "Re-extract even when the deterministic snapshot id already exists as a completed snapshot. With the default incremental strategy this re-runs the incremental re-extraction in place (with no changed documents it is a no-op); a full reindex needs --strategy=full --force, which deletes the identical snapshot and reindexes everything. Does NOT bypass identity computation — an identical workspace will produce the same snapshot id.",
-
-        // get-source
-        ["--document="] = "Relative path of the document to retrieve.",
-        ["--start-line="] = "1-based first line to return (inclusive, requires --document=).",
-        ["--end-line="] = "1-based last line to return (inclusive, requires --document=).",
-        ["--context-lines="] = "Extra source lines of context: for get-source, expands the --start-line/--end-line window symmetrically (requires one of those, 1-based); for get-symbol's surrounding view, lines around the symbol (default 3).",
-
-        // get-symbol
-        ["--view="] = "What to return: metadata | signature | body | declaration | containing-type | surrounding.",
-
-        // search
-        ["--query="] = "Search term. Symbol search matches whole identifier tokens first; when no token matches, any substring of a symbol's fully qualified name matches (so \"Service\" finds \"CourseService\"). For --mode=grep the query is a literal exact substring (byte-exact, including punctuation); use --ignore-case for case-insensitive.",
-        ["--type="] = "Search scope: all | source | symbol (default: all).",
-        ["--kind="] = "Filter symbol results by Roslyn SymbolKind (e.g. Type, Method, Field, Property).",
-        ["--limit="] = "Max results per scope (default: 20; for --mode=grep and --mode=impact default is 50).",
-        ["--snippet-tokens="] = "Token window for source snippets (default: 64).",
-        ["--ignore-case"] = "For --mode=grep, make the literal search case-insensitive (default: case-sensitive).",
-
-        // impact
-        ["--direction="] = "Traversal direction: downstream | upstream (default: downstream).",
-        ["--kinds="] = "Comma-separated edge kinds to follow.",
-        ["--provenance="] = "Comma-separated provenance values to follow (e.g. compiler_proved,framework_derived). "
-                            + "Pass compiler_proved to follow only compiler-verified edges. This keeps edges such as Calls, "
-                            + "MethodGroupRef, Constructs, Implements, Inherits, Overrides, and compiler-verified dispatch (direct, non-inherited "
-                            + "interface implementations and all virtual/override MayDispatchTo edges). It excludes "
-                            + "framework-derived convention DI (Registers), string-reflection candidates (Reflection*), and "
-                            + "interface-dispatch edges whose implementation is only inherited (MayDispatchTo provenance=possible). "
-                            + "See CLI_REFERENCE.md's impact section for live-observed evidence this filters correctly.",
-        ["--max-depth="] = "Maximum traversal depth in hops (default: 3).",
-        // diff
-        ["--from-snapshot="] = "Baseline snapshot ID to diff from (required for --mode=diff).",
-        ["--to-snapshot="] = "Target snapshot ID to diff to (required for --mode=diff).",
-
-        // context
-        ["--intent="] = "Assembly-priority hint: inspect | modify | diagnose (default: inspect).",
-        ["--content-budget="] =
-            "Token budget for capsule CONTENT (default: 8000, or 16000 when --symbol= is a type anchor and --content-budget= is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit --content-budget= is always honored as-is). Over-budget capsules bound paths and item source, then drop the lowest-priority sections (surrounding_source first); as a last resort the anchor source is bounded, so estimated_tokens never exceeds the budget. Every truncated category gets one record in omitted_tiers.",
-        ["--max-hops="] = "Maximum graph hops to expand (default: 3).",
-        ["--scope="] = "Logical scope label recorded on the anchor (default: the symbol ID).",
-        ["--affected-project="] = "Repeatable. A project affected by the change.",
-        ["--tier="] = "Fetch ONE tier on its own instead of a capsule, with no token budget applied. This is how a capsule's omitted_tiers 'budget_exhausted' entry is acted on. Valid: "
-                      + string.Join(", ", ContextAssembler.TierNames) + ".",
-        ["--tier-limit="] = "Items per tier page (default: 25).",
-        ["--completeness-detail"] = "Emit per-document binding_incompleteness rows (default: a reason/project rollup plus the total).",
-
-        // status
-        ["--detail="] = "Comma-separated JSON sections to expand: 'documents' (per-document version map), 'completeness' (per-document binding rows), or 'all'. Both are summarized by default.",
-        ["--max-mismatches="] = "Cap on the mismatch list in --json output (default: 50; positive integer).",
-
-        // dead-candidates
-        ["--project="] = "Filter to this project (assembly name, e.g. eNote.API). For --mode=dead-candidates the candidate's owning project is its assembly identity's simple name.",
-
-        // annotate
-        ["--annotation-kind="] = "Annotation kind (required for --mode=annotate).",
-        ["--value="] = "Annotation value text (required for --mode=annotate).",
-        ["--annotation-id="] = "Surrogate PK of the annotation to retract (from get-annotations' annotation_id).",
-
-        // pin-snapshot
-        ["--clear"] = "Clear the pinned snapshot override; reads will again default to the most recently built snapshot."
-    };
+    // The flags each mode accepts, and their prose, are read from Program.ModeRegistry[].Specs
+    // (the FlagCatalog records) by PrintHelp, so the help inventory can never drift from the
+    // validator or from the docs.
 
     // Trailing behavioural notes that are NOT per-flag (so they cannot cause flag
     // drift). Keyed by mode name; printed after that mode's flag list.
@@ -157,10 +54,10 @@ internal static class HelpText
             Console.WriteLine($"  --mode={entry.Name}");
             if (entry.Flags.Length == 0)
                 Console.WriteLine("      (no flags beyond --output-dir=)");
-            foreach (var flag in entry.Flags)
-                WriteFlag(flag, FlagHelp.GetValueOrDefault(flag));
+            foreach (var spec in entry.Specs)
+                WriteFlag(spec.Name, spec.Description);
             if (ModeNotes.TryGetValue(entry.Name, out var note))
-                foreach (var line in WrapWords(note, 72))
+                foreach (var line in WrapWords(PlainText(note), 72))
                     Console.WriteLine($"      {line}");
         }
 
@@ -178,15 +75,12 @@ internal static class HelpText
         Console.WriteLine("  LURP_OUTPUT_DIR         Equivalent to --output-dir=.");
     }
 
-    private static void WriteFlag(string flag, string? description)
-    {
-        if (string.IsNullOrEmpty(description))
-        {
-            Console.WriteLine($"    {flag}");
-            return;
-        }
+    /// <summary>Removes the Markdown backticks from a flag description for the plain-text help.</summary>
+    internal static string PlainText(string markdown) => markdown.Replace("`", "");
 
-        var lines = WrapWords(description, 52);
+    private static void WriteFlag(string flag, string description)
+    {
+        var lines = WrapWords(PlainText(description), 52);
         Console.WriteLine($"    {flag,-FlagColumn}{lines[0]}");
         var continuationIndent = new string(' ', 4 + FlagColumn);
         for (var i = 1; i < lines.Count; i++)

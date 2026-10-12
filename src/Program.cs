@@ -16,78 +16,78 @@ public static class Program
     internal static readonly ModeRegistryEntry[] ModeRegistry =
     [
         new("index", "Index a solution and store facts in the database.",
-            ["--solution=", "--strategy=", "--output-json=", "--skip-adapter=", "--skip-diff", "--verbose", "--force"],
+            [FlagCatalog.Solution, FlagCatalog.Strategy, FlagCatalog.OutputJson, FlagCatalog.SkipAdapter, FlagCatalog.SkipDiff, FlagCatalog.Verbose, FlagCatalog.Force],
             a => IndexHandler.Run(a)),
         new("get-source", "Retrieve source text for a document by relative path (--document=).",
-            ["--document=", "--start-line=", "--end-line=", "--context-lines=", "--snapshot=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Document, FlagCatalog.StartLine, FlagCatalog.EndLine, FlagCatalog.ContextLines, FlagCatalog.Snapshot, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(GetSourceHandler.Run)),
         new("outline", "List declarations in a document with line spans (--document=).",
-            ["--document=", "--include-generated", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Document, FlagCatalog.IncludeGenerated, FlagCatalog.Limit, FlagCatalog.Cursor, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(OutlineHandler.Run)),
         new("get-symbol", "Look up symbol metadata.",
             [
-                "--symbol=", "--view=", "--context-lines=", "--include-generated", "--snapshot=",
-                "--freshness=", "--require-fresh", "--quiet"
+                FlagCatalog.Symbol, FlagCatalog.View, FlagCatalog.ContextLines, FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot,
+                FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
             Sync(GetSymbolHandler.Run)),
         new("search", "Full-text search over source and symbols.",
             [
-                "--query=", "--type=", "--kind=", "--limit=", "--snippet-tokens=", "--cursor=",
-                "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"
+                FlagCatalog.Query, FlagCatalog.Type, FlagCatalog.Kind, FlagCatalog.Limit, FlagCatalog.SnippetTokens, FlagCatalog.Cursor,
+                FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
             Sync(SearchHandler.Run)),
         new("find-symbol", "Resolve a symbol by FQN.",
-            ["--symbol=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Symbol, FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(FindSymbolHandler.Run)),
         new("navigate", "Resolve an indexed declaration by file and line.",
-            ["--file=", "--line=", "--include-generated", "--snapshot=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.File, FlagCatalog.Line, FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(NavigateHandler.Run)),
         new("diff", "Show semantic changes between two snapshots.",
-            ["--from-snapshot=", "--to-snapshot="],
+            [FlagCatalog.FromSnapshot, FlagCatalog.ToSnapshot],
             Sync(DiffHandler.Run)),
         new("impact", "List the symbols a changed symbol can reach, each with a witness path.",
             [
-                "--symbol=", "--direction=", "--kinds=", "--provenance=", "--max-depth=", "--limit=",
-                "--cursor=",
-                "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"
+                FlagCatalog.Symbol, FlagCatalog.Direction, FlagCatalog.Kinds, FlagCatalog.Provenance, FlagCatalog.MaxDepth, FlagCatalog.Limit,
+                FlagCatalog.Cursor,
+                FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
             Sync(ImpactHandler.Run)),
         new("context", "Assemble a context capsule for a symbol.",
             [
-                "--symbol=", "--file=", "--line=", "--intent=", "--content-budget=", "--max-hops=", "--scope=",
-                "--affected-project=", "--tier=", "--tier-limit=", "--cursor=", "--completeness-detail",
-                "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"
+                FlagCatalog.Symbol, FlagCatalog.File, FlagCatalog.Line, FlagCatalog.Intent, FlagCatalog.ContentBudget, FlagCatalog.MaxHops, FlagCatalog.Scope,
+                FlagCatalog.AffectedProject, FlagCatalog.Tier, FlagCatalog.TierLimit, FlagCatalog.Cursor, FlagCatalog.CompletenessDetail,
+                FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
             Sync(ContextHandler.Run)),
         new("status", "Show the current database status.",
-            ["--solution=", "--detail=", "--json", "--output=", "--max-mismatches="],
+            [FlagCatalog.Solution, FlagCatalog.Detail, FlagCatalog.Json, FlagCatalog.Output, FlagCatalog.MaxMismatches],
             StatusHandler.Run),
         new("timings", "Show step-by-step timing data for a snapshot.",
-            ["--snapshot=", "--json"],
+            [FlagCatalog.Snapshot, FlagCatalog.Json],
             Sync(TimingsHandler.Run)),
         new("pin-snapshot", "Pin which snapshot reads use by default when --snapshot= is omitted.",
-            ["--snapshot=", "--clear", "--json", "--output="],
+            [FlagCatalog.Snapshot, FlagCatalog.Clear, FlagCatalog.Json, FlagCatalog.Output],
             Sync(PinSnapshotHandler.Run)),
         new("annotate", "Attach a user-authored annotation to a symbol.",
-            ["--symbol=", "--annotation-kind=", "--value=", "--snapshot="],
+            [FlagCatalog.Symbol, FlagCatalog.AnnotationKind, FlagCatalog.Value, FlagCatalog.Snapshot],
             Sync(AnnotationHandler.RunAnnotate)),
         new("retract-annotation", "Retract one annotation by id, scoped to the resolved snapshot (any provenance, not limited to user-authored rows).",
-            ["--annotation-id=", "--snapshot="],
+            [FlagCatalog.AnnotationId, FlagCatalog.Snapshot],
             Sync(AnnotationHandler.RunRetractAnnotation)),
         new("get-annotations", "Retrieve annotations by symbol, document, or snapshot (with kind/limit/cursor paging).",
-            ["--symbol=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Symbol, FlagCatalog.Document, FlagCatalog.Kind, FlagCatalog.Limit, FlagCatalog.Cursor, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(AnnotationHandler.RunGetAnnotations)),
         new("diagnostics", "List compiler diagnostics captured at index time (--document=, --project=, --severity=, --id=).",
-            ["--document=", "--project=", "--severity=", "--id=", "--limit=", "--cursor=", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Document, FlagCatalog.Project, FlagCatalog.Severity, FlagCatalog.Id, FlagCatalog.Limit, FlagCatalog.Cursor, FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(DiagnosticsHandler.Run)),
         new("grep", "Literal/exact-text search over source content with line numbers (--query=).",
-            ["--query=", "--limit=", "--cursor=", "--ignore-case", "--include-generated", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet"],
+            [FlagCatalog.Query, FlagCatalog.Limit, FlagCatalog.Cursor, FlagCatalog.IgnoreCase, FlagCatalog.IncludeGenerated, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet],
             Sync(GrepHandler.Run)),
         new("dead-candidates", "List dead-code candidates: symbols with no incoming LIVE edge after suppression-ladder filtering.",
-            ["--project=", "--document=", "--kind=", "--limit=", "--cursor=", "--snapshot=", "--output=", "--freshness=", "--require-fresh", "--quiet", "--include-public", "--include-generated", "--include-tests"],
+            [FlagCatalog.Project, FlagCatalog.Document, FlagCatalog.Kind, FlagCatalog.Limit, FlagCatalog.Cursor, FlagCatalog.Snapshot, FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet, FlagCatalog.IncludePublic, FlagCatalog.IncludeGenerated, FlagCatalog.IncludeTests],
             Sync(DeadCandidatesHandler.Run)),
         new("serve", "Run an MCP server over the index (stdio).",
-            ["--solution=", "--enable-write-tools"],
+            [FlagCatalog.Solution, FlagCatalog.EnableWriteTools],
             McpServeHandler.Run)
     ];
 
@@ -197,15 +197,19 @@ public static class Program
     }
 
     /// <summary>
-    ///     One CLI mode: name, one-line help, the flags it reads, and its dispatch target.
+    ///     One CLI mode: name, one-line help, the flag records it reads, and its dispatch target.
     ///     <para>
-    ///         <paramref name="Flags" /> is the mode's complete flag inventory excluding the globals
-    ///         in <see cref="CliFlagValidation" />. A valued flag is written with its trailing '='
-    ///         (<c>"--content-budget="</c>) and a bare flag without one (<c>"--quiet"</c>); the validator
-    ///         matches on that shape, so the two forms are not interchangeable. Flags a handler reads
-    ///         indirectly through a <see cref="Handlers.HandlerBootstrap" /> helper belong here too :
+    ///         <paramref name="Specs" /> is the mode's complete flag inventory excluding the globals
+    ///         in <see cref="CliFlagValidation" />. A valued flag's <see cref="FlagSpec.Name" /> ends
+    ///         with '=' (<c>"--content-budget="</c>) and a bare flag's does not (<c>"--quiet"</c>); the
+    ///         validator matches on that shape, so the two forms are not interchangeable. Flags a handler
+    ///         reads indirectly through a <see cref="Handlers.HandlerBootstrap" /> helper belong here too :
     ///         the helper call is invisible to the validator.
     ///     </para>
     /// </summary>
-    internal sealed record ModeRegistryEntry(string Name, string HelpText, string[] Flags, Func<string[], Task> Handler);
+    internal sealed record ModeRegistryEntry(string Name, string HelpText, FlagSpec[] Specs, Func<string[], Task> Handler)
+    {
+        /// <summary>The flag names of <see cref="Specs" />, in the same order. Name-based readers use this.</summary>
+        public string[] Flags { get; } = Specs.Select(static s => s.Name).ToArray();
+    }
 }

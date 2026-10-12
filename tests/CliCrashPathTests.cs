@@ -11,20 +11,22 @@ namespace Lurp.Tests;
 public sealed class CliCrashPathTests
 {
     [Fact]
-    public async Task InvalidIntent_ExitsOne_WithOneLineAndNoStackTrace()
+    public async Task CorruptIndex_ExitsOne_WithOneLineAndNoStackTrace()
     {
         var outputDir = Path.Combine(Path.GetTempPath(), $"lurp-crash-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outputDir);
+        File.WriteAllText(Path.Combine(outputDir, "index.db"), "this is not a sqlite database");
         try
         {
             var (exitCode, stderr) = await RunAsync(
-                ["--mode=context", "--intent=banana", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
+                ["--mode=context", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: false);
 
             Assert.Equal(1, exitCode);
             Assert.Contains("ERROR:", stderr);
             Assert.DoesNotContain("Unhandled exception", stderr);
             Assert.DoesNotContain("   at ", stderr);
+            Assert.DoesNotContain("SqliteException", stderr);
         }
         finally
         {
@@ -33,18 +35,20 @@ public sealed class CliCrashPathTests
     }
 
     [Fact]
-    public async Task InvalidIntent_WithLurpDebug_PrintsStackTrace()
+    public async Task CorruptIndex_WithLurpDebug_PrintsStackTrace()
     {
         var outputDir = Path.Combine(Path.GetTempPath(), $"lurp-crash-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outputDir);
+        File.WriteAllText(Path.Combine(outputDir, "index.db"), "this is not a sqlite database");
         try
         {
             var (exitCode, stderr) = await RunAsync(
-                ["--mode=context", "--intent=banana", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
+                ["--mode=context", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: true);
 
             Assert.Equal(1, exitCode);
             Assert.Contains("   at ", stderr);
+            Assert.Contains("SqliteException", stderr);
         }
         finally
         {

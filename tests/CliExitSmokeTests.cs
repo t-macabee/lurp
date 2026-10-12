@@ -61,6 +61,75 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void ParseFreshnessMode_UnknownValue_Throws()
+    {
+        var ex = Assert.Throws<CliExitException>(() => HandlerBootstrap.ParseFreshnessMode(["--freshness=banana"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("--freshness must be one of: auto, hash, off", ex.Message);
+    }
+
+    [Fact]
+    public void ParseFreshnessMode_KnownValuesAndMissing_Parse()
+    {
+        Assert.Equal(FreshnessMode.Auto, HandlerBootstrap.ParseFreshnessMode([]));
+        Assert.Equal(FreshnessMode.Auto, HandlerBootstrap.ParseFreshnessMode(["--freshness=auto"]));
+        Assert.Equal(FreshnessMode.Hash, HandlerBootstrap.ParseFreshnessMode(["--freshness=HASH"]));
+        Assert.Equal(FreshnessMode.Off, HandlerBootstrap.ParseFreshnessMode(["--freshness=off"]));
+    }
+
+    [Fact]
+    public void ParseFreshnessMode_AllowedValuesOfTheFlagRecord_Parse()
+    {
+        foreach (var value in FlagCatalog.Freshness.AllowedValues!)
+            HandlerBootstrap.ParseFreshnessMode([$"--freshness={value}"]);
+    }
+
+    // A directory that does not exist, so it holds no index.db (the value checks run before any database access).
+    private static string NoIndexOutputDir() => Path.Combine(Path.GetTempPath(), $"lurp-exit-{Guid.NewGuid():N}");
+
+    [Fact]
+    public void SearchHandler_UnknownType_Throws()
+    {
+        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=banana"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("--type must be one of: all, source, symbol", ex.Message);
+    }
+
+    [Fact]
+    public void SearchHandler_UppercaseType_PassesTheTypeCheck()
+    {
+        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=ALL", $"--output-dir={NoIndexOutputDir()}"]));
+        Assert.Contains("Index database not found", ex.Message);
+    }
+
+    [Fact]
+    public void PinSnapshot_UnknownOutput_Throws()
+    {
+        var ex = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=banana", $"--output-dir={NoIndexOutputDir()}"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("--output must be one of: summary, json", ex.Message);
+
+        var jsonl = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=jsonl", $"--output-dir={NoIndexOutputDir()}"]));
+        Assert.Contains("jsonl is not supported", jsonl.Message);
+    }
+
+    [Fact]
+    public void ImpactHandler_BadDirection_ThrowsCliExit()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction=x"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("Invalid direction 'x'. Use 'upstream' or 'downstream'.", ex.Message);
+    }
+
+    [Fact]
+    public void ContextHandler_BadIntent_ThrowsCliExit()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("--intent must be one of: inspect, modify, diagnose.", ex.Message);
+    }
+
+    [Fact]
     public void RequireArg_Missing_Throws()
     {
         var ex = Assert.Throws<CliExitException>(() =>
@@ -198,7 +267,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_UnknownFlag_Throws()
     {
-        var entry = new Program.ModeRegistryEntry("search", "help", ["--query="], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("search", "help", [new FlagSpec("--query=", "x", "text")], _ => Task.CompletedTask);
         var ex = Assert.Throws<CliExitException>(() =>
             CliFlagValidation.Validate(entry, ["--query=x", "--bogus-flag=1"]));
         Assert.Contains("unknown flag '--bogus-flag='", ex.Message);
@@ -207,7 +276,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_ValueFlagTwice_Throws()
     {
-        var entry = new Program.ModeRegistryEntry("context", "help", ["--symbol="], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--symbol=", "x", "id")], _ => Task.CompletedTask);
         var ex = Assert.Throws<CliExitException>(() =>
             CliFlagValidation.Validate(entry, ["--symbol=a", "--symbol=b"]));
         Assert.Equal(1, ex.ExitCode);
@@ -218,17 +287,17 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_BooleanSwitchTwice_DoesNotThrow()
     {
-        var entry = new Program.ModeRegistryEntry("status", "help", ["--json"], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("status", "help", [new FlagSpec("--json", "x")], _ => Task.CompletedTask);
         CliFlagValidation.Validate(entry, ["--json", "--json"]);
     }
 
     [Fact]
     public void CliFlagValidation_RepeatableValueFlagTwice_DoesNotThrow()
     {
-        var index = new Program.ModeRegistryEntry("index", "help", ["--skip-adapter="], _ => Task.CompletedTask);
+        var index = new Program.ModeRegistryEntry("index", "help", [new FlagSpec("--skip-adapter=", "x", "name", Repeatable: true)], _ => Task.CompletedTask);
         CliFlagValidation.Validate(index, ["--skip-adapter=A", "--skip-adapter=B"]);
 
-        var context = new Program.ModeRegistryEntry("context", "help", ["--affected-project="], _ => Task.CompletedTask);
+        var context = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--affected-project=", "x", "name", Repeatable: true)], _ => Task.CompletedTask);
         CliFlagValidation.Validate(context, ["--affected-project=A", "--affected-project=B"]);
     }
 

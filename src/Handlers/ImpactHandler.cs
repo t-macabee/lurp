@@ -15,12 +15,19 @@ internal static class ImpactHandler
         if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
 
         var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
-        var direction = directionArg.ToLowerInvariant() switch
+        ImpactDirection direction;
+        switch (directionArg.ToLowerInvariant())
         {
-            "downstream" => ImpactDirection.Downstream,
-            "upstream" => ImpactDirection.Upstream,
-            _ => throw new ArgumentException($"Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.")
-        };
+            case "downstream":
+                direction = ImpactDirection.Downstream;
+                break;
+            case "upstream":
+                direction = ImpactDirection.Upstream;
+                break;
+            default:
+                HandlerBootstrap.Fail($"ERROR: Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.");
+                return;
+        }
 
         var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
         var maxDepth = 3;

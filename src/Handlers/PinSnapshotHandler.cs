@@ -7,6 +7,9 @@ internal static class PinSnapshotHandler
 {
     public static void Run(string[] args)
     {
+        // Parsed before the database check, so a bad --output= fails the same way whatever the database state (B70).
+        var asJson = args.Contains("--json") || HandlerBootstrap.ParseOutputMode(args, allowJsonl: false, defaultMode: OutputMode.Summary) == OutputMode.Json;
+
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
         if (!File.Exists(dbPath))
@@ -14,7 +17,6 @@ internal static class PinSnapshotHandler
 
         var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
         var clear = args.Contains("--clear");
-        var asJson = args.Contains("--json") || string.Equals(HandlerBootstrap.GetArgValue(args, "--output="), "json", StringComparison.OrdinalIgnoreCase);
 
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         try

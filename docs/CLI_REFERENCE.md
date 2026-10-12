@@ -39,7 +39,7 @@ Accepted by the read commands: `--mode=search`, `--mode=grep`, `--mode=find-symb
 |---|---|---|
 | `--output=<summary\|json\|jsonl>` | No | Payload rendering (default: `json`). `summary` is a digest; `jsonl` emits a `{"type":"meta"}` envelope followed by one compact object per result, so a consumer can stream and stop early. `jsonl` is rejected for a whole capsule, whose payload is a single document. |
 | `--quiet` | No | Emit only the payload: suppresses the freshness stderr line, and for `--mode=context` prints just the written capsule path instead of the capsule itself. |
-| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes every document; `off` skips the check. |
+| `--freshness=<auto\|hash\|off>` | No | How hard to check that the snapshot still matches the working tree (default: `auto`: stat only). `hash` re-hashes every document; `off` skips the check. An unknown value is an error. |
 | `--require-fresh` | No | Exit `2` when the snapshot is not fresh. |
 
 `--output=` applies to modes whose payload is a JSON sequence (`search`, `grep`,
@@ -197,7 +197,7 @@ Full-text search over source text and symbols.
 |---|---|---|
 | `--query=<term>` | Yes | Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count). |
 | `--output-dir=<path>` | Yes, or `LURP_OUTPUT_DIR` | Directory where `index.db` is stored. |
-| `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). |
+| `--type=<all\|source\|symbol>` | No | Search scope (default: `all`). An unknown value is an error. |
 | `--kind=<SymbolKind>` | No | Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`). |
 | `--limit=<n>` | No | Max results per scope (default: 20). |
 | `--snippet-tokens=<n>` | No | Token window for source snippets (default: 64). |

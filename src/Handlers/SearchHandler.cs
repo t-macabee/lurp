@@ -11,7 +11,8 @@ internal static class SearchHandler
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
 
-        var typeArg = HandlerBootstrap.GetArgValue(args, "--type=") ?? "all";
+        var typeArg = (HandlerBootstrap.GetArgValue(args, "--type=") ?? "all").ToLowerInvariant();
+        if (typeArg is not ("all" or "source" or "symbol")) HandlerBootstrap.Fail("ERROR: --type must be one of: all, source, symbol.");
         var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
         var snippetTokensArg = HandlerBootstrap.GetArgValue(args, "--snippet-tokens=");
