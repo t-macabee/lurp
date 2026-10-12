@@ -1,6 +1,5 @@
 using Lurp.Handlers;
 using Lurp.Storage;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -10,8 +9,7 @@ public sealed class PinSnapshotTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath)) File.Delete(_dbPath);
+        TestDatabase.Delete(_dbPath);
     }
 
     private SqliteIndexStore CreateStore()
@@ -201,8 +199,7 @@ public sealed class PinSnapshotTests : IDisposable
         Assert.Equal(before, after);
 
         // built_at not rewritten
-        using var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        conn.Open();
+        using var conn = TestDatabase.Open(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT built_at_utc FROM snapshots WHERE snapshot_id='snap-orig';";
         var built = (string)cmd.ExecuteScalar()!;

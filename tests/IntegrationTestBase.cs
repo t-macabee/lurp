@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Data.Sqlite;
 using System.Diagnostics;
@@ -21,16 +20,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     static IntegrationTestBase()
     {
-        if (MSBuildLocator.IsRegistered)
-            return;
-
-        try
-        {
-            MSBuildLocator.RegisterDefaults();
-        }
-        catch
-        {
-        }
+        IntegrationHarness.TryRegisterMSBuild();
     }
 
     protected IntegrationTestBase()
@@ -43,15 +33,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            if (Directory.Exists(TestDir))
-                Directory.Delete(TestDir, true);
-        }
-        catch
-        {
-        }
-
+        TestDatabase.DeleteDirectory(TestDir);
         GC.SuppressFinalize(this);
     }
 
@@ -257,9 +239,7 @@ public abstract class IntegrationTestBase : IDisposable
     /// <summary>Opens a non-pooled connection to the database at <see cref="DbPath" />.</summary>
     public SqliteConnection OpenDbConnection()
     {
-        var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False");
-        connection.Open();
-        return connection;
+        return TestDatabase.Open(DbPath);
     }
 
     /// <summary>Number of planner statistics rows (sqlite_stat1) in the database at <see cref="DbPath" />.</summary>

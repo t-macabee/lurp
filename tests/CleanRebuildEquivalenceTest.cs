@@ -14,16 +14,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
     static CleanRebuildEquivalenceTest()
     {
-        if (MSBuildLocator.IsRegistered)
-            return;
-
-        try
-        {
-            MSBuildLocator.RegisterDefaults();
-        }
-        catch
-        {
-        }
+        IntegrationHarness.TryRegisterMSBuild();
     }
 
     public CleanRebuildEquivalenceTest()
@@ -37,14 +28,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            if (Directory.Exists(_testDir))
-                Directory.Delete(_testDir, true);
-        }
-        catch
-        {
-        }
+        TestDatabase.DeleteDirectory(_testDir);
     }
 
     [SkippableFact]

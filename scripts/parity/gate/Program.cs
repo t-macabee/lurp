@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using Lurp.Parity.Shared;
 using Lurp.PerfHarness;
@@ -315,34 +313,11 @@ internal static class Program
 
     private static async Task<List<string>> RunMcpSurfaceAsync(string lurpCmd, string solution, RunContext context, HashSet<string> ranTools)
     {
-        var argv = LurpCommand.Split(lurpCmd);
-        var psi = new ProcessStartInfo
-        {
-            FileName = argv[0],
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        for (var i = 1; i < argv.Length; i++)
-            psi.ArgumentList.Add(argv[i]);
-        psi.ArgumentList.Add("--mode=serve");
-        psi.ArgumentList.Add("--enable-write-tools");
-        psi.ArgumentList.Add("--solution=" + solution);
-
-        using var serve = Process.Start(psi) ?? throw new HarnessError($"could not start '{argv[0]}' for --mode=serve.");
-        var stderrTask = serve.StandardError.ReadToEndAsync();
+        using var server = McpServeProcess.Start([.. ProcessRunner.SplitCommandLine(lurpCmd), "--mode=serve", "--enable-write-tools", "--solution=" + solution]);
+        var client = server.Client;
         try
         {
-            var client = new McpStdioClient(serve);
-            await client.SendAsync("initialize", new
-            {
-                protocolVersion = "2024-11-05",
-                capabilities = new { },
-                clientInfo = new { name = "lurp-parity-integrity", version = "1.0" }
-            });
-            await client.NotifyAsync("notifications/initialized", new { });
+            await client.InitializeAsync("lurp-parity-integrity");
 
             var listed = await client.SendAsync("tools/list", new { });
             var toolNames = listed.GetProperty("result").GetProperty("tools").EnumerateArray()
@@ -372,39 +347,7 @@ internal static class Program
         }
         finally
         {
-            // Always stop the server, whatever happened above.
-            try
-            {
-                serve.StandardInput.Close();
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            if (!serve.WaitForExit(ServeShutdownTimeoutMs))
-            {
-                try
-                {
-                    serve.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException)
-                {
-                }
-                catch (System.ComponentModel.Win32Exception)
-                {
-                }
-            }
-
-            try
-            {
-                stderrTask.Wait(5000);
-            }
-            catch (AggregateException)
-            {
-            }
+            server.Close(ServeShutdownTimeoutMs);
         }
     }
 
@@ -741,57 +684,13 @@ internal static class Program
 internal static class LurpCommand
 {
     /// <summary>
-    ///     Splits a command line on whitespace, honoring double quotes. Throws
-    ///     <see cref="HarnessError" /> for an unterminated quote or an empty command.
-    /// </summary>
-    public static string[] Split(string commandLine)
-    {
-        var tokens = new List<string>();
-        var current = new StringBuilder();
-        var inQuotes = false;
-        var hasToken = false;
-        foreach (var c in commandLine)
-        {
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-                hasToken = true;
-                continue;
-            }
-
-            if (char.IsWhiteSpace(c) && !inQuotes)
-            {
-                if (hasToken)
-                {
-                    tokens.Add(current.ToString());
-                    current.Clear();
-                    hasToken = false;
-                }
-
-                continue;
-            }
-
-            hasToken = true;
-            current.Append(c);
-        }
-
-        if (inQuotes)
-            throw new HarnessError("--lurp-cmd has an unterminated double quote.");
-        if (hasToken)
-            tokens.Add(current.ToString());
-        if (tokens.Count == 0)
-            throw new HarnessError("--lurp-cmd is empty.");
-        return [.. tokens];
-    }
-
-    /// <summary>
     ///     Splits <paramref name="commandLine" /> and runs it with
     ///     <paramref name="arguments" /> appended, returning stdout, stderr, the
     ///     exit code, and whether the timeout fired.
     /// </summary>
     public static RunOutcome Run(string commandLine, IReadOnlyList<string> arguments, int timeoutMs)
     {
-        var argv = Split(commandLine);
+        var argv = ProcessRunner.SplitCommandLine(commandLine);
         if (arguments.Count > 0)
             argv = [.. argv, .. arguments];
         return ProcessRunner.Run(argv, timeoutMs);

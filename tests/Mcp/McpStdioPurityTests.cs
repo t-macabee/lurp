@@ -1,110 +1,10 @@
-using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
+using Lurp.Parity.Shared;
 
 namespace Lurp.Tests.Mcp;
 
 public sealed class McpStdioPurityTests : IntegrationTestBase
 {
-    private static string FindLurpDll()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            var candidate = Path.Combine(dir, "Lurp.dll");
-            if (File.Exists(candidate)) return candidate;
-            var parent = Directory.GetParent(dir);
-            if (parent == null) break;
-            dir = parent.FullName;
-        }
-        var cur = Directory.GetCurrentDirectory();
-        while (cur != null)
-        {
-            var bin = Path.Combine(cur, "src", "bin");
-            if (Directory.Exists(bin))
-            {
-                var matches = Directory.GetFiles(bin, "Lurp.dll", SearchOption.AllDirectories);
-                if (matches.Length > 0)
-                    return matches.OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
-            }
-            cur = Directory.GetParent(cur)?.FullName;
-        }
-        throw new InvalidOperationException("Could not locate Lurp.dll for stdio purity test.");
-    }
-
-    private static string FindDotnet()
-    {
-        var winPath = "/mnt/c/Program Files/dotnet/dotnet.exe";
-        if (File.Exists(winPath)) return winPath;
-        var winPath2 = "C:\\Program Files\\dotnet\\dotnet.exe";
-        if (File.Exists(winPath2)) return winPath2;
-        return "dotnet";
-    }
-
-    private static async Task<JsonDocument> SendRequestAsync(Process process, List<string> stdoutLines, object stdoutLock, int id, string method, object? paramsObj, TimeSpan timeout)
-    {
-        var req = new { jsonrpc = "2.0", id = id, method = method, @params = paramsObj };
-        var json = JsonSerializer.Serialize(req);
-        await process.StandardInput.WriteLineAsync(json);
-        await process.StandardInput.FlushAsync();
-
-        var cts = new CancellationTokenSource(timeout);
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            string? line;
-            try
-            {
-                // Use timeout per read
-                var readTask = process.StandardOutput.ReadLineAsync();
-                var completed = await Task.WhenAny(readTask, Task.Delay(timeout, cts.Token));
-                if (completed != readTask) throw new TimeoutException($"Timed out waiting for response id={id} method={method}");
-                line = await readTask;
-            }
-            catch (OperationCanceledException)
-            {
-                throw new TimeoutException($"Timed out waiting for response id={id} method={method}");
-            }
-
-            if (line == null) throw new InvalidOperationException($"Process stdout closed before response id={id} method={method}");
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            lock (stdoutLock) stdoutLines.Add(line);
-
-            // Purity check: every stdout line must be valid JSON
-            JsonDocument doc;
-            try
-            {
-                doc = JsonDocument.Parse(line);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Stdout line is not valid JSON (leak): {line}", ex);
-            }
-
-            // If this line is the response for our id, return it
-            if (doc.RootElement.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.Number && idProp.GetInt32() == id)
-            {
-                return doc;
-            }
-            else
-            {
-                // Notification or other response; continue waiting but we already validated JSON
-                doc.Dispose();
-                continue;
-            }
-        }
-        throw new TimeoutException($"No response for id={id} method={method} within {timeout}");
-    }
-
-    private static async Task SendNotificationAsync(Process process, string method, object? paramsObj)
-    {
-        var req = new { jsonrpc = "2.0", method = method, @params = paramsObj };
-        var json = JsonSerializer.Serialize(req);
-        await process.StandardInput.WriteLineAsync(json);
-        await process.StandardInput.FlushAsync();
-    }
-
     private static string? ExtractInnerText(JsonElement result)
     {
         // MCP SDK wraps string returns as content[0].text
@@ -185,40 +85,18 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
             docPath = docPath.Replace("\\", "/");
         }
 
-        var lurpDll = FindLurpDll();
-        var dotnet = FindDotnet();
         var outputDir = Path.GetDirectoryName(DbPath)!;
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = dotnet,
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add(lurpDll);
-        psi.ArgumentList.Add("--mode=serve");
-        psi.ArgumentList.Add("--enable-write-tools");
-        psi.ArgumentList.Add($"--output-dir={outputDir}");
-        psi.ArgumentList.Add($"--solution={SolutionPath}");
-
         var stdoutLines = new List<string>();
-        var stderrLines = new List<string>();
         var stdoutLock = new object();
-        var stderrLock = new object();
 
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Lurp serve subprocess");
-        // Stderr reader
-        var stderrReader = Task.Run(async () =>
-        {
-            string? line;
-            while ((line = await process.StandardError.ReadLineAsync()) != null)
+        var server = McpServeProcess.Start(
+            LurpTool.Argv("--mode=serve", "--enable-write-tools", $"--output-dir={outputDir}", $"--solution={SolutionPath}"),
+            line =>
             {
-                lock (stderrLock) stderrLines.Add(line);
-            }
-        });
+                lock (stdoutLock)
+                    stdoutLines.Add(line);
+            });
 
         try
         {
@@ -226,20 +104,10 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
             await Task.Delay(500);
 
             var timeout = TimeSpan.FromSeconds(15);
-            int id = 1;
 
             // Initialize
-            var initParams = new
-            {
-                protocolVersion = "2024-11-05",
-                capabilities = new { },
-                clientInfo = new { name = "test", version = "1.0" }
-            };
-            using var initResp = await SendRequestAsync(process, stdoutLines, stdoutLock, id++, "initialize", initParams, timeout);
-            Assert.True(initResp.RootElement.TryGetProperty("result", out _), "initialize must return result");
-
-            // Send initialized notification (no response expected)
-            await SendNotificationAsync(process, "notifications/initialized", new { });
+            var initResp = await server.Client.InitializeAsync("test", timeout);
+            Assert.True(initResp.TryGetProperty("result", out _), "initialize must return result");
 
             // Small delay to let server process initialized
             await Task.Delay(200);
@@ -248,8 +116,8 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
             async Task<JsonElement> CallTool(string name, object? args)
             {
                 var toolParams = new { name = name, arguments = args ?? new { } };
-                using var resp = await SendRequestAsync(process, stdoutLines, stdoutLock, id++, "tools/call", toolParams, timeout);
-                Assert.True(resp.RootElement.TryGetProperty("result", out var result), $"tools/call {name} must have result");
+                var resp = await server.Client.SendAsync("tools/call", toolParams, timeout);
+                Assert.True(resp.TryGetProperty("result", out var result), $"tools/call {name} must have result");
                 // Check for isError false
                 if (result.TryGetProperty("isError", out var isErr) && isErr.ValueKind == JsonValueKind.True)
                 {
@@ -432,30 +300,21 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
 
             // Allow stderr to flush
             await Task.Delay(500);
-            try { process.StandardInput.Close(); } catch { }
-            // Give process time to exit gracefully
-            var exited = process.WaitForExit(3000);
-            if (!exited)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                process.WaitForExit(2000);
-            }
+            server.Close(3000);
 
             // Final purity assertions
             string[] stdoutCopy;
             lock (stdoutLock) stdoutCopy = stdoutLines.ToArray();
-            string[] stderrCopy;
-            lock (stderrLock) stderrCopy = stderrLines.ToArray();
+            var stderrCombined = server.Stderr;
 
-            Assert.True(stdoutCopy.Length > 0, $"No stdout captured. stderr: {string.Join("\n", stderrCopy)}");
+            Assert.True(stdoutCopy.Length > 0, $"No stdout captured. stderr: {stderrCombined}");
             foreach (var line in stdoutCopy)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 var ex = Record.Exception(() => JsonDocument.Parse(line));
-                Assert.True(ex == null, $"Stdout line is not valid JSON (stdout purity violated): {line}\nStderr: {string.Join("\n", stderrCopy)}");
+                Assert.True(ex == null, $"Stdout line is not valid JSON (stdout purity violated): {line}\nStderr: {stderrCombined}");
             }
 
-            var stderrCombined = string.Join("\n", stderrCopy);
             Assert.Contains("mcp: pinned snapshot", stderrCombined);
             var stdoutCombined = string.Join("\n", stdoutCopy);
             Assert.DoesNotContain("mcp: pinned snapshot", stdoutCombined);
@@ -465,14 +324,10 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
             // Progress text like "Loading solution" is expected inside the JSON result's
             // content[0].text (structured via McpIndexOutputSink) and is not a leak when
             // wrapped in JSON — the leak would be a raw non-JSON line on stdout.
-
-            // Wait for stderr reader to finish
-            try { await stderrReader.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
         }
         finally
         {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-            try { await stderrReader.WaitAsync(TimeSpan.FromSeconds(1)); } catch { }
+            server.Dispose();
         }
     }
 }

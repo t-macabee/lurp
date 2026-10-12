@@ -2,7 +2,6 @@ using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -528,9 +527,8 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 
         // Simulates a pre-032 snapshot: the column exists but holds null, which
         // means "unknown", so the membership comparator must skip the project.
-        await using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        await using (var connection = TestDatabase.Open(DbPath))
         {
-            connection.Open();
             await using var command = connection.CreateCommand();
             command.CommandText = "UPDATE projects SET document_paths_json = NULL WHERE snapshot_id = @sid;";
             command.Parameters.AddWithValue("@sid", snapshotId);
@@ -634,9 +632,8 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 
         // Simulates a tool upgrade between runs: the persisted manifest's
         // extractor version is rewritten while the workspace stays identical.
-        await using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        await using (var connection = TestDatabase.Open(DbPath))
         {
-            connection.Open();
             await using var command = connection.CreateCommand();
             command.CommandText = "UPDATE snapshots SET extractor_version = @newVersion WHERE snapshot_id = @sid;";
             command.Parameters.AddWithValue("@newVersion", "9.9.9-bump");
@@ -745,8 +742,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 
     private static HashSet<string> SymbolDocCommentIds(string dbPath, string snapshotId)
     {
-        using var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = """

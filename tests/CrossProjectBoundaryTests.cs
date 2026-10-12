@@ -51,7 +51,7 @@ public sealed class CrossProjectBoundaryTests
     [SkippableFact]
     public async Task MultiTargetSolution_LoadsWithoutDuplicateOutputPathDiagnostic_AndBindsMatchingFlavor()
     {
-        Skip.If(!GroundTruthFixture.TryRegisterMSBuild(), "MSBuild is not available on this system.");
+        Skip.If(!IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
 
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-multitfm-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");

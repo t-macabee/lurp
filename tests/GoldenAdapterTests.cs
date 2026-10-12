@@ -660,7 +660,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Empty(registers);
 
         // After the fix: stream handler emits an "unmodeled_mediatr_pattern" annotation.
-        var store = OpenStore(DbPath);
+        using var store = OpenStore(DbPath);
         var annotations = store.GetAnnotations(snapshotId);
         Assert.Contains(annotations, a =>
             a is { Kind: "unmodeled_mediatr_pattern", Value: "IStreamRequestHandler" });

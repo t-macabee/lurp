@@ -2,7 +2,6 @@ using Lurp.Storage;
 using Lurp.Storage.Migrations;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -23,9 +22,8 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
 
         Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
 
-        using (var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
 
             command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='snapshot_metrics';";

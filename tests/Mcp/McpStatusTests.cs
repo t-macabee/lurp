@@ -293,8 +293,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         using var store = OpenStore(DbPath);
         try
         {
-            if (!Microsoft.Build.Locator.MSBuildLocator.IsRegistered)
-                try { Microsoft.Build.Locator.MSBuildLocator.RegisterDefaults(); } catch { }
+            IntegrationHarness.TryRegisterMSBuild();
             using var workspace = Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.Create(
                 Lurp.Workspace.LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
             var solution = await workspace.OpenSolutionAsync(SolutionPath);
@@ -611,11 +610,15 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var l = Encoding.UTF8.GetByteCount(unbounded);
 
         // The response echoes detail.filters.max_bytes, so the cap's own width is part of the
-        // payload: a cap one byte under L reproduces exactly L - 1 bytes. Step one byte further
-        // so the un-fitted payload is strictly over the cap.
-        var cap = l - 2;
+        // payload: a cap one byte under L reproduces exactly L - 1 bytes. checked_at_utc is
+        // DateTime.UtcNow at each call, and its fraction is trimmed of trailing zeros, so the
+        // width of the second call can differ from L by up to ClockMargin bytes. The cap sits
+        // ClockMargin + 2 bytes under L, so the un-fitted payload is strictly over the cap
+        // whatever the clock does.
+        const int ClockMargin = 8; // checked_at_utc: up to 7 fraction digits plus the dot
+        var cap = l - 2 - ClockMargin;
         var json = await tool.LurpStatus(sections: "all", max_bytes: cap);
-        Assert.True(Encoding.UTF8.GetByteCount(json) <= l - 2);
+        Assert.True(Encoding.UTF8.GetByteCount(json) <= cap);
 
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.TryGetProperty("truncated", out var truncated));

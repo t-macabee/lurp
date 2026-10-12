@@ -1,4 +1,3 @@
-using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
@@ -31,15 +30,7 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            if (Directory.Exists(_tempDir))
-                Directory.Delete(_tempDir, true);
-        }
-        catch
-        {
-        }
-
+        TestDatabase.DeleteDirectory(_tempDir);
         GC.SuppressFinalize(this);
     }
 

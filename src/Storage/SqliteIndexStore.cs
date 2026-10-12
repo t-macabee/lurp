@@ -12,7 +12,6 @@ public class SqliteIndexStore : IIndexStore, IDisposable
     private DeclarationReadStore? _declReader;
     private DeclarationWriteStore? _declWriter;
     private DiagnosticStore? _diagnostics;
-    private bool _disposed;
     private SnapshotDocumentStore? _documents;
     private EdgeOperationsStore? _edgeOps;
     private ExtractorRegistryStore? _extractors;
@@ -148,10 +147,6 @@ public class SqliteIndexStore : IIndexStore, IDisposable
 
     public void Close()
     {
-        if (_disposed)
-            return;
-        _disposed = true;
-
         if (_connection == null)
             return;
 

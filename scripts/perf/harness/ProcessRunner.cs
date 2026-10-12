@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Lurp.PerfHarness;
 
@@ -81,4 +82,48 @@ internal static class ProcessRunner
     }
 
     internal static long ToMegabytes(long bytes) => (bytes + (1024L * 1024L) - 1) / (1024L * 1024L);
+
+    /// <summary>
+    ///     Splits a command line on whitespace, honoring double quotes. Throws
+    ///     <see cref="HarnessError" /> for an unterminated quote or an empty command.
+    /// </summary>
+    internal static string[] SplitCommandLine(string commandLine)
+    {
+        var tokens = new List<string>();
+        var current = new StringBuilder();
+        var inQuotes = false;
+        var hasToken = false;
+        foreach (var c in commandLine)
+        {
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+                hasToken = true;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(c) && !inQuotes)
+            {
+                if (hasToken)
+                {
+                    tokens.Add(current.ToString());
+                    current.Clear();
+                    hasToken = false;
+                }
+
+                continue;
+            }
+
+            hasToken = true;
+            current.Append(c);
+        }
+
+        if (inQuotes)
+            throw new HarnessError("--lurp-cmd has an unterminated double quote.");
+        if (hasToken)
+            tokens.Add(current.ToString());
+        if (tokens.Count == 0)
+            throw new HarnessError("--lurp-cmd is empty.");
+        return [.. tokens];
+    }
 }

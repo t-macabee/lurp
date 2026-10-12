@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Lurp.Parity.Shared;
 
 namespace Lurp.PerfHarness;
 
@@ -224,21 +227,21 @@ internal sealed class Session(
         if (full)
             arguments["full"] = true;
 
-        McpClient? client = null;
+        McpServeProcess? server = null;
         try
         {
-            client = new McpClient(BuildArgv(toolArgv, ["--mode=serve", $"--solution={solutionPath}", $"--output-dir={primaryDir}"]));
-            client.Initialize(McpStartupTimeoutMs);
+            server = McpServeProcess.Start(BuildArgv(toolArgv, ["--mode=serve", $"--solution={solutionPath}", $"--output-dir={primaryDir}"]));
+            server.Client.InitializeAsync("lurp-perf-harness", TimeSpan.FromMilliseconds(McpStartupTimeoutMs)).GetAwaiter().GetResult();
             for (var i = 1; i <= options.Warmup + options.Runs; i++)
             {
-                var (latencyMs, peakMb, error) = client.Call("lurp_status", arguments, ToolTimeoutMs);
+                var (latencyMs, peakMb, error) = TimeToolCall(server, "lurp_status", arguments, ToolTimeoutMs);
                 if (i <= options.Warmup)
                     continue;
 
                 AddRun(op, new RunRecord(latencyMs, peakMb, error == null ? 0 : 1, Error: error));
             }
 
-            op.ServerExitCode = client.Close();
+            op.ServerExitCode = server.Close(60000);
             if (op.ServerExitCode != 0)
             {
                 op.Failed = true;
@@ -247,7 +250,7 @@ internal sealed class Session(
                 Console.WriteLine($"[failed] {op.Name}: {op.Failure}");
             }
         }
-        catch (Exception ex) when (ex is HarnessError or InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is HarnessError or InvalidOperationException or IOException or System.ComponentModel.Win32Exception or TimeoutException)
         {
             op.Failed = true;
             AnyFailure = true;
@@ -256,11 +259,56 @@ internal sealed class Session(
         }
         finally
         {
-            client?.Dispose();
+            server?.Dispose();
         }
 
         return op;
     }
+
+    private static (long LatencyMs, long PeakWorkingSetMb, string? Error) TimeToolCall(
+        McpServeProcess server, string tool, JsonObject arguments, int timeoutMs)
+    {
+        var sampler = new PeakSampler(server.Process);
+        sampler.Start();
+        var stopwatch = Stopwatch.StartNew();
+        string? error = null;
+        try
+        {
+            var response = server.Client
+                .SendAsync("tools/call", new { name = tool, arguments }, TimeSpan.FromMilliseconds(timeoutMs))
+                .GetAwaiter().GetResult();
+
+            if (response.TryGetProperty("error", out var errorElement))
+            {
+                error = $"tools/call {tool} failed: {Truncate(errorElement.GetRawText(), 500)}";
+            }
+            else if (response.TryGetProperty("result", out var result)
+                     && result.TryGetProperty("isError", out var isError)
+                     && isError.ValueKind == JsonValueKind.True)
+            {
+                var content = result.TryGetProperty("content", out var contentElement) ? contentElement.GetRawText() : null;
+                error = $"tools/call {tool} returned an error result: {Truncate(content, 500)}";
+            }
+        }
+        catch (TimeoutException)
+        {
+            error = $"tools/call {tool} got no response within {timeoutMs} ms.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = $"tools/call {tool} failed: {ex.Message}";
+        }
+        finally
+        {
+            stopwatch.Stop();
+            sampler.Stop();
+        }
+
+        return (stopwatch.ElapsedMilliseconds, sampler.PeakMb, error);
+    }
+
+    private static string Truncate(string? text, int maxLength)
+        => text is null ? "" : text.Length <= maxLength ? text : text[..maxLength];
 
     public string? GetLatestSnapshotId(string dbDir)
     {

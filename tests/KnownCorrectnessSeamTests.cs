@@ -20,16 +20,7 @@ public sealed class KnownCorrectnessSeamTests : InMemoryTestBase
 {
     static KnownCorrectnessSeamTests()
     {
-        if (MSBuildLocator.IsRegistered)
-            return;
-
-        try
-        {
-            MSBuildLocator.RegisterDefaults();
-        }
-        catch
-        {
-        }
+        IntegrationHarness.TryRegisterMSBuild();
     }
 
     [Fact]

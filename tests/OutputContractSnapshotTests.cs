@@ -902,7 +902,7 @@ public sealed class OutputContractFixture : IAsyncLifetime
 
     public Task InitializeAsync()
     {
-        if (!GroundTruthFixture.TryRegisterMSBuild())
+        if (!IntegrationHarness.TryRegisterMSBuild())
             throw new InvalidOperationException("MSBuildLocator could not register an SDK; ground-truth tests need one.");
 
         FixtureRoot = GroundTruthFixture.LocateFixtureRoot();

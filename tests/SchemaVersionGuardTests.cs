@@ -31,8 +31,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
         new MigrationRunner(_sourceDb).RunMigrations();
         File.Copy(_sourceDb, _dbPath);
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
         using var command = connection.CreateCommand();
         command.CommandText = $"DELETE FROM schema_metadata WHERE version > {StaleVersion};";
         command.ExecuteNonQuery();
@@ -102,9 +101,8 @@ public sealed class SchemaVersionGuardTests : IDisposable
     [Fact]
     public void CliReadMode_OnNewerSchema_FailsWithNewerMessage_AndDoesNotChangeIt()
     {
-        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({VersionConstants.DatabaseSchemaVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
             command.ExecuteNonQuery();
@@ -141,9 +139,8 @@ public sealed class SchemaVersionGuardTests : IDisposable
         await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}"]);
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
 
-        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = $"DELETE FROM schema_metadata WHERE version > {StaleVersion};";
             command.ExecuteNonQuery();
@@ -184,9 +181,8 @@ public sealed class SchemaVersionGuardTests : IDisposable
         await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}"]);
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
 
-        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({VersionConstants.DatabaseSchemaVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
             command.ExecuteNonQuery();
@@ -227,9 +223,8 @@ public sealed class SchemaVersionGuardTests : IDisposable
         await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}"]);
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
 
-        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = $"DELETE FROM schema_metadata WHERE version > {StaleVersion};";
             command.ExecuteNonQuery();

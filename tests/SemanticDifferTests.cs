@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Data.Sqlite;
 using System.Text;
 using System.Text.Json;
 
@@ -18,8 +17,7 @@ public sealed class SemanticDifferTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath)) File.Delete(_dbPath);
+        TestDatabase.Delete(_dbPath);
     }
 
     private SqliteIndexStore OpenStore()

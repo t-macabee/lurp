@@ -353,56 +353,16 @@ internal static class Program
     private static string[] ResolveToolArgv(HarnessOptions options, string? repoRoot)
     {
         if (!string.IsNullOrWhiteSpace(options.LurpCmd))
-            return Tokenize(options.LurpCmd);
+            return ProcessRunner.SplitCommandLine(options.LurpCmd);
         var envCmd = Environment.GetEnvironmentVariable("LURP_CMD");
         if (!string.IsNullOrWhiteSpace(envCmd))
-            return Tokenize(envCmd);
+            return ProcessRunner.SplitCommandLine(envCmd);
         if (repoRoot == null)
             throw new HarnessError("cannot locate the Lurp repo root (Lurp.slnx) for the default tool command; pass --lurp-cmd or set LURP_CMD.");
         var dll = Path.Combine(repoRoot, "src", "bin", "Release", "net10.0", "Lurp.dll");
         if (!File.Exists(dll))
             throw new HarnessError($"the default tool '{dll}' does not exist; build src in Release or pass --lurp-cmd.");
         return ["dotnet", dll];
-    }
-
-    private static string[] Tokenize(string commandLine)
-    {
-        var tokens = new List<string>();
-        var current = new StringBuilder();
-        var inQuotes = false;
-        var hasToken = false;
-        foreach (var c in commandLine)
-        {
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-                hasToken = true;
-                continue;
-            }
-
-            if (char.IsWhiteSpace(c) && !inQuotes)
-            {
-                if (hasToken)
-                {
-                    tokens.Add(current.ToString());
-                    current.Clear();
-                    hasToken = false;
-                }
-
-                continue;
-            }
-
-            hasToken = true;
-            current.Append(c);
-        }
-
-        if (inQuotes)
-            throw new HarnessError("--lurp-cmd has an unterminated double quote.");
-        if (hasToken)
-            tokens.Add(current.ToString());
-        if (tokens.Count == 0)
-            throw new HarnessError("--lurp-cmd is empty.");
-        return [.. tokens];
     }
 
     private static string ReadToolVersion(string[] toolArgv)

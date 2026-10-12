@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Microsoft.Build.Locator;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -100,9 +99,8 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var helperId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Helper");
 
-        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(DbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 UPDATE snapshot_symbols
@@ -150,9 +148,8 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         var helperId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Helper");
         const string helperFile = "src/TestProject/Util.cs";
 
-        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(DbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 UPDATE declarations
@@ -1448,9 +1445,8 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         // The block's marker type is declared and tagged with the metadata key...
-        using (var connection = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(DbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 SELECT COUNT(*)

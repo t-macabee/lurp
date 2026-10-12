@@ -11,8 +11,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath)) File.Delete(_dbPath);
+        TestDatabase.Delete(_dbPath);
     }
 
     [Fact]
@@ -46,8 +45,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'status';";
@@ -60,8 +58,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -75,8 +72,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('annotations') WHERE name = 'document_path';";
@@ -89,8 +85,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -104,8 +99,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'assembly_name';";
@@ -118,8 +112,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version_generated', 'idx_edges_snapshot_id', 'idx_annotations_snapshot_id');";
@@ -135,8 +128,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_snapshot_id', 'idx_edges_snapshot_target', 'idx_edges_document', 'ux_edges_relation');";
@@ -152,8 +144,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var runner = new MigrationRunner(_dbPath);
         runner.RunMigrations();
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        connection.Open();
+        using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_document_id';";
@@ -192,9 +183,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-e4-{Guid.NewGuid():N}.db");
         try
         {
-            using (var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
+            using (var connection = TestDatabase.Open(dbPath))
             {
-                connection.Open();
                 using var pragmaCmd = connection.CreateCommand();
                 pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
                 pragmaCmd.ExecuteNonQuery();
@@ -249,8 +239,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            TestDatabase.Delete(dbPath);
         }
     }
 
@@ -260,9 +249,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-e4-{Guid.NewGuid():N}.db");
         try
         {
-            using (var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
+            using (var connection = TestDatabase.Open(dbPath))
             {
-                connection.Open();
                 using var pragmaCmd = connection.CreateCommand();
                 pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
                 pragmaCmd.ExecuteNonQuery();
@@ -299,8 +287,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             var finalVersion = new MigrationRunner(dbPath).GetCurrentSchemaVersion();
             Assert.Equal(VersionConstants.DatabaseSchemaVersion, finalVersion);
 
-            using var verify = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly;Pooling=False");
-            verify.Open();
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
 
             using var childCommand = verify.CreateCommand();
             childCommand.CommandText = "SELECT document_version_id FROM snapshot_documents WHERE snapshot_id = 'snap-e4';";
@@ -312,20 +299,19 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
-            if (File.Exists(dbPath)) File.Delete(dbPath);
+            TestDatabase.Delete(dbPath);
         }
     }
 
+    // This test re-runs the newest migration (037). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
         new MigrationRunner(_dbPath).RunMigrations();
         SqliteConnection.ClearAllPools();
 
-        using (var connection = new SqliteConnection($"Data Source={_dbPath};Pooling=False"))
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            connection.Open();
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
@@ -341,8 +327,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Contains("snapshot_documents", ex.Message);
         Assert.Equal(VersionConstants.DatabaseSchemaVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
-        using var verify = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly;Pooling=False");
-        verify.Open();
+        using var verify = TestDatabase.OpenReadOnly(_dbPath);
         using var indexCommand = verify.CreateCommand();
         indexCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_document_id';";
         Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);

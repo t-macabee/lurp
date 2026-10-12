@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 
@@ -32,7 +31,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        if (!TryRegisterMSBuild())
+        if (!IntegrationHarness.TryRegisterMSBuild())
             throw new InvalidOperationException("MSBuildLocator could not register an SDK; ground-truth tests need one.");
 
         var fixtureRoot = LocateFixtureRoot();
@@ -155,21 +154,6 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
         }
 
         return facts;
-    }
-
-    public static bool TryRegisterMSBuild()
-    {
-        if (MSBuildLocator.IsRegistered)
-            return true;
-        try
-        {
-            MSBuildLocator.RegisterDefaults();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     public static void RestoreSolution(string solutionPath)

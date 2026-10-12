@@ -10,19 +10,6 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class CliCrashPathTests
 {
-    private static string FindLurpDll()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            var candidate = Path.Combine(dir, "Lurp.dll");
-            if (File.Exists(candidate)) return candidate;
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        throw new InvalidOperationException("Could not locate Lurp.dll for crash-path test.");
-    }
-
     [Fact]
     public async Task InvalidIntent_ExitsOne_WithOneLineAndNoStackTrace()
     {
@@ -30,7 +17,7 @@ public sealed class CliCrashPathTests
         Directory.CreateDirectory(outputDir);
         try
         {
-            var (exitCode, stderr) = await RunAsync(FindLurpDll(),
+            var (exitCode, stderr) = await RunAsync(
                 ["--mode=context", "--intent=banana", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: false);
 
@@ -52,7 +39,7 @@ public sealed class CliCrashPathTests
         Directory.CreateDirectory(outputDir);
         try
         {
-            var (exitCode, stderr) = await RunAsync(FindLurpDll(),
+            var (exitCode, stderr) = await RunAsync(
                 ["--mode=context", "--intent=banana", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: true);
 
@@ -65,18 +52,18 @@ public sealed class CliCrashPathTests
         }
     }
 
-    private static async Task<(int ExitCode, string Stderr)> RunAsync(string lurpDll, string[] args, bool debug)
+    private static async Task<(int ExitCode, string Stderr)> RunAsync(string[] args, bool debug)
     {
+        var argv = LurpTool.Argv(args);
         var psi = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = argv[0],
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        psi.ArgumentList.Add(lurpDll);
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
+        for (var i = 1; i < argv.Length; i++)
+            psi.ArgumentList.Add(argv[i]);
         if (debug)
             psi.Environment["LURP_DEBUG"] = "1";
 

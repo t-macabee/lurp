@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -11,8 +10,7 @@ public sealed class SnapshotReuseResolutionTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath)) File.Delete(_dbPath);
+        TestDatabase.Delete(_dbPath);
     }
 
     private SqliteIndexStore OpenStore()

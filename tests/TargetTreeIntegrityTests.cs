@@ -25,7 +25,7 @@ public sealed class TargetTreeIntegrityTests
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-tree-integrity-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
         string? cacheDir = null;
-        Process? serve = null;
+        McpServeProcess? server = null;
 
         try
         {
@@ -91,15 +91,9 @@ public sealed class TargetTreeIntegrityTests
                 $"no redirected generated sources under {Path.Combine(cacheDir, "obj")}");
 
             // ── MCP: --mode=serve, all 18 tools (read plus gated write tools) ──
-            serve = StartServe(solutionPath, writeTools: true);
-            var client = new McpStdioClient(serve);
-            await client.SendAsync("initialize", new
-            {
-                protocolVersion = "2024-11-05",
-                capabilities = new { },
-                clientInfo = new { name = "target-tree-integrity", version = "1.0" }
-            });
-            await client.NotifyAsync("notifications/initialized", new { });
+            server = McpServeProcess.Start(LurpTool.Argv(["--mode=serve", "--enable-write-tools", $"--solution={solutionPath}"]));
+            var client = server.Client;
+            await client.InitializeAsync("target-tree-integrity");
 
             var tools = await client.SendAsync("tools/list", new { });
             var toolNames = tools.GetProperty("result").GetProperty("tools").EnumerateArray()
@@ -136,11 +130,9 @@ public sealed class TargetTreeIntegrityTests
             var operationId = startedDoc.RootElement.GetProperty("operation_id").GetString()!;
             await WaitForIndexAsync(client, operationId);
 
-            serve.StandardInput.Close();
-            Assert.True(serve.WaitForExit(120_000), "serve did not exit after stdin close");
-            Assert.Equal(0, serve.ExitCode);
-            serve.Dispose();
-            serve = null;
+            Assert.Equal(0, server.Close(120_000));
+            server.Dispose();
+            server = null;
 
             // ── The measured window closes: the tree must not have moved a byte ──
             var after = TreeSnapshot.Record(treeRoot);
@@ -148,8 +140,7 @@ public sealed class TargetTreeIntegrityTests
         }
         finally
         {
-            try { if (serve is { HasExited: false }) serve.Kill(entireProcessTree: true); } catch { }
-            serve?.Dispose();
+            server?.Dispose();
             try { if (cacheDir != null && Directory.Exists(cacheDir)) Directory.Delete(cacheDir, true); } catch { }
             try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
         }
@@ -237,65 +228,9 @@ public sealed class TargetTreeIntegrityTests
         throw new InvalidOperationException("Could not locate tests/Fixtures/GroundTruth from " + AppContext.BaseDirectory);
     }
 
-    internal static (string FileName, string? DllPath) ResolveToolCommand()
-    {
-        var packed = Environment.GetEnvironmentVariable("LURP_TOOL_PATH");
-        if (!string.IsNullOrEmpty(packed))
-            return (Path.GetFullPath(packed), null);
-
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            var candidate = Path.Combine(dir, "Lurp.dll");
-            if (File.Exists(candidate))
-                return ("dotnet", candidate);
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        var current = Directory.GetCurrentDirectory();
-        while (current != null)
-        {
-            var bin = Path.Combine(current, "src", "bin");
-            if (Directory.Exists(bin))
-            {
-                var matches = Directory.GetFiles(bin, "Lurp.dll", SearchOption.AllDirectories);
-                if (matches.Length > 0)
-                {
-                    var release = matches.FirstOrDefault(m => m.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}"));
-                    return ("dotnet", release ?? matches.OrderByDescending(File.GetLastWriteTimeUtc).First());
-                }
-            }
-
-            current = Directory.GetParent(current)?.FullName;
-        }
-
-        throw new InvalidOperationException("Could not locate Lurp.dll (or set LURP_TOOL_PATH to a packed lurp executable).");
-    }
-
-    private static Process StartServe(string solutionPath, bool writeTools)
-    {
-        var (fileName, dllPath) = ResolveToolCommand();
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        if (dllPath != null)
-            psi.ArgumentList.Add(dllPath);
-        psi.ArgumentList.Add("--mode=serve");
-        if (writeTools)
-            psi.ArgumentList.Add("--enable-write-tools");
-        psi.ArgumentList.Add($"--solution={solutionPath}");
-        return Process.Start(psi) ?? throw new InvalidOperationException("Failed to start lurp serve.");
-    }
-
     internal static (int ExitCode, string Stdout, string Stderr) RunCli(TimeSpan timeout, params string[] args)
     {
-        var (fileName, dllPath) = ResolveToolCommand();
+        var (fileName, dllPath) = LurpTool.ResolveCommand();
         var fullArgs = dllPath == null ? args : [dllPath, .. args];
         return RunProcess(fileName, fullArgs, timeout);
     }

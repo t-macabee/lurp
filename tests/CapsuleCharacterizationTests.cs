@@ -716,7 +716,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
         await RestoreSolutionAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
-        var store = OpenStore(DbPath);
+        using var store = OpenStore(DbPath);
 
         // Resolve anchor = PingHandler
         var symbols = store.SearchSymbols("PingHandler", snapshotId);

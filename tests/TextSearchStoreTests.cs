@@ -23,16 +23,13 @@ public sealed class TextSearchStoreTests : IDisposable
     public void Dispose()
     {
         try { _store.Close(); } catch {}
-        try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch {}
-        try { if (File.Exists(_dbPath + "-wal")) File.Delete(_dbPath + "-wal"); } catch {}
-        try { if (File.Exists(_dbPath + "-shm")) File.Delete(_dbPath + "-shm"); } catch {}
+        TestDatabase.Delete(_dbPath);
         GC.SuppressFinalize(this);
     }
 
     private void Seed()
     {
-        using var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        conn.Open();
+        using var conn = TestDatabase.Open(_dbPath);
         using (var pragma = conn.CreateCommand())
         {
             pragma.CommandText = "PRAGMA foreign_keys=OFF;";
@@ -53,9 +50,6 @@ public sealed class TextSearchStoreTests : IDisposable
             cmd.ExecuteNonQuery();
         }
         conn.Close();
-        // Reopen store to see new data
-        _store.Close();
-        _store.Open();
     }
 
     private static void InsertDoc(SqliteConnection conn, string relPath, string content, string docId, string versionId)
@@ -155,8 +149,7 @@ public sealed class TextSearchStoreTests : IDisposable
     public void Grep_Overlapping_Matches()
     {
         // Insert a doc with "aaa" for overlapping test
-        using var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        conn.Open();
+        using var conn = TestDatabase.Open(_dbPath);
         using (var pragma = conn.CreateCommand()) { pragma.CommandText = "PRAGMA foreign_keys=OFF;"; pragma.ExecuteNonQuery(); }
         var content = "aaa";
         var bytes = Encoding.UTF8.GetBytes(content);
@@ -183,8 +176,6 @@ public sealed class TextSearchStoreTests : IDisposable
             cmd.ExecuteNonQuery();
         }
         conn.Close();
-        _store.Close();
-        _store.Open();
         var page = _store.SearchTextPage("aa", SnapshotId, 50, false, false, null);
         // "aaa" contains "aa" twice overlapping at offsets 0 and 1
         Assert.Equal(2, page.TotalCount);
