@@ -225,7 +225,7 @@ Test-Case 'Get-NuspecCommit reads repository.commit from the nuspec in the nupkg
       $entry = $archive.CreateEntry('lurp.nuspec')
       $writer = New-Object IO.StreamWriter($entry.Open())
       try {
-        $writer.Write('<package><metadata><repository type="git" commit="abc" /></metadata></package>')
+        $writer.Write('<?xml version="1.0" encoding="utf-8"?><package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"><metadata><id>lurp</id><version>9.9.9</version><repository type="git" url="https://github.com/example/lurp" commit="abc" /></metadata></package>')
       } finally {
         $writer.Dispose()
       }
@@ -233,6 +233,29 @@ Test-Case 'Get-NuspecCommit reads repository.commit from the nuspec in the nupkg
       $archive.Dispose()
     }
     Assert-Equal 'abc' (Get-NuspecCommit $zipPath) 'commit'
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-NuspecCommit returns an empty string when the nuspec has no repository element' {
+  $dir = New-TempDirectory
+  try {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zipPath = Join-Path $dir 'lurp.1.0.0.nupkg'
+    $archive = [IO.Compression.ZipFile]::Open($zipPath, 'Create')
+    try {
+      $entry = $archive.CreateEntry('lurp.nuspec')
+      $writer = New-Object IO.StreamWriter($entry.Open())
+      try {
+        $writer.Write('<?xml version="1.0" encoding="utf-8"?><package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"><metadata><id>lurp</id><version>9.9.9</version></metadata></package>')
+      } finally {
+        $writer.Dispose()
+      }
+    } finally {
+      $archive.Dispose()
+    }
+    Assert-Equal '' (Get-NuspecCommit $zipPath) 'commit'
   } finally {
     Remove-Item -Recurse -Force $dir
   }

@@ -118,13 +118,15 @@ jobs:
           ) | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
       - name: Check that nuget.org does not have the version
+        id: nuget
         shell: pwsh
         env:
           VERSION: ${{ steps.target.outputs.version }}
           DRY_RUN: ${{ steps.target.outputs.dry_run }}
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
-          if (Test-NuGetVersionListed -Version $env:VERSION) {
+          $listed = Test-NuGetVersionListed -Version $env:VERSION
+          if ($listed) {
             if ($env:DRY_RUN -eq 'true') {
               Write-Host "::warning::lurp $env:VERSION is already on nuget.org; a real publish of this version would stop here."
             } else {
@@ -133,6 +135,7 @@ jobs:
           } else {
             Write-Host "lurp $env:VERSION is not on nuget.org."
           }
+          "listed=$($listed.ToString().ToLowerInvariant())" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
       - name: Check for vulnerable packages
         shell: pwsh
@@ -178,6 +181,8 @@ jobs:
             $pkgPath = (Get-ChildItem ./artifacts/*.nupkg).FullName
             gh attestation verify $pkgPath --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/real-parity.yml"
             $ok = ($LASTEXITCODE -eq 0)
+            # A failed attestation is handled below; the step must not exit with its code.
+            $global:LASTEXITCODE = 0
           }
           $overrideUsed = 'false'
           if (-not $ok) {
@@ -197,6 +202,7 @@ jobs:
           SHA: ${{ steps.target.outputs.sha }}
           TAG: ${{ steps.target.outputs.tag }}
           VERSION: ${{ steps.target.outputs.version }}
+          NUGET_LISTED: ${{ steps.nuget.outputs.listed }}
           DIGEST: ${{ steps.nupkg.outputs.digest }}
           RUN_ID: ${{ steps.nupkg.outputs.run_id }}
           DRY_RUN: ${{ steps.target.outputs.dry_run }}
@@ -206,7 +212,7 @@ jobs:
           $parity = if ($env:OVERRIDE_USED -eq 'true') { 'overridden (see the release body)' } else { 'passed, attestation verified' }
           $lines = @(
             "- Target: $env:SHA ($tagText), version $env:VERSION",
-            '- nuget.org version check: passed',
+            "- nuget.org version check: $(if ($env:NUGET_LISTED -eq 'true') { 'version is already listed (warning; a real publish would stop)' } else { 'version is not listed' })",
             '- Vulnerable packages: none',
             "- Release notes: docs/RELEASE_NOTES_$env:VERSION.md present",
             "- CI nupkg: ci.yml run $env:RUN_ID, sha256 $env:DIGEST, repository.commit matches",

@@ -192,7 +192,7 @@ function Get-NuspecCommit([string]$NupkgPath) {
   } finally {
     $zip.Dispose()
   }
-  $repository = $nuspec.SelectSingleNode('/package/metadata/repository')
+  $repository = $nuspec.SelectSingleNode("/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='repository']")
   if (-not $repository) { return '' }
   return [string]$repository.GetAttribute('commit')
 }
