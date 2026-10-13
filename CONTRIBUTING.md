@@ -70,6 +70,32 @@ A change to a flag or an MCP tool also changes the generated docs, so regenerate
 `$env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~DocsInSyncTests"`
 and review the diff.
 
+## Releasing
+
+1. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days.
+2. Run the parity gate on that SHA:
+
+```bash
+gh workflow run real-parity.yml -f sha=<sha>
+```
+
+A pass writes the `real-parity` status and an attestation. The first run on a new runner OS fails until `perf/baselines/<ImageOS>.json` exists (see [the baseline gate](scripts/perf/README.md#baseline-gate)).
+
+3. Optional dry run. It checks every step and stops before the push:
+
+```bash
+gh workflow run release.yml -f ref=<sha or tag> -f dry_run=true
+```
+
+4. Tag `vX.Y.Z` on that SHA and push the tag. The `nuget` environment asks for approval before the push.
+5. Override. Use this only when the parity gate cannot pass. It skips only the parity status and the attestation, and the reason goes into the release body:
+
+```bash
+gh workflow run release.yml -f ref=vX.Y.Z -f dry_run=false -f override_reason="<why>"
+```
+
+6. The release body is `docs/RELEASE_NOTES_<Version>.md` at the tagged commit.
+
 ## Reporting issues
 
 Strip any sensitive or proprietary code before sharing fixtures or logs.

@@ -1,16 +1,231 @@
+# Release: promotes the nupkg that ci.yml built for the tagged commit and that
+# real-parity.yml passed. It never builds, tests or packs.
+#
+# Triggers:
+#   - push of a tag vX.Y.Z: publishes that tag.
+#   - workflow_dispatch: ref (vX.Y.Z, or a full commit SHA for a dry run),
+#     dry_run (default true), override_reason (publishes without a recorded
+#     real-parity pass; the reason goes into the release body).
+#
+# Decision 10: the override skips only the parity status and the attestation.
+# Every other check fails hard.
+# Decision 12: a version that nuget.org already lists fails a real publish. A
+# dry run only warns.
+#
+# Jobs: verify (every check, no push), publish (the nuget environment asks for
+# approval), github-release (only after the push and the catalog check).
 name: Release
 
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag vX.Y.Z, or a full commit SHA for a dry run
+        type: string
+        required: true
+      dry_run:
+        description: Run every check and stop before the push
+        type: boolean
+        default: true
+      override_reason:
+        description: Publish without a recorded real-parity pass; the reason goes into the release notes
+        type: string
+        default: ''
+
+permissions: {}
+
+# One publish per ref. Never cancel a publish half way.
+concurrency:
+  group: release-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
+      actions: read
+      statuses: read
+      attestations: read
+    outputs:
+      sha: ${{ steps.target.outputs.sha }}
+      tag: ${{ steps.target.outputs.tag }}
+      version: ${{ steps.target.outputs.version }}
+      dry_run: ${{ steps.target.outputs.dry_run }}
+      digest: ${{ steps.nupkg.outputs.digest }}
+      run_id: ${{ steps.nupkg.outputs.run_id }}
+      override_used: ${{ steps.parity.outputs.override_used }}
+
+    steps:
+      # The workflow's own commit: the scripts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The tagged tree (or the dispatched SHA). fetch-depth 0 gives origin/main
+      # for the ancestry check.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          path: target
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: target/global.json
+
+      - name: Resolve the target
+        id: target
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_INPUT: ${{ inputs.ref }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $t = Resolve-ReleaseTarget -EventName $env:EVENT_NAME -RefName $env:REF_NAME -RefInput $env:REF_INPUT -DryRunInput $env:DRY_RUN_INPUT
+          $sha = (git -C target rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "git rev-parse HEAD failed with exit code $LASTEXITCODE." }
+          if ($t.Tag) {
+            $tagSha = (git -C target rev-parse "refs/tags/$($t.Tag)^{commit}").Trim()
+            if ($LASTEXITCODE -ne 0) { throw "git rev-parse refs/tags/$($t.Tag) failed with exit code $LASTEXITCODE." }
+            if ($tagSha -ne $sha) { throw "tag $($t.Tag) points to $tagSha, not $sha." }
+          }
+          git -C target merge-base --is-ancestor $sha origin/main
+          if ($LASTEXITCODE -ne 0) { throw "$sha is not on main" }
+          $version = (Select-String -Path target/src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          if ($t.Tag) {
+            $tagVersion = $t.Tag -replace '^v', ''
+            if ($version -ne $tagVersion) {
+              throw "Tag $($t.Tag) does not match <Version>$version</Version> in src/Lurp.csproj."
+            }
+            Write-Host "Tag $($t.Tag) matches <Version>$version</Version>."
+          } else {
+            Write-Host "dry run on a commit: would publish v$version"
+          }
+          if (-not (Test-Path "target/docs/RELEASE_NOTES_$version.md")) {
+            throw "release notes docs/RELEASE_NOTES_$version.md missing"
+          }
+          $dry = if ($t.DryRun) { 'true' } else { 'false' }
+          @(
+            "sha=$sha",
+            "tag=$($t.Tag)",
+            "version=$version",
+            "dry_run=$dry"
+          ) | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Check that nuget.org does not have the version
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+          DRY_RUN: ${{ steps.target.outputs.dry_run }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          if (Test-NuGetVersionListed -Version $env:VERSION) {
+            if ($env:DRY_RUN -eq 'true') {
+              Write-Host "::warning::lurp $env:VERSION is already on nuget.org; a real publish of this version would stop here."
+            } else {
+              throw "lurp $env:VERSION is already on nuget.org"
+            }
+          } else {
+            Write-Host "lurp $env:VERSION is not on nuget.org."
+          }
+
+      - name: Check for vulnerable packages
+        shell: pwsh
+        working-directory: target
+        run: |
+          dotnet restore
+          if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE." }
+          Import-Module ../scripts/ci/LurpCi.psm1 -Force
+          Assert-NoVulnerablePackages
+
+      - name: Download and verify the CI nupkg
+        id: nupkg
+        shell: pwsh
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          VERSION: ${{ steps.target.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
+          if ($pkg.Name -ne "lurp.${env:VERSION}.nupkg") { throw "nupkg name $($pkg.Name) is not lurp.${env:VERSION}.nupkg" }
+          $commit = Get-NuspecCommit $pkg.Path
+          if ($commit -ne $env:SHA) { throw "nupkg repository.commit '$commit' does not match SHA '$env:SHA'." }
+          Write-Host "nupkg repository.commit $commit matches the SHA."
+          @(
+            "digest=$($pkg.Digest)",
+            "run_id=$($pkg.RunId)"
+          ) | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Check the real-parity pass
+        id: parity
+        shell: pwsh
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          DIGEST: ${{ steps.nupkg.outputs.digest }}
+          OVERRIDE_REASON: ${{ inputs.override_reason }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $status = Get-ParityStatus $env:GITHUB_REPOSITORY $env:SHA
+          $ok = Test-ParityPass $status $env:DIGEST
+          if ($ok) {
+            $pkgPath = (Get-ChildItem ./artifacts/*.nupkg).FullName
+            gh attestation verify $pkgPath --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/real-parity.yml"
+            $ok = ($LASTEXITCODE -eq 0)
+          }
+          $overrideUsed = 'false'
+          if (-not $ok) {
+            $state = if ($status) { $status.state } else { 'none' }
+            if (-not $env:OVERRIDE_REASON) {
+              throw "no real-parity pass with digest $env:DIGEST on $env:SHA (newest status: $state)"
+            }
+            Write-Host "::warning::publishing without a real-parity pass: $env:OVERRIDE_REASON"
+            $overrideUsed = 'true'
+          }
+          "override_used=$overrideUsed" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Summary
+        if: success()
+        shell: pwsh
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          TAG: ${{ steps.target.outputs.tag }}
+          VERSION: ${{ steps.target.outputs.version }}
+          DIGEST: ${{ steps.nupkg.outputs.digest }}
+          RUN_ID: ${{ steps.nupkg.outputs.run_id }}
+          DRY_RUN: ${{ steps.target.outputs.dry_run }}
+          OVERRIDE_USED: ${{ steps.parity.outputs.override_used }}
+        run: |
+          $tagText = if ($env:TAG) { $env:TAG } else { 'no tag' }
+          $parity = if ($env:OVERRIDE_USED -eq 'true') { 'overridden (see the release body)' } else { 'passed, attestation verified' }
+          $lines = @(
+            "- Target: $env:SHA ($tagText), version $env:VERSION",
+            '- nuget.org version check: passed',
+            '- Vulnerable packages: none',
+            "- Release notes: docs/RELEASE_NOTES_$env:VERSION.md present",
+            "- CI nupkg: ci.yml run $env:RUN_ID, sha256 $env:DIGEST, repository.commit matches",
+            "- real-parity: $parity"
+          )
+          if ($env:DRY_RUN -eq 'true') { $lines += 'dry run: every check passed; nothing was pushed' }
+          $lines | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+  publish:
+    needs: verify
+    if: needs.verify.outputs.dry_run == 'false'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: nuget
+    permissions:
+      contents: read
+      actions: read
       id-token: write
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -19,64 +234,16 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Check tag matches <Version>
-        run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
-          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
-          if ($version -ne $tagVersion) {
-            throw "Tag $env:GITHUB_REF_NAME does not match <Version>$version</Version> in src/Lurp.csproj."
-          }
-          Write-Host "Tag $env:GITHUB_REF_NAME matches <Version>$version</Version>."
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Check for vulnerable packages
+      - name: Download the verified nupkg
         shell: pwsh
+        env:
+          RUN_ID: ${{ needs.verify.outputs.run_id }}
+          DIGEST: ${{ needs.verify.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $json = dotnet package list --vulnerable --include-transitive --format json
-          if ($LASTEXITCODE -ne 0) { throw "dotnet package list failed with exit code $LASTEXITCODE." }
-          $list = $json | ConvertFrom-Json
-          $hits = @($list.projects | ForEach-Object { $_.frameworks } | ForEach-Object {
-            @($_.topLevelPackages) + @($_.transitivePackages) } |
-            Where-Object { $_ -and $_.vulnerabilities -and $_.vulnerabilities.Count -gt 0 })
-          if ($hits.Count -gt 0) {
-            $hits | ForEach-Object { Write-Host "::error::$($_.id) $($_.resolvedVersion) has known vulnerabilities." }
-            exit 1
-          }
-          Write-Host "No vulnerable packages."
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: dotnet test --no-build --configuration Release --settings tests/full.runsettings
-
-      - name: Pack global tool
-        run: dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
-
-      - name: Verify nupkg repository.commit matches the tag SHA
-        run: |
-          $tagSha = (git rev-parse HEAD).Trim()
-          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($pkg.FullName)
-          try {
-            $entry = $zip.Entries | Where-Object { $_.FullName -like '*.nuspec' } | Select-Object -First 1
-            $reader = New-Object System.IO.StreamReader($entry.Open())
-            try {
-              [xml]$nuspec = $reader.ReadToEnd()
-            } finally {
-              $reader.Dispose()
-            }
-          } finally {
-            $zip.Dispose()
-          }
-          $commit = [string]$nuspec.package.metadata.repository.commit
-          if ($commit -ne $tagSha) {
-            throw "nupkg repository.commit '$commit' does not match tag SHA '$tagSha'."
-          }
-          Write-Host "nupkg repository.commit $commit matches tag SHA."
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Get-CiNupkg -RunId $env:RUN_ID -Destination ./artifacts
+          if ($pkg.Digest -ne $env:DIGEST) { throw "nupkg digest $($pkg.Digest) does not match the verified digest $env:DIGEST." }
 
       - name: NuGet login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
@@ -84,36 +251,72 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # No --skip-duplicate: a version that is already listed fails here.
       - name: Push to NuGet
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
-          dotnet nuget push $pkg.FullName --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+          dotnet nuget push $pkg.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+          if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed with exit code $LASTEXITCODE." }
 
-      - name: Verify published catalog entry
+      - name: Verify the published catalog entry
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          SHA: ${{ needs.verify.outputs.sha }}
         run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
-          $tagSha = (git rev-parse HEAD).Trim()
-          $leafUrl = "https://api.nuget.org/v3/registration5-semver1/lurp/$version.json"
-          $deadline = (Get-Date).AddMinutes(15)
-          while ($true) {
-            try {
-              $leaf = Invoke-RestMethod -Uri $leafUrl -TimeoutSec 30
-              $catalog = Invoke-RestMethod -Uri $leaf.catalogEntry -TimeoutSec 30
-              $commit = [string]$catalog.repository.commit
-              if ($commit -eq $tagSha) {
-                Write-Host "nuget.org catalog repository.commit $commit matches tag SHA."
-                break
-              }
-              throw "nuget.org catalog repository.commit '$commit' does not match tag SHA '$tagSha'."
-            } catch {
-              if ((Get-Date) -ge $deadline) { throw }
-              Write-Host "Catalog entry not ready or mismatched ($($_.Exception.Message)); retrying in 20s."
-              Start-Sleep -Seconds 20
-            }
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          Wait-CatalogCommit $env:VERSION $env:SHA
+
+  github-release:
+    needs: [verify, publish]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          path: target
+
+      - name: Download the verified nupkg
+        shell: pwsh
+        env:
+          RUN_ID: ${{ needs.verify.outputs.run_id }}
+          DIGEST: ${{ needs.verify.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Get-CiNupkg -RunId $env:RUN_ID -Destination ./artifacts
+          if ($pkg.Digest -ne $env:DIGEST) { throw "nupkg digest $($pkg.Digest) does not match the verified digest $env:DIGEST." }
+
+      - name: Write the release body
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          OVERRIDE_USED: ${{ needs.verify.outputs.override_used }}
+          OVERRIDE_REASON: ${{ inputs.override_reason }}
+        run: |
+          $prefix = ''
+          if ($env:OVERRIDE_USED -eq 'true') {
+            $reason = $env:OVERRIDE_REASON -replace '\s+', ' '
+            $prefix = "> Published without a recorded real-parity pass. Reason: $reason`n`n"
           }
+          $notes = Get-Content "target/docs/RELEASE_NOTES_$env:VERSION.md" -Raw
+          ($prefix + $notes) | Set-Content -Encoding utf8NoBOM "$env:RUNNER_TEMP/release-body.md"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
+          tag_name: ${{ needs.verify.outputs.tag }}
+          body_path: ${{ runner.temp }}/release-body.md
           files: ./artifacts/*.nupkg
-          generate_release_notes: true
+          fail_on_unmatched_files: true
+          generate_release_notes: false

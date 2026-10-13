@@ -8,7 +8,8 @@ internal sealed class HarnessOptions
         "usage: dotnet run --project scripts/perf/harness -c Release -- " +
         "--fixture=<generated dir> | --solution=<path to .sln/.slnx> --work=<dir> --out=<result.json> " +
         "[--protocol=gate] [--runs=5] [--warmup=1] [--anchors=<json>] [--lurp-cmd=\"<exe and leading args>\"] [--keep-work]\n" +
-        "       dotnet run --project scripts/perf/harness -c Release -- --evaluate=<4x.json>,<16x.json> [--max-ratio=5] [--summary=<file>]";
+        "       dotnet run --project scripts/perf/harness -c Release -- --evaluate=<4x.json>,<16x.json> [--max-ratio=5] [--summary=<file>]\n" +
+        "       dotnet run --project scripts/perf/harness -c Release -- --baseline=<baseline.json> --candidate=<result.json> [--summary=<file>]";
 
     public string Work { get; private set; } = "";
 
@@ -23,6 +24,10 @@ internal sealed class HarnessOptions
     public string? LurpCmd { get; private set; }
 
     public string? Evaluate { get; private set; }
+
+    public string? Baseline { get; private set; }
+
+    public string? Candidate { get; private set; }
 
     public string? Summary { get; private set; }
 
@@ -65,6 +70,10 @@ internal sealed class HarnessOptions
                 options.LurpCmd = lurpCmd;
             else if (TryValue(arg, "--evaluate=", out var evaluate))
                 options.Evaluate = evaluate;
+            else if (TryValue(arg, "--baseline=", out var baseline))
+                options.Baseline = baseline;
+            else if (TryValue(arg, "--candidate=", out var candidate))
+                options.Candidate = candidate;
             else if (TryValue(arg, "--max-ratio=", out var maxRatio))
                 maxRatioRaw = maxRatio;
             else if (TryValue(arg, "--summary=", out var summary))
@@ -73,6 +82,22 @@ internal sealed class HarnessOptions
                 options.KeepWork = true;
             else
                 throw new HarnessError($"unknown argument '{arg}'.");
+        }
+
+        if ((options.Baseline == null) != (options.Candidate == null))
+            throw new HarnessError("--baseline and --candidate must be given together.");
+
+        if (options.Baseline != null)
+        {
+            if (options.Evaluate != null)
+                throw new HarnessError("--baseline cannot be combined with --evaluate.");
+            if (options.Fixture != null || options.Solution != null || !string.IsNullOrEmpty(options.Work) || !string.IsNullOrEmpty(options.Out)
+                || options.AnchorsPath != null || options.LurpCmd != null || options.KeepWork
+                || runsRaw != null || warmupRaw != null || protocolRaw != null)
+                throw new HarnessError("--baseline cannot be combined with run options (--fixture, --solution, --work, --out, --anchors, --lurp-cmd, --keep-work, --protocol, --runs, --warmup).");
+            if (maxRatioRaw != null)
+                throw new HarnessError("--max-ratio is only valid together with --evaluate.");
+            return options;
         }
 
         if (options.Evaluate != null)
@@ -89,7 +114,7 @@ internal sealed class HarnessOptions
         if (maxRatioRaw != null)
             throw new HarnessError("--max-ratio is only valid together with --evaluate.");
         if (options.Summary != null)
-            throw new HarnessError("--summary is only valid together with --evaluate.");
+            throw new HarnessError("--summary is only valid together with --evaluate or --baseline.");
 
         if (runsRaw != null)
             options.Runs = ParseInt("--runs", runsRaw);

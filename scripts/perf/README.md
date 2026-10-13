@@ -117,6 +117,46 @@ dotnet run --project scripts/perf/harness -c Release -- --evaluate=C:\perf\resul
 `--max-ratio=<n>` sets the limit (default 5). `--summary` writes the markdown report
 to a file. Without `--summary` the report goes to stdout only.
 
+## Baseline gate
+
+The baseline gate compares a candidate result file against a committed baseline result file
+for the same solution. The baseline is a harness result file (the `--out` output); it is not a
+new format.
+
+Run it by hand:
+
+```powershell
+dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baselines\win25.json --candidate=C:\perf\results\enotev2.json --summary=C:\perf\results\baseline-summary.md
+```
+
+The limits, all inclusive (a value exactly at the limit passes):
+
+- Memory: a candidate peak above 1.25x the baseline peak fails, for every operation.
+- Interactive read memory: a candidate peak above 300 MB fails for `impact.*`, `context.*`,
+  `search`, `grep` and `find_symbol`. Index, incremental, diff, dead-candidates, freshness and
+  MCP status operations are not under this cap; the 1.25x rule covers them.
+- Time: a candidate wall above 1.25x the baseline wall warns, for every operation.
+- Time caps (warnings): `impact.*.d6.*` above 2,000 ms, `context.*` above 3,000 ms, `search`
+  above 500 ms.
+- The gate fails on missing data, on a skip that is not a documented solution-only skip, on a
+  missing measured `impact.*` or `context.*` operation, and when `solution_commit` differs
+  between the two files or is missing.
+
+The baseline key is the runner OS only (`ImageOS`, for example `win25`), so
+`perf/baselines/win25.json`. `ImageVersion` changes about once a week on hosted runners; a
+different image only warns. A new runner OS (for example a move from `win22` to `win25`) has no
+baseline and fails until one is committed.
+
+When `perf/baselines/<ImageOS>.json` does not exist, the gate runs the candidate as its own
+baseline (memory ratios are 1.00, so only the 300 MB cap and the time caps can show), prints
+the result, and then fails with the commit instruction.
+
+To take a new baseline: download the `perf-enotev2` artifact from a `real-parity.yml` run,
+review the `enotev2.json` it holds, and commit it as `perf/baselines/<ImageOS>.json` in its own
+commit.
+
+Exit codes: 0 = pass (warnings are allowed), 1 = gate failed, 2 = usage or data error.
+
 ## Result JSON (`--out`)
 
 ```jsonc
@@ -128,6 +168,8 @@ to a file. Without `--summary` the report goes to stdout only.
   "repo_dirty": true,                  // `git status --short` non-empty
   "os": "Microsoft Windows 10.0.26300",
   "runner_image": "20251001.1",        // env ImageVersion, null locally
+  "runner_os": "win25",                // env ImageOS, null locally
+  "solution_commit": "4ba9901a...",     // `git rev-parse HEAD` of the solution directory; null for --fixture
   "fixture": { ...perf-manifest.json..., "path": "C:\\perf\\4x" },  // null for --solution
   "solution": "C:\\src\\My.sln",       // null for --fixture
   "work_dir": "...", "run_dir": "...", // run_dir holds this invocation's output dirs

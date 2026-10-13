@@ -19,10 +19,10 @@ internal static class GateEvaluator
     // Skip reasons only --solution runs produce (see Program.cs); they carry no measurement and do not fail the gate.
     private static readonly string[] SolutionOnlySkipReasons =
     [
-        "--solution runs never edit files",
-        "--solution runs never touch files",
-        "no anchors available",
-        "no anchors available (pass --anchors for --solution runs)"
+        SkipReasons.NeverEdits,
+        SkipReasons.NeverTouches,
+        SkipReasons.NoAnchors,
+        SkipReasons.NoAnchorsPassAnchors
     ];
 
     public static int Evaluate(HarnessOptions options)
@@ -35,8 +35,8 @@ internal static class GateEvaluator
         var path16 = parts[1].Trim();
         var maxRatio = options.MaxRatio;
 
-        var root4 = ReadResult(path4);
-        var root16 = ReadResult(path16);
+        var root4 = ResultFile.ReadResult(path4);
+        var root16 = ResultFile.ReadResult(path16);
 
         var fileFailures = new List<string>();
         var gateFailures = 0;
@@ -49,22 +49,22 @@ internal static class GateEvaluator
         if (protocol16 != "gate")
             fileFailures.Add($"{path16}: protocol is '{protocol16 ?? "null"}', expected 'gate'");
 
-        var runs4 = ReadInt(root4, "runs");
-        var runs16 = ReadInt(root16, "runs");
+        var runs4 = ResultFile.ReadInt(root4, "runs");
+        var runs16 = ResultFile.ReadInt(root16, "runs");
         if (runs4 == null || runs16 == null)
             fileFailures.Add("runs is missing in one of the result files");
         else if (runs4 != runs16)
             fileFailures.Add($"runs differ between the two files: 4x has {runs4}, 16x has {runs16}");
 
-        var warmup4 = ReadInt(root4, "warmup");
-        var warmup16 = ReadInt(root16, "warmup");
+        var warmup4 = ResultFile.ReadInt(root4, "warmup");
+        var warmup16 = ResultFile.ReadInt(root16, "warmup");
         if (warmup4 == null || warmup16 == null)
             fileFailures.Add("warmup is missing in one of the result files");
         else if (warmup4 != warmup16)
             fileFailures.Add($"warmup differs between the two files: 4x has {warmup4}, 16x has {warmup16}");
 
-        var ops4 = ReadOperations(path4, root4);
-        var ops16 = ReadOperations(path16, root16);
+        var ops4 = ResultFile.ReadOperations(path4, root4);
+        var ops16 = ResultFile.ReadOperations(path16, root16);
 
         var rows = new List<string>();
         var excluded = new List<string>();
@@ -87,22 +87,22 @@ internal static class GateEvaluator
                 continue;
             }
 
-            if (ReadFailed(op4))
+            if (ResultFile.ReadFailed(op4))
             {
                 rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in 4x result) |");
                 gateFailures++;
                 continue;
             }
 
-            if (ReadFailed(op16))
+            if (ResultFile.ReadFailed(op16))
             {
                 rows.Add($"| {name} | - | - | - | - | - | - | FAIL (failed in 16x result) |");
                 gateFailures++;
                 continue;
             }
 
-            var skip4 = ReadSkipped(op4, out var reason4);
-            var skip16 = ReadSkipped(op16, out var reason16);
+            var skip4 = ResultFile.ReadSkipped(op4, out var reason4);
+            var skip16 = ResultFile.ReadSkipped(op16, out var reason16);
             if (skip4 && !IsSolutionOnlySkip(reason4))
             {
                 rows.Add($"| {name} | - | - | - | - | - | - | FAIL (skipped in 4x result: {reason4}) |");
@@ -123,14 +123,14 @@ internal static class GateEvaluator
                 continue;
             }
 
-            if (!TryReadMedian(op4, out var wall4, out var peak4))
+            if (!ResultFile.TryReadMedian(op4, out var wall4, out var peak4))
             {
                 rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in 4x result) |");
                 gateFailures++;
                 continue;
             }
 
-            if (!TryReadMedian(op16, out var wall16, out var peak16))
+            if (!ResultFile.TryReadMedian(op16, out var wall16, out var peak16))
             {
                 rows.Add($"| {name} | - | - | - | - | - | - | FAIL (median missing or null in 16x result) |");
                 gateFailures++;
@@ -139,14 +139,14 @@ internal static class GateEvaluator
 
             if (wall4 <= 0 || peak4 <= 0)
             {
-                rows.Add($"| {name} | {Format(wall4)} | - | - | {Format(peak4)} | - | - | FAIL (median is 0 in 4x result) |");
+                rows.Add($"| {name} | {ResultFile.Format(wall4)} | - | - | {ResultFile.Format(peak4)} | - | - | FAIL (median is 0 in 4x result) |");
                 gateFailures++;
                 continue;
             }
 
             if (wall16 <= 0 || peak16 <= 0)
             {
-                rows.Add($"| {name} | - | {Format(wall16)} | - | - | {Format(peak16)} | - | FAIL (median is 0 in 16x result) |");
+                rows.Add($"| {name} | - | {ResultFile.Format(wall16)} | - | - | {ResultFile.Format(peak16)} | - | FAIL (median is 0 in 16x result) |");
                 gateFailures++;
                 continue;
             }
@@ -157,11 +157,11 @@ internal static class GateEvaluator
             var reasons = new List<string>();
             var warn = false;
             if (memoryRatio > maxRatio)
-                reasons.Add($"memory ratio {FormatRatio(memoryRatio)} > {FormatRatio(maxRatio)}");
+                reasons.Add($"memory ratio {ResultFile.FormatRatio(memoryRatio)} > {ResultFile.FormatRatio(maxRatio)}");
             if (timeRatio > maxRatio)
             {
                 if (timeFails)
-                    reasons.Add($"time ratio {FormatRatio(timeRatio)} > {FormatRatio(maxRatio)}");
+                    reasons.Add($"time ratio {ResultFile.FormatRatio(timeRatio)} > {ResultFile.FormatRatio(maxRatio)}");
                 else
                     warn = true;
             }
@@ -171,7 +171,7 @@ internal static class GateEvaluator
             if (reasons.Count > 0)
                 gateFailures++;
             var verdict = reasons.Count > 0 ? $"FAIL ({string.Join("; ", reasons)})" : warn ? "WARN" : "PASS";
-            rows.Add($"| {name} | {Format(wall4)} | {Format(wall16)} | {FormatRatio(timeRatio)} | {Format(peak4)} | {Format(peak16)} | {FormatRatio(memoryRatio)} | {verdict} |");
+            rows.Add($"| {name} | {ResultFile.Format(wall4)} | {ResultFile.Format(wall16)} | {ResultFile.FormatRatio(timeRatio)} | {ResultFile.Format(peak4)} | {ResultFile.Format(peak16)} | {ResultFile.FormatRatio(memoryRatio)} | {verdict} |");
         }
 
         var report = new StringBuilder();
@@ -193,83 +193,10 @@ internal static class GateEvaluator
         var verdictLine = gateFailures + fileFailures.Count > 0 ? "FAIL" : "PASS";
         report.AppendLine(CultureInfo.InvariantCulture, $"gate verdict: {verdictLine} ({gateFailures + fileFailures.Count} failure(s), {warnings} warning(s))");
 
-        Console.Write(report.ToString());
-
-        if (options.Summary != null)
-        {
-            var summaryPath = Path.GetFullPath(options.Summary);
-            var parent = Path.GetDirectoryName(summaryPath);
-            if (!string.IsNullOrEmpty(parent))
-                Directory.CreateDirectory(parent);
-            File.WriteAllText(summaryPath, report.ToString(), new UTF8Encoding(false));
-            Console.WriteLine($"gate summary written: {summaryPath}");
-        }
+        ResultFile.WriteReport(report.ToString(), options.Summary);
 
         return gateFailures + fileFailures.Count > 0 ? 1 : 0;
     }
 
-    private static string Format(double value) => value.ToString("F0", CultureInfo.InvariantCulture);
-
-    private static string FormatRatio(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
-
     private static bool IsSolutionOnlySkip(string reason) => SolutionOnlySkipReasons.Contains(reason);
-
-    private static JsonObject ReadResult(string path)
-    {
-        if (!File.Exists(path))
-            throw new HarnessError($"result file '{path}' does not exist.");
-        return JsonTools.TryParseObject(File.ReadAllText(path))
-               ?? throw new HarnessError($"'{path}' is not readable JSON.");
-    }
-
-    private static Dictionary<string, JsonObject> ReadOperations(string path, JsonObject root)
-    {
-        if (root["operations"] is not JsonArray array)
-            throw new HarnessError($"'{path}' has no operations array.");
-        var operations = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
-        foreach (var node in array)
-        {
-            if (node is not JsonObject op)
-                throw new HarnessError($"'{path}' has a non-object entry in operations.");
-            var name = JsonTools.GetString(op, "name");
-            if (string.IsNullOrEmpty(name))
-                throw new HarnessError($"'{path}' has an operation entry without a name.");
-            if (operations.ContainsKey(name))
-                throw new HarnessError($"'{path}' has duplicate operation '{name}'.");
-            operations[name] = op;
-        }
-
-        return operations;
-    }
-
-    private static int? ReadInt(JsonObject root, string key)
-        => root[key] is JsonValue value && value.TryGetValue<int>(out var result) ? result : null;
-
-    private static bool ReadFailed(JsonObject op)
-        => op["failed"] is JsonValue value && value.TryGetValue<bool>(out var failed) && failed;
-
-    private static bool ReadSkipped(JsonObject op, out string reason)
-    {
-        reason = "";
-        if (op["skipped"] is JsonValue value && value.TryGetValue<bool>(out var skipped) && skipped)
-        {
-            reason = JsonTools.GetString(op, "skip_reason") ?? "";
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryReadMedian(JsonObject op, out double wallMs, out double peakMb)
-    {
-        wallMs = 0;
-        peakMb = 0;
-        if (op["median"] is not JsonObject median)
-            return false;
-        if (median["wall_ms"] is not JsonValue wall || !wall.TryGetValue<double>(out wallMs))
-            return false;
-        if (median["peak_working_set_mb"] is not JsonValue peak || !peak.TryGetValue<double>(out peakMb))
-            return false;
-        return true;
-    }
 }

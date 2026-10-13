@@ -7,7 +7,12 @@
       "path": "eNote",
       "solution": "eNote.sln",
       "seed": 12345,
-      "sample": 200
+      "sample": 200,
+      "anchors": {
+        "upstream_wide": "eNote.Application.Common.Persistence.IAppDbContext.SaveChangesAsync",
+        "downstream_wide": "eNote.Application.Features.Rentals.InstrumentRentals.Services.RentalCommandService.CreateRequestAsync",
+        "middle": "eNote.Application.Features.Rentals.InstrumentRentals.StateMachine.RentalStateMachine.Fire"
+      }
     }
   ]
 }

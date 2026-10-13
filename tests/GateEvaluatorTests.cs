@@ -156,9 +156,9 @@ public sealed class GateEvaluatorTests : IDisposable
     {
         var path4 = Path.Combine(_tempDir, "4x.json");
         File.WriteAllText(path4, "{not json");
-        var path16 = WriteResult("16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
 
-        var (code, _, _) = RunHarness([$"--evaluate={path4},{path16}"]);
+        var (code, _, _) = PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}"]);
 
         Assert.Equal(2, code);
     }
@@ -230,11 +230,11 @@ public sealed class GateEvaluatorTests : IDisposable
     [Fact]
     public void SummaryFile_MatchesStdout()
     {
-        var path4 = WriteResult("4x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))));
-        var path16 = WriteResult("16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
+        var path4 = PerfHarnessResults.WriteResult(_tempDir, "4x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op4(name))));
+        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", Result("gate", 5, 3, ComparedOperations.Select(name => Op16(name))));
         var summaryPath = Path.Combine(_tempDir, "gate-summary.md");
 
-        var (code, stdout, _) = RunHarness([$"--evaluate={path4},{path16}", $"--summary={summaryPath}"]);
+        var (code, stdout, _) = PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}", $"--summary={summaryPath}"]);
 
         Assert.Equal(0, code);
         var summary = File.ReadAllText(summaryPath);
@@ -245,50 +245,19 @@ public sealed class GateEvaluatorTests : IDisposable
     [Fact]
     public void EvaluateOptionsWithoutEvaluate_Return2()
     {
-        var (code1, _, _) = RunHarness(["--max-ratio=3"]);
+        var (code1, _, _) = PerfHarnessResults.RunHarness(["--max-ratio=3"]);
         Assert.Equal(2, code1);
 
-        var (code2, _, _) = RunHarness([$"--summary={Path.Combine(_tempDir, "summary.md")}"]);
+        var (code2, _, _) = PerfHarnessResults.RunHarness([$"--summary={Path.Combine(_tempDir, "summary.md")}"]);
         Assert.Equal(2, code2);
     }
 
     private (int Code, string Stdout, string Stderr) RunEvaluate(JsonObject result4, JsonObject result16, params string[] extraArgs)
     {
-        var path4 = WriteResult("4x.json", result4);
-        var path16 = WriteResult("16x.json", result16);
-        return RunHarness([$"--evaluate={path4},{path16}", .. extraArgs]);
+        var path4 = PerfHarnessResults.WriteResult(_tempDir, "4x.json", result4);
+        var path16 = PerfHarnessResults.WriteResult(_tempDir, "16x.json", result16);
+        return PerfHarnessResults.RunHarness([$"--evaluate={path4},{path16}", .. extraArgs]);
     }
-
-    private string WriteResult(string fileName, JsonObject result)
-    {
-        var path = Path.Combine(_tempDir, fileName);
-        File.WriteAllText(path, result.ToJsonString());
-        return path;
-    }
-
-    private static (int Code, string Stdout, string Stderr) RunHarness(string[] args)
-    {
-        var harnessDll = Path.Combine(AppContext.BaseDirectory, "harness.dll");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = string.Join(" ", new[] { harnessDll }.Concat(args).Select(Quote)),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.Environment["DOTNET_NOLOGO"] = "1";
-        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-
-        using var process = Process.Start(startInfo)!;
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        process.WaitForExit();
-        return (process.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
-    }
-
-    private static string Quote(string arg) => arg.Contains(' ') ? $"\"{arg}\"" : arg;
 
     private static JsonObject Result(string protocol, int runs, int warmup, IEnumerable<JsonObject> operations)
     {
@@ -307,22 +276,8 @@ public sealed class GateEvaluatorTests : IDisposable
 
     // Base medians: 4x = 100 ms / 50 MB, 16x = 300 ms / 150 MB, so every ratio is 3.
     private static JsonObject Op4(string name, double wallMs = 100, double peakMb = 50, bool failed = false, bool skipped = false, string? skipReason = null)
-        => Operation(name, wallMs, peakMb, failed, skipped, skipReason);
+        => PerfHarnessResults.Operation(name, wallMs, peakMb, failed, skipped, skipReason);
 
     private static JsonObject Op16(string name, double wallMs = 300, double peakMb = 150, bool skipped = false, string? skipReason = null)
-        => Operation(name, wallMs, peakMb, skipped: skipped, skipReason: skipReason);
-
-    private static JsonObject Operation(string name, double wallMs, double peakMb, bool failed = false, bool skipped = false, string? skipReason = null)
-        => new()
-        {
-            ["name"] = name,
-            ["skipped"] = skipped,
-            ["skip_reason"] = skipReason,
-            ["failed"] = failed,
-            ["median"] = new JsonObject
-            {
-                ["wall_ms"] = wallMs,
-                ["peak_working_set_mb"] = peakMb
-            }
-        };
+        => PerfHarnessResults.Operation(name, wallMs, peakMb, skipped: skipped, skipReason: skipReason);
 }

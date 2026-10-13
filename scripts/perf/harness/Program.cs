@@ -49,6 +49,9 @@ internal static class Program
 
     private static int Execute(HarnessOptions options)
     {
+        if (options.Baseline != null)
+            return BaselineEvaluator.Evaluate(options);
+
         if (options.Evaluate != null)
             return GateEvaluator.Evaluate(options);
 
@@ -110,6 +113,7 @@ internal static class Program
         var toolVersion = ReadToolVersion(toolArgv);
         var (repoCommit, repoDirty) = ReadRepoState(repoRoot);
         var runnerImage = Environment.GetEnvironmentVariable("ImageVersion");
+        var solutionCommit = fixtureRoot == null ? ReadHeadCommit(Path.GetDirectoryName(solutionPath)!) : null;
 
         Console.WriteLine($"lurp perf harness: tool = {string.Join(" ", toolArgv)}");
         Console.WriteLine($"lurp perf harness: {(fixtureRoot != null ? $"fixture = {fixtureRoot}" : $"solution = {solutionPath}")}");
@@ -129,7 +133,7 @@ internal static class Program
         {
             Console.Error.WriteLine($"ERROR: the full index left no readable snapshot in '{primaryDir}'; every dependent operation is skipped.");
             AddAllSkipped(operations, anchors, fixtureRoot != null, "the full index produced no readable snapshot");
-            WriteOutput(outPath, options, toolArgv, toolVersion, repoCommit, repoDirty, runnerImage, fixtureManifest, fixtureRoot, solutionPath, workDir, runDir, startedAt, operations);
+            WriteOutput(outPath, options, toolArgv, toolVersion, repoCommit, repoDirty, runnerImage, solutionCommit, fixtureManifest, fixtureRoot, solutionPath, workDir, runDir, startedAt, operations);
             PrintSummary(operations);
             return 1;
         }
@@ -149,7 +153,7 @@ internal static class Program
         }
         else
         {
-            var editReason = fixtureRoot == null ? "--solution runs never edit files" : "no edit_document anchor";
+            var editReason = fixtureRoot == null ? SkipReasons.NeverEdits : "no edit_document anchor";
             operations.Add(Skipped("incremental_1_file", null, editReason));
             operations.Add(Skipped("incremental_20_files", null, editReason));
         }
@@ -159,7 +163,7 @@ internal static class Program
 
         if (anchors == null)
         {
-            AddAnchorSkipped(operations, "no anchors available (pass --anchors for --solution runs)");
+            AddAnchorSkipped(operations, SkipReasons.NoAnchorsPassAnchors);
         }
         else
         {
@@ -190,9 +194,9 @@ internal static class Program
 
         if (anchors == null)
         {
-            operations.Add(Skipped("search", null, "no anchors available"));
-            operations.Add(Skipped("grep", null, "no anchors available"));
-            operations.Add(Skipped("find_symbol", null, "no anchors available"));
+            operations.Add(Skipped("search", null, SkipReasons.NoAnchors));
+            operations.Add(Skipped("grep", null, SkipReasons.NoAnchors));
+            operations.Add(Skipped("find_symbol", null, SkipReasons.NoAnchors));
         }
         else
         {
@@ -211,8 +215,8 @@ internal static class Program
 
         if (anchors == null)
         {
-            operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, "no anchors available"));
-            operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, "no anchors available"));
+            operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, SkipReasons.NoAnchors));
+            operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, SkipReasons.NoAnchors));
         }
         else
         {
@@ -228,20 +232,20 @@ internal static class Program
         // The mtime touch must come last so no other operation sees touched files.
         if (fixtureRoot == null)
         {
-            operations.Add(Skipped("find_symbol.freshness_auto_touched", null, "--solution runs never touch files"));
-            operations.Add(Skipped("find_symbol.freshness_hash_touched", null, "--solution runs never touch files"));
+            operations.Add(Skipped("find_symbol.freshness_auto_touched", null, SkipReasons.NeverTouches));
+            operations.Add(Skipped("find_symbol.freshness_hash_touched", null, SkipReasons.NeverTouches));
         }
         else if (anchors == null)
         {
-            operations.Add(Skipped("find_symbol.freshness_auto_touched", null, "no anchors available"));
-            operations.Add(Skipped("find_symbol.freshness_hash_touched", null, "no anchors available"));
+            operations.Add(Skipped("find_symbol.freshness_auto_touched", null, SkipReasons.NoAnchors));
+            operations.Add(Skipped("find_symbol.freshness_hash_touched", null, SkipReasons.NoAnchors));
         }
         else
         {
             session.FreshnessTouchedOps(session.AnchorFqn("middle")!, primaryDir);
         }
 
-        WriteOutput(outPath, options, toolArgv, toolVersion, repoCommit, repoDirty, runnerImage, fixtureManifest, fixtureRoot, solutionPath, workDir, runDir, startedAt, operations);
+        WriteOutput(outPath, options, toolArgv, toolVersion, repoCommit, repoDirty, runnerImage, solutionCommit, fixtureManifest, fixtureRoot, solutionPath, workDir, runDir, startedAt, operations);
         PrintSummary(operations);
         return session.AnyFailure ? 1 : 0;
     }
@@ -306,18 +310,18 @@ internal static class Program
     private static void AddAllSkipped(List<OperationRecord> operations, AnchorSet? anchors, bool fixturePresent, string reason)
     {
         operations.Add(Skipped("noop_incremental", null, reason));
-        var editReason = fixturePresent ? reason : "--solution runs never edit files";
+        var editReason = fixturePresent ? reason : SkipReasons.NeverEdits;
         operations.Add(Skipped("incremental_1_file", null, editReason));
         operations.Add(Skipped("incremental_20_files", null, editReason));
-        AddAnchorSkipped(operations, anchors == null ? "no anchors available (pass --anchors for --solution runs)" : reason);
-        operations.Add(Skipped("search", null, anchors == null ? "no anchors available" : reason));
-        operations.Add(Skipped("grep", null, anchors == null ? "no anchors available" : reason));
-        operations.Add(Skipped("find_symbol", null, anchors == null ? "no anchors available" : reason));
+        AddAnchorSkipped(operations, anchors == null ? SkipReasons.NoAnchorsPassAnchors : reason);
+        operations.Add(Skipped("search", null, anchors == null ? SkipReasons.NoAnchors : reason));
+        operations.Add(Skipped("grep", null, anchors == null ? SkipReasons.NoAnchors : reason));
+        operations.Add(Skipped("find_symbol", null, anchors == null ? SkipReasons.NoAnchors : reason));
         operations.Add(Skipped("diff", null, reason));
-        operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, anchors == null ? "no anchors available" : reason));
-        operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, anchors == null ? "no anchors available" : reason));
-        operations.Add(Skipped("find_symbol.freshness_auto_touched", null, fixturePresent ? reason : "--solution runs never touch files"));
-        operations.Add(Skipped("find_symbol.freshness_hash_touched", null, fixturePresent ? reason : "--solution runs never touch files"));
+        operations.Add(Skipped("find_symbol.freshness_auto_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
+        operations.Add(Skipped("find_symbol.freshness_hash_untouched", null, anchors == null ? SkipReasons.NoAnchors : reason));
+        operations.Add(Skipped("find_symbol.freshness_auto_touched", null, fixturePresent ? reason : SkipReasons.NeverTouches));
+        operations.Add(Skipped("find_symbol.freshness_hash_touched", null, fixturePresent ? reason : SkipReasons.NeverTouches));
         operations.Add(Skipped("dead_candidates", null, reason));
         operations.Add(Skipped("mcp_status.default", null, reason));
         operations.Add(Skipped("mcp_status.full", null, reason));
@@ -393,6 +397,12 @@ internal static class Program
         return (commit, dirty);
     }
 
+    private static string? ReadHeadCommit(string directory)
+    {
+        var head = ProcessRunner.Run(["git", "-C", directory, "rev-parse", "HEAD"], 60 * 1000);
+        return head.ExitCode == 0 && !head.TimedOut ? head.Stdout.Trim() : null;
+    }
+
     private static AnchorSet ReadAnchors(JsonObject source, bool requireEditDocument)
     {
         var anchors = source["anchors"] as JsonObject ?? source;
@@ -415,6 +425,7 @@ internal static class Program
         string? repoCommit,
         bool? repoDirty,
         string? runnerImage,
+        string? solutionCommit,
         JsonObject? fixtureManifest,
         string? fixtureRoot,
         string solutionPath,
@@ -435,6 +446,8 @@ internal static class Program
             ["repo_dirty"] = repoDirty,
             ["os"] = RuntimeInformation.OSDescription,
             ["runner_image"] = runnerImage,
+            ["runner_os"] = Environment.GetEnvironmentVariable("ImageOS"),
+            ["solution_commit"] = solutionCommit,
             ["fixture"] = fixtureManifest,
             ["solution"] = fixtureManifest == null ? solutionPath : null,
             ["work_dir"] = workDir,

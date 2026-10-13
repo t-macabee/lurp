@@ -30,20 +30,15 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
+      - name: Release-script checks
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/ci/LurpCi.Tests.ps1
+
       - name: Check for vulnerable packages
         shell: pwsh
         run: |
-          $json = dotnet package list --vulnerable --include-transitive --format json
-          if ($LASTEXITCODE -ne 0) { throw "dotnet package list failed with exit code $LASTEXITCODE." }
-          $list = $json | ConvertFrom-Json
-          $hits = @($list.projects | ForEach-Object { $_.frameworks } | ForEach-Object {
-            @($_.topLevelPackages) + @($_.transitivePackages) } |
-            Where-Object { $_ -and $_.vulnerabilities -and $_.vulnerabilities.Count -gt 0 })
-          if ($hits.Count -gt 0) {
-            $hits | ForEach-Object { Write-Host "::error::$($_.id) $($_.resolvedVersion) has known vulnerabilities." }
-            exit 1
-          }
-          Write-Host "No vulnerable packages."
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          Assert-NoVulnerablePackages
 
       - name: Build
         run: dotnet build --no-restore --configuration Release
@@ -69,6 +64,8 @@ jobs:
           name: lurp-nupkg
           path: ./artifacts/
           if-no-files-found: error
+          # The release promotes this artifact (release.yml); keep it for the longest window GitHub allows.
+          retention-days: 90
 
   # Consumes the nupkg the build job produced and exercises the packed tool end
   # to end (audit Phase 4: B4 packed-tool smoke, A3 runtime-only install check).
@@ -96,13 +93,9 @@ jobs:
       - name: Verify nupkg SHA-256
         shell: pwsh
         run: |
-          $fields = (Get-Content ./artifacts/SHA256SUMS.txt) -split '\s+' | Where-Object { $_ }
-          $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
-          if (-not $pkg) { throw "no nupkg downloaded." }
-          $actual = (Get-FileHash $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $fields[0]) { throw "SHA-256 mismatch: expected $($fields[0]), got $actual." }
-          if ($pkg.Name -ne $fields[1]) { throw "artifact name mismatch: $($pkg.Name) vs $($fields[1])." }
-          Write-Host "SHA-256 verified: $actual"
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Assert-NupkgDigest ./artifacts
+          Write-Host "SHA-256 verified: $($pkg.Digest)"
 
       # The tool itself is installed with the SDK; the runtime-only step below
       # then runs the installed tool with DOTNET_ROOT/PATH pointed at a runtime
