@@ -1,0 +1,2626 @@
+{
+  "schema_version": 1,
+  "tool_cmd": "D:/a/lurp/lurp/t/lurp.exe",
+  "tool_version": "lurp 2.0.0",
+  "repo_commit": "da7df22",
+  "repo_dirty": true,
+  "os": "Microsoft Windows 10.0.26100",
+  "runner_image": "20260925.250.1",
+  "runner_os": "win25-vs2026",
+  "solution_commit": "4ba9901a527b12978d3d86996026ce16fe2475e1",
+  "fixture": null,
+  "solution": "D:\\a\\_temp\\eNoteV2\\eNote\\eNote.sln",
+  "work_dir": "D:\\a\\_temp\\perf-work",
+  "run_dir": "D:\\a\\_temp\\perf-work\\run-20261013-114010-10216",
+  "started_at_utc": "2026-10-13T11:40:10.1853847Z",
+  "finished_at_utc": "2026-10-13T11:45:19.8091888Z",
+  "protocol": "gate",
+  "runs": 5,
+  "warmup": 3,
+  "keep_work": false,
+  "operations": [
+    {
+      "name": "full_index",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 25041,
+          "peak_working_set_mb": 399,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": null,
+          "timings_total_ms": 24732,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2847
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 148
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 25
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 21151
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 496
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 47
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 17
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 399,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 25658,
+          "peak_working_set_mb": 405,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 25345,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 3001
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 147
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 26
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 21597
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 508
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 48
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 17
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 405,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 25006,
+          "peak_working_set_mb": 401,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 24700,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2964
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 157
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 26
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 21007
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 480
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 48
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 17
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 401,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 25213,
+          "peak_working_set_mb": 397,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 24911,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2919
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 148
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 25
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 21269
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 484
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 48
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 17
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 397,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 25314,
+          "peak_working_set_mb": 403,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 25006,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2956
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 147
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 25
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 21321
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 491
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 48
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 17
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 403,
+          "peak_cross_check": "ok",
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 25213,
+        "peak_working_set_mb": 401
+      },
+      "max": {
+        "wall_ms": 25658,
+        "peak_working_set_mb": 405
+      }
+    },
+    {
+      "name": "noop_incremental",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 268,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 266,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 262,
+          "peak_working_set_mb": 49,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 268,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 265,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": 54120448,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 266,
+        "peak_working_set_mb": 50
+      },
+      "max": {
+        "wall_ms": 268,
+        "peak_working_set_mb": 52
+      }
+    },
+    {
+      "name": "incremental_1_file",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never edit files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "incremental_20_files",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never edit files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "impact.upstream.d3.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 265,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 275,
+          "peak_working_set_mb": 47,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 265,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 270,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 265,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 265,
+        "peak_working_set_mb": 46
+      },
+      "max": {
+        "wall_ms": 275,
+        "peak_working_set_mb": 47
+      }
+    },
+    {
+      "name": "impact.upstream.d6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 321,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 318,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 319,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 317,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 326,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 319,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 326,
+        "peak_working_set_mb": 55
+      }
+    },
+    {
+      "name": "impact.downstream.d3.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 233,
+          "peak_working_set_mb": 41,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 234,
+          "peak_working_set_mb": 41,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 229,
+          "peak_working_set_mb": 41,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 235,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 229,
+          "peak_working_set_mb": 41,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 233,
+        "peak_working_set_mb": 41
+      },
+      "max": {
+        "wall_ms": 235,
+        "peak_working_set_mb": 41
+      }
+    },
+    {
+      "name": "impact.downstream.d6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 329,
+          "peak_working_set_mb": 56,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 323,
+          "peak_working_set_mb": 56,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 325,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 327,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 333,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 327,
+        "peak_working_set_mb": 55
+      },
+      "max": {
+        "wall_ms": 333,
+        "peak_working_set_mb": 56
+      }
+    },
+    {
+      "name": "context.default.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 502,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 505,
+          "peak_working_set_mb": 62,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 500,
+          "peak_working_set_mb": 63,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 496,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 565,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 502,
+        "peak_working_set_mb": 61
+      },
+      "max": {
+        "wall_ms": 565,
+        "peak_working_set_mb": 63
+      }
+    },
+    {
+      "name": "context.maxhops6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 725,
+          "peak_working_set_mb": 113,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 732,
+          "peak_working_set_mb": 112,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 746,
+          "peak_working_set_mb": 113,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 746,
+          "peak_working_set_mb": 113,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 822,
+          "peak_working_set_mb": 116,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 746,
+        "peak_working_set_mb": 113
+      },
+      "max": {
+        "wall_ms": 822,
+        "peak_working_set_mb": 116
+      }
+    },
+    {
+      "name": "impact.upstream.d3.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 302,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 286,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 305,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 286,
+          "peak_working_set_mb": 43,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 275,
+          "peak_working_set_mb": 43,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 286,
+        "peak_working_set_mb": 44
+      },
+      "max": {
+        "wall_ms": 305,
+        "peak_working_set_mb": 45
+      }
+    },
+    {
+      "name": "impact.upstream.d6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 309,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 320,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 314,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 312,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 324,
+          "peak_working_set_mb": 51,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 314,
+        "peak_working_set_mb": 53
+      },
+      "max": {
+        "wall_ms": 324,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.downstream.d3.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 274,
+          "peak_working_set_mb": 48,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 273,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 276,
+          "peak_working_set_mb": 48,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 284,
+          "peak_working_set_mb": 47,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 284,
+          "peak_working_set_mb": 46,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 276,
+        "peak_working_set_mb": 47
+      },
+      "max": {
+        "wall_ms": 284,
+        "peak_working_set_mb": 48
+      }
+    },
+    {
+      "name": "impact.downstream.d6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 420,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 387,
+          "peak_working_set_mb": 65,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 391,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 388,
+          "peak_working_set_mb": 67,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 394,
+          "peak_working_set_mb": 65,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 391,
+        "peak_working_set_mb": 66
+      },
+      "max": {
+        "wall_ms": 420,
+        "peak_working_set_mb": 67
+      }
+    },
+    {
+      "name": "context.default.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 488,
+          "peak_working_set_mb": 67,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 495,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 494,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 485,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 496,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 494,
+        "peak_working_set_mb": 66
+      },
+      "max": {
+        "wall_ms": 496,
+        "peak_working_set_mb": 67
+      }
+    },
+    {
+      "name": "context.maxhops6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 718,
+          "peak_working_set_mb": 109,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 723,
+          "peak_working_set_mb": 122,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 720,
+          "peak_working_set_mb": 111,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 709,
+          "peak_working_set_mb": 109,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 711,
+          "peak_working_set_mb": 110,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 718,
+        "peak_working_set_mb": 110
+      },
+      "max": {
+        "wall_ms": 723,
+        "peak_working_set_mb": 122
+      }
+    },
+    {
+      "name": "impact.upstream.d3.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 238,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 277,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 273,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 279,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 246,
+          "peak_working_set_mb": 42,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 273,
+        "peak_working_set_mb": 42
+      },
+      "max": {
+        "wall_ms": 279,
+        "peak_working_set_mb": 44
+      }
+    },
+    {
+      "name": "impact.upstream.d6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 308,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 310,
+          "peak_working_set_mb": 51,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 302,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 310,
+          "peak_working_set_mb": 51,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 305,
+          "peak_working_set_mb": 52,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 308,
+        "peak_working_set_mb": 52
+      },
+      "max": {
+        "wall_ms": 310,
+        "peak_working_set_mb": 52
+      }
+    },
+    {
+      "name": "impact.downstream.d3.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 253,
+          "peak_working_set_mb": 43,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 260,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 253,
+          "peak_working_set_mb": 44,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 258,
+          "peak_working_set_mb": 43,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 254,
+          "peak_working_set_mb": 43,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 254,
+        "peak_working_set_mb": 43
+      },
+      "max": {
+        "wall_ms": 260,
+        "peak_working_set_mb": 45
+      }
+    },
+    {
+      "name": "impact.downstream.d6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 356,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 361,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 364,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 358,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 356,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 358,
+        "peak_working_set_mb": 60
+      },
+      "max": {
+        "wall_ms": 364,
+        "peak_working_set_mb": 61
+      }
+    },
+    {
+      "name": "context.default.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 444,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 407,
+          "peak_working_set_mb": 62,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 407,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 415,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 423,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 415,
+        "peak_working_set_mb": 61
+      },
+      "max": {
+        "wall_ms": 444,
+        "peak_working_set_mb": 62
+      }
+    },
+    {
+      "name": "context.maxhops6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 798,
+          "peak_working_set_mb": 107,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 790,
+          "peak_working_set_mb": 106,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 662,
+          "peak_working_set_mb": 107,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 656,
+          "peak_working_set_mb": 106,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 663,
+          "peak_working_set_mb": 119,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 663,
+        "peak_working_set_mb": 107
+      },
+      "max": {
+        "wall_ms": 798,
+        "peak_working_set_mb": 119
+      }
+    },
+    {
+      "name": "search",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 204,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 198,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 198,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 203,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 199,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 199,
+        "peak_working_set_mb": 39
+      },
+      "max": {
+        "wall_ms": 204,
+        "peak_working_set_mb": 40
+      }
+    },
+    {
+      "name": "grep",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 190,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 199,
+          "peak_working_set_mb": 36,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 191,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 192,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 190,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 191,
+        "peak_working_set_mb": 39
+      },
+      "max": {
+        "wall_ms": 199,
+        "peak_working_set_mb": 39
+      }
+    },
+    {
+      "name": "find_symbol",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 201,
+          "peak_working_set_mb": 38,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 203,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 201,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 201,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 202,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 201,
+        "peak_working_set_mb": 39
+      },
+      "max": {
+        "wall_ms": 203,
+        "peak_working_set_mb": 39
+      }
+    },
+    {
+      "name": "diff",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 482,
+          "peak_working_set_mb": 95,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 477,
+          "peak_working_set_mb": 94,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 463,
+          "peak_working_set_mb": 95,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 477,
+          "peak_working_set_mb": 94,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 492,
+          "peak_working_set_mb": 92,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 477,
+        "peak_working_set_mb": 94
+      },
+      "max": {
+        "wall_ms": 492,
+        "peak_working_set_mb": 95
+      }
+    },
+    {
+      "name": "find_symbol.freshness_auto_untouched",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": "fresh",
+      "freshness_changed_document_count": 0,
+      "runs": [
+        {
+          "wall_ms": 216,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 206,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 205,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 213,
+          "peak_working_set_mb": 40,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 203,
+          "peak_working_set_mb": 39,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 206,
+        "peak_working_set_mb": 39
+      },
+      "max": {
+        "wall_ms": 216,
+        "peak_working_set_mb": 40
+      }
+    },
+    {
+      "name": "find_symbol.freshness_hash_untouched",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": "fresh",
+      "freshness_changed_document_count": 0,
+      "runs": [
+        {
+          "wall_ms": 237,
+          "peak_working_set_mb": 47,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 223,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 230,
+          "peak_working_set_mb": 47,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 232,
+          "peak_working_set_mb": 45,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 231,
+          "peak_working_set_mb": 48,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 231,
+        "peak_working_set_mb": 47
+      },
+      "max": {
+        "wall_ms": 237,
+        "peak_working_set_mb": 48
+      }
+    },
+    {
+      "name": "dead_candidates",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 490,
+          "peak_working_set_mb": 83,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 456,
+          "peak_working_set_mb": 81,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 477,
+          "peak_working_set_mb": 85,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 470,
+          "peak_working_set_mb": 84,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 465,
+          "peak_working_set_mb": 84,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 470,
+        "peak_working_set_mb": 84
+      },
+      "max": {
+        "wall_ms": 490,
+        "peak_working_set_mb": 85
+      }
+    },
+    {
+      "name": "mcp_status.default",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": 0,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 6,
+          "peak_working_set_mb": 56,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 9,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 12,
+          "peak_working_set_mb": 60,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 6,
+          "peak_working_set_mb": 62,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 6,
+          "peak_working_set_mb": 62,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 6,
+        "peak_working_set_mb": 60
+      },
+      "max": {
+        "wall_ms": 12,
+        "peak_working_set_mb": 62
+      }
+    },
+    {
+      "name": "mcp_status.full",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": 0,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 2555,
+          "peak_working_set_mb": 255,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 2646,
+          "peak_working_set_mb": 255,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 2406,
+          "peak_working_set_mb": 268,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 2388,
+          "peak_working_set_mb": 268,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 2300,
+          "peak_working_set_mb": 268,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 2406,
+        "peak_working_set_mb": 268
+      },
+      "max": {
+        "wall_ms": 2646,
+        "peak_working_set_mb": 268
+      }
+    },
+    {
+      "name": "find_symbol.freshness_auto_touched",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never touch files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "find_symbol.freshness_hash_touched",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never touch files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    }
+  ]
+}
