@@ -80,6 +80,28 @@ Test-Case 'Get-VulnerablePackageHits tolerates a missing transitivePackages prop
   }
 }
 
+Test-Case 'Get-VulnerablePackageHits returns zero hits for a clean result without frameworks' {
+  $dir = New-TempDirectory
+  try {
+    $json = '{"version":1,"projects":[{"path":"a.csproj"},{"path":"b.csproj"}]}'
+    $hits = @(Get-VulnerablePackageHits $json)
+    Assert-Equal 0 $hits.Count 'hit count'
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-VulnerablePackageHits reports a vulnerable top-level package' {
+  $dir = New-TempDirectory
+  try {
+    $json = '{"version":1,"projects":[{"path":"a.csproj","frameworks":[{"framework":"net10.0","topLevelPackages":[{"id":"X","resolvedVersion":"1.0.0","vulnerabilities":[{"severity":"High"}]}]}]}]}'
+    $hits = @(Get-VulnerablePackageHits $json)
+    Assert-Equal 'X 1.0.0' ($hits -join '|') 'hit list'
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
 Test-Case 'Assert-NupkgDigest returns Path, Name and Digest for a matching nupkg' {
   $dir = New-TempDirectory
   try {

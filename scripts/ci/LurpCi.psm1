@@ -16,8 +16,10 @@ function Test-CommitSha([string]$Sha) {
 
 function Get-VulnerablePackageHits([string]$Json) {
   $list = $Json | ConvertFrom-Json
+  if (-not $list.PSObject.Properties['projects']) { return @() }
   $hits = @()
   foreach ($project in $list.projects) {
+    if (-not $project.PSObject.Properties['frameworks']) { continue }
     foreach ($framework in $project.frameworks) {
       $candidates = @()
       if ($framework.PSObject.Properties['topLevelPackages']) { $candidates += @($framework.topLevelPackages) }
