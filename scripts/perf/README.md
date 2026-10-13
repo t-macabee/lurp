@@ -126,7 +126,7 @@ new format.
 Run it by hand:
 
 ```powershell
-dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baselines\win25.json --candidate=C:\perf\results\enotev2.json --summary=C:\perf\results\baseline-summary.md
+dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baselines\win25-vs2026.json --candidate=C:\perf\results\enotev2.json --summary=C:\perf\results\baseline-summary.md
 ```
 
 The limits, all inclusive (a value exactly at the limit passes):
@@ -142,9 +142,9 @@ The limits, all inclusive (a value exactly at the limit passes):
   missing measured `impact.*` or `context.*` operation, and when `solution_commit` differs
   between the two files or is missing.
 
-The baseline key is the runner OS only (`ImageOS`, for example `win25`), so
-`perf/baselines/win25.json`. `ImageVersion` changes about once a week on hosted runners; a
-different image only warns. A new runner OS (for example a move from `win22` to `win25`) has no
+The baseline key is the runner OS only (`ImageOS`, for example `win25-vs2026`), so
+`perf/baselines/win25-vs2026.json`. `ImageVersion` changes about once a week on hosted runners; a
+different image only warns. A new runner OS (for example a move from `win25-vs2026` to a later image) has no
 baseline and fails until one is committed.
 
 When `perf/baselines/<ImageOS>.json` does not exist, the gate runs the candidate as its own
@@ -168,7 +168,7 @@ Exit codes: 0 = pass (warnings are allowed), 1 = gate failed, 2 = usage or data 
   "repo_dirty": true,                  // `git status --short` non-empty
   "os": "Microsoft Windows 10.0.26300",
   "runner_image": "20251001.1",        // env ImageVersion, null locally
-  "runner_os": "win25",                // env ImageOS, null locally
+  "runner_os": "win25-vs2026",                // env ImageOS, null locally
   "solution_commit": "4ba9901a...",     // `git rev-parse HEAD` of the solution directory; null for --fixture
   "fixture": { ...perf-manifest.json..., "path": "C:\\perf\\4x" },  // null for --solution
   "solution": "C:\\src\\My.sln",       // null for --fixture

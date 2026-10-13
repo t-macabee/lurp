@@ -148,6 +148,8 @@ jobs:
         run: |
           $solution = Join-Path $env:RUNNER_TEMP "eNoteV2/$env:enotev2_path/$env:enotev2_solution"
           $log = "$env:RUNNER_TEMP/integrity.log"
+          # The gate prints nothing on a pass; Tee-Object then creates no file.
+          New-Item -ItemType File -Force -Path $log | Out-Null
           & $env:GATE_CMD integrity "--solution=$solution" "--lurp-cmd=$env:LURP_CMD" 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           $added = @(Select-String -Path $log -Pattern '^ADDED ' -ErrorAction SilentlyContinue).Count
@@ -165,6 +167,8 @@ jobs:
         run: |
           $solution = Join-Path $env:RUNNER_TEMP "eNoteV2/$env:enotev2_path/$env:enotev2_solution"
           $log = "$env:RUNNER_TEMP/recall.log"
+          # The gate prints nothing on a pass; Tee-Object then creates no file.
+          New-Item -ItemType File -Force -Path $log | Out-Null
           & $env:GATE_CMD recall "--solution=$solution" "--lurp-cmd=$env:LURP_CMD" "--seed=$env:enotev2_seed" "--sample=$env:enotev2_sample" 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           $counts = (Select-String -Path $log -Pattern '^recall: ' -ErrorAction SilentlyContinue | Select-Object -Last 1).Line
