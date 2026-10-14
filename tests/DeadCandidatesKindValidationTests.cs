@@ -84,4 +84,28 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
         using var document = JsonDocument.Parse(json);
         Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
     }
+
+    [Fact]
+    public void Cli_LimitAboveCap_NamesTheCapWithoutTheOldReason()
+    {
+        var ex = Assert.Throws<CliExitException>(() => DeadCandidatesHandler.Run([
+            "--mode=dead-candidates",
+            "--limit=201",
+            $"--output-dir={TestDir}"
+        ]));
+        Assert.Contains("--limit must be <= 200.", ex.Message);
+        Assert.DoesNotContain("SQLITE_MAX_VARIABLE_NUMBER", ex.Message);
+    }
+
+    [Fact]
+    public async Task Mcp_LimitAboveCap_IsInvalidParams_WithTheSameMessage()
+    {
+        await IndexFixtureAsync();
+        await using var session = CreateSession();
+        var tool = new DeadCandidatesTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpDeadCandidates(limit: 201));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("limit must be a positive integer <=200.", ex.Message);
+    }
 }

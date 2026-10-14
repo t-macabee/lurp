@@ -54,6 +54,7 @@ public sealed class DocsInSyncTests
             Path.Combine(root, "README.md"),
             Path.Combine(root, "VERSIONING.md"),
             Path.Combine(root, "CONTRIBUTING.md"),
+            Path.Combine(root, "SECURITY.md"),
         };
         files.AddRange(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md"));
         files.AddRange(Directory.EnumerateFiles(Path.Combine(root, "notes"), "*.md"));

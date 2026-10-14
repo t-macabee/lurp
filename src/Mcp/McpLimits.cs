@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Mcp;
@@ -9,25 +11,29 @@ namespace Lurp.Mcp;
 /// </summary>
 internal static class McpLimits
 {
-    /// <summary>Paging cap for every <c>limit</c>/<c>tier_limit</c> parameter.</summary>
+    [Description("`limit` and `tier_limit` on every tool except `lurp_dead_candidates`; `max_documents`, `max_mismatches` and the length of `documents` on `lurp_status`")]
     public const int MaxLimit = 500;
 
-    /// <summary>Cap for a capsule's <c>content_budget</c> (estimated tokens).</summary>
+    [Description("`limit` on `lurp_dead_candidates`")]
+    public const int MaxDeadCandidatesLimit = DeadCandidateLiveness.MaxPageSize;
+
+    [Description("`content_budget` on `lurp_context` (estimated tokens)")]
     public const int MaxContentBudget = 200_000;
 
-    /// <summary>Cap for <c>max_depth</c> on <c>lurp_impact</c>.</summary>
+    [Description("`max_depth` on `lurp_impact`")]
     public const int MaxMaxDepth = 20;
 
-    /// <summary>Cap for <c>max_hops</c> on <c>lurp_context</c>.</summary>
+    [Description("`max_hops` on `lurp_context`")]
     public const int MaxMaxHops = 20;
 
-    /// <summary>Cap for <c>snippet_tokens</c> on <c>lurp_search</c>.</summary>
+    [Description("`snippet_tokens` on `lurp_search`")]
     public const int MaxSnippetTokens = 2_000;
 
-    /// <summary>
-    ///     Cap for <c>max_bytes</c> on <c>lurp_status</c>. MCP clients cut larger results
-    ///     without counting them (Claude Code: 4 × its 25,000-token limit, in characters).
-    /// </summary>
+    /// <remarks>
+    ///     MCP clients cut larger results without counting them (Claude Code: 4 × its
+    ///     25,000-token limit, in characters).
+    /// </remarks>
+    [Description("`max_bytes` on `lurp_status` (UTF-8 bytes)")]
     public const int MaxStatusBytes = 400_000;
 
     /// <summary>

@@ -198,6 +198,7 @@ by design (see
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
 - [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md): breaking changes from 1.x and how to migrate.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability, trust boundaries, MCP tool access and limits, what Lurp writes.
 - [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.
 - MIT license, see [LICENSE](LICENSE).
 

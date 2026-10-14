@@ -91,6 +91,32 @@ internal static class DocRenderers
         return $"| `{ToolName(method)}` | {access} | {RenderMcpParameters(method)} | {description} |";
     }
 
+    internal static string RenderMcpToolAccessTable()
+    {
+        var rows = McpServeHandler.ReadToolTypes.Select(type => RenderMcpToolAccessRow(type, "always"))
+            .Concat(McpServeHandler.WriteToolTypes.Select(type => RenderMcpToolAccessRow(type, "only with `--enable-write-tools`")));
+        return "\n| Tool | Registered | Effect (MCP annotations) |\n|---|---|---|\n"
+               + string.Join("\n", rows) + "\n";
+    }
+
+    private static string RenderMcpToolAccessRow(Type type, string registered)
+    {
+        var attribute = ToolMethods(type).Single().GetCustomAttribute<McpServerToolAttribute>()!;
+        var effect = attribute.ReadOnly ? "read-only" : attribute.Destructive ? "writes, destructive" : "writes";
+        return $"| `{attribute.Name}` | {registered} | {effect} |";
+    }
+
+    internal static string RenderMcpLimits()
+    {
+        var rows = typeof(McpLimits).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral)
+            .OrderBy(field => field.MetadataToken)
+            .Select(field =>
+                $"| {field.GetCustomAttribute<DescriptionAttribute>()!.Description.Replace("|", "\\|")} | " +
+                $"{((int)field.GetRawConstantValue()!).ToString(CultureInfo.InvariantCulture)} |");
+        return "\n| Parameter | Maximum |\n|---|---|\n" + string.Join("\n", rows) + "\n";
+    }
+
     private static string RenderMcpParameters(MethodInfo method)
     {
         var parts = new List<string>();

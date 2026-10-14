@@ -30,8 +30,8 @@ internal static class DeadCandidatesHandler
             if (!int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit) || limit < 1)
                 HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
         }
-        if (limit > 200)
-            HandlerBootstrap.Fail("ERROR: --limit must be <= 200 (SQLITE_MAX_VARIABLE_NUMBER guard).");
+        if (limit > DeadCandidateLiveness.MaxPageSize)
+            HandlerBootstrap.Fail($"ERROR: --limit must be <= {DeadCandidateLiveness.MaxPageSize}.");
 
         var projectFilter = string.IsNullOrEmpty(projectArg) ? null : projectArg;
         var documentFilter = string.IsNullOrEmpty(documentArg) ? null : documentArg;

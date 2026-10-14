@@ -29,6 +29,7 @@ internal static partial class DocExamples
         "docs/ARCHITECTURE.md",
         "CONTRIBUTING.md",
         "VERSIONING.md",
+        "SECURITY.md",
         "docs/RELEASE_NOTES_2.0.0.md",
         "notes/TRUST_KERNEL.md",
     ];

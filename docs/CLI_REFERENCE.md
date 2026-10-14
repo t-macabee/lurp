@@ -758,10 +758,18 @@ builds the manifest from those projects only. Both are echoed in
 as requested, up to those bounds, even when they exceed the cap. The CLI
 `status --json` has no cap and no `projects` flag; use `--detail=` there.
 
-Size-driving inputs are bounded: `limit`/`tier_limit` ≤ 500,
-`max_documents`/`max_mismatches` ≤ 500, the length of `documents` ≤ 500,
-`content_budget` ≤ 200000, `max_hops`/`max_depth` ≤ 20, `snippet_tokens` ≤ 2000,
-`max_bytes` ≤ 400000.
+Size-driving inputs are bounded. The bounds are the constants in `McpLimits`:
+<!-- generated:mcp-limits -->
+| Parameter | Maximum |
+|---|---|
+| `limit` and `tier_limit` on every tool except `lurp_dead_candidates`; `max_documents`, `max_mismatches` and the length of `documents` on `lurp_status` | 500 |
+| `limit` on `lurp_dead_candidates` | 200 |
+| `content_budget` on `lurp_context` (estimated tokens) | 200000 |
+| `max_depth` on `lurp_impact` | 20 |
+| `max_hops` on `lurp_context` | 20 |
+| `snippet_tokens` on `lurp_search` | 2000 |
+| `max_bytes` on `lurp_status` (UTF-8 bytes) | 400000 |
+<!-- /generated:mcp-limits -->
 A larger value is rejected with an invalid-params error instead of producing a
 response whose size and latency the caller did not anticipate.
 

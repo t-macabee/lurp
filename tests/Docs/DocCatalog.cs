@@ -13,6 +13,10 @@ internal static class DocCatalog
         new("docs/CLI_REFERENCE.md", "mcp-tools:write", DocRenderers.RenderMcpWriteTools),
         new("docs/CLI_REFERENCE.md", "mcp-tools:total", DocRenderers.RenderMcpToolTotal),
         new("docs/CLI_REFERENCE.md", "mcp-tools:table", DocRenderers.RenderMcpToolTable),
+        new("docs/CLI_REFERENCE.md", "mcp-limits", DocRenderers.RenderMcpLimits),
+        new("SECURITY.md", "mcp-tools:total", DocRenderers.RenderMcpToolTotal),
+        new("SECURITY.md", "mcp-tools:access", DocRenderers.RenderMcpToolAccessTable),
+        new("SECURITY.md", "mcp-limits", DocRenderers.RenderMcpLimits),
         new("README.md", "mcp-tools:read", DocRenderers.RenderMcpReadTools),
         new("README.md", "mcp-tools:write", DocRenderers.RenderMcpWriteTools),
     ];
