@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Lurp.Parity.Shared;
+using Lurp.Tests.Docs;
 using Lurp.Workspace;
 
 namespace Lurp.Tests;
@@ -28,6 +28,14 @@ public sealed class TargetTreeIntegrityTests
         string? cacheDir = null;
         McpServeProcess? server = null;
 
+        var cliModesRun = new HashSet<string>(StringComparer.Ordinal);
+
+        (int ExitCode, string Stdout, string Stderr) Cli(TimeSpan timeout, params string[] args)
+        {
+            cliModesRun.Add(DocExamples.ModeOf(args)!);
+            return RunCli(timeout, args);
+        }
+
         try
         {
             CopyTree(fixtureRoot, treeRoot);
@@ -35,53 +43,52 @@ public sealed class TargetTreeIntegrityTests
 
             // Restore happens before the measured window: obj/ assets are part of
             // the baseline and must not change either, but restore is not Lurp's work.
-            var restore = RunProcess("dotnet", ["restore", solutionPath, "--nologo"], CliTimeout);
-            Assert.True(restore.ExitCode == 0, $"dotnet restore failed ({restore.ExitCode}):\n{restore.Stderr}");
+            GroundTruthFixture.RestoreSolution(solutionPath);
 
             var before = TreeSnapshot.Record(treeRoot);
             cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
 
             // ── Every CLI mode, all resolving the default output directory from --solution= ──
-            var index = RunCli(IndexTimeout, "--mode=index", $"--solution={solutionPath}", "--strategy=full");
+            var index = Cli(IndexTimeout, "--mode=index", $"--solution={solutionPath}", "--strategy=full");
             Assert.Contains("Index complete for snapshot", index.Stdout);
 
-            var status = RunCli(CliTimeout, "--mode=status", $"--solution={solutionPath}", "--output=json");
+            var status = Cli(CliTimeout, "--mode=status", $"--solution={solutionPath}", "--output=json");
             using var statusDoc = JsonDocument.Parse(status.Stdout);
             var snapshotId = statusDoc.RootElement.GetProperty("latest_snapshot_id").GetString()!;
 
-            var find = RunCli(CliTimeout, "--mode=find-symbol", "--symbol=CallShapes.App.ShapeCallers.FromQueryLambda",
+            var find = Cli(CliTimeout, "--mode=find-symbol", "--symbol=CallShapes.App.ShapeCallers.FromQueryLambda",
                 $"--solution={solutionPath}", "--output=json", "--quiet");
             using var findDoc = JsonDocument.Parse(find.Stdout);
             var symbolId = findDoc.RootElement.GetProperty("symbol_id").GetString()!;
 
-            AssertCliOk(RunCli(CliTimeout, "--mode=get-source", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=outline", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=get-symbol", $"--symbol={symbolId}", "--view=signature", $"--solution={solutionPath}"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=search", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=grep", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=navigate", "--file=App/ShapeCallers.cs", "--line=21", $"--solution={solutionPath}", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=impact", $"--symbol={symbolId}", "--direction=upstream", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=context", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=summary", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=timings", "--json", $"--solution={solutionPath}"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=diagnostics", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=dead-candidates", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=get-source", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=outline", "--document=App/ShapeCallers.cs", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=get-symbol", $"--symbol={symbolId}", "--view=signature", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=search", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=grep", "--query=FromQueryLambda", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=navigate", "--file=App/ShapeCallers.cs", "--line=21", $"--solution={solutionPath}", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=impact", $"--symbol={symbolId}", "--direction=upstream", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=context", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=summary", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=timings", "--json", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=diagnostics", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=dead-candidates", "--limit=5", $"--solution={solutionPath}", "--output=json", "--quiet"));
 
-            var annotate = RunCli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
+            var annotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
                 "--value=tree integrity", $"--solution={solutionPath}");
             AssertCliOk(annotate);
             using var annotateDoc = JsonDocument.Parse(annotate.Stdout);
             var annotationId = annotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
-            var mcpAnnotate = RunCli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
+            var mcpAnnotate = Cli(CliTimeout, "--mode=annotate", $"--symbol={symbolId}", "--annotation-kind=note",
                 "--value=tree integrity mcp", $"--solution={solutionPath}");
             AssertCliOk(mcpAnnotate);
             using var mcpAnnotateDoc = JsonDocument.Parse(mcpAnnotate.Stdout);
             var mcpAnnotationId = mcpAnnotateDoc.RootElement.GetProperty("annotation_id").GetInt64();
 
-            AssertCliOk(RunCli(CliTimeout, "--mode=get-annotations", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=json", "--quiet"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=retract-annotation", $"--annotation-id={annotationId}", $"--solution={solutionPath}"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=diff", $"--from-snapshot={snapshotId}", $"--to-snapshot={snapshotId}", $"--solution={solutionPath}"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=pin-snapshot", $"--snapshot={snapshotId}", $"--solution={solutionPath}"));
-            AssertCliOk(RunCli(CliTimeout, "--mode=pin-snapshot", "--clear", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=get-annotations", $"--symbol={symbolId}", $"--solution={solutionPath}", "--output=json", "--quiet"));
+            AssertCliOk(Cli(CliTimeout, "--mode=retract-annotation", $"--annotation-id={annotationId}", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=diff", $"--from-snapshot={snapshotId}", $"--to-snapshot={snapshotId}", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=pin-snapshot", $"--snapshot={snapshotId}", $"--solution={solutionPath}"));
+            AssertCliOk(Cli(CliTimeout, "--mode=pin-snapshot", "--clear", $"--solution={solutionPath}"));
 
             // The default location must have received the database and the redirected
             // MSBuild intermediates; otherwise "no writes in the tree" could pass
@@ -92,6 +99,7 @@ public sealed class TargetTreeIntegrityTests
 
             // ── MCP: --mode=serve, all 18 tools (read plus gated write tools) ──
             server = McpServeProcess.Start(LurpTool.Argv(["--mode=serve", "--enable-write-tools", $"--solution={solutionPath}"]));
+            cliModesRun.Add("serve");
             var client = server.Client;
             await client.InitializeAsync("target-tree-integrity");
 
@@ -133,6 +141,11 @@ public sealed class TargetTreeIntegrityTests
             Assert.Equal(0, server.Close(120_000));
             server.Dispose();
             server = null;
+
+            // Every registered mode must have run inside the measured window.
+            Assert.Equal(
+                Program.ModeRegistry.Select(static entry => entry.Name).Order(StringComparer.Ordinal),
+                cliModesRun.Order(StringComparer.Ordinal));
 
             // ── The measured window closes: the tree must not have moved a byte ──
             var after = TreeSnapshot.Record(treeRoot);
@@ -232,33 +245,7 @@ public sealed class TargetTreeIntegrityTests
     {
         var (fileName, dllPath) = LurpTool.ResolveCommand();
         var fullArgs = dllPath == null ? args : [dllPath, .. args];
-        return RunProcess(fileName, fullArgs, timeout);
-    }
-
-    private static (int ExitCode, string Stdout, string Stderr) RunProcess(string fileName, string[] args, TimeSpan timeout)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
-
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException($"Failed to start {fileName}.");
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(timeout))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"{fileName} {string.Join(' ', args)} did not exit within {timeout}.");
-        }
-
-        Task.WaitAll(stdout, stderr);
-        return (process.ExitCode, stdout.Result, stderr.Result);
+        return GroundTruthFixture.RunProcess(fileName, fullArgs, timeout);
     }
 
 }

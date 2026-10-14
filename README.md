@@ -88,7 +88,7 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 ## Install
 
-Supported platform: Windows. Lurp 2.x is not tested on Linux or macOS.
+Supported platform: Windows. Lurp 3.x is not tested on Linux or macOS.
 
 Requires a .NET 10 runtime to run any mode; the package declares
 `RollForward=Major`, so a later major runtime (11, 12, …) also works, while an
@@ -98,7 +98,7 @@ older runtime does not. Indexing and solution-backed status
 solution must be restored.
 
 ```bash
-dotnet tool install --global lurp --version 2.0.0
+dotnet tool install --global lurp --version 3.0.0
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -165,7 +165,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Limitations
 
-- **Windows only**: 2.x supports Windows; Linux and macOS are not tested.
+- **Windows only**: 3.x supports Windows; Linux and macOS are not tested.
 - **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but CLI/MCP reads do not surface the per-symbol set, so a member present in only one target framework cannot be told apart by a consumer from one present in all of them.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
@@ -176,19 +176,23 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 | Measurement | Value |
 |---|---|
-| eNoteV2 (531 docs) full index | ~48 s |
-| eNoteV2 incremental (no changes) | ~11 s |
+| eNoteV2 (402 docs) full index | ~18 s |
+| eNoteV2 incremental (no changes) | ~0.3 s |
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 | Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
+
+Measured 2026-10-14 on commit `cfa43f3` (Release build; the 3.0.0 changes touch no extraction or query code) and eNoteV2 at `4ba9901`: wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-2.0.0. This source tree is <!-- generated:versions -->tool 2.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 2.0.0 is a breaking release for
-`impact` and the capsule topology, and an index built by 1.4.0 needs one
-`--mode=index` run before read commands accept it: see
-[RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md). `windows-latest` CI plus a manual real-parity gate on
-eNoteV2 (GitHub-hosted runner, `workflow_dispatch`). Roadmap: surfacing the
+3.0.0. This source tree is <!-- generated:versions -->tool 3.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+`%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
+`--enable-write-tools`, and needs one `--mode=index` run on an index built by
+2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). `windows-latest`
+CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
+`workflow_dispatch`); a release publishes only the CI-built package of a commit
+that passed that gate. Roadmap: surfacing the
 per-symbol TFM set in reads and richer DI parameter-type matching are postponed
 by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
@@ -197,6 +201,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md): changes from 2.0.0 and how to upgrade.
 - [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md): breaking changes from 1.x and how to migrate.
 - [SECURITY.md](SECURITY.md): how to report a vulnerability, trust boundaries, MCP tool access and limits, what Lurp writes.
 - [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.

@@ -31,7 +31,7 @@ attribute APIs. NuGet and GitHub Actions updates are watched by
 
 - `src/`: the tool. `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/, Migrations/).
 - `tests/`: the `Lurp.Tests` project (xunit).
-- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes ([RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
+- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes ([RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md), [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
 - `notes/`: internal evidence log ([TRUST_KERNEL.md](notes/TRUST_KERNEL.md)).
 - `scripts/`: convergence verification scripts (`r1-*`) and the `MODEL_VIEW.html` generator (`model-view/`).
 
@@ -43,8 +43,8 @@ attribute APIs. NuGet and GitHub Actions updates are watched by
 
 ## CLI/MCP contract versioning
 
-Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (30 migrations,
-enforced by `SchemaMigrationRoundTripTests`). The equivalent for the CLI/MCP surface that
+Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (the
+migrations are tested by `SchemaMigrationRoundTripTests`). The equivalent for the CLI/MCP surface that
 other agents integrate against is `VersionConstants.CliMcpContractVersion`
 (`src/Workspace/VersionConstants.cs`), exposed in `status --json` as `contract_version`
 and in the MCP `lurp_status` envelope/detail. See [VERSIONING.md](VERSIONING.md) for the

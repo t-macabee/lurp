@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 2.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -56,8 +56,8 @@ Logical boundaries:
 5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
-copied method bodies the canonical representation. Schema migrations: 33
-sequential migrations managed by `MigrationRunner`.
+copied method bodies the canonical representation. Schema migrations are
+sequential and managed by `MigrationRunner`.
 
 Per-snapshot index cost is recorded in `snapshot_timings` (step → elapsed ms)
 and `snapshot_metrics` (metric name → integer value). `peak_working_set_mb`

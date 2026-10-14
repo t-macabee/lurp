@@ -3,13 +3,13 @@
 # diagnosed "requires a .NET SDK" message when no SDK is reachable.
 #
 # Usage:
-#   pwsh -File scripts/smoke/runtime-only-smoke.ps1 -Lurp <path>/lurp.exe -DbDir <dir> -RuntimeDir <dir> -SolutionPath <path>/Smoke.slnx
+#   pwsh -File scripts/smoke/runtime-only-smoke.ps1 -Lurp <path>/lurp.exe -ExpectedVersion <version> -DbDir <dir> -RuntimeDir <dir> -SolutionPath <path>/Smoke.slnx
 param(
     [Parameter(Mandatory)][string]$Lurp,
     [Parameter(Mandatory)][string]$DbDir,
     [Parameter(Mandatory)][string]$RuntimeDir,
     [Parameter(Mandatory)][string]$SolutionPath,
-    [string]$ExpectedVersion = '2.0.0'
+    [Parameter(Mandatory)][string]$ExpectedVersion
 )
 
 $ErrorActionPreference = 'Stop'

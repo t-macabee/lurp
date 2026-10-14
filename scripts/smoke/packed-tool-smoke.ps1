@@ -3,12 +3,12 @@
 # checks the next index recovers (B5 test 4).
 #
 # Usage:
-#   pwsh -File scripts/smoke/packed-tool-smoke.ps1 -Lurp <path-to>/lurp.exe -DbDir <fresh-dir>
+#   pwsh -File scripts/smoke/packed-tool-smoke.ps1 -Lurp <path-to>/lurp.exe -ExpectedVersion <version> -DbDir <fresh-dir>
 param(
     [Parameter(Mandatory)][string]$Lurp,
     [Parameter(Mandatory)][string]$DbDir,
     [string]$WorkDir = (Join-Path $env:TEMP "lurp-packed-smoke-$([guid]::NewGuid().ToString('N'))"),
-    [string]$ExpectedVersion = '2.0.0',
+    [Parameter(Mandatory)][string]$ExpectedVersion,
     [string]$RepoRoot = '',
     [switch]$SkipKillTest,
     [int]$KillTestTimeoutSeconds = 420

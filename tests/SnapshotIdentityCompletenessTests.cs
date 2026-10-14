@@ -412,6 +412,8 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
             false, sink, false, false, CancellationToken.None);
 
         Assert.Contains("Identical complete snapshot", sink.Output.ToString());
+        Assert.Contains("Total time (snapshot reused, nothing rebuilt):", sink.Output.ToString());
+        Assert.DoesNotContain("Total time (full rebuild)", sink.Output.ToString());
 
         var latest = store.LoadLatestSnapshot()
                      ?? throw new InvalidOperationException("No snapshot after the second index.");

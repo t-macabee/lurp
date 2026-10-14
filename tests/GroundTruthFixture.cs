@@ -185,7 +185,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
                              || string.Equals(part, "obj", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static (int ExitCode, string Stdout, string Stderr) RunProcess(string fileName, string[] args, TimeSpan timeout)
+    internal static (int ExitCode, string Stdout, string Stderr) RunProcess(string fileName, string[] args, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo
         {
@@ -198,7 +198,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
         // A reused MSBuild worker node inherits the child's redirected pipe
         // handles and keeps them open after `dotnet restore` exits, which blocks
         // ReadToEnd below until the node idles out (~15 minutes). Disable node
-        // reuse for fixture restores so the streams close with the process.
+        // reuse for every child process so the streams close with the process.
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         foreach (var arg in args)
             psi.ArgumentList.Add(arg);

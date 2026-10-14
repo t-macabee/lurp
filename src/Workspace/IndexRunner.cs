@@ -130,7 +130,8 @@ public static class IndexRunner
 
         totalSw.Stop();
 
-        sink.WriteLine($"  Total time (full rebuild): {totalSw.ElapsedMilliseconds} ms");
+        var runKind = newSnapshotId is null ? "snapshot reused, nothing rebuilt" : "full rebuild";
+        sink.WriteLine($"  Total time ({runKind}): {totalSw.ElapsedMilliseconds} ms");
     }
 
     private static async Task<string?> RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
