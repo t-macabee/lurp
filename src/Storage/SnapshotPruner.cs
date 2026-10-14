@@ -40,14 +40,17 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         if (snapshotIds.Count <= keep)
             return;
 
-        var pinnedIds = GetPinnedSnapshotIds(workspaceId);
-        var pruneIds = snapshotIds.Skip(keep).Where(id => !pinnedIds.Contains(id)).ToList();
-        if (pruneIds.Count == 0)
-            return;
-
         using var transaction = _connection.BeginTransaction();
         try
         {
+            var pinnedIds = GetPinnedSnapshotIds(workspaceId, transaction);
+            var pruneIds = snapshotIds.Skip(keep).Where(id => !pinnedIds.Contains(id)).ToList();
+            if (pruneIds.Count == 0)
+            {
+                transaction.Commit();
+                return;
+            }
+
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
 
@@ -117,12 +120,12 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     internal void DeleteSnapshotData(string snapshotId)
     {
-        if (IsPinnedSnapshot(snapshotId))
-            throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
-
         using var transaction = _connection.BeginTransaction();
         try
         {
+            if (IsPinnedSnapshot(snapshotId, transaction))
+                throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
+
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
             DeleteSnapshotData(cmd, snapshotId);
@@ -138,6 +141,11 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     private static void DeleteSnapshotData(SqliteCommand cmd, string snapshotId)
     {
         DeleteSnapshotPayload(cmd, snapshotId);
+
+        cmd.CommandText = "UPDATE snapshot_pins SET previous_pinned_snapshot_id = NULL WHERE previous_pinned_snapshot_id = @sid;";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@sid", snapshotId);
+        cmd.ExecuteNonQuery();
 
         cmd.CommandText = "DELETE FROM snapshots WHERE snapshot_id = @sid;";
         cmd.Parameters.Clear();
@@ -280,38 +288,25 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.ExecuteNonQuery();
     }
 
-    private HashSet<string> GetPinnedSnapshotIds(string workspaceId)
+    private HashSet<string> GetPinnedSnapshotIds(string workspaceId, SqliteTransaction transaction)
     {
-        try
-        {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT pinned_snapshot_id FROM snapshot_pins WHERE workspace_id = @workspaceId;";
-            cmd.Parameters.AddWithValue("@workspaceId", workspaceId);
-            var set = new HashSet<string>(StringComparer.Ordinal);
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                set.Add(reader.GetString(0));
-            return set;
-        }
-        catch
-        {
-            // Table may not exist yet (pre-migration)
-            return new HashSet<string>(StringComparer.Ordinal);
-        }
+        using var cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = "SELECT pinned_snapshot_id FROM snapshot_pins WHERE workspace_id = @workspaceId;";
+        cmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            set.Add(reader.GetString(0));
+        return set;
     }
 
-    private bool IsPinnedSnapshot(string snapshotId)
+    private bool IsPinnedSnapshot(string snapshotId, SqliteTransaction transaction)
     {
-        try
-        {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT 1 FROM snapshot_pins WHERE pinned_snapshot_id = @snapshotId LIMIT 1;";
-            cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-            return cmd.ExecuteScalar() != null;
-        }
-        catch
-        {
-            return false;
-        }
+        using var cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = "SELECT 1 FROM snapshot_pins WHERE pinned_snapshot_id = @snapshotId LIMIT 1;";
+        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return cmd.ExecuteScalar() != null;
     }
 }

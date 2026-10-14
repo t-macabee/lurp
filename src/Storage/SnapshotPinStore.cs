@@ -69,9 +69,6 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         if (string.IsNullOrWhiteSpace(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
 
-        if (!TableExists())
-            EnsureTable();
-
         // Resolve workspace_id and status for this snapshot.
         string? workspaceId;
         string? status;
@@ -149,21 +146,5 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='snapshot_pins';";
         var result = cmd.ExecuteScalar();
         return result != null && result != DBNull.Value;
-    }
-
-    private void EnsureTable()
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS snapshot_pins (
-                workspace_id TEXT PRIMARY KEY REFERENCES workspaces(workspace_id),
-                pinned_snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id),
-                pinned_at_utc TEXT NOT NULL,
-                previous_pinned_snapshot_id TEXT REFERENCES snapshots(snapshot_id)
-            );
-            """;
-        cmd.ExecuteNonQuery();
-        cmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_snapshot_pins_pinned_id ON snapshot_pins(pinned_snapshot_id);";
-        cmd.ExecuteNonQuery();
     }
 }

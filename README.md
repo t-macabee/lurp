@@ -98,7 +98,7 @@ older runtime does not. Indexing and solution-backed status
 solution must be restored.
 
 ```bash
-dotnet tool install --global lurp --version 3.0.0
+dotnet tool install --global lurp --version 3.0.1
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -186,10 +186,10 @@ Measured 2026-10-14 on commit `cfa43f3` (Release build; the 3.0.0 changes touch 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.0.0. This source tree is <!-- generated:versions -->tool 3.0.0, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.0.1. This source tree is <!-- generated:versions -->tool 3.0.1, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
-2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). `windows-latest`
+2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). `windows-latest`
 CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
 `workflow_dispatch`); a release publishes only the CI-built package of a commit
 that passed that gate. Roadmap: surfacing the
@@ -201,6 +201,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md): the 3.0.1 fix (an index run that failed after a re-pin).
 - [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md): changes from 2.0.0 and how to upgrade.
 - [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md): breaking changes from 1.x and how to migrate.
 - [SECURITY.md](SECURITY.md): how to report a vulnerability, trust boundaries, MCP tool access and limits, what Lurp writes.

@@ -1,5 +1,6 @@
 using Lurp.Handlers;
 using Lurp.Storage;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
@@ -206,5 +207,87 @@ public sealed class PinSnapshotTests : IDisposable
         Assert.Equal(t.ToString("O"), built);
 
         store.Close();
+    }
+
+    [Fact]
+    public void Prune_RemovesASnapshotThatWasThePreviousPin()
+    {
+        using var store = CreateStore();
+        var ws = "ws-pin-repin";
+        var baseTime = DateTime.UtcNow.AddHours(-10);
+        for (var i = 1; i <= 5; i++)
+            InsertSnapshot(store, $"snap-{i}", ws, baseTime.AddHours(i));
+
+        store.SetPinnedSnapshot("snap-1");
+        store.SetPinnedSnapshot("snap-5");
+
+        store.PruneOldSnapshots(3);
+
+        Assert.Equal(["snap-3", "snap-4", "snap-5"], store.GetSnapshotIds(ws));
+        var pin = store.GetPinnedSnapshot(ws);
+        Assert.NotNull(pin);
+        Assert.Equal("snap-5", pin.PinnedSnapshotId);
+        Assert.Null(pin.PreviousPinnedSnapshotId);
+
+        store.Close();
+    }
+
+    [Fact]
+    public void Prune_KeepsThePreviousPin_WhileItIsInsideTheKeepWindow()
+    {
+        using var store = CreateStore();
+        var ws = "ws-pin-repin-kept";
+        var baseTime = DateTime.UtcNow.AddHours(-10);
+        for (var i = 1; i <= 4; i++)
+            InsertSnapshot(store, $"snap-{i}", ws, baseTime.AddHours(i));
+
+        store.SetPinnedSnapshot("snap-2");
+        store.SetPinnedSnapshot("snap-4");
+
+        store.PruneOldSnapshots(3);
+
+        Assert.Equal(["snap-2", "snap-3", "snap-4"], store.GetSnapshotIds(ws));
+        Assert.Equal("snap-2", store.GetPinnedSnapshot(ws)!.PreviousPinnedSnapshotId);
+        store.Close();
+    }
+
+    [Fact]
+    public void Prune_FailsWithTheRealError_WhenThePinsCannotBeRead()
+    {
+        using var store = CreateStore();
+        var ws = "ws-pin-unreadable";
+        var baseTime = DateTime.UtcNow.AddHours(-10);
+        for (var i = 1; i <= 4; i++)
+            InsertSnapshot(store, $"snap-{i}", ws, baseTime.AddHours(i));
+        DropPinsTable();
+
+        var ex = Assert.Throws<SqliteException>(() => store.PruneOldSnapshots(3));
+
+        Assert.Contains("snapshot_pins", ex.Message);
+        Assert.Equal(4, store.GetSnapshotIds(ws).Count);
+        store.Close();
+    }
+
+    [Fact]
+    public void DeleteSnapshotData_FailsWithTheRealError_WhenThePinsCannotBeRead()
+    {
+        using var store = CreateStore();
+        InsertSnapshot(store, "snap-a", "ws-pin-unreadable-2", DateTime.UtcNow);
+        DropPinsTable();
+
+        var ex = Assert.Throws<SqliteException>(() => store.DeleteSnapshotData("snap-a"));
+
+        Assert.Contains("snapshot_pins", ex.Message);
+        Assert.NotNull(store.LoadSnapshot("snap-a"));
+        store.Close();
+    }
+
+    private void DropPinsTable()
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DROP TABLE snapshot_pins;";
+        command.ExecuteNonQuery();
     }
 }
