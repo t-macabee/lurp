@@ -82,16 +82,12 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         var ctx = contextLines ?? 0;
         if (ctx < 0) ctx = 0;
 
-        var expandedStart = Math.Max(1, requestedStart - ctx);
-        var expandedEnd = Math.Min(totalLines, requestedEnd + ctx);
+        var (byteStart, byteEnd, firstLineIndex, lastLineIndex) = SourceLineMap.ExpandLineWindow(
+            lineStarts, requestedStart - 1, requestedEnd - 1, ctx, bytes.Length);
+        var sliced = SourceLineMap.SliceUtf8(bytes, byteStart, byteEnd, documentVersionId);
 
-        var byteStart = lineStarts[expandedStart - 1];
-        var byteEnd = expandedEnd < totalLines ? lineStarts[expandedEnd] : bytes.Length;
-
-        var sliced = SliceToString(bytes, byteStart, byteEnd);
-        if (sliced == null)
-            throw new InvalidOperationException($"Failed to slice document '{relativePath}' at lines {expandedStart}-{expandedEnd}.");
-
+        var expandedStart = LineNumbers.ToOneBased(firstLineIndex);
+        var expandedEnd = LineNumbers.ToOneBased(lastLineIndex);
         var truncated = expandedStart != 1 || expandedEnd != totalLines;
         return new SourceSlice(sliced, expandedStart, expandedEnd, totalLines, truncated);
     }
@@ -104,16 +100,6 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
             if (bytes[i] == (byte)'\n')
                 count++;
         return count;
-    }
-
-    private static string? SliceToString(byte[] content, int start, int end)
-    {
-        if (start < 0 || end > content.Length || start > end)
-            return null;
-        var length = end - start;
-        if (length == 0)
-            return string.Empty;
-        return Encoding.UTF8.GetString(content, start, length);
     }
 
     internal Dictionary<string, string> GetDocumentVersionIdsByPath(string snapshotId)

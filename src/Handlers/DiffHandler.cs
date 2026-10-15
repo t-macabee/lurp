@@ -24,7 +24,7 @@ internal static class DiffHandler
             if (store.LoadSnapshotMetadata(toSnapshot!) == null)
                 HandlerBootstrap.Fail($"ERROR: snapshot '{toSnapshot}' not found.");
 
-            var differ = new SemanticDiffer(store, store, store, store);
+            var differ = new SemanticDiffer(store, store, store);
             var (changes, skippedComparisons) = differ.ComputeDiff(fromSnapshot, toSnapshot);
 
             var json = JsonSerializer.Serialize(new

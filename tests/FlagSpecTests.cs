@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Lurp.Handlers;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp.Tests;
@@ -153,12 +152,6 @@ public sealed class FlagSpecTests
             GetSymbolHandler.ResolveViewSelection(value, null);
 
         Assert.Throws<CliExitException>(() => GetSymbolHandler.ResolveViewSelection("banana", null));
-    }
-
-    [Fact]
-    public void AllowedValues_OfSeverity_MatchTheStoreFilters()
-    {
-        Assert.Equal(DiagnosticStore.SeverityFilters, FlagCatalog.Severity.AllowedValues);
     }
 
     [Fact]

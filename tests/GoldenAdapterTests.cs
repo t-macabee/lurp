@@ -1,3 +1,4 @@
+using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Build.Locator;
@@ -49,14 +50,14 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             frameworkReferences: [AspNetCoreFramework]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var routes = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived);
         var route = Assert.Single(routes);
         Assert.Equal("route://api/[controller]/{id}", route.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.ItemsController.Get"), route.TargetSymbolId);
-        Assert.Equal("aspnetcore-v2", route.ExtractorVersion);
+        Assert.Equal(new AspNetCoreAdapter().Version, route.ExtractorVersion);
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
@@ -130,7 +131,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             frameworkReferences: [AspNetCoreFramework]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var routed = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived)
@@ -187,7 +188,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.Service"));
 
         foreach (var edge in registers)
-            Assert.Equal("di-v1", edge.ExtractorVersion);
+            Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
     }
 
     /// <summary>
@@ -254,7 +255,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             e.TargetSymbolId == serviceId);
 
         foreach (var edge in registers)
-            Assert.Equal("di-v1", edge.ExtractorVersion);
+            Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
     }
 
     [SkippableFact]
@@ -290,14 +291,14 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             ["Scrutor@4.2.2"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var registers = QueryEdges(snapshotId, "Registers", Provenance.Convention);
         var edge = Assert.Single(registers);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Registration.Configure"), edge.SourceSymbolId);
         Assert.StartsWith("convention:assembly_scan:", edge.TargetSymbolId);
-        Assert.Equal("di-v1", edge.ExtractorVersion);
+        Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
 
         // Node kinds are not round-tripped through the edges read path; the
         // graph_nodes table carries them.
@@ -335,14 +336,14 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             ["MediatR@12.4.1"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var handles = QueryEdges(snapshotId, "Handles", Provenance.FrameworkDerived);
         var edge = Assert.Single(handles);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Ping"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.PingHandler.Handle"), edge.TargetSymbolId);
-        Assert.Equal("mediatr-v1", edge.ExtractorVersion);
+        Assert.Equal(new MediatRAdapter().Version, edge.ExtractorVersion);
     }
 
     [SkippableFact]
@@ -372,14 +373,14 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             ["Microsoft.EntityFrameworkCore@10.0.1"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived);
         var edge = Assert.Single(mapsTo);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.AppDbContext.Blogs"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Blog"), edge.TargetSymbolId);
-        Assert.Equal("efcore-v1", edge.ExtractorVersion);
+        Assert.Equal(new EfCoreAdapter().Version, edge.ExtractorVersion);
     }
 
     [SkippableFact]
@@ -414,7 +415,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             ["Microsoft.EntityFrameworkCore@10.0.1"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var blogId = ResolveSymbolId(snapshotId, "global::App.Blog");
@@ -463,7 +464,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             var edge = Assert.Single(references);
             Assert.Equal(extraction.ResolveId("global::App.Product.Name"), edge.SourceSymbolId);
             Assert.StartsWith("T:System.String|", edge.TargetSymbolId);
-            Assert.Equal("serialization-v1", edge.ExtractorVersion);
+            Assert.Equal(new SerializationAdapter().Version, edge.ExtractorVersion);
             Assert.Equal("Product.cs", edge.SourceDocumentPath);
         }
         finally
@@ -515,7 +516,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         var edge = Assert.Single(testedBy);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Calculator"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::CalculatorTests.Add"), edge.TargetSymbolId);
-        Assert.Equal("test-v3", edge.ExtractorVersion);
+        Assert.Equal(new TestAdapter().Version, edge.ExtractorVersion);
     }
 
     /// <summary>
@@ -648,7 +649,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             },
             ["MediatR@12.4.1"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         // Stream handler pattern is not recognized — zero Handles edges.

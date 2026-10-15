@@ -75,7 +75,7 @@ internal sealed class GetSourceTool
             {
                 try
                 {
-                    var outlinePage = store.GetDeclarationsOutline(normalized, snapshotId, false, 100, null);
+                    var outlinePage = store.GetDeclarationsOutline(normalized, snapshotId, false, OutlineHandler.DefaultLimit, null);
                     if (outlinePage != null)
                     {
                         outlinePayload = outlinePage.Items.Select(e => new

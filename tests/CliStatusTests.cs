@@ -37,9 +37,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         WriteFile("App", "Two.cs", "namespace App { public class Two { public void M(int x) {} } }");
         WriteFile("App", "Three.cs", "namespace App { public class Three { public void M(int x) {} } }");
 
-        var result = await RunStatusCapturedAsync([
+        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json", "--max-mismatches=1"
-        ]);
+        ]));
 
         Assert.Null(result.Failure);
         using var doc = JsonDocument.Parse(result.Stdout);
@@ -52,7 +52,7 @@ public sealed class CliStatusTests : IntegrationTestBase
     [Fact]
     public async Task Status_UnknownDetail_FailsBeforeReadingDatabase()
     {
-        var result = await RunStatusCapturedAsync([$"--output-dir={TestDir}", "--json", "--detail=bogus"]);
+        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={TestDir}", "--json", "--detail=bogus"]));
 
         Assert.NotNull(result.Failure);
         Assert.Contains("--detail", result.Failure!.Message);
@@ -68,9 +68,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         });
         await RunFullIndexAsync(DbPath);
 
-        var result = await RunStatusCapturedAsync([
+        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json", "--detail=documents,references"
-        ]);
+        ]));
 
         Assert.Null(result.Failure);
         using var doc = JsonDocument.Parse(result.Stdout);
@@ -79,27 +79,5 @@ public sealed class CliStatusTests : IntegrationTestBase
         Assert.Equal(JsonValueKind.Object, docVers.ValueKind);
         Assert.True(manifest.TryGetProperty("metadata_reference_identities", out var ids));
         Assert.Equal(JsonValueKind.Object, ids.ValueKind);
-    }
-
-    private static async Task<(string Stdout, CliExitException? Failure)> RunStatusCapturedAsync(string[] args)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            await StatusHandler.Run(args);
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return (stdout.ToString(), failure);
     }
 }

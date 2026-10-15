@@ -37,7 +37,7 @@ internal sealed class DiffTool
             ValidateSnapshotExists(store, from_snapshot);
             ValidateSnapshotExists(store, to_snapshot);
 
-            var differ = new SemanticDiffer(store, store, store, store);
+            var differ = new SemanticDiffer(store, store, store);
             var (changes, skippedComparisons) = differ.ComputeDiff(from_snapshot, to_snapshot);
 
             var payload = new
@@ -56,7 +56,7 @@ internal sealed class DiffTool
                 }).ToList()
             };
 
-            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, to_snapshot, FreshnessMode.Auto);
+            var freshnessStamp = WorkspaceFreshness.CheckFreshnessCheap(store, to_snapshot, FreshnessMode.Auto);
             var freshness = FreshnessJson.Cheap(freshnessStamp);
             var isPinned = string.Equals(to_snapshot, _session.PinnedSnapshotId, StringComparison.Ordinal);
 

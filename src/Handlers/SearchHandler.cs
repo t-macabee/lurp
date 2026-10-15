@@ -6,6 +6,9 @@ namespace Lurp.Handlers;
 
 internal static class SearchHandler
 {
+    internal const int DefaultLimit = 20;
+    internal const int DefaultSnippetTokens = 64;
+
     public static void Run(string[] args)
     {
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
@@ -20,10 +23,10 @@ internal static class SearchHandler
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        var limit = 20;
+        var limit = DefaultLimit;
         if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)) HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
 
-        var snippetTokens = 64;
+        var snippetTokens = DefaultSnippetTokens;
         if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens)) HandlerBootstrap.Fail("ERROR: --snippet-tokens must be an integer.");
 
         if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol") HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");

@@ -89,35 +89,13 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
     ///     <see cref="CliExitException" /> (the only exit mechanism a handler uses) is
     ///     returned in the result rather than thrown.
     /// </summary>
-    private static RunResult RunCaptured(Action action)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return new RunResult(stdout.ToString(), failure);
-    }
-
     [Fact]
     public async Task FindSymbol_ReturnsLocationsArray()
     {
         var snapshotId = await SeedAndIndexAsync();
         var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var result = RunCaptured(() => FindSymbolHandler.Run([
+        var result = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={widgetId}",
             $"--output-dir={TestDir}"
@@ -147,7 +125,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var snapshotId = await SeedAndIndexAsync();
         var partialId = ResolveSymbolId(snapshotId, PartialFqn);
 
-        var result = RunCaptured(() => FindSymbolHandler.Run([
+        var result = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={partialId}",
             $"--output-dir={TestDir}"
@@ -185,7 +163,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var snapshotId = await SeedAndIndexAsync();
         var generatedId = ResolveSymbolId(snapshotId, GeneratedFqn);
 
-        var result = RunCaptured(() => FindSymbolHandler.Run([
+        var result = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={generatedId}",
             $"--output-dir={TestDir}",
@@ -214,7 +192,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var snapshotId = await SeedAndIndexAsync();
         var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var jsonResult = RunCaptured(() => FindSymbolHandler.Run([
+        var jsonResult = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={widgetId}",
             $"--output-dir={TestDir}"
@@ -223,7 +201,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         using var jsonDoc = JsonDocument.Parse(jsonResult.Stdout);
         var jsonSymbolId = jsonDoc.RootElement.GetProperty("symbol_id").GetString();
 
-        var jsonlResult = RunCaptured(() => FindSymbolHandler.Run([
+        var jsonlResult = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={widgetId}",
             "--output=jsonl",
@@ -251,7 +229,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var snapshotId = await SeedAndIndexAsync();
         var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var jsonResult = RunCaptured(() => FindSymbolHandler.Run([
+        var jsonResult = TestConsole.Capture(() => FindSymbolHandler.Run([
             "--mode=find-symbol",
             $"--symbol={widgetId}",
             "--output=json",
@@ -271,7 +249,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var snapshotId = await SeedAndIndexAsync();
         var widgetId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var result = RunCaptured(() => GetSymbolHandler.Run([
+        var result = TestConsole.Capture(() => GetSymbolHandler.Run([
             "--mode=get-symbol",
             $"--symbol={widgetId}",
             "--view=metadata",
@@ -306,7 +284,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         var loc = Assert.Single(store.GetDeclarationLocations(widgetId, snapshotId));
         var lineToNavigate = loc.StartLine;
 
-        var result = RunCaptured(() => NavigateHandler.Run([
+        var result = TestConsole.Capture(() => NavigateHandler.Run([
             "--mode=navigate",
             $"--file={Document}",
             $"--line={lineToNavigate}",
@@ -337,7 +315,7 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
             reportedStartLine = loc.StartLine.ToString(CultureInfo.InvariantCulture);
         }
 
-        var result = RunCaptured(() => NavigateHandler.Run([
+        var result = TestConsole.Capture(() => NavigateHandler.Run([
             "--mode=navigate",
             $"--file={Document}",
             $"--line={reportedStartLine}",
@@ -352,5 +330,4 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         Assert.Equal(Document, target.GetProperty("document_path").GetString());
     }
 
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
 }

@@ -354,6 +354,47 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ScenarioI2_PartialTypeGainsAnEarlierFile_KeepsStructuralEdgeLocations()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        await RunParityScenarioAsync("TestProject",
+            new Dictionary<string, string>
+            {
+                ["Base.cs"] = """
+                              namespace TestProject;
+
+                              public abstract class Base { public abstract void Run(); }
+                              """,
+                ["Widget.cs"] = """
+                                namespace TestProject;
+
+                                public partial class Widget : Base, System.IDisposable
+                                {
+                                    public override void Run() { }
+                                    public void Dispose() { }
+                                }
+                                """,
+                ["Widget.Extra.cs"] = """
+                                      namespace TestProject;
+
+                                      public partial class Widget
+                                      {
+                                          private int _count;
+                                      }
+                                      """
+            },
+            () => WriteFile("TestProject", "AWidget.Part.cs", """
+                                                              namespace TestProject;
+
+                                                              public partial class Widget
+                                                              {
+                                                                  public void Added() { }
+                                                              }
+                                                              """));
+    }
+
+    [SkippableFact]
     public async Task ScenarioJ_AddFileWithNewInterfaceImplementation()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
@@ -729,7 +770,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             ["Newtonsoft.Json@13.0.3"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var snapshotA = await RunFullIndexAsync(DbPath);
 
@@ -804,7 +845,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             ["Newtonsoft.Json@13.0.3"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var snapshotA = await RunFullIndexAsync(DbPath);
 
@@ -1096,7 +1137,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             frameworkReferences: ["Microsoft.AspNetCore.App"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotA = await RunFullIndexAsync(DbPath);
 
         WriteFile("App", "ItemsController.cs", """
@@ -1148,7 +1189,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             targetFramework: "net9.0;net10.0");
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotA = await RunFullIndexAsync(DbPath);
         Assert.Equal(Net10AndNet9,
             SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "M:TestProject.Types.M"));
@@ -1201,7 +1242,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             targetFramework: "net9.0;net10.0");
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotA = await RunFullIndexAsync(DbPath);
         Assert.Equal(Net10Only,
             SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "M:TestProject.Types.M"));
@@ -1259,7 +1300,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             },
             targetFramework: "net9.0;net10.0");
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotA = await RunFullIndexAsync(DbPath);
         Assert.Equal(Net10AndNet9,
             SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotA, "T:TestProject.Calc"));

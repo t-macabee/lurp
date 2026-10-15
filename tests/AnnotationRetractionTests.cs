@@ -13,7 +13,7 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
 {
     private async Task<string> IndexInitialAsync()
     {
-        CreateProject("AnnoProj", new Dictionary<string, string>
+        return await IndexFullAsync("AnnoProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """
                 namespace AnnoProj {
@@ -26,7 +26,6 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
                 }
                 """
         });
-        return await RunFullIndexAsync(DbPath);
     }
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);

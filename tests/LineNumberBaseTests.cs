@@ -69,28 +69,6 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
     ///     <see cref="CliExitException" /> (the only exit mechanism a handler uses) is
     ///     returned in the result rather than thrown.
     /// </summary>
-    private static RunResult RunCaptured(Action action)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return new RunResult(stdout.ToString(), failure);
-    }
-
     /// <summary>
     ///     Edge output is 1-based while storage stays 0-based. The audit
     ///     confirmed the pre-fix off-by-one empirically (reported L18/26/34/45/53,
@@ -162,7 +140,7 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
             reportedStartLine = loc.StartLine.ToString(CultureInfo.InvariantCulture);
         }
 
-        var result = RunCaptured(() => NavigateHandler.Run([
+        var result = TestConsole.Capture(() => NavigateHandler.Run([
             "--mode=navigate",
             $"--file={Document}",
             $"--line={reportedStartLine}",
@@ -176,5 +154,4 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
         Assert.Equal(Document, target.GetProperty("document_path").GetString());
     }
 
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
 }

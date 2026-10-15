@@ -15,7 +15,7 @@ internal sealed class SearchIndexMaintenance
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string)" />
+    /// <summary>Full FTS rebuild for one snapshot; see <see cref="SqliteIndexStore.BuildSearchIndex(string)" />.</summary>
     public void BuildSearchIndex(string snapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -61,7 +61,7 @@ internal sealed class SearchIndexMaintenance
         }
     }
 
-    /// <inheritdoc cref="ISearchStore.CopySearchIndexToSnapshot" />
+    /// <summary>Seeds the new snapshot's FTS rows from the previous snapshot; see <see cref="SqliteIndexStore.CopySearchIndexToSnapshot" />.</summary>
     public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         using var transaction = _connection.BeginTransaction();
@@ -97,7 +97,7 @@ internal sealed class SearchIndexMaintenance
         }
     }
 
-    /// <inheritdoc cref="ISearchStore.BuildSearchIndex(string, HashSet{string}, HashSet{string})" />
+    /// <summary>Incremental FTS refresh for one snapshot; see <see cref="SqliteIndexStore.BuildSearchIndex(string, HashSet{string}, HashSet{string})" />.</summary>
     public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
     {
         if (changedDocumentPaths.Count == 0 && changedSymbolIds.Count == 0)

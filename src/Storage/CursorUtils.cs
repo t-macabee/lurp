@@ -23,4 +23,12 @@ internal static class CursorUtils
             return null;
         }
     }
+
+    public static void RequireBinding(string issuedSnapshotId, string issuedFingerprint, string snapshotId, string fingerprint, string mismatchMessage)
+    {
+        if (!string.Equals(issuedSnapshotId, snapshotId, StringComparison.Ordinal))
+            throw new ArgumentException($"Cursor was issued for snapshot '{issuedSnapshotId}', not '{snapshotId}'.");
+        if (!string.Equals(issuedFingerprint, fingerprint, StringComparison.Ordinal))
+            throw new ArgumentException(mismatchMessage);
+    }
 }

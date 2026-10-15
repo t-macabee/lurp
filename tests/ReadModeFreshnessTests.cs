@@ -79,32 +79,6 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
     ///     <see cref="CliExitException" /> (the only exit mechanism a handler uses) is
     ///     returned in the result rather than thrown, so tests can assert exit code 2.
     /// </summary>
-    private static RunResult RunCaptured(Action action)
-    {
-        var stdout = new StringWriter();
-        var stderr = new StringWriter();
-        var originalOut = Console.Out;
-        var originalError = Console.Error;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            Console.SetError(stderr);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-            Console.SetError(originalError);
-        }
-
-        return new RunResult(stdout.ToString(), stderr.ToString(), failure);
-    }
-
     private static string FreshnessState(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -170,26 +144,26 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var baseline = ReadIndexedDocument(snapshotId);
 
-        var fresh = RunCaptured(() => GetSourceHandler.Run(Args(false, false)));
+        var fresh = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
         Assert.Equal(baseline, fresh.Stdout);
 
         MutateWidget();
 
-        var stale = RunCaptured(() => GetSourceHandler.Run(Args(false, false)));
+        var stale = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=stale", stale.Stderr);
         Assert.Equal(baseline, stale.Stdout); // the fix labels staleness; it does not re-serve
 
-        var quietStale = RunCaptured(() => GetSourceHandler.Run(Args(true, false)));
+        var quietStale = TestConsole.Capture(() => GetSourceHandler.Run(Args(true, false)));
         Assert.DoesNotContain("freshness:", quietStale.Stderr);
         Assert.Equal(baseline, quietStale.Stdout);
 
-        var rejected = RunCaptured(() => GetSourceHandler.Run(Args(false, true)));
+        var rejected = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, true)));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout); // no stale bytes emitted
 
-        var quietRejected = RunCaptured(() => GetSourceHandler.Run(Args(true, true)));
+        var quietRejected = TestConsole.Capture(() => GetSourceHandler.Run(Args(true, true)));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -208,13 +182,13 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var symbolId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var freshMeta = RunCaptured(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
+        var freshMeta = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
         Assert.Contains("freshness: state=fresh", freshMeta.Stderr);
         Assert.Equal("fresh", FreshnessState(freshMeta.Stdout));
 
         MutateWidget();
 
-        var staleMeta = RunCaptured(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
+        var staleMeta = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
         Assert.Contains("freshness: state=stale", staleMeta.Stderr);
         Assert.Equal("stale", FreshnessState(staleMeta.Stdout));
         Assert.Equal(PayloadWithoutFreshness(freshMeta.Stdout), PayloadWithoutFreshness(staleMeta.Stdout));
@@ -222,16 +196,16 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         // The five raw-source views are byte-exact by contract: same indexed bytes,
         // staleness travels on stderr plus the exit code only.
         var baselineDeclaration = ReadIndexedDeclarationSource(symbolId, snapshotId);
-        var staleSource = RunCaptured(() => GetSymbolHandler.Run(Args(false, false, "declaration")));
+        var staleSource = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "declaration")));
         Assert.Contains("freshness: state=stale", staleSource.Stderr);
         Assert.Equal(baselineDeclaration, staleSource.Stdout);
 
-        var rejected = RunCaptured(() => GetSymbolHandler.Run(Args(false, true, "metadata")));
+        var rejected = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, true, "metadata")));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout);
 
-        var quietRejected = RunCaptured(() => GetSymbolHandler.Run(Args(true, true, "metadata")));
+        var quietRejected = TestConsole.Capture(() => GetSymbolHandler.Run(Args(true, true, "metadata")));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -249,23 +223,23 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Seed();
         await RunFullIndexAsync(DbPath); // freshness is checked against the latest snapshot the handler resolves
 
-        var fresh = RunCaptured(() => NavigateHandler.Run(Args(false, false)));
+        var fresh = TestConsole.Capture(() => NavigateHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
         Assert.Equal("fresh", FreshnessState(fresh.Stdout));
 
         MutateWidget();
 
-        var stale = RunCaptured(() => NavigateHandler.Run(Args(false, false)));
+        var stale = TestConsole.Capture(() => NavigateHandler.Run(Args(false, false)));
         Assert.Contains("freshness: state=stale", stale.Stderr);
         Assert.Equal("stale", FreshnessState(stale.Stdout));
         Assert.Equal(PayloadWithoutFreshness(fresh.Stdout), PayloadWithoutFreshness(stale.Stdout));
 
-        var rejected = RunCaptured(() => NavigateHandler.Run(Args(false, true)));
+        var rejected = TestConsole.Capture(() => NavigateHandler.Run(Args(false, true)));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout);
 
-        var quietRejected = RunCaptured(() => NavigateHandler.Run(Args(true, true)));
+        var quietRejected = TestConsole.Capture(() => NavigateHandler.Run(Args(true, true)));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -288,11 +262,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         WriteFile(Project, "Widget.cs", MutatedSource);
         File.SetLastWriteTimeUtc(Path.Combine(TestDir, "src", Project, "Widget.cs"), DateTime.UtcNow.AddYears(-1));
 
-        var auto = RunCaptured(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=auto"], false, false)));
+        var auto = TestConsole.Capture(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=auto"], false, false)));
         Assert.Contains("freshness: state=fresh", auto.Stderr);
         Assert.Equal("fresh", FreshnessState(auto.Stdout));
 
-        var hash = RunCaptured(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=hash"], false, false)));
+        var hash = TestConsole.Capture(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=hash"], false, false)));
         Assert.Contains("freshness: state=stale", hash.Stderr);
         Assert.Equal("stale", FreshnessState(hash.Stdout));
         using var doc = JsonDocument.Parse(hash.Stdout);
@@ -300,5 +274,4 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Assert.Contains(Document, sample.EnumerateArray().Select(e => e.GetString()));
     }
 
-    private sealed record RunResult(string Stdout, string Stderr, CliExitException? Failure);
 }

@@ -7,13 +7,12 @@ namespace Lurp.Tests.Mcp;
 
 public sealed class McpIndexTests : IntegrationTestBase
 {
-    private async Task<string> IndexInitialAsync(string projectName = "IndexProj")
+    private async Task<string> IndexInitialAsync()
     {
-        CreateProject(projectName, new Dictionary<string, string>
+        return await IndexFullAsync("IndexProj", new Dictionary<string, string>
         {
             ["A.cs"] = "namespace IndexProj { public class A { public void Foo() {} } }"
         });
-        return await RunFullIndexAsync(DbPath);
     }
 
     private static JsonDocument Parse(string json) => JsonDocument.Parse(json);

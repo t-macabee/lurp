@@ -154,7 +154,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             Kind = kind,
             Provenance = Provenance.FrameworkDerived,
             SnapshotId = ctx.SnapshotId,
-            ExtractorVersion = "serialization-v1",
+            ExtractorVersion = ctx.ExtractorVersion,
             SourceDocumentPath = path,
             SourceStartLine = sl,
             SourceStartColumn = sc,

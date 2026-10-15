@@ -59,7 +59,7 @@ internal sealed class SearchSourceStore
             """;
     }
 
-    /// <inheritdoc cref="ISearchStore.SearchSource" />
+    /// <summary>Searches the snapshot's source text; see <see cref="SqliteIndexStore.SearchSource" />.</summary>
     public List<SourceSearchResult> SearchSource(string query, string snapshotId, int limit = 20, bool includeGenerated = false, int snippetTokens = 64)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)

@@ -6,8 +6,25 @@ namespace Lurp.Handlers;
 
 internal static class ImpactHandler
 {
-    private const string CursorKind = "impact";
-    private const int DefaultLimit = 50;
+    internal const string CursorKind = "impact";
+    internal const int DefaultLimit = 50;
+    internal const int DefaultMaxDepth = 3;
+
+    internal static bool TryParseDirection(string value, out ImpactDirection direction)
+    {
+        switch (value.ToLowerInvariant())
+        {
+            case "downstream":
+                direction = ImpactDirection.Downstream;
+                return true;
+            case "upstream":
+                direction = ImpactDirection.Upstream;
+                return true;
+            default:
+                direction = ImpactDirection.Downstream;
+                return false;
+        }
+    }
 
     public static void Run(string[] args)
     {
@@ -15,22 +32,14 @@ internal static class ImpactHandler
         if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
 
         var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
-        ImpactDirection direction;
-        switch (directionArg.ToLowerInvariant())
+        if (!TryParseDirection(directionArg, out var direction))
         {
-            case "downstream":
-                direction = ImpactDirection.Downstream;
-                break;
-            case "upstream":
-                direction = ImpactDirection.Upstream;
-                break;
-            default:
-                HandlerBootstrap.Fail($"ERROR: Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.");
-                return;
+            HandlerBootstrap.Fail($"ERROR: Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.");
+            return;
         }
 
         var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
-        var maxDepth = 3;
+        var maxDepth = DefaultMaxDepth;
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1)) HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
 
         var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");

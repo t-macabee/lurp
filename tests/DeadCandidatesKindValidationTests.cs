@@ -19,30 +19,6 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
-    private static RunResult RunCaptured(Action action)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return new RunResult(stdout.ToString(), failure);
-    }
-
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
-
     [Fact]
     public void Cli_InvalidKind_ThrowsCliExitException()
     {
@@ -70,7 +46,7 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
     {
         await IndexFixtureAsync();
 
-        var cliResult = RunCaptured(() => DeadCandidatesHandler.Run([
+        var cliResult = TestConsole.Capture(() => DeadCandidatesHandler.Run([
             "--mode=dead-candidates",
             "--kind=method",
             $"--output-dir={TestDir}"

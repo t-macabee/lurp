@@ -7,8 +7,10 @@ namespace Lurp.Adapters;
 
 public sealed class TestAdapter : IFrameworkAdapter
 {
+    private const string AdapterVersion = "test-v3";
+
     public string Name => "Test";
-    public string Version => "test-v3";
+    public string Version => AdapterVersion;
     public string Description => "Production-to-test tested-by edges";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
@@ -134,7 +136,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                 Kind = nameof(EdgeKind.TestedBy),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = context.SnapshotId,
-                ExtractorVersion = "test-v3",
+                ExtractorVersion = AdapterVersion,
                 SourceDocumentPath = context.TestDocumentPath,
                 SourceStartLine = context.TestStartLine,
                 SourceStartColumn = context.TestStartColumn,

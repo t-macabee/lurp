@@ -99,7 +99,7 @@ public sealed class CustomBeforeHookTests
         try
         {
             WriteFixture(testDir, placement);
-            GroundTruthFixture.RestoreSolution(solutionPath);
+            TestProcess.RestoreSolution(solutionPath);
 
             var control = await ProbeControlAsync(solutionPath);
             var sink = new CapturingOutputSink();

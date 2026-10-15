@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-internal sealed class CrossDocumentEdgeRefresher(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, IOutputSink? output = null)
+internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, IOutputSink? output = null)
 {
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
     /// <summary>

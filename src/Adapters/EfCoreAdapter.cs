@@ -16,7 +16,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     ///     five adapters: each walk is guarded by the declaring scope of the type it is
     ///     anchored to (the <c>DbContext</c> or <c>IEntityTypeConfiguration&lt;T&gt;</c>
     ///     class). Annotations carry the evidence document of the walk that produced
-    ///     them, and <c>IIndexStore.DeleteAnnotationsByDocumentPaths</c> retires
+    ///     them, and <c>IEdgeStore.DeleteAnnotationsByDocumentPaths</c> retires
     ///     copied-forward rows over exactly the extraction scope, so extraction and
     ///     deletion narrow in lockstep.
     /// </remarks>
@@ -74,7 +74,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             var propId = SymbolIdFactory.Make(prop, ctx.AssemblyIdentity);
             var sourceId = propId ?? dbContextId;
 
-            AddMapsToEdge(sourceId, entityTypeId, ctx, prop);
+            AddMapsToEdge(sourceId, entityTypeId, ctx, ctx.LocationResolver.Resolve(prop));
         }
     }
 
@@ -122,9 +122,10 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 if (entityTypeId == null)
                     continue;
 
-                AddMapsToEdge(configId, entityTypeId, ctx, type);
+                var typeLocation = ctx.LocationResolver.Resolve(type);
+                AddMapsToEdge(configId, entityTypeId, ctx, typeLocation);
 
-                var (evidencePath, _, _, _, _) = ctx.LocationResolver.Resolve(type);
+                var evidencePath = typeLocation.path;
 
                 var configureMethod = type.GetMembers()
                     .OfType<IMethodSymbol>()
@@ -136,12 +137,12 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             }
     }
 
-    private static void AddMapsToEdge(string sourceId, string targetId, ExtractionContext ctx, ISymbol evidenceSymbol)
+    private static void AddMapsToEdge(string sourceId, string targetId, ExtractionContext ctx, (string? path, int? sl, int? sc, int? el, int? ec) location)
     {
         var key = (sourceId, targetId, nameof(EdgeKind.MapsTo));
         if (ctx.Seen.Add(key))
         {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(evidenceSymbol);
+            var (path, sl, sc, el, ec) = location;
 
             ctx.Edges.Add(new EdgeRecord
             {
@@ -150,32 +151,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 Kind = nameof(EdgeKind.MapsTo),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = "efcore-v1",
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-            });
-        }
-    }
-
-    private static void AddMapsToEdgeFromLocation(string sourceId, string targetId, ExtractionContext ctx, Location location)
-    {
-        var key = (sourceId, targetId, nameof(EdgeKind.MapsTo));
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(location);
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = targetId,
-                Kind = nameof(EdgeKind.MapsTo),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = "efcore-v1",
+                ExtractorVersion = ctx.ExtractorVersion,
                 SourceDocumentPath = path,
                 SourceStartLine = sl,
                 SourceStartColumn = sc,
@@ -251,7 +227,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (entityTypeId == null)
             return;
 
-        AddMapsToEdgeFromLocation(dbContextId, entityTypeId, ctx, genericName.GetLocation());
+        AddMapsToEdge(dbContextId, entityTypeId, ctx, ctx.LocationResolver.Resolve(genericName.GetLocation()));
     }
 
     private static void ExtractNavigationTypeReference(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
@@ -279,7 +255,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 Kind = nameof(EdgeKind.References),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = "efcore-v1",
+                ExtractorVersion = ctx.ExtractorVersion,
                 SourceDocumentPath = path,
                 SourceStartLine = sl,
                 SourceStartColumn = sc,

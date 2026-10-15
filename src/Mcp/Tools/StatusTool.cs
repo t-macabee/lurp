@@ -17,8 +17,7 @@ internal sealed class StatusTool
 {
     private readonly McpSessionContext _session;
     private const int DefaultMaxDocuments = 50;
-    private const int DefaultMaxMismatches = 50;
-    private const int DefaultMaxBytes = 40_000;
+    internal const int DefaultMaxBytes = 40_000;
 
     public StatusTool(McpSessionContext session)
     {
@@ -45,7 +44,7 @@ internal sealed class StatusTool
             cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
             var maxDocs = max_documents ?? DefaultMaxDocuments;
-            var maxMism = max_mismatches ?? DefaultMaxMismatches;
+            var maxMism = max_mismatches ?? StatusHandler.DefaultMaxMismatches;
             if (maxDocs < 1)
                 throw new McpProtocolException("max-documents must be a positive integer.", McpErrorCode.InvalidParams);
             if (maxMism < 1)

@@ -42,7 +42,7 @@ internal sealed class AnnotationsTool
 
             var kindFilter = string.IsNullOrEmpty(kind) ? null : kind;
 
-            var limitVal = limit ?? 100;
+            var limitVal = limit ?? AnnotationHandler.DefaultLimit;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");

@@ -18,22 +18,12 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $Lurp = (Resolve-Path $Lurp).Path
+Import-Module (Join-Path $PSScriptRoot 'LurpSmoke.psm1') -Force -ArgumentList $Lurp
 $FixturesDir = Join-Path $RepoRoot 'tests\Fixtures\Smoke'
 $SolutionName = 'Smoke.slnx'
 
 function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw "ASSERT FAILED: $Message" }
-}
-
-function Invoke-Lurp {
-    param([Parameter(Mandatory)][string[]]$Arguments, [switch]$AllowFailure)
-    $all = & $Lurp @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $text = ($all | Out-String)
-    if (-not $AllowFailure -and $code -ne 0) {
-        throw "lurp $($Arguments -join ' ') exited $code`n$text"
-    }
-    return [pscustomobject]@{ ExitCode = $code; Text = $text }
 }
 
 function Get-JsonText([string]$Text) {

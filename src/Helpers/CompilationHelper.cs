@@ -42,39 +42,42 @@ internal static class CompilationHelper
 
         var diagnostics = compilation.GetDiagnostics();
         foreach (var diag in diagnostics)
-        {
-            var loc = diag.Location;
-            int? startLine = null, startColumn = null, endLine = null, endColumn = null;
-            string? documentPath = null;
-
-            if (loc is { IsInSource: true, SourceTree: not null })
-            {
-                var span = loc.GetLineSpan();
-                documentPath = loc.SourceTree.FilePath;
-                startLine = span.StartLinePosition.Line;
-                startColumn = span.StartLinePosition.Character;
-                endLine = span.EndLinePosition.Line;
-                endColumn = span.EndLinePosition.Character;
-            }
-
-            results.Add(new DiagnosticRecord
-            {
-                ProjectName = projectName,
-                DocumentPath = documentPath,
-                Severity = diag.Severity.ToString(),
-                Id = diag.Id,
-                Message = diag.GetMessage(CultureInfo.InvariantCulture),
-                StartLine = startLine,
-                StartColumn = startColumn,
-                EndLine = endLine,
-                EndColumn = endColumn
-            });
-        }
+            results.Add(ToRecord(diag, projectName));
 
         return results;
     }
 
-    public static List<DiagnosticRecord> GetDiagnostics(Project project, Compilation compilation)
+    private static DiagnosticRecord ToRecord(Diagnostic diagnostic, string projectName)
+    {
+        var loc = diagnostic.Location;
+        int? startLine = null, startColumn = null, endLine = null, endColumn = null;
+        string? documentPath = null;
+
+        if (loc is { IsInSource: true, SourceTree: not null })
+        {
+            var span = loc.GetLineSpan();
+            documentPath = loc.SourceTree.FilePath;
+            startLine = span.StartLinePosition.Line;
+            startColumn = span.StartLinePosition.Character;
+            endLine = span.EndLinePosition.Line;
+            endColumn = span.EndLinePosition.Character;
+        }
+
+        return new DiagnosticRecord
+        {
+            ProjectName = projectName,
+            DocumentPath = documentPath,
+            Severity = diagnostic.Severity.ToString(),
+            Id = diagnostic.Id,
+            Message = diagnostic.GetMessage(CultureInfo.InvariantCulture),
+            StartLine = startLine,
+            StartColumn = startColumn,
+            EndLine = endLine,
+            EndColumn = endColumn
+        };
+    }
+
+    public static List<DiagnosticRecord> GetDiagnostics(Project project, Compilation compilation, Action<string>? logWarning)
     {
         // Start with compiler diagnostics (covers CS8019/CS8933 etc.)
         var results = GetDiagnostics(project.Name, compilation);
@@ -92,40 +95,15 @@ internal static class CompilationHelper
 
             var withAnalyzers = compilation.WithAnalyzers(analyzers, project.AnalyzerOptions);
             var analyzerDiags = withAnalyzers.GetAnalyzerDiagnosticsAsync().GetAwaiter().GetResult();
+            var analyzerRecords = new List<DiagnosticRecord>();
             foreach (var diag in analyzerDiags)
-            {
-                var loc = diag.Location;
-                int? startLine = null, startColumn = null, endLine = null, endColumn = null;
-                string? documentPath = null;
-
-                if (loc is { IsInSource: true, SourceTree: not null })
-                {
-                    var span = loc.GetLineSpan();
-                    documentPath = loc.SourceTree.FilePath;
-                    startLine = span.StartLinePosition.Line;
-                    startColumn = span.StartLinePosition.Character;
-                    endLine = span.EndLinePosition.Line;
-                    endColumn = span.EndLinePosition.Character;
-                }
-
-                results.Add(new DiagnosticRecord
-                {
-                    ProjectName = project.Name,
-                    DocumentPath = documentPath,
-                    Severity = diag.Severity.ToString(),
-                    Id = diag.Id,
-                    Message = diag.GetMessage(CultureInfo.InvariantCulture),
-                    StartLine = startLine,
-                    StartColumn = startColumn,
-                    EndLine = endLine,
-                    EndColumn = endColumn
-                });
-            }
+                analyzerRecords.Add(ToRecord(diag, project.Name));
+            results.AddRange(analyzerRecords);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Analyzer execution failed — return compiler diagnostics only.
-            // This keeps indexing resilient to a poisoned analyzer assembly.
+            // A poisoned analyzer assembly must not stop indexing.
+            logWarning?.Invoke($"WARNING: Analyzer diagnostics for project '{project.Name}' are not stored: {ex.GetType().Name}: {ex.Message}. Compiler diagnostics are stored.");
         }
 
         return results;

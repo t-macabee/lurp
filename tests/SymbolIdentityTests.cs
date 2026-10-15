@@ -16,29 +16,7 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         _secondDbPath = Path.Combine(TestDir, "second.db");
     }
 
-    private static List<SymbolRow> ReadSymbolRows(string dbPath, string snapshotId)
-    {
-        using var connection = new SqliteConnection($"Data Source={dbPath}");
-        connection.Open();
 
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT symbol_id, fqn, metadata_json
-            FROM snapshot_symbols
-            WHERE snapshot_id = @snapshotId
-            ORDER BY symbol_id;
-            """;
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        var result = new List<SymbolRow>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-            result.Add(new SymbolRow(
-                reader.GetString(0),
-                reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.IsDBNull(2) ? null : reader.GetString(2)));
-        return result;
-    }
 
     private static Dictionary<string, SymbolRow> ReadSymbolRowsByDocument(string dbPath, string snapshotId,
         string relativePath)
@@ -93,7 +71,7 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         var snapshot2 = await RunFullIndexAsync(_secondDbPath);
 
         Assert.Equal(snapshot1, snapshot2);
-        Assert.Equal(ReadSymbolRows(DbPath, snapshot1), ReadSymbolRows(_secondDbPath, snapshot2));
+        Assert.Equal(SnapshotAssertions.ReadSymbols(DbPath, snapshot1), SnapshotAssertions.ReadSymbols(_secondDbPath, snapshot2));
     }
 
     [SkippableFact]
@@ -127,7 +105,7 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         var snapshot1 = await RunFullIndexAsync(DbPath);
         var snapshot2 = await RunFullIndexAsync(_secondDbPath);
 
-        Assert.Equal(ReadSymbolRows(DbPath, snapshot1), ReadSymbolRows(_secondDbPath, snapshot2));
+        Assert.Equal(SnapshotAssertions.ReadSymbols(DbPath, snapshot1), SnapshotAssertions.ReadSymbols(_secondDbPath, snapshot2));
     }
 
     [SkippableFact]

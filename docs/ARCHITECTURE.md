@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.0.1, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.0.1, schema v37, extractor 1.10.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -107,7 +107,7 @@ reused via content-addressed dedup.
 
 ## 5. Read Path (Handlers)
 
-Handlers consume persisted facts through `IIndexStore` and related store
+Handlers consume persisted facts through `SqliteIndexStore` and related store
 interfaces. They do not re-run Roslyn analysis, except `--mode=status
 --solution=` (CLI) and MCP `lurp_status` with `full:true`, which load the
 workspace through MSBuild to compare it against the stored snapshot.

@@ -10,7 +10,7 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
 {
     private async Task<string> IndexInitialAsync()
     {
-        CreateProject("AnnoProj", new Dictionary<string, string>
+        return await IndexFullAsync("AnnoProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """
                 namespace AnnoProj {
@@ -20,7 +20,6 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
                 }
                 """
         });
-        return await RunFullIndexAsync(DbPath);
     }
 
     private async Task<string> IndexSecondAsync()

@@ -64,8 +64,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
 
         var views = GetSymbolSpanContents(symbolId, snapshotId, startCol, endCol, includeGenerated)
             .Where(static span => span is { Content: not null, Start: not null, End: not null })
-            .Select(span => SliceToString(span.Content!, span.Start!.Value, span.End!.Value))
-            .Where(static source => source != null)
+            .Select(span => SourceLineMap.SliceUtf8(span.Content!, span.Start!.Value, span.End!.Value, span.DocumentVersionId))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
@@ -113,14 +112,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             // with the 1-based DeclarationLocation values self-documenting.
             var startLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.Start.Value);
             var endLineIndex = SourceLineMap.FindLineIndex(span.LineStarts, span.End.Value - 1);
-            var expandedStartLineIndex = Math.Max(0, startLineIndex - contextLines);
-            var expandedEndLineIndex = Math.Min(span.LineStarts.Length - 1, endLineIndex + contextLines);
-            var byteStart = span.LineStarts[expandedStartLineIndex];
-            var byteEnd = expandedEndLineIndex + 1 < span.LineStarts.Length
-                ? span.LineStarts[expandedEndLineIndex + 1]
-                : span.Content.Length;
-            var source = SliceToString(span.Content, byteStart, byteEnd);
-            if (source != null && !views.Contains(source, StringComparer.Ordinal))
+            var (byteStart, byteEnd, _, _) = SourceLineMap.ExpandLineWindow(
+                span.LineStarts, startLineIndex, endLineIndex, contextLines, span.Content.Length);
+            var source = SourceLineMap.SliceUtf8(span.Content, byteStart, byteEnd, span.DocumentVersionId);
+            if (!views.Contains(source, StringComparer.Ordinal))
                 views.Add(source);
         }
 
@@ -275,7 +270,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 reader.IsDBNull(0) ? null : (byte[])reader[0],
                 reader.IsDBNull(1) ? null : reader.GetInt32(1),
                 reader.IsDBNull(2) ? null : reader.GetInt32(2),
-                lineStarts));
+                lineStarts,
+                reader.GetString(4)));
         }
 
         return results;
@@ -295,16 +291,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.GetInt32(6),
             !reader.IsDBNull(7) && reader.GetInt32(7) == 1);
-    }
-
-    private static string? SliceToString(byte[] content, int start, int end)
-    {
-        if (start < 0 || end > content.Length || start > end)
-            return null;
-        var length = end - start;
-        if (length == 0)
-            return string.Empty;
-        return Encoding.UTF8.GetString(content, start, length);
     }
 
     internal IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(
@@ -568,5 +554,5 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return SymbolId.DeriveContainingTypeDocCommentId(docCommentId);
     }
 
-    private sealed record SymbolSpanContent(byte[]? Content, int? Start, int? End, int[]? LineStarts);
+    private sealed record SymbolSpanContent(byte[]? Content, int? Start, int? End, int[]? LineStarts, string DocumentVersionId);
 }

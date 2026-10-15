@@ -187,7 +187,7 @@ public static class CompilationFactExtractor
                 });
 
         var diagnostics = project != null
-            ? CompilationHelper.GetDiagnostics(project, compilation)
+            ? CompilationHelper.GetDiagnostics(project, compilation, logWarning)
             : CompilationHelper.GetDiagnostics(projectName, compilation);
 
         return new ExtractionResult(declarations, edges, diagnostics, [.. incompleteness.ToRecords()], measurements, annotations, failures.Count > 0 ? failures : null);

@@ -896,7 +896,7 @@ public sealed class OutputContractFixture : IAsyncLifetime
         Directory.CreateDirectory(OutputDir);
         DbPath = Path.Combine(OutputDir, "index.db");
 
-        GroundTruthFixture.RestoreSolution(SolutionPath);
+        TestProcess.RestoreSolution(SolutionPath);
 
         // Step 1: full index with export -> snapshot A.
         ExportAPath = Path.Combine(TempDir, "export-a.json");

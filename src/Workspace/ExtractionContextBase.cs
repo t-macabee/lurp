@@ -39,6 +39,23 @@ internal abstract class ExtractionContextBase
         return _locationResolver.IsGenerated(documentPath);
     }
 
+    internal EdgeLocationResolver LocationResolver => _locationResolver;
+
+    internal (string? path, int? sl, int? sc, int? el, int? ec) Resolve(ISymbol symbol)
+    {
+        return _locationResolver.Resolve(symbol);
+    }
+
+    internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
+    {
+        Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
+    }
+
+    internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
+    {
+        Incompleteness?.RecordUnresolved(node, semanticModel);
+    }
+
     internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
     {
         Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
@@ -62,16 +79,6 @@ internal abstract class ExtractionContextBase
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
     {
-        if (location == null || !location.IsInSource)
-            return (null, null, null, null, null);
-
-        var lineSpan = location.GetLineSpan();
-        var filePath = location.SourceTree?.FilePath;
-        var relativePath = string.IsNullOrEmpty(filePath) ? null : PathNormalizer.ToGitRelative(filePath, _gitRoot);
-        return (relativePath,
-            lineSpan.StartLinePosition.Line,
-            lineSpan.StartLinePosition.Character,
-            lineSpan.EndLinePosition.Line,
-            lineSpan.EndLinePosition.Character);
+        return _locationResolver.Resolve(location);
     }
 }

@@ -7,6 +7,8 @@ namespace Lurp.Handlers;
 
 internal static class GrepHandler
 {
+    internal const int DefaultLimit = 50;
+
     public static void Run(string[] args)
     {
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
@@ -18,7 +20,7 @@ internal static class GrepHandler
         var ignoreCase = args.Contains("--ignore-case");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        var limit = 50;
+        var limit = DefaultLimit;
         if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)) HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
         if (limit < 1) HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
 

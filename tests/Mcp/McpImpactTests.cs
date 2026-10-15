@@ -7,56 +7,11 @@ using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
 
-public sealed class McpImpactTests : IntegrationTestBase
+public sealed class McpImpactTests : ImpactIndexFixture
 {
     private static readonly string[] CallsKind = ["Calls"];
     private static readonly string[] InheritsKind = ["Inherits"];
     private static readonly string[] ResolvedProvenance = ["resolved"];
-
-    private async Task<string> IndexInitialAsync()
-    {
-        CreateProject("ImpactProj", new Dictionary<string, string>
-        {
-            ["Models.cs"] = """
-                namespace ImpactProj {
-                    public class Foo {
-                        public void Bar() {}
-                        public void Caller() { Bar(); }
-                        public void UpstreamCaller() { Caller(); }
-                    }
-                    public class Extra {
-                        public void ExtraMethod() { new Foo().Bar(); }
-                    }
-                }
-                """,
-            ["Extra2.cs"] = """
-                namespace ImpactProj {
-                    public class Another {
-                        public void AnotherMethod() { new Foo().Caller(); }
-                    }
-                }
-                """
-        });
-        return await RunFullIndexAsync(DbPath);
-    }
-
-    private async Task<string> IndexSecondAsync()
-    {
-        WriteFile("ImpactProj", "Models.cs", """
-            namespace ImpactProj {
-                public class Foo {
-                    public void Bar(int x) {}
-                    public void Caller() { Bar(1); }
-                    public void UpstreamCaller() { Caller(); }
-                    public void NewMethod() {}
-                }
-                public class Extra {
-                    public void ExtraMethod() { new Foo().Bar(1); }
-                }
-            }
-            """);
-        return await RunIncrementalIndexAsync();
-    }
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
@@ -200,7 +155,7 @@ public sealed class McpImpactTests : IntegrationTestBase
 
         // Contract/acceptance: the CLI and MCP documents come from the same
         // ImpactPaging builder; the MCP envelope adds only pinned and limit.
-        var cliResult = RunCaptured(() => ImpactHandler.Run([
+        var cliResult = TestConsole.Capture(() => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={callerId}",
             "--direction=downstream",
@@ -242,27 +197,14 @@ public sealed class McpImpactTests : IntegrationTestBase
         }
     }
 
-    private static RunResult RunCaptured(Action action)
+    [Fact]
+    public async Task Mcp_EmptyDirection_IsInvalidParams()
     {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
 
-        return new RunResult(stdout.ToString(), failure);
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", direction: ""));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
     }
-
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
 }

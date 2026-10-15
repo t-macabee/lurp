@@ -3,75 +3,8 @@ using Lurp.Handlers;
 
 namespace Lurp.Tests;
 
-public sealed class ImpactHandlerPagingTests : IntegrationTestBase
+public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
 {
-    private async Task<string> IndexInitialAsync()
-    {
-        CreateProject("ImpactProj", new Dictionary<string, string>
-        {
-            ["Models.cs"] = """
-                namespace ImpactProj {
-                    public class Foo {
-                        public void Bar() {}
-                        public void Caller() { Bar(); }
-                        public void UpstreamCaller() { Caller(); }
-                    }
-                    public class Extra {
-                        public void ExtraMethod() { new Foo().Bar(); }
-                    }
-                }
-                """,
-            ["Extra2.cs"] = """
-                namespace ImpactProj {
-                    public class Another {
-                        public void AnotherMethod() { new Foo().Caller(); }
-                    }
-                }
-                """
-        });
-        return await RunFullIndexAsync(DbPath);
-    }
-
-    private async Task<string> IndexSecondAsync()
-    {
-        WriteFile("ImpactProj", "Models.cs", """
-            namespace ImpactProj {
-                public class Foo {
-                    public void Bar(int x) {}
-                    public void Caller() { Bar(1); }
-                    public void UpstreamCaller() { Caller(); }
-                    public void NewMethod() {}
-                }
-                public class Extra {
-                    public void ExtraMethod() { new Foo().Bar(1); }
-                }
-            }
-            """);
-        return await RunIncrementalIndexAsync();
-    }
-
-    private static RunResult RunCaptured(Action action)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            action();
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return new RunResult(stdout.ToString(), failure);
-    }
-
     // Contract/acceptance: pins the v2 impact symbols paging contract.
     [Fact]
     public async Task ImpactHandler_Paging_MatchesFullSymbolListAndSortsGroups()
@@ -87,7 +20,7 @@ public sealed class ImpactHandlerPagingTests : IntegrationTestBase
         }
 
         // 1. A run with a large --limit= value gives the full ordered symbol list.
-        var fullResult = RunCaptured(() => ImpactHandler.Run([
+        var fullResult = TestConsole.Capture(() => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
@@ -134,7 +67,7 @@ public sealed class ImpactHandlerPagingTests : IntegrationTestBase
                 argsList.Add($"--cursor={cursor}");
             }
 
-            var pageResult = RunCaptured(() => ImpactHandler.Run(argsList.ToArray()));
+            var pageResult = TestConsole.Capture(() => ImpactHandler.Run(argsList.ToArray()));
             Assert.Null(pageResult.Failure);
 
             using var pageDoc = JsonDocument.Parse(pageResult.Stdout);
@@ -200,7 +133,7 @@ public sealed class ImpactHandlerPagingTests : IntegrationTestBase
         }
 
         // Summary: header, symbols line, then one row per group.
-        var summaryResult = RunCaptured(() => ImpactHandler.Run([
+        var summaryResult = TestConsole.Capture(() => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
@@ -216,7 +149,7 @@ public sealed class ImpactHandlerPagingTests : IntegrationTestBase
         Assert.True(summaryLines.Length >= 3);
 
         // JSONL: one meta line (the response minus symbols), then one symbol line per page symbol.
-        var jsonlResult = RunCaptured(() => ImpactHandler.Run([
+        var jsonlResult = TestConsole.Capture(() => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
@@ -242,5 +175,4 @@ public sealed class ImpactHandlerPagingTests : IntegrationTestBase
         }
     }
 
-    private sealed record RunResult(string Stdout, CliExitException? Failure);
 }

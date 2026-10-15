@@ -5,8 +5,10 @@ namespace Lurp.Adapters;
 
 public sealed class MediatRAdapter : IFrameworkAdapter
 {
+    private const string AdapterVersion = "mediatr-v1";
+
     public string Name => "MediatR";
-    public string Version => "mediatr-v1";
+    public string Version => AdapterVersion;
     public string Description => "MediatR framework edges (request/handler)";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
@@ -134,7 +136,7 @@ public sealed class MediatRAdapter : IFrameworkAdapter
                 Kind = nameof(EdgeKind.Handles),
                 Provenance = Provenance.FrameworkDerived,
                 SnapshotId = snapshotId,
-                ExtractorVersion = "mediatr-v1",
+                ExtractorVersion = AdapterVersion,
                 SourceDocumentPath = path,
                 SourceStartLine = sl,
                 SourceStartColumn = sc,

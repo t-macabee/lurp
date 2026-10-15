@@ -8,7 +8,7 @@ namespace Lurp.Workspace;
 /// </summary>
 internal static class IndexFinalization
 {
-    internal static void RefreshPlannerStatistics(IStoreConnection store, IOutputSink output, List<SnapshotTimingRow> timings)
+    internal static void RefreshPlannerStatistics(SqliteIndexStore store, IOutputSink output, List<SnapshotTimingRow> timings)
     {
         var swStats = Stopwatch.StartNew();
         try

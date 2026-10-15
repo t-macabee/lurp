@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
 
-public class SqliteIndexStore : IIndexStore, IDisposable
+public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncompletenessStore, ISemanticDiffStore, IDisposable
 {
     private readonly string _dbPath;
     private AnnotationStore? _annotations;
@@ -196,7 +196,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
             throw new InvalidOperationException($"Schema version mismatch: expected {expectedVersion}, got {actual}.");
     }
 
-    // ── ISnapshotStore ──────────────────────────────────────────────────
+    // ── Snapshot lifecycle, pins, documents and metrics ─────────────────
 
     public void SaveWorkspace(string id, string gitRoot, string solutionPath)
     {
@@ -322,6 +322,16 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _lifecycle!.GetSnapshotIds(workspaceId);
     }
 
+    /// <summary>
+    ///     Deterministic-identity guard shared by the full and incremental indexing
+    ///     pipelines: a complete snapshot with this identity must be reused rather
+    ///     than duplicated, and a non-complete row (a crashed or failed attempt)
+    ///     must not block a retry. Returns <see cref="ExistingSnapshotDisposition.Reuse" />
+    ///     when a complete row exists, <see cref="ExistingSnapshotDisposition.Retry" />
+    ///     after deleting a non-complete row, and <see cref="ExistingSnapshotDisposition.Fresh" />
+    ///     when no row exists. <see cref="ExistingSnapshotResolution.ExistingStatus" /> is
+    ///     the status of the row that existed (null when <see cref="ExistingSnapshotDisposition.Fresh" />).
+    /// </summary>
     public ExistingSnapshotResolution ResolveExistingSnapshot(string snapshotId, string workspaceId)
     {
         EnsureOpen();
@@ -730,23 +740,39 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _extractors!.HasStaleExtractorVersions(snapshotId);
     }
 
-    // ── ISearchStore ───────────────────────────────────────────────────
+    // ── Full-text and symbol search ────────────────────────────────────
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Full FTS rebuild. Runs after all documents, symbol membership, semantic diff,
+    ///     and orphan cleanup are persisted for the snapshot, and must finish before
+    ///     <see cref="SqliteIndexStore.MarkSnapshotComplete" />.
+    /// </summary>
     public void BuildSearchIndex(string snapshotId)
     {
         EnsureOpen();
         _searchMaintenance!.BuildSearchIndex(snapshotId);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Incremental FTS refresh. Runs after <see cref="CopySearchIndexToSnapshot" />
+    ///     seeded the new snapshot and after the final changed-document-path and
+    ///     changed-symbol-ID sets (including removals) are determined, and must finish
+    ///     before completion. Both sets may include items that need their FTS rows
+    ///     deleted and re-inserted.
+    /// </summary>
     public void BuildSearchIndex(string snapshotId, HashSet<string> changedDocumentPaths, HashSet<string> changedSymbolIds)
     {
         EnsureOpen();
         _searchMaintenance!.BuildSearchIndex(snapshotId, changedDocumentPaths, changedSymbolIds);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Mandatory incremental seed. Copies every FTS row from the previous snapshot
+    ///     into the new snapshot so the subsequent refresh only needs to delete and
+    ///     re-insert the changed subset. Must be called before the incremental
+    ///     <see cref="BuildSearchIndex(string, HashSet{string}, HashSet{string})" />
+    ///     overload for the same target snapshot.
+    /// </summary>
     public void CopySearchIndexToSnapshot(string fromSnapshotId, string toSnapshotId)
     {
         EnsureOpen();
@@ -765,6 +791,11 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _searchSymbols!.SearchSymbols(query, snapshotId, limit, includeGenerated, kind);
     }
 
+    /// <summary>
+    ///     Keyset-paginated symbol search. Fetches one extra row beyond <paramref name="limit" />
+    ///     to determine whether a next page exists, then returns an opaque cursor for it rather
+    ///     than an offset : offsets shift under duplicate-free re-ordering, cursors do not.
+    /// </summary>
     public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         EnsureOpen();
@@ -789,6 +820,10 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _textSearch!.SearchText(query, snapshotId, limit, includeGenerated, ignoreCase);
     }
 
+    /// <summary>
+    ///     Keyset-paginated literal search. Fetches one extra row beyond <paramref name="limit"/>
+    ///     to determine whether a next page exists, then returns an opaque cursor.
+    /// </summary>
     public TextSearchPage SearchTextPage(string query, string snapshotId, int limit, bool includeGenerated, bool ignoreCase, TextSearchCursor? cursor)
     {
         EnsureOpen();
@@ -801,7 +836,7 @@ public class SqliteIndexStore : IIndexStore, IDisposable
         return _deadCandidates!.GetDeadCandidatesPage(snapshotId, project, document, kind, includePublic, includeGenerated, includeTests, limit, cursor);
     }
 
-    // ── ISemanticDiffReadStore ─────────────────────────────────────────
+    // ── Semantic diff reads ────────────────────────────────────────────
 
     public IReadOnlyList<SymbolTransitionCandidate> LoadTransitionCandidates(string snapshotId, IReadOnlyCollection<string> symbolIds)
     {
@@ -831,6 +866,17 @@ public class SqliteIndexStore : IIndexStore, IDisposable
 
     // ── Cross-table batched maintenance ──────────────────────────────────
 
+    /// <summary>
+    ///     Deletes edges, binding-incompleteness rows, and annotations for the
+    ///     given document paths in one transaction. Populates a temp table with
+    ///     the path set once and joins all three deletes against it, instead of
+    ///     each of <see cref="IEdgeStore.DeleteEdgesByDocumentPaths" />,
+    ///     <see cref="IBindingIncompletenessStore.DeleteBindingIncompletenessByDocumentPaths" />,
+    ///     and <see cref="IEdgeStore.DeleteAnnotationsByDocumentPaths" /> rebuilding
+    ///     its own IN-list (or, for binding-incompleteness, issuing one DELETE per
+    ///     path) over the same set. Callers scoping a delete to exactly one of
+    ///     those tables should keep using the individual methods.
+    /// </summary>
     public void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
         EnsureOpen();

@@ -26,7 +26,7 @@ internal sealed class SearchSymbolStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    /// <inheritdoc cref="ISearchStore.SearchSymbols" />
+    /// <summary>Searches the snapshot's symbols by name; see <see cref="SqliteIndexStore.SearchSymbols" />.</summary>
     public List<SymbolSearchResult> SearchSymbols(string query, string snapshotId, int limit = 20, bool includeGenerated = false, string? kind = null)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -103,7 +103,7 @@ internal sealed class SearchSymbolStore
         return results;
     }
 
-    /// <inheritdoc cref="ISearchStore.SearchSymbolsPage" />
+    /// <summary>Keyset-paginated symbol search; see <see cref="SqliteIndexStore.SearchSymbolsPage" />.</summary>
     public SymbolSearchPage SearchSymbolsPage(string query, string snapshotId, int limit, bool includeGenerated, string? kind, SearchCursor? cursor)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
@@ -347,7 +347,7 @@ internal sealed class SearchSymbolStore
         return results;
     }
 
-    /// <inheritdoc cref="ISearchStore.ResolveSymbolByFqn" />
+    /// <summary>Resolves one symbol by fully qualified name; see <see cref="SqliteIndexStore.ResolveSymbolByFqn" />.</summary>
     public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
     {
         // Roslyn's FullyQualifiedFormat persists symbol FQNs with a "global::" prefix
@@ -424,7 +424,7 @@ internal sealed class SearchSymbolStore
         return null;
     }
 
-    /// <inheritdoc cref="ISearchStore.ResolveSymbolByDocCommentId" />
+    /// <summary>Resolves one symbol by documentation comment id; see <see cref="SqliteIndexStore.ResolveSymbolByDocCommentId" />.</summary>
     public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
     {
         if (string.IsNullOrWhiteSpace(docCommentId))

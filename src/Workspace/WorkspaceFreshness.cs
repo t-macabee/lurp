@@ -36,14 +36,14 @@ public static class WorkspaceFreshness
     ///     compared with the stored content hash (a touched but unchanged file stays
     ///     fresh; an edit that kept an old timestamp is caught).
     /// </summary>
-    public static FreshnessStamp CheckFreshnessCheap(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, FreshnessMode mode)
+    public static FreshnessStamp CheckFreshnessCheap(SqliteIndexStore store, string snapshotId, FreshnessMode mode)
     {
         var checkedAt = DateTime.UtcNow;
 
         if (mode == FreshnessMode.Off)
             return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
 
-        var metadata = manifests.LoadSnapshotMetadata(snapshotId);
+        var metadata = store.LoadSnapshotMetadata(snapshotId);
         if (metadata == null)
             return new FreshnessStamp("unknown", "skipped", 0, [], checkedAt, snapshotId, "documents_only");
 
@@ -51,7 +51,7 @@ public static class WorkspaceFreshness
         {
             var gitRoot = metadata.GitRoot;
             var builtAtUtc = metadata.CreatedAtUtc;
-            var versionsByPath = documents.GetDocumentVersionIdsByPath(snapshotId);
+            var versionsByPath = store.GetDocumentVersionIdsByPath(snapshotId);
 
             var changed = new List<string>();
             foreach (var (relativePath, storedVersionId) in versionsByPath)
@@ -102,9 +102,9 @@ public static class WorkspaceFreshness
         }
     }
 
-    public static FreshnessResult CheckFreshness(WorkspaceInfo current, ISnapshotManifestStore manifests)
+    public static FreshnessResult CheckFreshness(WorkspaceInfo current, SqliteIndexStore store)
     {
-        var storageManifest = manifests.LoadLatestSnapshot(current.Id.Value);
+        var storageManifest = store.LoadLatestSnapshot(current.Id.Value);
 
         if (storageManifest == null)
             return new FreshnessResult(false, [
@@ -158,15 +158,15 @@ public static class WorkspaceFreshness
     /// changed with a preserved old mtime is still detected.
     /// An untracked .cs file under the root or a .cs file that is not valid text disables the shortcut (safe fallback).
     /// </summary>
-    public static SnapshotRow? CanSkipIncrementalIndex(ISnapshotPinStore pins, ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, IEdgeStore edges, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
+    public static SnapshotRow? CanSkipIncrementalIndex(SqliteIndexStore store, WorkspaceId workspaceId, string gitRoot, IOutputSink? output = null)
     {
         try
         {
-            var built = pins.LoadBuiltAtLatestSnapshot(workspaceId.Value);
+            var built = store.LoadBuiltAtLatestSnapshot(workspaceId.Value);
             if (built == null)
                 return null;
 
-            if (CheckFreshnessCheap(manifests, documents, built.SnapshotId, FreshnessMode.Hash).State != "fresh")
+            if (CheckFreshnessCheap(store, built.SnapshotId, FreshnessMode.Hash).State != "fresh")
                 return null;
 
             if (!string.Equals(built.ExtractorVersion, VersionConstants.ExtractorVersion, StringComparison.Ordinal))
@@ -178,11 +178,11 @@ public static class WorkspaceFreshness
             if (!string.Equals(built.SdkVersion, WorkspaceInfo.QuerySdkVersion(output), StringComparison.Ordinal))
                 return null;
 
-            edges.UpsertExtractors(ExtractorRegistry.All);
-            if (edges.HasStaleExtractorVersions(built.SnapshotId))
+            store.UpsertExtractors(ExtractorRegistry.All);
+            if (store.HasStaleExtractorVersions(built.SnapshotId))
                 return null;
 
-            return HasNoNewSourcesOrBuildInputs(documents, built.SnapshotId, built.CreatedAtUtc, gitRoot)
+            return HasNoNewSourcesOrBuildInputs(store, built.SnapshotId, built.CreatedAtUtc, gitRoot)
                 ? built
                 : null;
         }
@@ -192,11 +192,11 @@ public static class WorkspaceFreshness
         }
     }
 
-    private static bool HasNoNewSourcesOrBuildInputs(ISnapshotDocumentStore documents, string snapshotId, DateTime builtAtUtc, string gitRoot)
+    private static bool HasNoNewSourcesOrBuildInputs(SqliteIndexStore store, string snapshotId, DateTime builtAtUtc, string gitRoot)
     {
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
         var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-        var knownDocuments = new HashSet<string>(documents.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
+        var knownDocuments = new HashSet<string>(store.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
         var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
 
         var dirs = new Stack<string>();

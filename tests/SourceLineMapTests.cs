@@ -88,4 +88,45 @@ public sealed class SourceLineMapTests
         Assert.Equal(3, location.EndColumn);
         Assert.True(location.IsGenerated);
     }
+
+    [Fact]
+    public void SliceUtf8_ValidRange_ReturnsText()
+    {
+        var content = "one\ntwo\nthree"u8.ToArray();
+
+        Assert.Equal("two", SourceLineMap.SliceUtf8(content, 4, 7, "dv"));
+        Assert.Equal(string.Empty, SourceLineMap.SliceUtf8(content, 4, 4, "dv"));
+    }
+
+    [Theory]
+    [InlineData(-1, 3)]
+    [InlineData(0, 100)]
+    [InlineData(5, 4)]
+    public void SliceUtf8_OutOfRange_ThrowsNamingDocumentVersion(int start, int end)
+    {
+        var content = "one\ntwo\nthree"u8.ToArray();
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => SourceLineMap.SliceUtf8(content, start, end, "dv-123"));
+        Assert.Contains("dv-123", ex.Message);
+    }
+
+    [Fact]
+    public void ExpandLineWindow_ClampsContextAtFirstAndLastLine()
+    {
+        // "one\ntwo\nthree\nfour": line starts at bytes 0, 4, 8, 12 and content is 16 bytes.
+        var lineStarts = new[] { 0, 4, 8, 12 };
+
+        // At the first line, context cannot reach before line 0.
+        var clampedStart = SourceLineMap.ExpandLineWindow(lineStarts, 0, 0, 1, 16);
+        Assert.Equal((0, 8, 0, 1), clampedStart);
+
+        // At the last line, context cannot reach past the last line.
+        var clampedEnd = SourceLineMap.ExpandLineWindow(lineStarts, 3, 3, 1, 16);
+        Assert.Equal((8, 16, 2, 3), clampedEnd);
+
+        // In the middle, both sides widen and the byte bounds cover whole lines.
+        var widened = SourceLineMap.ExpandLineWindow(lineStarts, 1, 2, 1, 16);
+        Assert.Equal((0, 16, 0, 3), widened);
+    }
 }

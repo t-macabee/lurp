@@ -29,7 +29,7 @@ public sealed class CrossProjectBoundaryTests
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
             Assert.True(File.Exists(solutionPath), $"NonCSharp solution missing: {solutionPath}");
 
-            GroundTruthFixture.RestoreSolution(solutionPath);
+            TestProcess.RestoreSolution(solutionPath);
 
             var index = TargetTreeIntegrityTests.RunCli(Timeout, "--mode=index", $"--solution={solutionPath}", "--strategy=full");
             var output = index.Stdout + index.Stderr;
@@ -60,7 +60,7 @@ public sealed class CrossProjectBoundaryTests
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
             Assert.True(File.Exists(solutionPath), $"C#-only CrossProject solution missing: {solutionPath}");
 
-            GroundTruthFixture.RestoreSolution(solutionPath);
+            TestProcess.RestoreSolution(solutionPath);
 
             using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(solutionPath));
             var solution = await workspace.OpenSolutionAsync(solutionPath);

@@ -27,10 +27,8 @@ public sealed record AnnotationCursor(string SnapshotId, string Fingerprint, lon
 
     public void Validate(string snapshotId, string fingerprint)
     {
-        if (!string.Equals(SnapshotId, snapshotId, StringComparison.Ordinal))
-            throw new ArgumentException($"Cursor was issued for snapshot '{SnapshotId}', not '{snapshotId}'.");
-        if (!string.Equals(Fingerprint, fingerprint, StringComparison.Ordinal))
-            throw new ArgumentException("Cursor does not match the current snapshot/symbol/document/kind; request a fresh page instead of resuming with a different query.");
+        CursorUtils.RequireBinding(SnapshotId, Fingerprint, snapshotId, fingerprint,
+            "Cursor does not match the current snapshot/symbol/document/kind; request a fresh page instead of resuming with a different query.");
     }
 }
 

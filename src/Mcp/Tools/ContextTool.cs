@@ -12,40 +12,11 @@ namespace Lurp.Mcp.Tools;
 [McpServerToolType]
 internal sealed class ContextTool
 {
-    private const int DefaultBudget = 8000;
-    private const int DefaultTypeAnchorBudget = 16000;
-    private const int DefaultTierLimit = 25;
-    private const string CursorKind = "capsule-tier";
-
     private readonly McpSessionContext _session;
 
     public ContextTool(McpSessionContext session)
     {
         _session = session;
-    }
-
-    private static int DefaultBudgetFor(string? symbolArg)
-    {
-        if (symbolArg is not null)
-        {
-            if (SymbolId.TryParse(symbolArg, out var id) && id.IsType)
-                return DefaultTypeAnchorBudget;
-            if (symbolArg.StartsWith("T:", StringComparison.Ordinal))
-                return DefaultTypeAnchorBudget;
-        }
-
-        return DefaultBudget;
-    }
-
-    private static ContextIntent ParseIntent(string intentArg)
-    {
-        return intentArg.ToLowerInvariant() switch
-        {
-            "inspect" => ContextIntent.Inspect,
-            "modify" => ContextIntent.Modify,
-            "diagnose" => ContextIntent.Diagnose,
-            _ => throw new McpProtocolException("intent must be one of: inspect, modify, diagnose.", McpErrorCode.InvalidParams)
-        };
     }
 
     [McpServerTool(Name = "lurp_context", Title = "Lurp Context Capsule", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
@@ -88,21 +59,22 @@ internal sealed class ContextTool
             if (hasFile && line!.Value < 1)
                 throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
 
-            var intentParsed = ParseIntent(intent ?? "inspect");
+            if (!ContextHandler.TryParseIntent(intent ?? "inspect", out var intentParsed))
+                throw new McpProtocolException("intent must be one of: inspect, modify, diagnose.", McpErrorCode.InvalidParams);
             // Deferred: resolved to the canonical form before the default is picked (see
             // below) so the type-anchor budget default keys off the resolved symbol kind,
             // not whichever of the three accepted input forms the caller used.
-            var budget = content_budget ?? DefaultBudget;
+            var budget = content_budget ?? ContextHandler.DefaultBudget;
             if (budget < 1)
                 throw new McpProtocolException("content_budget must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(content_budget, McpLimits.MaxContentBudget, "content_budget");
 
-            var maxHops = max_hops ?? 3;
+            var maxHops = max_hops ?? ContextHandler.DefaultMaxHops;
             if (maxHops < 1)
                 throw new McpProtocolException("max_hops must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_hops, McpLimits.MaxMaxHops, "max_hops");
 
-            var tierLimit = tier_limit ?? DefaultTierLimit;
+            var tierLimit = tier_limit ?? ContextHandler.DefaultTierLimit;
             if (tierLimit < 1)
                 throw new McpProtocolException("tier_limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(tier_limit, McpLimits.MaxLimit, "tier_limit");
@@ -144,7 +116,7 @@ internal sealed class ContextTool
 
                     try
                     {
-                        cursorObj.Validate(snapshotId, fingerprint, CursorKind);
+                        cursorObj.Validate(snapshotId, fingerprint, ContextHandler.CursorKind);
                     }
                     catch (ArgumentException ex)
                     {
@@ -159,7 +131,7 @@ internal sealed class ContextTool
                     maxHops, includeGenerated, offset, tierLimit, cancellationToken);
 
                 var nextCursor = page.HasMore
-                    ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
+                    ? new SequenceCursor(snapshotId, fingerprint, ContextHandler.CursorKind, offset + page.Items.Count).Encode()
                     : null;
 
                 var freshness = _session.GetFreshnessJson();
@@ -194,7 +166,7 @@ internal sealed class ContextTool
             if (hasSymbol)
                 symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated);
             if (content_budget is null && hasSymbol)
-                budget = DefaultBudgetFor(symbolArg);
+                budget = ContextHandler.DefaultBudgetFor(symbolArg);
 
             var lookup = new ContextLookup(snapshotId, symbolArg, normalizedFile, line);
             var gitRoot = store.GetSnapshotGitRoot(snapshotId);

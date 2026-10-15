@@ -13,22 +13,7 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
 
     internal EdgeRecord MakeMayDispatchEdge(string sourceId, string targetId, ISymbol targetSymbol, string provenance, string? typeArgumentsJson = null)
     {
-        int? startLine = null;
-        int? startColumn = null;
-        int? endLine = null;
-        int? endColumn = null;
-
-        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(targetSymbol);
-        if (syntaxRef != null)
-        {
-            var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
-            startLine = span.StartLinePosition.Line;
-            startColumn = span.StartLinePosition.Character;
-            endLine = span.EndLinePosition.Line;
-            endColumn = span.EndLinePosition.Character;
-        }
-
-        var sourceDocumentPath = GetDocumentPath(targetSymbol);
+        var (path, sl, sc, el, ec) = Resolve(targetSymbol);
 
         return new EdgeRecord
         {
@@ -38,39 +23,19 @@ internal sealed class PolymorphismExtractionContext : ExtractionContextBase
             Provenance = provenance,
             SnapshotId = SnapshotId,
             ExtractorVersion = ExtractorConstants.PolymorphismExtractor,
-            SourceDocumentPath = sourceDocumentPath,
-            SourceStartLine = startLine,
-            SourceStartColumn = startColumn,
-            SourceEndLine = endLine,
-            SourceEndColumn = endColumn,
+            SourceDocumentPath = path,
+            SourceStartLine = sl,
+            SourceStartColumn = sc,
+            SourceEndLine = el,
+            SourceEndColumn = ec,
             TypeArgumentsJson = typeArgumentsJson,
-            IsCrossGenerated = IsGenerated(sourceDocumentPath)
+            IsCrossGenerated = IsGenerated(path)
         };
-    }
-
-    internal string? GetDocumentPath(ISymbol symbol)
-    {
-        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(symbol);
-        if (syntaxRef == null)
-            return null;
-        var path = syntaxRef.SyntaxTree?.FilePath;
-        if (string.IsNullOrEmpty(path))
-            return null;
-        return PathNormalizer.ToGitRelative(path, _gitRoot);
     }
 
     internal bool IsTypeInScope(INamedTypeSymbol typeSymbol)
     {
-        if (ScopeDocuments == null)
-            return true;
-        foreach (var syntaxRef in typeSymbol.DeclaringSyntaxReferences)
-        {
-            var filePath = syntaxRef.SyntaxTree?.FilePath;
-            if (filePath != null && ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath)))
-                return true;
-        }
-
-        return false;
+        return typeSymbol.DeclaringSyntaxReferences.Any(r => ExtractionUtils.IsInScope(ScopeDocuments, r.SyntaxTree));
     }
 
     internal static List<INamedTypeSymbol> GetAllNamedTypes(INamespaceSymbol ns)

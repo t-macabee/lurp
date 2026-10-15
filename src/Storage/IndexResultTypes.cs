@@ -1,4 +1,4 @@
-﻿namespace Lurp.Storage;
+namespace Lurp.Storage;
 
 public sealed class SourceSearchResult
 {
@@ -58,19 +58,3 @@ public sealed class IndexedSymbolInfo
 
 /// <summary>The per-snapshot symbol fields that the semantic differ compares.</summary>
 public sealed record SymbolDiffInfo(string DocCommentId, string? FullyQualifiedName, string? MetadataJson);
-
-public interface IIndexStore : ISnapshotStore, IDeclarationStore, IEdgeStore, ISearchStore, ISemanticDiffStore, ISemanticDiffReadStore, IBindingIncompletenessStore
-{
-    /// <summary>
-    ///     Deletes edges, binding-incompleteness rows, and annotations for the
-    ///     given document paths in one transaction. Populates a temp table with
-    ///     the path set once and joins all three deletes against it, instead of
-    ///     each of <see cref="IEdgeStore.DeleteEdgesByDocumentPaths" />,
-    ///     <see cref="IBindingIncompletenessStore.DeleteBindingIncompletenessByDocumentPaths" />,
-    ///     and <see cref="IEdgeStore.DeleteAnnotationsByDocumentPaths" /> rebuilding
-    ///     its own IN-list (or, for binding-incompleteness, issuing one DELETE per
-    ///     path) over the same set. Callers scoping a delete to exactly one of
-    ///     those tables should keep using the individual methods.
-    /// </summary>
-    void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
-}

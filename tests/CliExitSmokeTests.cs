@@ -311,29 +311,29 @@ public sealed class CliExitSmokeTests : IDisposable
         Directory.CreateDirectory(dir);
         try
         {
-            var summaryDefault = await RunStatusCapturedAsync([$"--output-dir={dir}"]);
+            var summaryDefault = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}"]));
             Assert.Null(summaryDefault.Failure);
             Assert.Contains("Status: not indexed", summaryDefault.Stdout);
 
-            var json = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=json"]);
+            var json = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=json"]));
             Assert.Null(json.Failure);
             using (var doc = JsonDocument.Parse(json.Stdout))
                 Assert.True(doc.RootElement.TryGetProperty("indexed", out _));
 
-            var jsonAlias = await RunStatusCapturedAsync([$"--output-dir={dir}", "--json"]);
+            var jsonAlias = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
             Assert.Null(jsonAlias.Failure);
             using (var docAlias = JsonDocument.Parse(jsonAlias.Stdout))
                 Assert.True(docAlias.RootElement.TryGetProperty("indexed", out _));
 
-            var summary = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=summary"]);
+            var summary = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=summary"]));
             Assert.Null(summary.Failure);
             Assert.Contains("Status: not indexed", summary.Stdout);
 
-            var jsonl = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=jsonl"]);
+            var jsonl = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=jsonl"]));
             Assert.NotNull(jsonl.Failure);
             Assert.Contains("single document", jsonl.Failure!.Message);
 
-            var invalid = await RunStatusCapturedAsync([$"--output-dir={dir}", "--output=banana"]);
+            var invalid = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=banana"]));
             Assert.NotNull(invalid.Failure);
             Assert.Contains("--output must be one of: summary, json.", invalid.Failure.Message);
         }
@@ -436,28 +436,6 @@ public sealed class CliExitSmokeTests : IDisposable
         }
 
         return dir;
-    }
-
-    private static async Task<(string Stdout, CliExitException? Failure)> RunStatusCapturedAsync(string[] args)
-    {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
-        try
-        {
-            Console.SetOut(stdout);
-            await StatusHandler.Run(args);
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
-
-        return (stdout.ToString(), failure);
     }
 
     private static (string Stdout, CliExitException? Failure) RunTimingsCaptured(string[] args)

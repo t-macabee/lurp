@@ -34,11 +34,8 @@ public sealed record SearchCursor(string SnapshotId, string Fingerprint, string 
     /// </summary>
     public void Validate(string snapshotId, string fingerprint)
     {
-        if (!string.Equals(SnapshotId, snapshotId, StringComparison.Ordinal))
-            throw new ArgumentException($"Cursor was issued for snapshot '{SnapshotId}', not '{snapshotId}'.");
-        if (!string.Equals(Fingerprint, fingerprint, StringComparison.Ordinal))
-            throw new ArgumentException(
-                "Cursor does not match the current snapshot/query/kind/includeGenerated; request a fresh page instead of resuming with a different query.");
+        CursorUtils.RequireBinding(SnapshotId, Fingerprint, snapshotId, fingerprint,
+            "Cursor does not match the current snapshot/query/kind/includeGenerated; request a fresh page instead of resuming with a different query.");
         if (Mode is not ("fts" or "substring"))
             throw new ArgumentException($"Cursor carries an unknown search mode '{Mode}'.");
     }

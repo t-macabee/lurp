@@ -11,7 +11,7 @@ public static class IndexRunner
 
     internal static readonly string[] Strategies = [FullStrategy, IncrementalStrategy];
 
-    public static async Task RunAsync(IIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
+    public static async Task RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -36,7 +36,7 @@ public static class IndexRunner
         {
             var swPrecheck = Stopwatch.StartNew();
             var precheckWorkspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(solutionPath));
-            var currentSnapshot = WorkspaceFreshness.CanSkipIncrementalIndex(store, store, store, store, precheckWorkspaceId, gitRoot, sink);
+            var currentSnapshot = WorkspaceFreshness.CanSkipIncrementalIndex(store, precheckWorkspaceId, gitRoot, sink);
             swPrecheck.Stop();
             precheckMs = swPrecheck.ElapsedMilliseconds;
 
@@ -134,7 +134,7 @@ public static class IndexRunner
         sink.WriteLine($"  Total time ({runKind}): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task<string?> RunFullIndexAsync(IIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
+    private static async Task<string?> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
         bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
@@ -396,7 +396,7 @@ public static class IndexRunner
         }
     }
 
-    private static void PruneAndRecord(IIndexStore store, IOutputSink sink, string? snapshotId, IReadOnlyList<SnapshotTimingRow>? extraRows = null)
+    private static void PruneAndRecord(SqliteIndexStore store, IOutputSink sink, string? snapshotId, IReadOnlyList<SnapshotTimingRow>? extraRows = null)
     {
         var sw = Stopwatch.StartNew();
         sink.Write("Pruning old snapshots... ");
@@ -421,7 +421,7 @@ public static class IndexRunner
         }
     }
 
-    private static string ResolveStrategy(IIndexStore store, string? strategyArg, IOutputSink sink)
+    private static string ResolveStrategy(SqliteIndexStore store, string? strategyArg, IOutputSink sink)
     {
         if (strategyArg != null)
         {
@@ -446,7 +446,7 @@ public static class IndexRunner
         return IncrementalStrategy;
     }
 
-    private static void WriteIncrementalSummary(IIndexStore store, IOutputSink sink, IncrementalIndexer.IncrementalResult result)
+    private static void WriteIncrementalSummary(SqliteIndexStore store, IOutputSink sink, IncrementalIndexer.IncrementalResult result)
     {
         sink.WriteLine();
         sink.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");

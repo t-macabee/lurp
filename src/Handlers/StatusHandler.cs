@@ -7,6 +7,8 @@ namespace Lurp.Handlers;
 
 internal static class StatusHandler
 {
+    internal const int DefaultMaxMismatches = 50;
+
     private static readonly JsonSerializerOptions JsonOutputOptions = LurpJsonOptions.IndentedIgnoreNull;
 
     public static async Task Run(string[] args)
@@ -65,7 +67,7 @@ internal static class StatusHandler
             var includeDocuments = detailSections.Documents;
             var includeReferences = detailSections.References;
             var includeCompleteness = detailSections.Completeness;
-            var maxMismatches = ParseMaxArg(args, "--max-mismatches=", 50);
+            var maxMismatches = ParseMaxArg(args, "--max-mismatches=", DefaultMaxMismatches);
             var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
                                   ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
@@ -83,7 +85,7 @@ internal static class StatusHandler
         }
     }
 
-    private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(ISnapshotManifestStore manifests, string solutionPath)
+    private static async Task<WorkspaceFreshness.FreshnessResult> CheckCurrentWorkspaceAsync(SqliteIndexStore store, string solutionPath)
     {
         if (!MSBuildLocator.IsRegistered) MSBuildRegistration.RegisterOrThrow();
 
@@ -92,7 +94,7 @@ internal static class StatusHandler
         var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
-        return WorkspaceFreshness.CheckFreshness(workspaceInfo, manifests);
+        return WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
     }
 
     private static void ReportSchemaMismatch(string dbPath, int actualVersion, bool asJson)

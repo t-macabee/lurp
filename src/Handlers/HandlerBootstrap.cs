@@ -163,9 +163,9 @@ internal static class HandlerBootstrap
         }
     }
 
-    public static FreshnessStamp ComputeFreshnessStamp(ISnapshotManifestStore manifests, ISnapshotDocumentStore documents, string snapshotId, string[] args)
+    public static FreshnessStamp ComputeFreshnessStamp(SqliteIndexStore store, string snapshotId, string[] args)
     {
-        return WorkspaceFreshness.CheckFreshnessCheap(manifests, documents, snapshotId, ParseFreshnessMode(args));
+        return WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, ParseFreshnessMode(args));
     }
 
     public static void EnforceRequireFresh(string[] args, FreshnessStamp stamp)
@@ -384,7 +384,7 @@ internal static class HandlerBootstrap
     /// </summary>
     public static FreshnessStamp ResolveFreshness(string[] args, SqliteIndexStore store, string snapshotId)
     {
-        var stamp = ComputeFreshnessStamp(store, store, snapshotId, args);
+        var stamp = ComputeFreshnessStamp(store, snapshotId, args);
         EnforceRequireFresh(args, stamp);
         PrintFreshnessLine(args, stamp);
         return stamp;
@@ -396,7 +396,7 @@ internal static class HandlerBootstrap
     ///     or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate
     ///     <c>find-symbol</c> step that was previously required to obtain the resolvable form.
     /// </summary>
-    public static string ResolveSymbolArg(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
+    public static string ResolveSymbolArg(SqliteIndexStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
         // The canonical form is trusted as-is; validating it is the caller's choice
         // (existing behavior for all five call sites).
@@ -420,7 +420,7 @@ internal static class HandlerBootstrap
     ///     (validated via its doc-comment part), a bare doc-comment ID (e.g. <c>T:Some.Type</c>),
     ///     or a fully-qualified name (e.g. <c>Some.Namespace.Type</c>).
     /// </summary>
-    public static IndexedSymbolInfo? ResolveSymbolInfo(ISearchStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
+    public static IndexedSymbolInfo? ResolveSymbolInfo(SqliteIndexStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
         var candidate = SymbolId.DocCommentIdOf(symbolArg);
 

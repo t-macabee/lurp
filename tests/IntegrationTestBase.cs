@@ -2,7 +2,6 @@ using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Data.Sqlite;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
@@ -144,28 +143,7 @@ public abstract class IntegrationTestBase : IDisposable
     ///     Runs <c>dotnet restore</c> on the temp solution so package references
     ///     resolve inside MSBuildWorkspace (which never restores by itself).
     /// </summary>
-    public async Task RestoreSolutionAsync()
-    {
-        // Not shell injection: ArgumentList passes each element straight to the OS
-        // process API with UseShellExecute = false, so nothing here is parsed by a
-        // shell; SolutionPath is also an internally-generated temp path, not input.
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            ArgumentList = { "restore", SolutionPath, "--nologo", "-nodeReuse:false" },
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        }) ?? throw new InvalidOperationException("Failed to start dotnet restore.");
-
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        await Task.WhenAll(stdout, stderr);
-
-        Assert.True(process.ExitCode == 0,
-            $"dotnet restore failed (exit {process.ExitCode}).\n{await stderr}");
-    }
+    public void RestoreSolution() => TestProcess.RestoreSolution(SolutionPath);
 
     public async Task<string> RunFullIndexAsync(string dbPath)
     {
@@ -173,6 +151,12 @@ public abstract class IntegrationTestBase : IDisposable
             File.Delete(dbPath);
 
         return await RunFullIndexNoDeleteAsync(dbPath);
+    }
+
+    public async Task<string> IndexFullAsync(string projectName, IReadOnlyDictionary<string, string> sourceFiles)
+    {
+        CreateProject(projectName, sourceFiles);
+        return await RunFullIndexAsync(DbPath);
     }
 
     /// <summary>

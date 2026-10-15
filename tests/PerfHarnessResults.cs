@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json.Nodes;
 
 namespace Lurp.Tests;
@@ -13,23 +12,12 @@ internal static class PerfHarnessResults
     internal static (int Code, string Stdout, string Stderr) RunHarness(string[] args)
     {
         var harnessDll = Path.Combine(AppContext.BaseDirectory, "harness.dll");
-        var startInfo = new ProcessStartInfo
+        var environment = new Dictionary<string, string>
         {
-            FileName = "dotnet",
-            Arguments = string.Join(" ", new[] { harnessDll }.Concat(args).Select(Quote)),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
+            ["DOTNET_NOLOGO"] = "1",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
         };
-        startInfo.Environment["DOTNET_NOLOGO"] = "1";
-        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-
-        using var process = Process.Start(startInfo)!;
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        process.WaitForExit();
-        return (process.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
+        return TestProcess.Run("dotnet", [harnessDll, .. args], TimeSpan.FromMinutes(5), environment);
     }
 
     internal static string WriteResult(string directory, string fileName, JsonObject result)
@@ -52,6 +40,4 @@ internal static class PerfHarnessResults
                 ["peak_working_set_mb"] = peakMb
             }
         };
-
-    internal static string Quote(string arg) => arg.Contains(' ') ? $"\"{arg}\"" : arg;
 }

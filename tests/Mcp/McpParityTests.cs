@@ -163,7 +163,7 @@ public sealed class McpParityTests : IntegrationTestBase
         using var doc = JsonDocument.Parse(json);
         var toolChanges = doc.RootElement.GetProperty("changes").GetArrayLength();
         using var store = OpenStore(DbPath);
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = new SemanticDiffer(store, store, store);
         var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
         Assert.Equal(directChanges.Count, toolChanges);
         Assert.Equal(directChanges.Count, doc.RootElement.GetProperty("change_count").GetInt32());

@@ -54,7 +54,7 @@ internal sealed class DeadCandidatesTool
             var includeGenerated = include_generated ?? false;
             var includeTests = include_tests ?? false;
 
-            var limitVal = limit ?? 50;
+            var limitVal = limit ?? DeadCandidatesHandler.DefaultLimit;
             if (limitVal < 1 || limitVal > McpLimits.MaxDeadCandidatesLimit)
                 throw new McpProtocolException($"limit must be a positive integer <={McpLimits.MaxDeadCandidatesLimit}.", McpErrorCode.InvalidParams);
 

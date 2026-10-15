@@ -46,7 +46,7 @@ public static class Program
             [
                 FlagCatalog.Symbol with { Requirement = FlagRequirement.Required },
                 FlagCatalog.View with { Requirement = FlagRequirement.Required },
-                FlagCatalog.ContextLines with { Description = "Lines of context for `--view=surrounding` (default: 3)." },
+                FlagCatalog.ContextLines with { Description = $"Lines of context for `--view=surrounding` (default: {GetSymbolHandler.DefaultContextLines})." },
                 FlagCatalog.IncludeGenerated,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
@@ -56,7 +56,7 @@ public static class Program
             [
                 FlagCatalog.Query with { Requirement = FlagRequirement.Required },
                 FlagCatalog.Type, FlagCatalog.Kind,
-                FlagCatalog.Limit with { Description = "Max results per scope (default: 20)." },
+                FlagCatalog.Limit with { Description = $"Max results per scope (default: {SearchHandler.DefaultLimit})." },
                 FlagCatalog.SnippetTokens,
                 FlagCatalog.Cursor with { Description = "Continue from a previous page's `nextCursor` (`--type=symbol` only)." },
                 FlagCatalog.IncludeGenerated,
@@ -88,7 +88,7 @@ public static class Program
             [
                 FlagCatalog.Symbol with { Description = "The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name.", Requirement = FlagRequirement.Required },
                 FlagCatalog.Direction, FlagCatalog.Kinds, FlagCatalog.Provenance, FlagCatalog.MaxDepth,
-                FlagCatalog.Limit with { Description = "Symbols per page (default: 50). When more exist, the response carries `truncated.{reason,total,remaining,cursor}`." },
+                FlagCatalog.Limit with { Description = $"Symbols per page (default: {ImpactHandler.DefaultLimit}). When more exist, the response carries `truncated.{{reason,total,remaining,cursor}}`." },
                 FlagCatalog.Cursor with { Description = "Continue from a previous page's `truncated.cursor`." },
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
@@ -146,7 +146,7 @@ public static class Program
                 FlagCatalog.Symbol with { Description = "The symbol ID to query. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`." },
                 FlagCatalog.Document with { Description = "Relative path of the document within the solution. Mutually exclusive with `--symbol=`." },
                 FlagCatalog.Kind with { Description = "Filter to one annotation kind.", ValueHint = "kind" },
-                FlagCatalog.Limit with { Description = "Max annotations per page (default: 100; positive integer)." },
+                FlagCatalog.Limit with { Description = $"Max annotations per page (default: {AnnotationHandler.DefaultLimit}; positive integer)." },
                 FlagCatalog.Cursor,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
@@ -157,7 +157,7 @@ public static class Program
                 FlagCatalog.Document with { Description = "Filter to diagnostics in this document." },
                 FlagCatalog.Project,
                 FlagCatalog.Severity, FlagCatalog.Id,
-                FlagCatalog.Limit with { Description = "Max diagnostics per page (default: 100)." },
+                FlagCatalog.Limit with { Description = $"Max diagnostics per page (default: {DiagnosticsHandler.DefaultLimit})." },
                 FlagCatalog.Cursor,
                 FlagCatalog.IncludeGenerated with { Description = "Include diagnostics located in generated files (the same `obj/**`, `*.g.cs`, `*.generated.cs`, `*.Designer.cs`, `*ModelSnapshot.cs` patterns as every other read mode's `--include-generated`). Default excludes them." },
                 FlagCatalog.Snapshot,
@@ -167,7 +167,7 @@ public static class Program
         new("grep", "Literal/exact-text search over source content with line numbers (--query=).",
             [
                 FlagCatalog.Query with { Description = "Exact substring to find. The match is byte-exact, including punctuation and spacing. Case-sensitive by default; pass `--ignore-case` for case-insensitive.", Requirement = FlagRequirement.Required },
-                FlagCatalog.Limit with { Description = "Max matches per page (default: 50)." },
+                FlagCatalog.Limit with { Description = $"Max matches per page (default: {GrepHandler.DefaultLimit})." },
                 FlagCatalog.Cursor,
                 FlagCatalog.IgnoreCase,
                 FlagCatalog.IncludeGenerated with { Description = "Include source-generated documents." },
@@ -180,7 +180,7 @@ public static class Program
                 FlagCatalog.Project with { Description = "Filter to this project (assembly simple name, e.g. `eNote.API`)." },
                 FlagCatalog.Document with { Description = "Filter to symbols declared in this document (forward-slash, relative to the solution root, not the repo root)." },
                 FlagCatalog.Kind with { AllowedValues = DeadCandidateLiveness.CandidateKinds, Description = "Filter by symbol kind (case-insensitive)." },
-                FlagCatalog.Limit with { Description = "Max dead candidates per page (default: 50, max: 200)." },
+                FlagCatalog.Limit with { Description = $"Max dead candidates per page (default: {DeadCandidatesHandler.DefaultLimit}, max: {DeadCandidateLiveness.MaxPageSize})." },
                 FlagCatalog.Cursor,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet,

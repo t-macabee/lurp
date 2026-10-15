@@ -10,17 +10,15 @@ namespace Lurp.Workspace;
 public sealed class ImpactReachability
 {
     private readonly Dictionary<(ImpactDirection, string), List<EdgeRecord>> _edgeCache = [];
-    private readonly IOutputSink _output;
     private readonly ISemanticDiffStore? _semanticDiffStore;
     private readonly string _snapshotId;
     private readonly IEdgeStore _store;
 
-    public ImpactReachability(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null, IOutputSink? output = null)
+    public ImpactReachability(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
         _semanticDiffStore = semanticDiffStore;
-        _output = output ?? ConsoleOutputSink.Instance;
     }
 
     /// <summary>
@@ -58,10 +56,7 @@ public sealed class ImpactReachability
 
             foreach (var currentId in level)
             {
-                if (!TryGetEdges(currentId, direction, out var edges))
-                    continue;
-
-                foreach (var edge in FilterAndSort(edges, direction, allowedEdgeKinds, allowedProvenance))
+                foreach (var edge in FilterAndSort(GetEdges(currentId, direction), direction, allowedEdgeKinds, allowedProvenance))
                 {
                     var neighborId = NeighborOf(edge, direction);
 
@@ -102,51 +97,29 @@ public sealed class ImpactReachability
         if (_semanticDiffStore == null)
             return [];
 
-        try
-        {
-            return [.. _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
-                .Where(change => change.SymbolId == symbolId)];
-        }
-        catch (Exception ex)
-        {
-            _output.WriteErrorLine($"WARNING: ImpactReachability: failed to retrieve semantic changes for snapshot '{_snapshotId}': {ex.Message}");
-            return [];
-        }
+        return [.. _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
+            .Where(change => change.SymbolId == symbolId)];
     }
 
-    private bool TryGetEdges(string currentId, ImpactDirection direction, out List<EdgeRecord> edges)
+    private List<EdgeRecord> GetEdges(string currentId, ImpactDirection direction)
     {
         if (_edgeCache.TryGetValue((direction, currentId), out var cached))
-        {
-            edges = cached;
-            return true;
-        }
+            return cached;
 
-        try
+        var edges = direction switch
         {
-            edges = direction switch
-            {
-                ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, currentId),
-                ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
-                _ => []
-            };
-            _edgeCache[(direction, currentId)] = edges;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _output.WriteErrorLine($"WARNING: ImpactReachability: failed to retrieve edges for symbol '{currentId}' in snapshot '{_snapshotId}': {ex.Message}");
-            edges = [];
-            return false;
-        }
+            ImpactDirection.Downstream => _store.GetOutgoingEdges(_snapshotId, currentId),
+            ImpactDirection.Upstream => _store.GetIncomingEdges(_snapshotId, currentId),
+            _ => throw new InvalidOperationException("Unknown impact direction")
+        };
+        _edgeCache[(direction, currentId)] = edges;
+        return edges;
     }
 
     private bool HasFilteredEdgeOffWitnessPath(string symbolId, ImpactDirection direction, string anchorId,
         IReadOnlyDictionary<string, ImpactHop> parentHops, HashSet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
     {
-        if (!TryGetEdges(symbolId, direction, out var edges))
-            return false;
-
+        var edges = GetEdges(symbolId, direction);
         var witnessSymbols = WitnessSymbols(symbolId, anchorId, parentHops);
         foreach (var edge in FilteredEdges(edges, allowedEdgeKinds, allowedProvenance))
             if (!witnessSymbols.Contains(NeighborOf(edge, direction)))
@@ -160,7 +133,7 @@ public sealed class ImpactReachability
         var current = symbolId;
         while (!string.Equals(current, anchorId, StringComparison.Ordinal) && parentHops.TryGetValue(current, out var hop))
         {
-            current = ParentOf(hop, current);
+            current = hop.OtherEnd(current);
             symbols.Add(current);
         }
 
@@ -237,13 +210,6 @@ public sealed class ImpactReachability
         };
     }
 
-    private static string ParentOf(ImpactHop hop, string symbolId)
-    {
-        return string.Equals(hop.SourceSymbolId, symbolId, StringComparison.Ordinal)
-            ? hop.TargetSymbolId
-            : hop.SourceSymbolId;
-    }
-
     private static long SaturatingAdd(long left, long right)
     {
         return left > long.MaxValue - right ? long.MaxValue : left + right;
@@ -317,7 +283,7 @@ public sealed class ImpactReachabilityResult
             if (!_parentHops.TryGetValue(current, out var hop))
                 return [];
             hops.Add(hop);
-            current = ParentOf(hop, current);
+            current = hop.OtherEnd(current);
         }
 
         hops.Reverse();
@@ -335,7 +301,7 @@ public sealed class ImpactReachabilityResult
     {
         var parents = new HashSet<string>(StringComparer.Ordinal);
         foreach (var symbol in Symbols)
-            parents.Add(ParentOf(symbol.ParentHop, symbol.SymbolId));
+            parents.Add(symbol.ParentHop.OtherEnd(symbol.SymbolId));
 
         var leaves = new List<ImpactPath>();
         foreach (var symbol in Symbols)
@@ -354,10 +320,4 @@ public sealed class ImpactReachabilityResult
             .ToList();
     }
 
-    private static string ParentOf(ImpactHop hop, string symbolId)
-    {
-        return string.Equals(hop.SourceSymbolId, symbolId, StringComparison.Ordinal)
-            ? hop.TargetSymbolId
-            : hop.SourceSymbolId;
-    }
 }

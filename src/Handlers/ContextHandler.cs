@@ -8,9 +8,11 @@ namespace Lurp.Handlers;
 
 internal static class ContextHandler
 {
-    private const string CursorKind = "capsule-tier";
+    internal const string CursorKind = "capsule-tier";
 
-    private const int DefaultTierLimit = 25;
+    internal const int DefaultTierLimit = 25;
+
+    internal const int DefaultMaxHops = 3;
 
     // Keep ordinary capsule paths below the legacy Windows MAX_PATH boundary even
     // when the output directory itself is moderately nested.
@@ -61,12 +63,13 @@ internal static class ContextHandler
         var hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
         if (!hasSymbol && !hasFile) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
 
-        var intent = ParseIntent(intentArg);
+        if (!TryParseIntent(intentArg, out var intent))
+            HandlerBootstrap.Fail("ERROR: --intent must be one of: inspect, modify, diagnose.");
         var explicitBudget = !string.IsNullOrEmpty(budgetArg);
         var budget = explicitBudget
             ? HandlerBootstrap.ParsePositiveIntArg(args, "--content-budget=", DefaultBudget)
             : DefaultBudget;
-        var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", 3);
+        var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", DefaultMaxHops);
         var lineNumber = ParseLineNumber(hasFile, lineArg);
 
         HandlerBootstrap.WithStore(args, snapshotArg, (store, snapshotId) =>
@@ -196,19 +199,22 @@ internal static class ContextHandler
         }, ContextCapsuleJson.Options));
     }
 
-    private static ContextIntent ParseIntent(string intentArg)
+    internal static bool TryParseIntent(string value, out ContextIntent intent)
     {
-        switch (intentArg.ToLowerInvariant())
+        switch (value.ToLowerInvariant())
         {
             case "inspect":
-                return ContextIntent.Inspect;
+                intent = ContextIntent.Inspect;
+                return true;
             case "modify":
-                return ContextIntent.Modify;
+                intent = ContextIntent.Modify;
+                return true;
             case "diagnose":
-                return ContextIntent.Diagnose;
+                intent = ContextIntent.Diagnose;
+                return true;
             default:
-                HandlerBootstrap.Fail("ERROR: --intent must be one of: inspect, modify, diagnose.");
-                return ContextIntent.Inspect;
+                intent = ContextIntent.Inspect;
+                return false;
         }
     }
 

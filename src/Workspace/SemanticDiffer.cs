@@ -4,6 +4,9 @@ namespace Lurp.Workspace;
 
 public class SemanticDiffer
 {
+    // Intentionally excluded from comparison (captured by signature):
+    // - returnType: included in signature for methods, properties, events
+    // - arity: generic type parameter count included in signature
     private static readonly MetadataComparisonEntry[] MetadataComparisons =
     [
         new(SymbolMetadataKeys.Accessibility, ChangeType.AccessibilityChanged, MetadataComparisonKind.String),
@@ -38,17 +41,12 @@ public class SemanticDiffer
 
     private readonly IDeclarationStore _declarationStore;
     private readonly IEdgeStore _edgeStore;
-    private readonly ISemanticDiffReadStore _readStore;
 
-    // Intentionally excluded from comparison (captured by signature):
-    // - returnType: included in signature for methods, properties, events
-    // - arity: generic type parameter count included in signature
-    private readonly ISnapshotSymbolStore _snapshotStore;
+    private readonly SqliteIndexStore _store;
 
-    public SemanticDiffer(ISnapshotSymbolStore snapshotStore, ISemanticDiffReadStore readStore, IDeclarationStore declarationStore, IEdgeStore edgeStore)
+    public SemanticDiffer(SqliteIndexStore store, IDeclarationStore declarationStore, IEdgeStore edgeStore)
     {
-        _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
-        _readStore = readStore ?? throw new ArgumentNullException(nameof(readStore));
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _declarationStore = declarationStore ?? throw new ArgumentNullException(nameof(declarationStore));
         _edgeStore = edgeStore ?? throw new ArgumentNullException(nameof(edgeStore));
     }
@@ -171,16 +169,13 @@ public class SemanticDiffer
         if (!string.Equals(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName, StringComparison.Ordinal) &&
             fromInfo.DocCommentId == toInfo.DocCommentId)
         {
-            var fromSimple = GetSimpleNameFromFqn(fromInfo.FullyQualifiedName);
-            var toSimple = GetSimpleNameFromFqn(toInfo.FullyQualifiedName);
-            var fromContainer = GetContainerFromFqn(fromInfo.FullyQualifiedName);
-            var toContainer = GetContainerFromFqn(toInfo.FullyQualifiedName);
+            var transition = FqnParts.ClassifyRenameMove(fromInfo.FullyQualifiedName, toInfo.FullyQualifiedName);
 
-            if (fromSimple != toSimple)
+            if (transition is SymbolTransitionKind.Rename or SymbolTransitionKind.RenameAndMove)
                 changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolRenamed, symbolId, new { before = fromInfo.FullyQualifiedName, after = toInfo.FullyQualifiedName }));
 
-            if (fromContainer != toContainer)
-                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = fromContainer, after = toContainer }));
+            if (transition is SymbolTransitionKind.Move or SymbolTransitionKind.RenameAndMove)
+                changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.SymbolMoved, symbolId, new { before = FqnParts.Container(fromInfo.FullyQualifiedName), after = FqnParts.Container(toInfo.FullyQualifiedName) }));
         }
 
         var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
@@ -232,8 +227,8 @@ public class SemanticDiffer
         if (removedIds.Count == 0 || addedIds.Count == 0)
             return;
 
-        var removedCandidates = _readStore.LoadTransitionCandidates(fromSnapshotId, removedIds);
-        var addedCandidates = _readStore.LoadTransitionCandidates(toSnapshotId, addedIds);
+        var removedCandidates = _store.LoadTransitionCandidates(fromSnapshotId, removedIds);
+        var addedCandidates = _store.LoadTransitionCandidates(toSnapshotId, addedIds);
 
         var resolution = SymbolTransitionMatcher.MatchTransitions(removedCandidates, addedCandidates);
 
@@ -363,7 +358,7 @@ public class SemanticDiffer
 
     private List<string> GetSymbolIdsInSnapshot(string snapshotId)
     {
-        return _snapshotStore.GetSymbolIdsInSnapshot(snapshotId);
+        return _store.GetSymbolIdsInSnapshot(snapshotId);
     }
 
     private SymbolDiffInfo? ReadSymbolDiffInfo(string symbolId, string snapshotId)
@@ -458,20 +453,6 @@ public class SemanticDiffer
             changes.Add(MakeChange(fromSnapshotId, toSnapshotId, ChangeType.BodyOnlyChanged, symbolId, new { note = "signature unchanged, body differs" }));
 
         return (changes, 0);
-    }
-
-    private static string GetSimpleNameFromFqn(string? fqn)
-    {
-        if (string.IsNullOrEmpty(fqn)) return string.Empty;
-        var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? fqn : fqn[(idx + 1)..];
-    }
-
-    private static string GetContainerFromFqn(string? fqn)
-    {
-        if (string.IsNullOrEmpty(fqn)) return string.Empty;
-        var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? string.Empty : fqn[..idx];
     }
 
     private static string? GetMetaString(Dictionary<string, JsonElement> meta, string key)

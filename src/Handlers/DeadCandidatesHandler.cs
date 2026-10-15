@@ -7,7 +7,7 @@ namespace Lurp.Handlers;
 
 internal static class DeadCandidatesHandler
 {
-    private const int DefaultLimit = 50;
+    internal const int DefaultLimit = 50;
 
     public static void Run(string[] args)
     {
@@ -93,7 +93,8 @@ internal static class DeadCandidatesHandler
                 case OutputMode.Summary:
                     foreach (var e in page.Candidates)
                     {
-                        var loc = e.DocumentPath != null ? $"{e.DocumentPath}:{e.Locations.FirstOrDefault()?.StartLine ?? 0}" : "<no-doc>";
+                        var line = e.Locations.FirstOrDefault()?.StartLine;
+                        var loc = e.DocumentPath == null ? "<no-doc>" : line is { } l ? $"{e.DocumentPath}:{l}" : e.DocumentPath;
                         Console.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
                     }
                     Console.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");

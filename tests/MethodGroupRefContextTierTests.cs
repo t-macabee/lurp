@@ -61,7 +61,7 @@ public sealed class MethodGroupRefContextTierTests : IntegrationTestBase
             new Dictionary<string, string> { ["MethodGroupTargetTests.cs"] = TestSource },
             projectReferences: ["TestProject"],
             packageReferences: ["xunit@2.9.3"]);
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var anchorId = ResolveSymbolId(snapshotId, "global::TestProject.MethodGroupTargets.F");

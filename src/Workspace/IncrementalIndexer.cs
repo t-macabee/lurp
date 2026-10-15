@@ -4,12 +4,12 @@ using System.Diagnostics;
 
 namespace Lurp.Workspace;
 
-public sealed class IncrementalIndexer(IIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
+public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, HashSet<string> skipAdapters, string? jsonExportPath = null, bool verbose = false, IOutputSink? output = null, bool skipDiff = false, bool force = false)
 {
     private readonly DocumentChangeDetector _changeDetector = new(gitRoot, output ?? ConsoleOutputSink.Instance);
     private readonly string _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
     private readonly IOutputSink _output = output ?? ConsoleOutputSink.Instance;
-    private readonly IIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly SqliteIndexStore _store = store ?? throw new ArgumentNullException(nameof(store));
 
     // Incremental indexing strategy:
     //   1. Hash all documents and compare against the previous manifest to find changed/new/deleted files.

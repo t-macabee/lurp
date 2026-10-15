@@ -186,7 +186,7 @@ Measured 2026-10-14 on commit `cfa43f3` (Release build; the 3.0.0 changes touch 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.0.1. This source tree is <!-- generated:versions -->tool 3.0.1, schema v37, extractor 1.9.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.0.1. This source tree is <!-- generated:versions -->tool 3.0.1, schema v37, extractor 1.10.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). `windows-latest`

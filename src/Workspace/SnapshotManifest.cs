@@ -104,7 +104,7 @@ public sealed partial class SnapshotManifest
         };
     }
 
-    public void Save(ISnapshotManifestStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(SqliteIndexStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
         ArgumentNullException.ThrowIfNull(snapshotStore);

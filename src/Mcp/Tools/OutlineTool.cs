@@ -37,7 +37,7 @@ internal sealed class OutlineTool
                 throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
-            var limitVal = limit ?? 100;
+            var limitVal = limit ?? Lurp.Handlers.OutlineHandler.DefaultLimit;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");

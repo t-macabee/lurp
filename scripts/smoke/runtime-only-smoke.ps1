@@ -16,20 +16,10 @@ $ErrorActionPreference = 'Stop'
 
 $Lurp = (Resolve-Path $Lurp).Path
 $SolutionPath = (Resolve-Path $SolutionPath).Path
+Import-Module (Join-Path $PSScriptRoot 'LurpSmoke.psm1') -Force -ArgumentList $Lurp
 
 function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw "ASSERT FAILED: $Message" }
-}
-
-function Invoke-Lurp {
-    param([Parameter(Mandatory)][string[]]$Arguments, [switch]$AllowFailure)
-    $all = & $Lurp @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $text = ($all | Out-String)
-    if (-not $AllowFailure -and $code -ne 0) {
-        throw "lurp $($Arguments -join ' ') exited $code`n$text"
-    }
-    return [pscustomobject]@{ ExitCode = $code; Text = $text }
 }
 
 function ConvertFrom-LurpJson([string]$Text) {

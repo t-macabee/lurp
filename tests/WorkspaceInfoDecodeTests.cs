@@ -278,7 +278,7 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
         File.SetLastWriteTimeUtc(srcPath, DateTime.UtcNow.AddMinutes(5));
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Hash);
+        var stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Hash);
 
         Assert.Equal("stale", stamp.State);
         Assert.Contains(stamp.ChangedDocumentsSample, p => p.Contains("Sample.cs"));

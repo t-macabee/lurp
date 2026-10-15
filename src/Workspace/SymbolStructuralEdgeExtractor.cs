@@ -143,7 +143,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
     private bool IsGeneratedSymbol(ISymbol symbol)
     {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(symbol);
         if (syntaxRef == null)
             return false;
         var documentId = context.ResolveDocumentId(syntaxRef.SyntaxTree);
@@ -157,7 +157,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?
         GetSymbolSourceLocation(ISymbol symbol)
     {
-        var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+        var syntaxRef = EdgeLocationResolver.PrimaryDeclaration(symbol);
         var syntaxTree = syntaxRef?.SyntaxTree;
         if (syntaxRef == null || syntaxTree == null)
             return null;

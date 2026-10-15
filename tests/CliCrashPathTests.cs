@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Lurp.Tests;
 
 /// <summary>
@@ -11,14 +9,14 @@ namespace Lurp.Tests;
 public sealed class CliCrashPathTests
 {
     [Fact]
-    public async Task CorruptIndex_ExitsOne_WithOneLineAndNoStackTrace()
+    public void CorruptIndex_ExitsOne_WithOneLineAndNoStackTrace()
     {
         var outputDir = Path.Combine(Path.GetTempPath(), $"lurp-crash-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outputDir);
         File.WriteAllText(Path.Combine(outputDir, "index.db"), "this is not a sqlite database");
         try
         {
-            var (exitCode, stderr) = await RunAsync(
+            var (exitCode, stderr) = Run(
                 ["--mode=context", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: false);
 
@@ -35,14 +33,14 @@ public sealed class CliCrashPathTests
     }
 
     [Fact]
-    public async Task CorruptIndex_WithLurpDebug_PrintsStackTrace()
+    public void CorruptIndex_WithLurpDebug_PrintsStackTrace()
     {
         var outputDir = Path.Combine(Path.GetTempPath(), $"lurp-crash-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outputDir);
         File.WriteAllText(Path.Combine(outputDir, "index.db"), "this is not a sqlite database");
         try
         {
-            var (exitCode, stderr) = await RunAsync(
+            var (exitCode, stderr) = Run(
                 ["--mode=context", "--symbol=T:Crash.Probe|probe", $"--output-dir={outputDir}"],
                 debug: true);
 
@@ -56,27 +54,11 @@ public sealed class CliCrashPathTests
         }
     }
 
-    private static async Task<(int ExitCode, string Stderr)> RunAsync(string[] args, bool debug)
+    private static (int ExitCode, string Stderr) Run(string[] args, bool debug)
     {
         var argv = LurpTool.Argv(args);
-        var psi = new ProcessStartInfo
-        {
-            FileName = argv[0],
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        for (var i = 1; i < argv.Length; i++)
-            psi.ArgumentList.Add(argv[i]);
-        if (debug)
-            psi.Environment["LURP_DEBUG"] = "1";
-
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Lurp process");
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        await Task.WhenAll(stderrTask, stdoutTask);
-
-        return (process.ExitCode, await stderrTask);
+        var environment = debug ? new Dictionary<string, string> { ["LURP_DEBUG"] = "1" } : null;
+        var (exitCode, _, stderr) = TestProcess.Run(argv[0], argv[1..], TimeSpan.FromMinutes(2), environment);
+        return (exitCode, stderr);
     }
 }

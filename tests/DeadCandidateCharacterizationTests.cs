@@ -340,7 +340,7 @@ internal class MultiLibClass
 }
 """}, targetFramework: "net9.0;net10.0");
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         using var store = OpenStore(DbPath);
@@ -448,7 +448,7 @@ internal static class Helper2
 """
         });
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         using var store = OpenStore(DbPath);

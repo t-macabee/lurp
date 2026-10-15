@@ -7,7 +7,7 @@ namespace Lurp.Handlers;
 
 internal static class AnnotationHandler
 {
-    private const int DefaultLimit = 100;
+    internal const int DefaultLimit = 100;
 
     public static void RunAnnotate(string[] args)
     {

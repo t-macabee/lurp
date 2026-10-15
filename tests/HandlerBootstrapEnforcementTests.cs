@@ -15,7 +15,7 @@ public sealed class HandlerBootstrapEnforcementTests
     [Fact]
     public void EveryRequireFreshMode_HandlerCallsResolveFreshness()
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = TestRepoRoot.Find();
         var programSource = File.ReadAllText(Path.Combine(repoRoot, "src", "Program.cs"));
         var handlersDir = Path.Combine(repoRoot, "src", "Handlers");
 
@@ -57,7 +57,7 @@ public sealed class HandlerBootstrapEnforcementTests
     [Fact]
     public void EveryCliDocumentPathConsumer_CallsNormalizeDocumentPath()
     {
-        var handlersDir = Path.Combine(FindRepoRoot(), "src", "Handlers");
+        var handlersDir = Path.Combine(TestRepoRoot.Find(), "src", "Handlers");
 
         var violations = new List<string>();
         var checkedFiles = new List<string>();
@@ -85,7 +85,7 @@ public sealed class HandlerBootstrapEnforcementTests
     [Fact]
     public void EveryMcpDocumentPathParameter_CallsNormalizeDocumentPath()
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = TestRepoRoot.Find();
         var toolsDir = Path.Combine(repoRoot, "src", "Mcp", "Tools");
         var pathParameterNames = new HashSet<string>(StringComparer.Ordinal) { "document", "file", "documents" };
 
@@ -125,7 +125,7 @@ public sealed class HandlerBootstrapEnforcementTests
     [Fact]
     public void OnlySharedOutputModeParser_ReadsOutputFlag()
     {
-        var handlersDir = Path.Combine(FindRepoRoot(), "src", "Handlers");
+        var handlersDir = Path.Combine(TestRepoRoot.Find(), "src", "Handlers");
         var documentedExceptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "HandlerBootstrap.cs", // the shared parser itself
@@ -152,29 +152,5 @@ public sealed class HandlerBootstrapEnforcementTests
             "documented exception like pin-snapshot's --output=json alias), never through a " +
             "private reimplementation of the summary|json|jsonl vocabulary:\n" +
             string.Join("\n", violations));
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            if (File.Exists(Path.Combine(dir, "src", "Lurp.csproj")))
-                return dir;
-            var parent = Directory.GetParent(dir);
-            if (parent == null)
-                break;
-            dir = parent.FullName;
-        }
-
-        var cur = Directory.GetCurrentDirectory();
-        while (cur != null)
-        {
-            if (File.Exists(Path.Combine(cur, "src", "Lurp.csproj")))
-                return cur;
-            cur = Directory.GetParent(cur)?.FullName;
-        }
-
-        throw new InvalidOperationException("Could not locate repo root (src/Lurp.csproj).");
     }
 }

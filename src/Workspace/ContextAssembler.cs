@@ -71,7 +71,7 @@ internal sealed class ContextAssembler
     ///     TFMs, skipped adapters, extractor version). Absent only in tests
     ///     that construct a capsule without a backing snapshot store.
     /// </summary>
-    public ISnapshotManifestStore? SnapshotStore { get; init; }
+    public SqliteIndexStore? SnapshotStore { get; init; }
 
     /// <summary>
     ///     Optional semantic-diff reader. When it is absent the capsule's top-level
@@ -469,7 +469,7 @@ internal sealed class ContextAssembler
     }
 
     public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null,
-        ISnapshotManifestStore? snapshotStore = null, ISemanticDiffStore? semanticDiffStore = null, CancellationToken cancellationToken = default)
+        SqliteIndexStore? snapshotStore = null, ISemanticDiffStore? semanticDiffStore = null, CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrEmpty(lookup.SymbolArg))
         {

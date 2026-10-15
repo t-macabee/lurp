@@ -36,7 +36,7 @@ internal sealed class GrepTool
             if (string.IsNullOrEmpty(query))
                 throw new McpProtocolException("query is required.", McpErrorCode.InvalidParams);
 
-            var limitVal = limit ?? 50;
+            var limitVal = limit ?? Lurp.Handlers.GrepHandler.DefaultLimit;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");

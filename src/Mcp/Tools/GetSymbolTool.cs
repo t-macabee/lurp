@@ -44,7 +44,7 @@ internal sealed class GetSymbolTool
                 throw new McpProtocolException("context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
-            var contextLines = context_lines ?? 3;
+            var contextLines = context_lines ?? GetSymbolHandler.DefaultContextLines;
 
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbol, snapshotId, includeGenerated);
             if (info == null)

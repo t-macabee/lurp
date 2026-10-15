@@ -7,6 +7,8 @@ namespace Lurp.Handlers;
 
 internal static class GetSymbolHandler
 {
+    internal const int DefaultContextLines = 3;
+
     internal static readonly string[] ViewNames = ["metadata", "signature", "body", "declaration", "containing-type", "surrounding"];
     public static void Run(string[] args)
     {
@@ -35,17 +37,17 @@ internal static class GetSymbolHandler
         switch (viewArg.ToLowerInvariant())
         {
             case "metadata":
-                return new ViewSelection(ViewKind.Declaration, true, false, false, 3);
+                return new ViewSelection(ViewKind.Declaration, true, false, false, DefaultContextLines);
             case "signature":
-                return new ViewSelection(ViewKind.Signature, false, false, false, 3);
+                return new ViewSelection(ViewKind.Signature, false, false, false, DefaultContextLines);
             case "body":
-                return new ViewSelection(ViewKind.Body, false, false, false, 3);
+                return new ViewSelection(ViewKind.Body, false, false, false, DefaultContextLines);
             case "declaration":
-                return new ViewSelection(ViewKind.Declaration, false, false, false, 3);
+                return new ViewSelection(ViewKind.Declaration, false, false, false, DefaultContextLines);
             case "containing-type":
-                return new ViewSelection(ViewKind.Declaration, false, true, false, 3);
+                return new ViewSelection(ViewKind.Declaration, false, true, false, DefaultContextLines);
             case "surrounding":
-                var contextLines = 3;
+                var contextLines = DefaultContextLines;
                 if (!string.IsNullOrEmpty(contextLinesArg) && int.TryParse(contextLinesArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
                     contextLines = parsed;
                 return new ViewSelection(ViewKind.Declaration, false, false, true, contextLines);

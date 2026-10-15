@@ -56,7 +56,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
                     throw new CliExitException("ERROR: No snapshots found in the database.", 1);
 
                 snapshotId = latest;
-                stamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Auto);
+                stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
             }
             finally
             {
@@ -104,7 +104,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
 
     public static FreshnessStamp GetFreshness(SqliteIndexStore store, string snapshotId)
     {
-        return WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotId, FreshnessMode.Auto);
+        return WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
     }
 
     public object GetFreshnessJson(int maxDocuments = 10)

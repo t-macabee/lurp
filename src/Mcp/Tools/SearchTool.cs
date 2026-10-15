@@ -44,12 +44,12 @@ internal sealed class SearchTool
                 throw new McpProtocolException("type must be one of: source, symbol, all.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
-            var limitVal = limit ?? 20;
+            var limitVal = limit ?? SearchHandler.DefaultLimit;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
-            var snippetTokens = snippet_tokens ?? 64;
+            var snippetTokens = snippet_tokens ?? SearchHandler.DefaultSnippetTokens;
             if (snippetTokens < 1)
                 throw new McpProtocolException("snippet-tokens must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(snippet_tokens, McpLimits.MaxSnippetTokens, "snippet_tokens");

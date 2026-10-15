@@ -9,10 +9,6 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
 
     internal PinnedSnapshotRow? GetPinnedSnapshot(string? workspaceId = null)
     {
-        // If table doesn't exist yet (pre-migration), return null.
-        if (!TableExists())
-            return null;
-
         using var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
@@ -52,7 +48,9 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         if (builtAt == null || !IsCompleteSnapshot(pinnedId))
         {
             // Stale pin: remove it and return null so caller falls back to built_at latest.
-            try { ClearPinnedSnapshot(ws); } catch { }
+            // A read-only connection (status, MCP reads) cannot clear the pin; the caller still falls back to the latest snapshot.
+            try { ClearPinnedSnapshot(ws); }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == SQLitePCL.raw.SQLITE_READONLY) { }
             return null;
         }
 
@@ -114,9 +112,6 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
 
     internal bool ClearPinnedSnapshot(string? workspaceId = null)
     {
-        if (!TableExists())
-            return false;
-
         using var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
@@ -138,13 +133,5 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         var status = cmd.ExecuteScalar() as string;
         return string.Equals(status, SnapshotStatusValues.Complete, StringComparison.Ordinal);
-    }
-
-    private bool TableExists()
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='snapshot_pins';";
-        var result = cmd.ExecuteScalar();
-        return result != null && result != DBNull.Value;
     }
 }

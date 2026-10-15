@@ -43,6 +43,8 @@ public sealed class ImpactHop
 
     [JsonPropertyName("source_end_column")]
     public int? SourceEndColumn { get; }
+
+    internal string OtherEnd(string symbolId) => string.Equals(SourceSymbolId, symbolId, StringComparison.Ordinal) ? TargetSymbolId : SourceSymbolId;
 }
 
 public sealed class ImpactPath

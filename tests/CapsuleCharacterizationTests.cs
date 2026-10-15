@@ -433,7 +433,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             new Dictionary<string, string> { ["TestTargetTests.cs"] = ManyTestMethodsSource() },
             projectReferences: ["TestProject"],
             packageReferences: ["xunit@2.9.3"]);
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
         var anchorId = ResolveSymbolId(snapshotId, "global::TestProject.TestTarget.Run");
         return (snapshotId, anchorId);
@@ -714,7 +714,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             },
             ["MediatR@12.4.1"]);
 
-        await RestoreSolutionAsync();
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
         using var store = OpenStore(DbPath);
 

@@ -29,7 +29,7 @@ public sealed class SymbolTargetFrameworkAttributionTests
             GroundTruthFixture.CopyTree(GroundTruthFixture.LocateFixtureRoot(), treeRoot);
             Assert.True(File.Exists(solutionPath), $"CrossProject solution missing: {solutionPath}");
 
-            GroundTruthFixture.RestoreSolution(solutionPath);
+            TestProcess.RestoreSolution(solutionPath);
             cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
 
             var index = TargetTreeIntegrityTests.RunCli(IndexTimeout, "--mode=index", $"--solution={solutionPath}", "--strategy=full");

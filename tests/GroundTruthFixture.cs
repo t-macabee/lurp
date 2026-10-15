@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -43,7 +42,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
         if (!File.Exists(SolutionPath))
             throw new InvalidOperationException($"Copied fixture solution missing: {SolutionPath}");
 
-        RestoreSolution(SolutionPath);
+        TestProcess.RestoreSolution(SolutionPath);
 
         var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
         Solution = await workspace.OpenSolutionAsync(SolutionPath);
@@ -151,13 +150,6 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
         return facts;
     }
 
-    public static void RestoreSolution(string solutionPath)
-    {
-        var restore = RunProcess("dotnet", ["restore", solutionPath, "--nologo"], TimeSpan.FromMinutes(3));
-        if (restore.ExitCode != 0)
-            throw new InvalidOperationException($"dotnet restore failed ({restore.ExitCode}):\n{restore.Stderr}");
-    }
-
     internal static void CopyTree(string sourceRoot, string destinationRoot)
     {
         Directory.CreateDirectory(destinationRoot);
@@ -183,37 +175,6 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
             relativeDir.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 .Any(part => string.Equals(part, "bin", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(part, "obj", StringComparison.OrdinalIgnoreCase));
-    }
-
-    internal static (int ExitCode, string Stdout, string Stderr) RunProcess(string fileName, string[] args, TimeSpan timeout)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        // A reused MSBuild worker node inherits the child's redirected pipe
-        // handles and keeps them open after `dotnet restore` exits, which blocks
-        // ReadToEnd below until the node idles out (~15 minutes). Disable node
-        // reuse for every child process so the streams close with the process.
-        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        foreach (var arg in args)
-            psi.ArgumentList.Add(arg);
-
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException($"Failed to start {fileName}.");
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(timeout))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"{fileName} {string.Join(' ', args)} did not exit within {timeout}.");
-        }
-
-        Task.WaitAll(stdout, stderr);
-        return (process.ExitCode, stdout.Result, stderr.Result);
     }
 }
 

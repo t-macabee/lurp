@@ -10,11 +10,10 @@ public sealed class McpRefreshTests : IntegrationTestBase
 {
     private async Task<string> IndexInitialAsync()
     {
-        CreateProject("RefreshProj", new Dictionary<string, string>
+        return await IndexFullAsync("RefreshProj", new Dictionary<string, string>
         {
             ["A.cs"] = "namespace RefreshProj { public class A { public void Foo() {} } }"
         });
-        return await RunFullIndexAsync(DbPath);
     }
 
     [Fact]

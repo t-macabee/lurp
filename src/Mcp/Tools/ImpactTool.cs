@@ -12,10 +12,6 @@ namespace Lurp.Mcp.Tools;
 [McpServerToolType]
 internal sealed class ImpactTool
 {
-    private const string CursorKind = "impact";
-    private const int DefaultMaxDepth = 3;
-    private const int DefaultLimit = 50;
-
     private readonly McpSessionContext _session;
 
     public ImpactTool(McpSessionContext session)
@@ -45,20 +41,16 @@ internal sealed class ImpactTool
             if (string.IsNullOrEmpty(symbol))
                 throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
 
-            var directionArg = string.IsNullOrEmpty(direction) ? "downstream" : direction;
-            var impactDirection = directionArg.ToLowerInvariant() switch
-            {
-                "downstream" => ImpactDirection.Downstream,
-                "upstream" => ImpactDirection.Upstream,
-                _ => throw new McpProtocolException("direction must be one of: downstream, upstream.", McpErrorCode.InvalidParams)
-            };
+            var directionArg = direction ?? "downstream";
+            if (!ImpactHandler.TryParseDirection(directionArg, out var impactDirection))
+                throw new McpProtocolException("direction must be one of: downstream, upstream.", McpErrorCode.InvalidParams);
 
-            var maxDepth = max_depth ?? DefaultMaxDepth;
+            var maxDepth = max_depth ?? ImpactHandler.DefaultMaxDepth;
             if (maxDepth < 1)
                 throw new McpProtocolException("max-depth must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_depth, McpLimits.MaxMaxDepth, "max_depth");
 
-            var limitValue = limit ?? DefaultLimit;
+            var limitValue = limit ?? ImpactHandler.DefaultLimit;
             if (limitValue < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
@@ -106,7 +98,7 @@ internal sealed class ImpactTool
 
                 try
                 {
-                    cursorObj.Validate(snapshotId, fingerprint, CursorKind);
+                    cursorObj.Validate(snapshotId, fingerprint, ImpactHandler.CursorKind);
                 }
                 catch (ArgumentException ex)
                 {
@@ -129,7 +121,7 @@ internal sealed class ImpactTool
                 offset,
                 limitValue,
                 fingerprint,
-                CursorKind,
+                ImpactHandler.CursorKind,
                 pinned: true,
                 includeLimitEcho: true);
 

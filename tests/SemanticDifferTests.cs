@@ -33,6 +33,11 @@ public sealed class SemanticDifferTests : IDisposable
         return Encoding.UTF8.GetBytes(text);
     }
 
+    private static SemanticDiffer MakeDiffer(SqliteIndexStore store, IDeclarationStore? declarations = null)
+    {
+        return new SemanticDiffer(store, declarations ?? store, store);
+    }
+
     private static void CreateSnapshotWithDocument(SqliteIndexStore store, string snapshotId,
         string? customSource = null, string filePath = "src/Foo.cs")
     {
@@ -141,7 +146,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"interfaces": ["T:Ns.IFoo|asm1", "T:Ns.IBar|asm1"]}""")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         // A single change: the interface set is the only differing field.
@@ -190,7 +195,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"is_record": true}""")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         // A single change: isRecord is the only differing field.
@@ -239,7 +244,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"type_kind": "Struct"}""")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         // A single change: typeKind is the only differing field.
@@ -291,7 +296,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -343,7 +348,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -395,7 +400,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -447,7 +452,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveDeclarations(fromSnapshotId, [fromDecl]);
         store.SaveDeclarations(toSnapshotId, [toDecl]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var signatureChanged = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SignatureChanged);
@@ -468,7 +473,7 @@ public sealed class SemanticDifferTests : IDisposable
         // BuildContinuityKey normalizes the name out of the signature hash by
         // replacing [nameStart, nameEnd) with a placeholder before hashing, so
         // the two declarations produce identical continuity keys. SymbolTransitionMatcher
-        // pairs them; ClassifyTransition sees different simple names and returns Rename.
+        // pairs them; FqnParts.ClassifyRenameMove sees different simple names and returns Rename.
         //
         // Span layout for "public void OldName() { }" (25 bytes, ASCII):
         //   [0,  21) = signature  "public void OldName()"
@@ -513,7 +518,7 @@ public sealed class SemanticDifferTests : IDisposable
                 fqn: "Ns.NewName")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         // The raw removed/added pair is consumed by MatchTransitions and
@@ -566,7 +571,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveEdges(fromSnapshotId, fromEdges);
         store.SaveEdges(toSnapshotId, toEdges);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
@@ -622,7 +627,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"is_record": false}""")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
@@ -670,7 +675,7 @@ public sealed class SemanticDifferTests : IDisposable
                 metadataJson: """{"is_record": false}""")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         Assert.DoesNotContain(changes, c => c.ChangeType == ChangeType.SymbolRelocated);
@@ -767,7 +772,7 @@ public sealed class SemanticDifferTests : IDisposable
                 isPartial: true)
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
@@ -827,7 +832,7 @@ public sealed class SemanticDifferTests : IDisposable
                 fqn: "NewNs.Foo")
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var relocated = changes.FirstOrDefault(c => c.ChangeType == ChangeType.SymbolRelocated);
@@ -889,7 +894,7 @@ public sealed class SemanticDifferTests : IDisposable
         store.SaveEdges(fromSnapshotId, [fromEdge]);
         store.SaveEdges(toSnapshotId, [toEdge]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
         var change = Assert.Single(changes, c => c.ChangeType == expectedChangeType);
@@ -1040,8 +1045,8 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathSnapshots(store);
         SaveFastPathDeclarations(store);
 
-        var slowDiffer = new SemanticDiffer(store, store, new CountingDeclarationStore(store, fastPathEnabled: false), store);
-        var fastDiffer = new SemanticDiffer(store, store, new CountingDeclarationStore(store, fastPathEnabled: true), store);
+        var slowDiffer = MakeDiffer(store, new CountingDeclarationStore(store, fastPathEnabled: false));
+        var fastDiffer = MakeDiffer(store, new CountingDeclarationStore(store, fastPathEnabled: true));
 
         var (slowChanges, slowSkipped) = slowDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
         var (fastChanges, fastSkipped) = fastDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
@@ -1074,7 +1079,7 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathDeclarations(store);
 
         var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
-        var differ = new SemanticDiffer(store, store, countingStore, store);
+        var differ = MakeDiffer(store, countingStore);
 
         _ = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
 
@@ -1098,7 +1103,7 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathDeclarations(store);
 
         var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
-        var differ = new SemanticDiffer(store, store, countingStore, store);
+        var differ = MakeDiffer(store, countingStore);
 
         _ = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
 
@@ -1114,7 +1119,7 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathDeclarations(store);
 
         var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
-        var scopedDiffer = new SemanticDiffer(store, store, countingStore, store);
+        var scopedDiffer = MakeDiffer(store, countingStore);
 
         // One common symbol: 1 × 13 = 13 < 7 + 7 = 14, so the per-symbol path runs.
         var (scopedChanges, _) = scopedDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
@@ -1123,7 +1128,7 @@ public sealed class SemanticDifferTests : IDisposable
         Assert.Equal(0, countingStore.SymbolDiffInfoPreloads);
         Assert.Equal(2, countingStore.SymbolInfoCalls);
 
-        var fullDiffer = new SemanticDiffer(store, store, store, store);
+        var fullDiffer = MakeDiffer(store);
         var (fullChanges, _) = fullDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
 
         var scopedSigEdit = scopedChanges.Where(c => c.SymbolId == "M:Ns.SigEdit|asm1").ToList();
@@ -1146,7 +1151,7 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathDeclarations(store);
 
         var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
-        var differ = new SemanticDiffer(store, store, countingStore, store);
+        var differ = MakeDiffer(store, countingStore);
 
         // One changed symbol: 1 × 8 = 8 < 7 + 7 = 14, so both maps are read scoped.
         var (changes, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
@@ -1165,7 +1170,7 @@ public sealed class SemanticDifferTests : IDisposable
         SaveFastPathDeclarations(store);
 
         var countingStore = new CountingDeclarationStore(store, fastPathEnabled: true);
-        var differ = new SemanticDiffer(store, store, countingStore, store);
+        var differ = MakeDiffer(store, countingStore);
 
         // Two changed symbols: 2 × 8 = 16 >= 7 + 7 = 14, so both maps are read in full.
         var symbols = new HashSet<string> { "M:Ns.SigEdit|asm1", "M:Ns.BodyOnly|asm1" };
@@ -1207,7 +1212,7 @@ public sealed class SemanticDifferTests : IDisposable
             new EdgeRecord { SourceSymbolId = "M:Ns.BodyOnly|asm1", TargetSymbolId = "M:Ns.Shared.Meta|asm1", Kind = "Calls", Provenance = "compiler_proved" }
         ]);
 
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = MakeDiffer(store);
         var (scopedChanges, _) = differ.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId,
             new HashSet<string> { "M:Ns.SigEdit|asm1" });
 
@@ -1225,7 +1230,7 @@ public sealed class SemanticDifferTests : IDisposable
 
         Assert.DoesNotContain(scopedEdgeChanges, c => c.SymbolId == "M:Ns.BodyOnly|asm1");
 
-        var fullDiffer = new SemanticDiffer(store, store, store, store);
+        var fullDiffer = MakeDiffer(store);
         var (fullChanges, _) = fullDiffer.ComputeDiff(FastPathFromSnapshotId, FastPathToSnapshotId);
         var fullEdgeChanges = fullChanges
             .Where(c => c.ChangeType is ChangeType.EdgeAdded or ChangeType.EdgeRemoved)

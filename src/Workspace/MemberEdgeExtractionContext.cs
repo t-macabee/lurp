@@ -12,36 +12,17 @@ internal sealed class MemberEdgeExtractionContext(
     IReadOnlySet<string>? scopeDocuments = null,
     BindingIncompletenessCollector? incompleteness = null,
     Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
-{
-    private readonly string _assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache = semanticModelCache ?? [];
-    private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
-
-    internal Compilation Compilation { get; } = compilation ?? throw new ArgumentNullException(nameof(compilation));
-
-    internal EdgeLocationResolver LocationResolver { get; } = new(
+    : ExtractionContextBase(
+        compilation,
+        snapshotId,
+        gitRoot,
+        scopeDocuments,
+        incompleteness,
+        semanticModelCache,
         documentVersions.Keys.Select(static id => id.ToString()),
-        generatedDocuments.Select(static id => id.ToString()),
-        gitRoot);
-
-    internal string SnapshotId { get; } = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
-    internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
-    internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
-
-    internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
-    {
-        Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
-    }
-
-    internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
-    {
-        Incompleteness?.RecordUnresolved(node, semanticModel);
-    }
-
-    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
-    {
-        Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
-    }
+        generatedDocuments.Select(static id => id.ToString()))
+{
+    private List<(IMethodSymbol Method, CSharpSyntaxNode Syntax)>? _methodDeclarations;
 
     internal bool IsInScope(SyntaxTree? syntaxTree) => ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
 
@@ -85,11 +66,6 @@ internal sealed class MemberEdgeExtractionContext(
     }
 
 
-    internal string? MakeSymbolId(ISymbol symbol)
-    {
-        return SymbolIdFactory.Make(symbol, _assemblyIdentity);
-    }
-
     internal EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string extractorVersion, (string? path, int? sl, int? sc, int? el, int? ec)? location)
     {
         var sourceDocumentPath = location?.path;
@@ -125,24 +101,6 @@ internal sealed class MemberEdgeExtractionContext(
             return null;
         return result;
     }
-
-    internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
-        GetLocationInfo(Location location)
-    {
-        return LocationResolver.Resolve(location);
-    }
-
-
-    internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
-    {
-        if (_semanticModelCache.TryGetValue(syntaxTree, out var model))
-            return model;
-
-        model = Compilation.GetSemanticModel(syntaxTree);
-        _semanticModelCache[syntaxTree] = model;
-        return model;
-    }
-
 }
 
 internal interface IMemberEdgeExtractor

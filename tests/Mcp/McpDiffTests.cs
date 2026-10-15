@@ -11,7 +11,7 @@ public sealed class McpDiffTests : IntegrationTestBase
 {
     private async Task<string> IndexInitialAsync()
     {
-        CreateProject("DiffProj", new Dictionary<string, string>
+        return await IndexFullAsync("DiffProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """
                 namespace DiffProj {
@@ -22,7 +22,6 @@ public sealed class McpDiffTests : IntegrationTestBase
                 }
                 """
         });
-        return await RunFullIndexAsync(DbPath);
     }
 
     private async Task<string> IndexSecondAsync()
@@ -62,7 +61,7 @@ public sealed class McpDiffTests : IntegrationTestBase
         Assert.True(doc.RootElement.TryGetProperty("pinned", out _));
 
         using var store = OpenStore(DbPath);
-        var differ = new SemanticDiffer(store, store, store, store);
+        var differ = new SemanticDiffer(store, store, store);
         var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
         Assert.Equal(directChanges.Count, changes.GetArrayLength());
         // each change has required fields matching DiffHandler shape

@@ -17,16 +17,6 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
     internal Dictionary<string, List<ISymbol>> TypesByName { get; }
     internal Dictionary<string, List<ISymbol>> MembersByName { get; }
 
-    internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
-    {
-        Incompleteness?.RecordUnresolved(symbolInfo, node, semanticModel);
-    }
-
-    internal void RecordUnresolvedBinding(SyntaxNode node, SemanticModel semanticModel)
-    {
-        Incompleteness?.RecordUnresolved(node, semanticModel);
-    }
-
     internal string? GetContainingMemberSymbolId(SyntaxNode node, SemanticModel semanticModel)
     {
         return GetContainingMemberSymbol(node, semanticModel) is { } memberSymbol

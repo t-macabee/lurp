@@ -29,7 +29,7 @@ internal static class SymbolTransitionMatcher
             var removed = removedGroup[0];
             var added = addedGroup[0];
 
-            var kind = ClassifyTransition(removed.FullyQualifiedName, added.FullyQualifiedName);
+            var kind = FqnParts.ClassifyRenameMove(removed.FullyQualifiedName, added.FullyQualifiedName);
             if (kind == null)
                 continue;
 
@@ -94,39 +94,5 @@ internal static class SymbolTransitionMatcher
         }
 
         return sb.ToString();
-    }
-
-    private static SymbolTransitionKind? ClassifyTransition(string? previousFqn, string? currentFqn)
-    {
-        var previousName = GetSimpleNameFromFqn(previousFqn);
-        var currentName = GetSimpleNameFromFqn(currentFqn);
-        var previousContainer = GetContainerFromFqn(previousFqn);
-        var currentContainer = GetContainerFromFqn(currentFqn);
-
-        var nameChanged = !string.Equals(previousName, currentName, StringComparison.Ordinal);
-        var containerChanged = !string.Equals(previousContainer, currentContainer, StringComparison.Ordinal);
-
-        if (nameChanged && containerChanged)
-            return SymbolTransitionKind.RenameAndMove;
-        if (nameChanged)
-            return SymbolTransitionKind.Rename;
-        if (containerChanged)
-            return SymbolTransitionKind.Move;
-
-        return null;
-    }
-
-    private static string GetSimpleNameFromFqn(string? fqn)
-    {
-        if (string.IsNullOrEmpty(fqn)) return string.Empty;
-        var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? fqn : fqn[(idx + 1)..];
-    }
-
-    private static string GetContainerFromFqn(string? fqn)
-    {
-        if (string.IsNullOrEmpty(fqn)) return string.Empty;
-        var idx = fqn.LastIndexOf('.');
-        return idx < 0 ? string.Empty : fqn[..idx];
     }
 }

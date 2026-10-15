@@ -55,6 +55,24 @@ public static class SourceLineMap
         return Encoding.UTF8.GetCharCount(content, lineStart, safeOffset - lineStart);
     }
 
+    public static string SliceUtf8(byte[] content, int start, int end, string documentVersionId)
+    {
+        if (start < 0 || end > content.Length || start > end)
+            throw new InvalidOperationException(
+                $"Span [{start}, {end}) is outside the {content.Length} bytes of document version '{documentVersionId}'.");
+        return end == start ? string.Empty : Encoding.UTF8.GetString(content, start, end - start);
+    }
+
+    /// <summary>Byte bounds of whole lines <paramref name="firstLineIndex" /> to <paramref name="lastLineIndex" /> (0-based), widened by <paramref name="contextLines" /> on each side and clamped to the document.</summary>
+    public static (int ByteStart, int ByteEnd, int FirstLineIndex, int LastLineIndex) ExpandLineWindow(
+        int[] lineStarts, int firstLineIndex, int lastLineIndex, int contextLines, int contentLength)
+    {
+        var first = Math.Max(0, firstLineIndex - contextLines);
+        var last = Math.Min(lineStarts.Length - 1, lastLineIndex + contextLines);
+        var byteEnd = last + 1 < lineStarts.Length ? lineStarts[last + 1] : contentLength;
+        return (lineStarts[first], byteEnd, first, last);
+    }
+
     public static DeclarationLocation? MapDeclaration(
         string documentPath,
         int? fullStart,

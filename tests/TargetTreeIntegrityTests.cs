@@ -43,7 +43,7 @@ public sealed class TargetTreeIntegrityTests
 
             // Restore happens before the measured window: obj/ assets are part of
             // the baseline and must not change either, but restore is not Lurp's work.
-            GroundTruthFixture.RestoreSolution(solutionPath);
+            TestProcess.RestoreSolution(solutionPath);
 
             var before = TreeSnapshot.Record(treeRoot);
             cacheDir = LurpCache.ResolveSolutionCacheDir(solutionPath);
@@ -245,7 +245,7 @@ public sealed class TargetTreeIntegrityTests
     {
         var (fileName, dllPath) = LurpTool.ResolveCommand();
         var fullArgs = dllPath == null ? args : [dllPath, .. args];
-        return GroundTruthFixture.RunProcess(fileName, fullArgs, timeout);
+        return TestProcess.Run(fileName, fullArgs, timeout);
     }
 
 }

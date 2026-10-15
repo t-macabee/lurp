@@ -36,15 +36,7 @@ public abstract class InMemoryTestBase : IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            if (Directory.Exists(_tempDir))
-                Directory.Delete(_tempDir, true);
-        }
-        catch
-        {
-        }
-
+        TestDatabase.DeleteDirectory(_tempDir);
         GC.SuppressFinalize(this);
     }
 

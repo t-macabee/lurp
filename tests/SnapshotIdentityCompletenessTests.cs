@@ -34,7 +34,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         };
 
         CreateProject("P", source, []);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -64,7 +64,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                                      </ItemGroup>
                                    </Project>
                                    """);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
 
@@ -186,7 +186,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         };
 
         CreateProject("P", source);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -259,7 +259,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                            """
             },
             targetFramework: "net9.0;net10.0");
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -280,7 +280,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                                      </ItemGroup>
                                    </Project>
                                    """);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
 
@@ -333,7 +333,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                        }
                        """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -352,7 +352,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                                      </ItemGroup>
                                    </Project>
                                    """);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
 
@@ -396,7 +396,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                            """
             },
             targetFramework: "net9.0;net10.0");
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var snapshotV1 = await RunFullIndexAsync(DbPath);
 
@@ -437,7 +437,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         _ = await RunFullIndexAsync(DbPath);
@@ -487,7 +487,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                            }
                            """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         _ = await RunFullIndexAsync(DbPath);
@@ -522,7 +522,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfo = await LoadWorkspaceInfoAsync();
         var snapshotId = await RunFullIndexAsync(DbPath);
@@ -572,7 +572,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         }, projectReferences: ["Q"]);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         _ = await RunFullIndexAsync(DbPath);
@@ -589,7 +589,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                                      </PropertyGroup>
                                    </Project>
                                    """);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
 
@@ -627,7 +627,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -672,7 +672,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
         var snapshotV1 = await RunFullIndexAsync(DbPath);
@@ -722,7 +722,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
                          }
                          """
         });
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var snapshotV1 = await RunFullIndexAsync(DbPath);
 
@@ -734,10 +734,10 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         // CheckFreshnessCheap behavior.
         using (var store = OpenStore(DbPath))
         {
-            var statStamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotV1, FreshnessMode.Auto);
+            var statStamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotV1, FreshnessMode.Auto);
             Assert.Equal("stale", statStamp.State);
 
-            var hashStamp = WorkspaceFreshness.CheckFreshnessCheap(store, store, snapshotV1, FreshnessMode.Hash);
+            var hashStamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotV1, FreshnessMode.Hash);
             Assert.Equal("fresh", hashStamp.State);
         }
     }
@@ -770,7 +770,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
         }, []);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var input = SnapshotIdentityInput.FromWorkspace(await LoadWorkspaceInfoAsync(), new HashSet<string>());
 
@@ -791,7 +791,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
         }, []);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var input = SnapshotIdentityInput.FromWorkspace(await LoadWorkspaceInfoAsync(), new HashSet<string>());
 
@@ -809,7 +809,7 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
         }, []);
-        await RestoreSolutionAsync();
+        RestoreSolution();
 
         var first = SnapshotIdentity.Create(await LoadWorkspaceInfoAsync(), new HashSet<string>());
         var second = SnapshotIdentity.Create(await LoadWorkspaceInfoAsync(), new HashSet<string>());

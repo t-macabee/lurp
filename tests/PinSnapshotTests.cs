@@ -282,12 +282,61 @@ public sealed class PinSnapshotTests : IDisposable
         store.Close();
     }
 
-    private void DropPinsTable()
+    [Fact]
+    public void GetPinnedSnapshot_FailsWithTheRealError_WhenThePinsTableIsMissing()
+    {
+        using var store = CreateStore();
+        DropPinsTable();
+
+        var ex = Assert.Throws<SqliteException>(() => store.GetPinnedSnapshot("ws-none"));
+
+        Assert.Contains("snapshot_pins", ex.Message);
+        store.Close();
+    }
+
+    [Fact]
+    public void GetPinnedSnapshot_FailsWithTheRealError_WhenAStalePinCannotBeCleared()
+    {
+        using var store = CreateStore();
+        InsertSnapshot(store, "snap-a", "ws-stale", DateTime.UtcNow);
+        store.SetPinnedSnapshot("snap-a");
+        ExecuteSql("""
+            UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-a';
+            CREATE TRIGGER block_pin_delete BEFORE DELETE ON snapshot_pins BEGIN SELECT RAISE(ABORT, 'pin delete blocked'); END;
+            """);
+
+        var ex = Assert.Throws<SqliteException>(() => store.GetPinnedSnapshot("ws-stale"));
+
+        Assert.Contains("pin delete blocked", ex.Message);
+        store.Close();
+    }
+
+    [Fact]
+    public void GetPinnedSnapshot_ReturnsNull_ForAStalePin_OnAReadOnlyStore()
+    {
+        using (var store = CreateStore())
+        {
+            InsertSnapshot(store, "snap-a", "ws-stale", DateTime.UtcNow);
+            store.SetPinnedSnapshot("snap-a");
+            store.Close();
+        }
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-a';");
+
+        using var readOnly = new SqliteIndexStore(_dbPath);
+        readOnly.OpenReadOnly();
+
+        Assert.Null(readOnly.GetPinnedSnapshot("ws-stale"));
+        readOnly.Close();
+    }
+
+    private void ExecuteSql(string sql)
     {
         using var connection = new SqliteConnection($"Data Source={_dbPath}");
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DROP TABLE snapshot_pins;";
+        command.CommandText = sql;
         command.ExecuteNonQuery();
     }
+
+    private void DropPinsTable() => ExecuteSql("DROP TABLE snapshot_pins;");
 }

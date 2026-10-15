@@ -48,7 +48,7 @@ internal sealed class DiagnosticsTool
             var severityFilter = string.IsNullOrEmpty(severity) ? null : severity;
             var idFilter = string.IsNullOrEmpty(id) ? null : id;
 
-            var limitVal = limit ?? 100;
+            var limitVal = limit ?? DiagnosticsHandler.DefaultLimit;
             if (limitVal < 1)
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");

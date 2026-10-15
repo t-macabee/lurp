@@ -4,6 +4,7 @@
 
 using Lurp.Adapters;
 using Lurp.Handlers;
+using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp;
@@ -73,10 +74,10 @@ internal static class FlagCatalog
     public static readonly FlagSpec Query = new("--query=", "Search term. Symbol search matches whole identifier tokens first; when no token matches, it falls back to case-insensitive substring matches over fully qualified symbol names (camel-case segments and prefixes count).", "term");
     public static readonly FlagSpec Type = new("--type=", "Search scope (default: `all`). An unknown value is an error.", AllowedValues: ["all", "source", "symbol"]);
     public static readonly FlagSpec Kind = new("--kind=", "Filter symbol results by Roslyn SymbolKind (e.g. `Type`, `Method`, `Field`, `Property`).", "SymbolKind");
-    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", "Token window for source snippets (default: 64).", "n");
+    public static readonly FlagSpec SnippetTokens = new("--snippet-tokens=", $"Token window for source snippets (default: {SearchHandler.DefaultSnippetTokens}).", "n");
 
     // Modes that accept --limit=: outline, search, impact, get-annotations, diagnostics, grep, and dead-candidates.
-    public static readonly FlagSpec Limit = new("--limit=", "Max declarations per page (default: 100).", "n");
+    public static readonly FlagSpec Limit = new("--limit=", $"Max declarations per page (default: {OutlineHandler.DefaultLimit}).", "n");
 
     // grep
     public static readonly FlagSpec IgnoreCase = new("--ignore-case", "Make the search case-insensitive (default: case-sensitive).");
@@ -85,7 +86,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec Direction = new("--direction=", "Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol.", AllowedValues: ["downstream", "upstream"]);
     public static readonly FlagSpec Kinds = new("--kinds=", "Comma-separated edge kinds to follow.", "list");
     public static readonly FlagSpec Provenance = new("--provenance=", "Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges.", "list");
-    public static readonly FlagSpec MaxDepth = new("--max-depth=", "Maximum traversal depth (default: 3).", "n");
+    public static readonly FlagSpec MaxDepth = new("--max-depth=", $"Maximum traversal depth (default: {ImpactHandler.DefaultMaxDepth}).", "n");
 
     // diff
     public static readonly FlagSpec FromSnapshot = new("--from-snapshot=", "Base snapshot ID.", "id");
@@ -94,18 +95,18 @@ internal static class FlagCatalog
     // context
     public static readonly FlagSpec Intent = new("--intent=", "Intent hint for assembly (default: `inspect`).", AllowedValues: ["inspect", "modify", "diagnose"]);
     public static readonly FlagSpec ContentBudget = new("--content-budget=",
-        "Token budget for capsule content (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens`. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped.",
+        $"Token budget for capsule content (default: {ContextHandler.DefaultBudget}, or {ContextHandler.DefaultTypeAnchorBudget} when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at {ContextHandler.DefaultTypeAnchorBudget}, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens`. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped.",
         "n");
-    public static readonly FlagSpec MaxHops = new("--max-hops=", "Maximum graph hops to expand (default: 3).", "n");
+    public static readonly FlagSpec MaxHops = new("--max-hops=", $"Maximum graph hops to expand (default: {ContextHandler.DefaultMaxHops}).", "n");
     public static readonly FlagSpec Scope = new("--scope=", "Logical scope label recorded on the anchor (default: the symbol ID).", "label");
     public static readonly FlagSpec AffectedProject = new("--affected-project=", "Repeatable. A project affected by the change.", "name", Repeatable: true);
     public static readonly FlagSpec Tier = new("--tier=", "Fetch ONE tier on its own instead of a capsule, with no token budget applied: this is how a capsule's `omitted_tiers` `budget_exhausted` entry is acted on.", AllowedValues: ContextAssembler.TierNames);
-    public static readonly FlagSpec TierLimit = new("--tier-limit=", "Items per tier page (default: 25).", "n");
+    public static readonly FlagSpec TierLimit = new("--tier-limit=", $"Items per tier page (default: {ContextHandler.DefaultTierLimit}).", "n");
     public static readonly FlagSpec CompletenessDetail = new("--completeness-detail", "Emit per-document `binding_incompleteness` rows. Without it, completeness carries a deterministic reason/project rollup (`binding_incompleteness_summary`) plus the total.");
 
     // status
     public static readonly FlagSpec Detail = new("--detail=", "Comma-separated sections to expand in `--json` output: `documents` restores the per-document version map, `references` the full metadata reference identities, `completeness` the per-document binding-incompleteness rows. Each is summarized by default; `all` expands every section. Unknown values are an error.", "list", AllowedValues: ["documents", "references", "completeness", "all"]);
-    public static readonly FlagSpec MaxMismatches = new("--max-mismatches=", "Cap on the `mismatches` list in `--json` output (default: 50; positive integer).", "n");
+    public static readonly FlagSpec MaxMismatches = new("--max-mismatches=", $"Cap on the `mismatches` list in `--json` output (default: {StatusHandler.DefaultMaxMismatches}; positive integer).", "n");
 
     // Modes that accept --project=: diagnostics and dead-candidates.
     public static readonly FlagSpec Project = new("--project=", "Filter to diagnostics in this project.", "name");
@@ -119,7 +120,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec Clear = new("--clear", "Clear the pin; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`).");
 
     // diagnostics: no description in the former help map; the text comes from the CLI reference.
-    public static readonly FlagSpec Severity = new("--severity=", "Filter by severity: Roslyn `DiagnosticSeverity` names, matched case-insensitively, or `all` for every severity including `Hidden`. When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result.", "level", AllowedValues: ["Hidden", "Info", "Warning", "Error", "all"]);
+    public static readonly FlagSpec Severity = new("--severity=", "Filter by severity: Roslyn `DiagnosticSeverity` names, matched case-insensitively, or `all` for every severity including `Hidden`. When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result.", "level", AllowedValues: DiagnosticSeverityFilters.Values);
     public static readonly FlagSpec Id = new("--id=", "Filter by diagnostic ID (e.g. `CS8933`).", "code");
 
     // serve

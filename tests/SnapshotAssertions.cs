@@ -108,7 +108,7 @@ internal static class SnapshotAssertions
         return store;
     }
 
-    private static List<SymbolSnapshot> ReadSymbols(string dbPath, string snapshotId)
+    internal static List<SymbolSnapshot> ReadSymbols(string dbPath, string snapshotId)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");
         connection.Open();
@@ -409,7 +409,7 @@ internal static class SnapshotAssertions
         return (sourceRows, symbolRows);
     }
 
-    private sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
+    internal sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
 
     private sealed record SymbolTargetFrameworkSnapshot(string SymbolId, string Tfm);
 
