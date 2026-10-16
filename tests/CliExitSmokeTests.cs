@@ -122,6 +122,14 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void ImpactHandler_EmptyDirection_ThrowsCliExit()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction="]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("Invalid direction ''. Use 'upstream' or 'downstream'.", ex.Message);
+    }
+
+    [Fact]
     public void ContextHandler_BadIntent_ThrowsCliExit()
     {
         var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"]));

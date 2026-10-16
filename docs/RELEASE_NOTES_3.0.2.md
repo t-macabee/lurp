@@ -18,6 +18,10 @@ and reads keep using it. Pin the new snapshot, or remove the pin with
 
 ## Changes
 
+### No false warning for an implicit `base()` call
+
+A constructor without an initializer is compiled as a call to the base type's default constructor. That constructor is not a stored symbol, so the edge was dropped and the index run printed a false `edges_dropped_reason_other` warning; the extractor no longer emits it, and the stored edge set is unchanged.
+
 ### The edges of a partial type point at a hand-written part
 
 A partial type or member has more than one declaration. Its `Inherits`,
@@ -56,7 +60,9 @@ cross-generated only because a tool wrote another part.
 
 - MCP `lurp_impact`: an empty `direction` (`""`) is now an invalid-params error,
   like every other unknown value. 3.0.1 read it as `downstream`. Leave out
-  `direction` to get `downstream`.
+  `direction` to get `downstream`. The CLI/MCP contract stays v5: no document,
+  tool description or test ever listed `""` as an accepted value, so this only
+  rejects an input that 3.0.1 accepted by accident.
 - The text output of `dead-candidates` shows only the file path for a candidate
   that has no line. 3.0.1 printed `<path>:0`.
 

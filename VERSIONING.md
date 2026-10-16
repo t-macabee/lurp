@@ -33,6 +33,7 @@ Breaking changes must bump `CliMcpContractVersion` by `+1`, update `tests/CliMcp
 - Adding a new optional parameter to an existing MCP tool (with a backward-compatible default).
 - Adding a new JSON field to a response payload (additive; old fields remain with the same name/type/semantics).
 - Adding a new enum value to an accepted-values set where the previous values remain valid.
+- Rejecting a value that no document, tool description or test ever listed as accepted, and that an earlier version accepted only by accident (for example an empty string read as the default). The release notes must name the case. A value that appears in docs, tool descriptions or tests is not covered.
 
 Non-breaking changes still require updating `tests/CliMcpContractSnapshotTests.cs` — the snapshot test makes the addition a visible, deliberate diff rather than a silent drift. The contract version stays the same.
 

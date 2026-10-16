@@ -558,6 +558,9 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (method.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction)
             return;
 
+        if (method is { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: true })
+            return;
+
         AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, skipSelf: true, edges, seen);
     }
 
