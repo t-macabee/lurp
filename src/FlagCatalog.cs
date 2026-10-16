@@ -84,8 +84,8 @@ internal static class FlagCatalog
 
     // impact
     public static readonly FlagSpec Direction = new("--direction=", "Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol.", AllowedValues: ["downstream", "upstream"]);
-    public static readonly FlagSpec Kinds = new("--kinds=", "Comma-separated edge kinds to follow.", "list");
-    public static readonly FlagSpec Provenance = new("--provenance=", "Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges.", "list");
+    public static readonly FlagSpec Kinds = new("--kinds=", "Comma-separated edge kinds to follow, matched case-insensitively. An unknown kind is rejected with an error.", "list", AllowedValues: Enum.GetNames<EdgeKind>());
+    public static readonly FlagSpec Provenance = new("--provenance=", "Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Values are matched case-insensitively; an unknown value is rejected with an error.", "list", AllowedValues: Lurp.Storage.Provenance.All);
     public static readonly FlagSpec MaxDepth = new("--max-depth=", $"Maximum traversal depth (default: {ImpactHandler.DefaultMaxDepth}).", "n");
 
     // diff

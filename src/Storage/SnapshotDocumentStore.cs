@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using System.Text;
 
 namespace Lurp.Storage;
@@ -142,5 +143,13 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         while (reader.Read())
             results.Add(reader.GetString(0));
         return results;
+    }
+
+    internal int CountDocumentsInSnapshot(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM snapshot_documents WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 }

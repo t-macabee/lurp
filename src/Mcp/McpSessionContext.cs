@@ -45,6 +45,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
         HandlerBootstrap.RequireCurrentSchemaVersion(dbPath);
 
         string snapshotId;
+        string? stalePin;
         FreshnessStamp stamp;
         using (var store = new SqliteIndexStore(dbPath))
         {
@@ -56,6 +57,7 @@ internal sealed class McpSessionContext : IAsyncDisposable
                     throw new CliExitException("ERROR: No snapshots found in the database.", 1);
 
                 snapshotId = latest;
+                stalePin = store.GetStalePinnedSnapshotId();
                 stamp = WorkspaceFreshness.CheckFreshnessCheap(store, snapshotId, FreshnessMode.Auto);
             }
             finally
@@ -67,6 +69,8 @@ internal sealed class McpSessionContext : IAsyncDisposable
         // Only sanctioned console call in src/Mcp/** — before stdio handshake.
         var shortId = snapshotId.Length > 12 ? snapshotId[..12] : snapshotId;
         Console.Error.WriteLine($"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}");
+        if (stalePin != null)
+            Console.Error.WriteLine(HandlerBootstrap.StalePinWarning(stalePin, snapshotId));
 
         return new McpSessionContext(snapshotId, dbPath, outputDir, solutionPath);
     }

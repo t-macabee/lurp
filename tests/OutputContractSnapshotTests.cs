@@ -203,6 +203,13 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         ExtractJsonShape("cli:find-symbol:json",
             await RunMode("find-symbol", $"--symbol={fixture.CallerSymbolId}", "--output=json"));
 
+        // Type anchor (T11): a named type's metadata carries base_type, interfaces,
+        // is_record and type_kind, which a method anchor does not.
+        ExtractJsonShape("cli:find-symbol:json",
+            await RunMode("find-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--output=json"), "type");
+        ExtractJsonShape("cli:get-symbol:json",
+            await RunMode("get-symbol", $"--symbol={fixture.ContractImplSymbolId}", "--view=metadata"), "type");
+
         ExtractJsonShape("cli:navigate:json",
             await RunMode("navigate", $"--file={fixture.NavDocPath}", $"--line={fixture.NavLine}"));
 
@@ -281,6 +288,22 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         ExtractJsonShape("cli:status:json",
             await RunModeWithoutSolution("status", "--output=json"), "snapshot-only");
 
+        // status with an active pin (T12): the pin fields.
+        await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotB}", "--json");
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", "--output=json"), "pinned");
+        await RunMode("pin-snapshot", "--clear", "--json");
+
+        // status with a stale pin (T12, R107): stale_pinned_snapshot_id. Use a
+        // non-complete, non-failed status so latest_failure stays absent and the
+        // shape under test is the stale pin alone.
+        await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotA}", "--json");
+        SetSnapshotStatus(fixture.SnapshotA, "in_progress");
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", "--output=json"), "stale-pin");
+        SetSnapshotStatus(fixture.SnapshotA, "complete");
+        await RunMode("pin-snapshot", "--clear", "--json");
+
         // --- MCP tools (T9) ---
         // One session for every tool call; it pins to the latest snapshot, which is
         // snapshot B (indexed last in the fixture). Every read below answers from B.
@@ -319,6 +342,10 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         var getSymbolTool = new GetSymbolTool(session);
         foreach (var view in new[] { "summary", "source", "all" })
             ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.CallerSymbolId, view: view), $"view={view}");
+
+        // Type anchor (T11), CLI/MCP parity.
+        ExtractToolShape("lurp_find_symbol", () => new FindSymbolTool(session).LurpFindSymbol(symbol: fixture.ContractImplSymbolId), "type");
+        ExtractToolShape("lurp_get_symbol", () => getSymbolTool.LurpGetSymbol(symbol: fixture.ContractImplSymbolId, view: "summary"), "type");
 
         ExtractToolShape("lurp_get_annotations", () => new AnnotationsTool(session).LurpGetAnnotations(symbol: fixture.MethodGroupSymbolId));
         ExtractToolShape("lurp_diagnostics", () => new DiagnosticsTool(session).LurpDiagnostics(document: fixture.DocPath));
@@ -437,29 +464,62 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         foreach (var symbol in fixture.AnchorSymbolIds)
             foreach (var tier in ContextAssembler.TierNames)
             {
-                var run = await RunMode("context", $"--symbol={symbol}", $"--tier={tier}", "--tier-limit=1", "--output=json");
-                var cursor = ReadStringProperty(run.Stdout, "next_cursor");
-                if (cursor is not null)
+                var first = await RunMode("context", $"--symbol={symbol}", $"--tier={tier}", "--tier-limit=1", "--output=json");
+                var cursor = ReadStringProperty(first.Stdout, "next_cursor");
+                if (cursor is null || !CliTierItemHasRelationship(first.Stdout))
+                    continue;
+
+                // Require a further page so the cursor shape stays `next_cursor: string`
+                // on both pages instead of widening an existing line to `null|string`.
+                var second = await RunMode("context", $"--symbol={symbol}", $"--tier={tier}", "--tier-limit=1", $"--cursor={cursor}", "--output=json");
+                if (ReadStringProperty(second.Stdout, "next_cursor") is not null)
                     return (symbol, tier, cursor);
             }
 
         throw new InvalidOperationException(
-            "No context tier produced a next_cursor. T7 needs a tier with a second page to cover the cursor path.");
+            "No context tier produced a next_cursor with a direct/relationship item. " +
+            "T7/T12 need a direct_callees tier with a second page to cover that path.");
     }
 
     private (string Symbol, string Tier, string Cursor) FindMcpContextCursor(McpSessionContext session)
     {
+        var contextTool = new ContextTool(session);
         foreach (var symbol in fixture.AnchorSymbolIds)
             foreach (var tier in ContextAssembler.TierNames)
             {
-                var json = new ContextTool(session).LurpContext(symbol: symbol, tier: tier, tier_limit: 1);
-                var cursor = ReadTierPageStringProperty(json, "next_cursor");
-                if (cursor is not null)
+                var first = contextTool.LurpContext(symbol: symbol, tier: tier, tier_limit: 1);
+                var cursor = ReadTierPageStringProperty(first, "next_cursor");
+                if (cursor is null || !McpTierItemHasRelationship(first))
+                    continue;
+
+                var second = contextTool.LurpContext(symbol: symbol, tier: tier, tier_limit: 1, cursor: cursor);
+                if (ReadTierPageStringProperty(second, "next_cursor") is not null)
                     return (symbol, tier, cursor);
             }
 
         throw new InvalidOperationException(
-            "No MCP context tier produced a next_cursor. T7 needs a tier with a second page to cover the cursor path.");
+            "No MCP context tier produced a next_cursor with a direct/relationship item.");
+    }
+
+    private static bool CliTierItemHasRelationship(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("items", out var items)
+               && items.ValueKind == JsonValueKind.Array
+               && items.GetArrayLength() > 0
+               && items[0].TryGetProperty("relationship", out var relationship)
+               && relationship.ValueKind == JsonValueKind.String;
+    }
+
+    private static bool McpTierItemHasRelationship(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("tier_page", out var page)
+               && page.TryGetProperty("items", out var items)
+               && items.ValueKind == JsonValueKind.Array
+               && items.GetArrayLength() > 0
+               && items[0].TryGetProperty("relationship", out var relationship)
+               && relationship.ValueKind == JsonValueKind.String;
     }
 
     private static string? ReadStringProperty(string json, string property)
@@ -847,6 +907,17 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
     {
         return File.ReadAllText(path);
     }
+
+    private void SetSnapshotStatus(string snapshotId, string status)
+    {
+        using var connection = new SqliteConnection($"Data Source={fixture.DbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @id;";
+        command.Parameters.AddWithValue("@status", status);
+        command.Parameters.AddWithValue("@id", snapshotId);
+        command.ExecuteNonQuery();
+    }
 }
 
 public sealed class OutputContractFixture : IAsyncLifetime
@@ -909,6 +980,13 @@ public sealed class OutputContractFixture : IAsyncLifetime
         // class's closing brace; appending after the brace would not compile.
         var shapeCallersPath = Path.Combine(treeDir, "CallShapes", "App", "ShapeCallers.cs");
         var shapeCallersContent = File.ReadAllText(shapeCallersPath);
+        // Move the location of an existing call edge (FromContract -> ContractValue) so
+        // the A->B diff carries an edge_location_changed change with before/after spans.
+        const string fromContractLine = "    public static int FromContract(IShapeContract contract) => contract.ContractValue();";
+        var fromContractIndex = shapeCallersContent.IndexOf(fromContractLine, StringComparison.Ordinal);
+        if (fromContractIndex < 0)
+            throw new InvalidOperationException($"No FromContract line in {shapeCallersPath}.");
+        shapeCallersContent = shapeCallersContent.Insert(fromContractIndex, "\n");
         shapeCallersContent = shapeCallersContent.Insert(shapeCallersContent.LastIndexOf('}'),
             "\n    public static int OutputContractCaller()\n" +
             "    {\n" +

@@ -571,4 +571,12 @@ SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
         while (reader.Read()) results.Add(reader.GetString(0));
         return results;
     }
+
+    internal int CountProjectsInSnapshot(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM projects WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
 }

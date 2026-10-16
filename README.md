@@ -57,7 +57,7 @@ separately.
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
 | `diagnostics` | List compiler diagnostics captured at index time. |
-| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder that keeps public surface, EF/serialization conventions, process entry points, and generated/test code out of the default view. |
+| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder. Public surface, EF/serialization conventions, process entry points and generated/test code are never reported as `proved_dead`. |
 
 ## Worked example
 
@@ -65,19 +65,31 @@ Index a solution, then build a context capsule from a source location:
 
 ```bash
 lurp --mode=index --solution=MySolution.slnx --output-dir=./out
-lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=./out --output=summary
+lurp --mode=context --file=eNote.Application/Features/Academic/Courses/Services/CourseService.cs --line=11 --output-dir=./out --output=summary
 ```
 
 `--output=summary` prints the handoff facts instead of the full JSON capsule:
 
 ```
-capsule OrderService.CreateAsync (Method)
-  snapshot: f3bff523b103462be239655c9b753be3  intent: inspect  maxHops: 3
-  content tokens:  283/8000  (estimated_tokens: the budget basis)
-  delivery tokens: ~571  (estimated_artifact_tokens: whole emitted file; size the context window from this)
-  truncated: true
-  omitted: direct_callers (budget_exhausted) : fetch with --tier=direct_callers
-  omitted: relevant_tests (budget_exhausted) : fetch with --tier=relevant_tests
+freshness: state=fresh method=stat changedDocuments=0 snapshot=3a69acadd9659d0f27d349c73d63fb9c scope=documents_only (not a full compilation check)
+capsule global::eNote.Application.Features.Academic.Courses.Services.CourseService.GetByIdForInstructorAsync (Method)
+  snapshot: 3a69acadd9659d0f27d349c73d63fb9c  intent: inspect  maxHops: 3
+  content tokens:  6908/8000  (estimated_tokens: the budget basis)
+  delivery tokens: ~15026  (estimated_artifact_tokens: whole emitted file; size the context window from this)
+  truncated: True
+  contracts                    0
+  direct_callees               6
+  direct_callers               2
+  registered_implementations   1
+  relevant_tests               5
+  second_degree_context        2
+  surrounding_source           0
+  incoming_witness_paths: 3  outgoing_witness_paths: 3  uncertainties: 2
+  omitted: contracts (empty)
+  omitted: incoming_paths (summarized)
+  omitted: outgoing_paths (summarized)
+  omitted: surrounding_source (budget_exhausted) : fetch with --tier=surrounding_source
+  written: ./out/capsule-<id>.json
 ```
 
 When a tier is `budget_exhausted`, fetch it on its own with no budget applied:
@@ -102,9 +114,10 @@ dotnet tool install --global lurp --version 3.0.2
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
-Without `--output-dir`, the database and MSBuild design-time intermediates go to
-`%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`; pass `--output-dir=./out`
-to choose a location instead.
+Without `--output-dir`, the database and the capsule files go to
+`%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`. Pass `--output-dir=./out`
+to put them elsewhere. The MSBuild design-time intermediates always go to that
+`%LOCALAPPDATA%\` folder.
 
 <details>
 <summary>Build from source & environment variables</summary>
@@ -142,7 +155,7 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 |---|---|
 | Find unused `using` directives | `lurp --mode=diagnostics --severity=hidden --id=CS8019 --output-dir=./out` |
 | Confirm the installed build matches these docs | `lurp --version` |
-| Find dead code, excluding public API and tests | `lurp --mode=dead-candidates --output-dir=./out` |
+| Find dead-code candidates (public API and tests are never `proved_dead`) | `lurp --mode=dead-candidates --output-dir=./out` |
 | Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
 | See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
 | Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
@@ -170,7 +183,8 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
 - **3-snapshot retention**: older snapshots and their document versions are pruned automatically, except a snapshot pinned via `pin-snapshot`, which pruning always skips.
-- **Workspace must be restorable**: `MSBuildWorkspace` requires a successful restore; no index without it.
+- **Restore first**: an unrestored project still indexes, with a warning, but `MSBuildWorkspace` cannot resolve its references, so edges are missing and diagnostics are wrong. Run `dotnet restore` before `--mode=index`.
+- **NuGet audit warnings look like load failures**: `MSBuildWorkspace` reports a NuGet vulnerability warning as a failure-level workspace diagnostic, so the index run prints `WARNING: workspace load reported N failure-level diagnostic(s)` with the package message. Such a warning does not stop the index.
 
 ## Performance
 
@@ -209,4 +223,4 @@ by design (see
 - [VERSIONING.md](VERSIONING.md): what counts as a breaking CLI/MCP change.
 - MIT license, see [LICENSE](LICENSE).
 
-Also MCP: `--mode=serve` exposes <!-- generated:mcp-tools:read -->16 read tools (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_grep`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`)<!-- /generated:mcp-tools:read --> over stdio; `--enable-write-tools` additionally registers <!-- generated:mcp-tools:write -->`lurp_index` and `lurp_retract_annotation`<!-- /generated:mcp-tools:write --> (background re-index and annotation retraction). Index first via CLI, then serve. See [CLI_REFERENCE.md#mcp](docs/CLI_REFERENCE.md).
+Also MCP: `--mode=serve` exposes <!-- generated:mcp-tools:read -->16 read tools (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_grep`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`)<!-- /generated:mcp-tools:read --> over stdio; `--enable-write-tools` additionally registers <!-- generated:mcp-tools:write -->`lurp_index` and `lurp_retract_annotation`<!-- /generated:mcp-tools:write --> (background re-index and annotation retraction). Index first via CLI, then serve. See [CLI_REFERENCE.md#mcp-server---modeserve](docs/CLI_REFERENCE.md#mcp-server---modeserve).

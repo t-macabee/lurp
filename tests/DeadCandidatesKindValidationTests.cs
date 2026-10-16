@@ -82,6 +82,18 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
 
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpDeadCandidates(limit: 201));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Equal("limit must be a positive integer <=200.", ex.Message);
+        Assert.Equal("limit must be <= 200.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Mcp_NonPositiveLimit_IsInvalidParams_WithThePositiveIntegerMessage()
+    {
+        await IndexFixtureAsync();
+        await using var session = CreateSession();
+        var tool = new DeadCandidatesTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpDeadCandidates(limit: 0));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("limit must be a positive integer.", ex.Message);
     }
 }

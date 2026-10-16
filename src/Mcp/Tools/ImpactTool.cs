@@ -55,29 +55,26 @@ internal sealed class ImpactTool
                 throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
-            HashSet<string>? allowedKinds = null;
+            IReadOnlyList<string>? canonicalKinds = null;
             string? kindsRaw = null;
             if (kinds != null && kinds.Length > 0)
             {
-                var expanded = ExpandCsv(kinds);
-                if (expanded.Length > 0)
-                {
-                    allowedKinds = new HashSet<string>(expanded, StringComparer.Ordinal);
-                    kindsRaw = string.Join(",", expanded);
-                }
+                if (!ImpactHandler.TryParseNameFilter(kinds, ImpactHandler.EdgeKindNames, out canonicalKinds, out var unknownKind))
+                    throw new McpProtocolException($"kinds: unknown edge kind '{unknownKind}'. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).", McpErrorCode.InvalidParams);
+                kindsRaw = canonicalKinds is null ? null : string.Join(",", canonicalKinds);
             }
 
-            HashSet<string>? allowedProvenance = null;
+            IReadOnlyList<string>? canonicalProvenance = null;
             string? provenanceRaw = null;
             if (provenance != null && provenance.Length > 0)
             {
-                var expanded = ExpandCsv(provenance);
-                if (expanded.Length > 0)
-                {
-                    allowedProvenance = new HashSet<string>(expanded, StringComparer.Ordinal);
-                    provenanceRaw = string.Join(",", expanded);
-                }
+                if (!ImpactHandler.TryParseNameFilter(provenance, Provenance.All, out canonicalProvenance, out var unknownProvenance))
+                    throw new McpProtocolException($"provenance: unknown provenance '{unknownProvenance}'. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).", McpErrorCode.InvalidParams);
+                provenanceRaw = canonicalProvenance is null ? null : string.Join(",", canonicalProvenance);
             }
+
+            HashSet<string>? allowedKinds = canonicalKinds is null ? null : new HashSet<string>(canonicalKinds, StringComparer.Ordinal);
+            HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
 
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbol, snapshotId);
 
@@ -139,23 +136,5 @@ internal sealed class ImpactTool
         {
             throw McpErrorMapper.Map(ex);
         }
-    }
-
-    private static string[] ExpandCsv(string[] values)
-    {
-        var result = new List<string>();
-        foreach (var v in values)
-        {
-            if (string.IsNullOrWhiteSpace(v))
-                continue;
-            var parts = v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var p in parts)
-            {
-                if (!string.IsNullOrWhiteSpace(p))
-                    result.Add(p);
-            }
-        }
-
-        return result.ToArray();
     }
 }

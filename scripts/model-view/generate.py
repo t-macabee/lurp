@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Regenerate docs/MODEL_VIEW.html from one Lurp index.
 
+Restore the solution first (`dotnet restore`); the script stops when Lurp reports
+an unrestored project. For a trial run, pass a scratch file to `--out`.
+
 Index a solution and render the page (one command):
 
     python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe \
-        --solution <path>/eNote/eNote.sln --work-dir <empty folder>
+        --solution <eNoteV2>/eNote/eNote.sln --work-dir <empty folder> --out docs/MODEL_VIEW.html
 
 Render again from an index you already have (no reindex):
 
-    python scripts/model-view/generate.py --db <folder>/index.db --index-log <folder>/index-run.log
+    python scripts/model-view/generate.py --db <folder>/index.db --index-log <folder>/index-run.log --out docs/MODEL_VIEW.html
 
 The page styles (fonts, colors, layout) come from the first <style> block of
 --template, which defaults to the current docs/MODEL_VIEW.html. Everything else
@@ -29,14 +32,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAGE = REPO_ROOT / "docs" / "MODEL_VIEW.html"
 
-# Provenance vocabulary, strongest first (docs/ARCHITECTURE.md, provenance table).
+# Provenance vocabulary, strongest first (docs/ARCHITECTURE.md, section 4.2 "Evidence ladder").
 TIERS = [
     ("compiler_proved", "The compiler resolved it. Calls, inheritance, field reads: verified, not guessed."),
-    ("framework_derived", "An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery) and emitted a typed fact."),
-    ("global_implementation_relation", "An implementation relationship that holds across the whole graph."),
-    ("possible", "An interface dispatch that could not be narrowed to one concrete implementation."),
+    ("framework_derived", "An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery, MediatR `Handles`, serialization `References`) and emitted a typed fact."),
+    ("global_implementation_relation", "Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges."),
+    ("possible", "An interface member implemented through an inherited member: the type gets the implementation from a base class, so the dispatch target is valid but not declared on the type (MayDispatchTo)."),
     ("convention", "Inferred from a convention such as an assembly scan, not from a direct reference."),
-    ("name_candidate", "The name argument of a runtime name-binding API (reflection lookup, EF Core string API, binding attribute), resolved semantically. Not compiler-checked."),
+    ("name_candidate", "The name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string API, binding attribute, MVC action name), resolved semantically. Not compiler-checked."),
     ("runtime_unknown", "The target exists only at run time. Lurp records the blind spot instead of guessing a target."),
 ]
 
@@ -140,10 +143,23 @@ class Names:
 class Index:
     def __init__(self, db_path):
         self.conn = sqlite3.connect(f"file:{Path(db_path).as_posix()}?mode=ro", uri=True)
+        pinned = self.conn.execute(
+            "SELECT p.pinned_snapshot_id FROM snapshot_pins p JOIN snapshots s "
+            "ON s.snapshot_id = p.pinned_snapshot_id WHERE s.status = 'complete' "
+            "ORDER BY p.pinned_at_utc DESC LIMIT 1").fetchone()
+        if pinned:
+            snapshot_id = pinned[0]
+            self.snapshot_reason = "pinned via snapshot_pins"
+        else:
+            latest = self.conn.execute(
+                "SELECT snapshot_id FROM snapshots WHERE status = 'complete' "
+                "ORDER BY built_at_utc DESC LIMIT 1").fetchone()
+            snapshot_id = latest[0] if latest else None
+            self.snapshot_reason = "latest complete snapshot"
         row = self.conn.execute(
             "SELECT snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version, "
             "database_schema_version, output_schema_version, extractor_version, tool_version "
-            "FROM snapshots WHERE status = 'complete' ORDER BY built_at_utc DESC LIMIT 1").fetchone()
+            "FROM snapshots WHERE snapshot_id = ?", (snapshot_id,)).fetchone() if snapshot_id else None
         if row is None:
             sys.exit("ERROR: no complete snapshot in the index.")
         (self.snapshot_id, self.workspace_id, self.built_at, self.sdk, self.roslyn,
@@ -177,6 +193,9 @@ class Index:
     def of_kind(self, kind):
         return [(s, t, p) for s, t, k, p in self.edges if k == kind]
 
+    def close(self):
+        self.conn.close()
+
     def test_assemblies(self):
         return {assembly_of(t) for _, t, _ in self.of_kind("TestedBy")} - {""}
 
@@ -207,13 +226,17 @@ def git(cwd, *args):
         return ""
 
 
+def github_repo(remote):
+    match = re.match(r"^(?:https?://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$", remote.strip())
+    return f"{match.group(1)}/{match.group(2)}" if match else ""
+
+
 def source_info(index):
     root = Path(index.git_root) if index.git_root else None
     if root is None or not root.exists():
         return {"repo": "", "commit": "", "dirty": False, "solution": Path(index.solution_path).name}
     top = Path(git(root, "rev-parse", "--show-toplevel") or root)
-    remote = git(top, "remote", "get-url", "origin")
-    repo = re.sub(r"\.git$", "", remote.rstrip("/")).split("github.com/")[-1].split(":")[-1] if remote else top.name
+    repo = github_repo(git(top, "remote", "get-url", "origin"))
     try:
         solution = Path(index.solution_path).resolve().relative_to(top.resolve()).as_posix()
     except ValueError:
@@ -273,7 +296,7 @@ def draw_composition_root(svg, index, top, drawn):
             ifaces_of[t].append(s)
 
     impls = {t for targets in hub_targets.values() for t, _ in targets if t.startswith("T:")}
-    asm_order = [a for a, _ in Counter(assembly_of(t) for t in impls).most_common()]
+    asm_order = [a for a, _ in sorted(Counter(assembly_of(t) for t in impls).items(), key=lambda kv: (-kv[1], kv[0]))]
     asm_class = {a: ASSEMBLY_NODE_CLASSES[i % len(ASSEMBLY_NODE_CLASSES)] for i, a in enumerate(asm_order)}
 
     hubs = sorted(hub_targets, key=lambda h: (-sum(hub_targets[h].values()), names.fqn(h)))
@@ -532,7 +555,7 @@ def ledger(title, names, edges):
             f'    </details>')
 
 
-def render(index, log, info, style, out_path):
+def render(index, log, info, style, out_path, contract):
     names = index.names
     sid = index.snapshot_id
     total_edges = len(index.edges)
@@ -552,7 +575,7 @@ def render(index, log, info, style, out_path):
         f'        <span class="tier-desc">{esc(desc)}</span>\n      </div>' for p, desc in tiers)
 
     kind_rows = [[td(esc(k)), td(num(n), "num"), td(f"{n / total_symbols:.1%}", "num")]
-                 for k, n in index.symbol_kinds.most_common()]
+                 for k, n in sorted(index.symbol_kinds.items(), key=lambda kv: (-kv[1], kv[0]))]
     kinds_table = table(["Symbol kind", "#Count", "#Share"], kind_rows,
                         f'<tr class="total-row"><td>Total declared symbols</td><td class="num">{num(total_symbols)}</td><td class="num">100%</td></tr>')
 
@@ -565,7 +588,7 @@ def render(index, log, info, style, out_path):
     diag_rows = [[td(esc(p)), td(esc(s), "muted"), td(num(n), "num")] for (p, s), n in sorted(by_project.items())]
     diag_table = table(["Project", "Severity", "#Count"], diag_rows,
                        f'<tr class="total-row"><td colspan="2">Total diagnostics</td><td class="num">{num(len(index.diagnostics))}</td></tr>')
-    id_rows = [[td(esc(i), "mono"), td(num(n), "num")] for i, n in Counter(i for _, _, i in index.diagnostics).most_common()]
+    id_rows = [[td(esc(i), "mono"), td(num(n), "num")] for i, n in sorted(Counter(i for _, _, i in index.diagnostics).items(), key=lambda kv: (-kv[1], kv[0]))]
     diag_ids = table(["Diagnostic ID", "#Occurrences"], id_rows)
 
     if log and log["projects"]:
@@ -602,9 +625,9 @@ def render(index, log, info, style, out_path):
                    f'      <div class="ledger-body">{table(["#", "File", "#Declarations"], file_rows, extra_class=" ledger-table")}</div>\n'
                    f'    </details>')
 
-    reflection = index.extractors.get("Reflection", "")
     meta = [("built", index.built_at), ("sdk", index.sdk), ("roslyn", index.roslyn), ("schema", f"v{index.schema}"),
-            ("output schema", f"v{index.output_schema}"), ("extractor", index.extractor), ("reflection", reflection),
+            ("output schema", f"v{index.output_schema}"), ("extractor", index.extractor), ("contract", contract),
+            *[(name, version) for name, version in sorted(index.extractors.items())],
             ("tool", index.tool), ("projects", len(index.projects))]
     meta_html = "\n".join(f"      <span><b>{esc(k)}</b> {esc(v)}</span>" for k, v in meta if v not in ("", None))
 
@@ -643,7 +666,7 @@ def render(index, log, info, style, out_path):
 
   <section>
     <h2 class="section-title">The survey</h2>
-    <p class="section-lede">A curated cross-section of the graph: the dependency-injection registration sites, the ASP.NET routing surface, and the EF Core mappings. <span class="mono-inline">Brass</span> lines are compiler-proved; <span class="mono-inline">verdigris</span> lines are framework-derived; dashed lines are convention or runtime-unknown. Hover any point or line for its fully-qualified name.</p>
+    <p class="section-lede">A curated cross-section of the graph: the dependency-injection registration sites, the ASP.NET routing surface, and the EF Core mappings. <span class="mono-inline">Brass</span> lines are compiler-proved; <span class="mono-inline">verdigris</span> lines are framework-derived; dashed lines are convention; dotted lines are possible, name-candidate or runtime-unknown. Hover any point or line for its fully-qualified name.</p>
     <div class="chart-frame">
       <div class="chart-scroll">
         {svg}
@@ -688,7 +711,7 @@ def render(index, log, info, style, out_path):
   <footer class="chart-footer">
     <p>Built by running Lurp {esc(index.tool)} from source against <code>{esc(where)}</code>{commit}:</p>
     <p><code>dotnet build src/Lurp.csproj -c Release</code><br>
-    <code>python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution &lt;path&gt;/{esc(info['solution'])} --work-dir &lt;empty folder&gt;</code></p>
+    <code>python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution &lt;path&gt;/{esc(info['solution'])} --work-dir &lt;empty folder&gt; --out docs/MODEL_VIEW.html</code></p>
     <p>{timing}Snapshot <code>{esc(sid)}</code>, schema v{esc(index.schema)}. Everything on this page comes from that one <code>index.db</code> and the index run's per-project counts: no re-parsing, no re-grepping. <code>scripts/model-view/</code> regenerates it.</p>
     <p class="credit">Lurp &middot; MIT &middot; github.com/t-macabee/lurp</p>
   </footer>
@@ -716,6 +739,15 @@ def run_index(lurp, solution, work_dir):
     return work_dir / "index.db", log
 
 
+def lurp_contract(lurp):
+    try:
+        out = subprocess.run([str(lurp), "--version"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    match = re.search(r"contract v(\d+)", out.stdout + out.stderr)
+    return f"v{match.group(1)}" if match else ""
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lurp", type=Path, help="Lurp executable used to index --solution.")
@@ -724,26 +756,35 @@ def main():
     parser.add_argument("--db", type=Path, help="Existing index.db to render (instead of --solution).")
     parser.add_argument("--index-log", type=Path, help="Saved output of the index run that built --db.")
     parser.add_argument("--template", type=Path, default=DEFAULT_PAGE, help="Page whose first <style> block is reused.")
-    parser.add_argument("--out", type=Path, default=DEFAULT_PAGE, help="Output HTML file.")
+    parser.add_argument("--out", type=Path, required=True, help="Output HTML file.")
     args = parser.parse_args()
 
+    contract = ""
     if args.solution:
         if not (args.lurp and args.work_dir):
             parser.error("--solution needs --lurp and --work-dir.")
         db_path, log_text = run_index(args.lurp, args.solution.resolve(), args.work_dir.resolve())
+        contract = lurp_contract(args.lurp)
     elif args.db:
         db_path = args.db
         log_text = args.index_log.read_text(encoding="utf-8", errors="replace") if args.index_log else ""
     else:
         parser.error("pass --solution (index and render) or --db (render only).")
 
-    match = re.search(r"<style>(.*?)</style>", args.template.read_text(encoding="utf-8"), re.S)
-    if not match:
-        sys.exit(f"ERROR: no <style> block in {args.template}.")
     index = Index(db_path)
-    log = parse_index_log(log_text) if log_text else None
-    drawn = render(index, log, source_info(index), match.group(1), args.out)
-    print(f"wrote {args.out} (snapshot {index.snapshot_id}, {len(index.edges)} edges, {drawn} symbols drawn)")
+    try:
+        if log_text and "have not been restored" in log_text:
+            solution = args.solution.resolve() if args.solution else index.solution_path or "<solution>"
+            sys.exit(f"ERROR: the solution is not restored; run `dotnet restore {solution}` first.")
+        match = re.search(r"<style>(.*?)</style>", args.template.read_text(encoding="utf-8"), re.S)
+        if not match:
+            sys.exit(f"ERROR: no <style> block in {args.template}.")
+        log = parse_index_log(log_text) if log_text else None
+        print(f"Rendering {index.snapshot_reason}: snapshot {index.snapshot_id}", flush=True)
+        drawn = render(index, log, source_info(index), match.group(1), args.out, contract)
+        print(f"wrote {args.out} (snapshot {index.snapshot_id}, {len(index.edges)} edges, {drawn} symbols drawn)")
+    finally:
+        index.close()
 
 
 if __name__ == "__main__":

@@ -126,7 +126,7 @@ internal sealed class DiagnosticStore
         if (string.IsNullOrEmpty(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
         if (limit <= 0)
-            throw new ArgumentException("--limit must be a positive integer.", nameof(limit));
+            throw new ArgumentException("--limit must be a positive integer.");
 
         if (severity != null)
         {
@@ -136,7 +136,7 @@ internal sealed class DiagnosticStore
             }
             else if (!DiagnosticSeverityFilters.Values.Contains(severity, StringComparer.OrdinalIgnoreCase))
             {
-                throw new ArgumentException($"Unknown severity '{severity}'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).", nameof(severity));
+                throw new ArgumentException($"Unknown severity '{severity}'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).");
             }
         }
 

@@ -33,6 +33,9 @@ prompt.txt
 recall-out*.txt
 CODE_REVIEW_*.md
 
+# Python bytecode caches (scripts/model-view)
+__pycache__/
+
 # Output-contract snapshot actual output (reviewed, not committed)
 tests/Snapshots/*.actual.txt
 

@@ -150,6 +150,7 @@ internal static class StatusHandler
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         var pinnedRow = store.GetPinnedSnapshot();
+        var stalePinned = store.GetStalePinnedSnapshotId();
         var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
         var pinActive = pinnedRow != null;
         if (asJson)
@@ -167,6 +168,7 @@ internal static class StatusHandler
                 pinned_snapshot_id = pinnedRow?.PinnedSnapshotId,
                 pinned_at_utc = pinnedRow?.PinnedAtUtc,
                 previous_pinned_snapshot_id = pinnedRow?.PreviousPinnedSnapshotId,
+                stale_pinned_snapshot_id = stalePinned,
                 pin_active = pinActive ? true : (bool?)null,
                 freshness_checked = false,
                 note = "Pass --solution=path or set LURP_SOLUTION_PATH to check freshness against the current workspace.",
@@ -190,6 +192,8 @@ internal static class StatusHandler
             if (pinnedRow.PreviousPinnedSnapshotId != null)
                 Console.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
         }
+        if (stalePinned != null)
+            Console.WriteLine(StalePinStatusLine(stalePinned));
         Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
@@ -198,6 +202,7 @@ internal static class StatusHandler
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         var pinnedRow = store.GetPinnedSnapshot();
+        var stalePinned = store.GetStalePinnedSnapshotId();
         var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
         var pinActive = pinnedRow != null;
         if (asJson)
@@ -217,6 +222,7 @@ internal static class StatusHandler
                 pinned_snapshot_id = pinnedRow?.PinnedSnapshotId,
                 pinned_at_utc = pinnedRow?.PinnedAtUtc,
                 previous_pinned_snapshot_id = pinnedRow?.PreviousPinnedSnapshotId,
+                stale_pinned_snapshot_id = stalePinned,
                 pin_active = pinActive ? true : (bool?)null,
                 is_fresh = freshness.IsFresh,
                 mismatches = capped.Rows,
@@ -242,12 +248,17 @@ internal static class StatusHandler
             if (pinnedRow.PreviousPinnedSnapshotId != null)
                 Console.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
         }
+        if (stalePinned != null)
+            Console.WriteLine(StalePinStatusLine(stalePinned));
         Console.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
         foreach (var mismatch in freshness.Mismatches) Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
 
         ShowTimingIfAvailable(store, latestSnapshotId);
     }
+
+    private static string StalePinStatusLine(string stalePinnedSnapshotId) =>
+        $"Pin: snapshot '{stalePinnedSnapshotId}' is not complete and is ignored. Clear it with --mode=pin-snapshot --clear.";
 
     private static void ShowTimingIfAvailable(SqliteIndexStore store, string snapshotId)
     {

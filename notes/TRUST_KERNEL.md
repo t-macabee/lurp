@@ -50,8 +50,8 @@ cited below. Evidence cites git commits and named tests directly.
 | MCP Phase | Description | Status | Evidence |
 |---|---|---|---|
 | 1 | Read surface (`lurp_context` via MCP) | ✅ COMPLETE | `McpServeHandler`, `ContextTool`, `tests/Mcp/McpContextTests.cs` |
-| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | 13 MCP tools via `tools/list`: `lurp_find_symbol, lurp_diff, lurp_get_symbol, lurp_index, lurp_get_annotations, lurp_status, lurp_get_source, lurp_context, lurp_refresh, lurp_navigate, lurp_search, lurp_timings, lurp_impact` (13th `lurp_timings` added 2026-08-17, no `lurp_annotate` by design). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP reads open read-only connections (`Mode=ReadOnly` plus `PRAGMA query_only=ON`, `src/Storage/SqliteIndexStore.cs:OpenReadOnly`); annotation *creation* remains CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`), while retraction is available as `lurp_retract_annotation` when serve runs with `--enable-write-tools`. Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs`. |
-| 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs`. `--mode=serve` requires existing snapshot at startup, `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:47`) throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is null; it does not bootstrap a fresh index |
+| 2 | Full read parity (`search`, `find_symbol`, `get_source`, etc.) | ✅ COMPLETE | Dated: 13 tools on 2026-08-17. Current: 16 read tools; `lurp_index` and `lurp_retract_annotation` only with `--enable-write-tools` (see CLI_REFERENCE.md). `SearchTool`, `FindSymbolTool`, `GetSourceTool`, `GetSymbolTool`, `NavigateTool`, `ImpactTool`, `DiffTool`, `AnnotationsTool`, `TimingsTool` (`lurp_timings` parity with `--mode=timings --output=json`, `tests/Mcp/McpTimingsTests.cs`, `McpParityTests.Timings_Parity_WithCliJson`). MCP reads open read-only connections (`Mode=ReadOnly` plus `PRAGMA query_only=ON`, `src/Storage/SqliteIndexStore.cs:OpenReadOnly`); annotation *creation* remains CLI-only (`tests/Mcp/McpAnnotationsTests.Annotate_Gated_ReadOnly`), while retraction is available as `lurp_retract_annotation` when serve runs with `--enable-write-tools`. Stdio purity: `McpServeHandler` `ConsoleLoggerOptions.LogToStandardErrorThreshold = LogLevel.Trace` + `IOutputSink` plumbing, enforced by `tests/Mcp/McpStdioPurityTests.cs`. |
+| 3 | Freshness contract (`lurp_status`, `lurp_refresh`, pin hardening) | ✅ COMPLETE | Commit `dfa3b6f`; `StatusTool`, `RefreshTool`, `McpSessionContext` pin logic, `tests/Mcp/McpStatusTests.cs`, `McpRefreshTests.cs`, `McpPinningTests.cs`. `--mode=serve` requires existing snapshot at startup, `McpSessionContext.Create` (`src/Mcp/McpSessionContext.cs:57`) throws `ERROR: No snapshots found in the database` if `GetLatestSnapshotId()` is null; it does not bootstrap a fresh index |
 | 4 | Push-button index (`lurp_index` with progress/cancel/refresh hookup) | ✅ COMPLETE | `McpIndexSessionState` (`src/Mcp/McpIndexSessionState.cs`), `IndexTool` (`src/Mcp/Tools/IndexTool.cs`) Option B (in-process `IndexRunner.RunAsync` + `IOutputSink` + `CancellationToken`), `McpServeHandler` wiring, `McpErrorMapper` `workspace_unreadable`/`restore_required` structured data, `tests/Mcp/McpIndexTests.cs` (5 cases), manual validation per §4.11 of commit `175e52d` |
 
 ## Architecture Phase completion status
@@ -241,31 +241,14 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 
 - Multi-TFM per-framework indexing.
 - DI adapter matching by parameter type instead of containing-type name.
-- Concurrency, daemon, or server architecture.
+- Concurrency, daemon, or server architecture beyond the MCP stdio server.
 - Explicit source-generator execution with a `GeneratorDriver`.
 
 ## Declared boundaries registry (capsule audit Task 7)
 
 **Source:** `src/Workspace/DeclaredBoundaries.cs`. Single-source registry of construct classes Lurp does not model. `RegisteredImplementationsTierBuilder` reports `"unmodeled_construct"` (not `"empty"`); `UncertaintyDetector` derives descriptions from it. Policy: new unmodeled construct → add a registry entry, not a new extractor.
 
-| Id | Construct Class | Description |
-|---|---|---|
-| `di_hosted_service` | `AddHostedService<T>` | Concrete type resolved, activation semantics not captured |
-| `di_options` | `Configure<T>` / `AddOptions<T>` | Options type resolved, binding semantics not captured |
-| `di_external_extension` | External IServiceCollection extensions | Source outside compilation, semantics unknown |
-| `masstransit_consumer` | MassTransit consumer registration | No adapter; wiring edges never emitted |
-| `ef_convention` | EF Core model conventions beyond query filters/indexes | Fluent API model building not modeled |
-| `shape_similarity` | Semantic sibling similarity | No compiler oracle; deliberately not modeled |
-| `mediatr_stream_handler` | `IStreamRequestHandler` / `IAsyncStreamHandler` | Implementing type detected, no `Handles` edge |
-| `mediatr_pipeline_behavior` | `IPipelineBehavior` | Implementing type detected, no edge |
-| `mediatr_exception_handler` | `IRequestExceptionHandler` | Implementing type detected, no edge |
-| `mediatr_pre_post_processor` | `IRequestPreProcessor` / `IRequestPostProcessor` | Implementing type detected, no edge |
-| `source_generators` | Source generators | Generated code never executed or indexed |
-| `razor_blazor` | Razor / Blazor components | Not parsed; only C# documents are indexed |
-| `minimal_api_endpoints` | Minimal APIs and non-controller endpoints | Adapter recognizes only `Controller`-derived types |
-| `multi_target_union` | Multi-target projects | One union snapshot; per-symbol TFM set recorded, not surfaced in reads |
-| `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
-| `static_abstract_dispatch` | Static abstract interface dispatch | Interface-member `Calls` extracted; implementation dispatch not emitted |
+The current list is generated from `src/Workspace/DeclaredBoundaries.cs` in [ARCHITECTURE.md section 6.1](../docs/ARCHITECTURE.md#61-declared-boundaries).
 
 ## Reclassified as done
 

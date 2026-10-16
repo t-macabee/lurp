@@ -7,6 +7,7 @@ internal static class DocCatalog
         new("README.md", "versions", DocRenderers.RenderVersionFacts),
         new("docs/CLI_REFERENCE.md", "versions", DocRenderers.RenderVersionFacts),
         new("docs/ARCHITECTURE.md", "versions", DocRenderers.RenderVersionFacts),
+        new("docs/ARCHITECTURE.md", "declared-boundaries", DocRenderers.RenderDeclaredBoundaries),
         new("docs/CLI_REFERENCE.md", "flags:read-options", DocRenderers.RenderReadOptions),
         .. Program.ModeRegistry.Select(entry => new DocSection("docs/CLI_REFERENCE.md", $"flags:{entry.Name}", () => DocRenderers.RenderModeFlags(entry))),
         new("docs/CLI_REFERENCE.md", "mcp-tools:read", DocRenderers.RenderMcpReadTools),

@@ -45,7 +45,11 @@ public static class IndexRunner
                 sink.WriteLine("No changes detected. Skipping incremental index.");
                 sink.WriteLine("Workspace load skipped: stored snapshot is still current.");
 
-                WriteIncrementalSummary(store, sink, new IncrementalIndexer.IncrementalResult(builtSnapshot.SnapshotId, builtSnapshot.SnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty));
+                WriteIncrementalSummary(store, sink, new IncrementalIndexer.IncrementalResult(builtSnapshot.SnapshotId, builtSnapshot.SnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty)
+                {
+                    DocumentsInSnapshot = store.CountDocumentsInSnapshot(builtSnapshot.SnapshotId),
+                    ProjectsInSnapshot = store.CountProjectsInSnapshot(builtSnapshot.SnapshotId)
+                });
                 PruneAndRecord(store, sink, null);
 
                 totalSw.Stop();
@@ -451,7 +455,8 @@ public static class IndexRunner
         sink.WriteLine();
         sink.WriteLine($"Incremental index complete. Snapshot: {result.NewSnapshotId}");
         sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
-        sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}");
+        sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}      documents_in_snapshot: {result.DocumentsInSnapshot}");
+        sink.WriteLine($"  projects_reextracted_this_run:       {result.ProjectsReextracted}/{result.ProjectsInSnapshot}");
         sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
         sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edges_dropped_outside_snapshot_scope: {result.OrphanEdgesDropped.FormatDropSummary()}");
         sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {store.CountEdges(result.NewSnapshotId)}");

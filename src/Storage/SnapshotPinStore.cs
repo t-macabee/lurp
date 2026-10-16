@@ -7,9 +7,9 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
-    internal PinnedSnapshotRow? GetPinnedSnapshot(string? workspaceId = null)
+    private SqliteCommand BuildPinCommand(string? workspaceId)
     {
-        using var command = _connection.CreateCommand();
+        var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
             command.CommandText = """
@@ -31,6 +31,13 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
                 LIMIT 1;
                 """;
         }
+
+        return command;
+    }
+
+    internal PinnedSnapshotRow? GetPinnedSnapshot(string? workspaceId = null)
+    {
+        using var command = BuildPinCommand(workspaceId);
 
         using var reader = command.ExecuteReader();
         if (!reader.Read())
@@ -55,6 +62,23 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         }
 
         return new PinnedSnapshotRow(ws, pinnedId, pinnedAt, prev, builtAt);
+    }
+
+    /// <summary>
+    ///     Returns the pinned snapshot id when that snapshot is missing or is not
+    ///     complete, without clearing the pin. Returns <c>null</c> when there is no
+    ///     pin or the pinned snapshot is complete.
+    /// </summary>
+    internal string? GetStalePinnedSnapshotId(string? workspaceId = null)
+    {
+        using var command = BuildPinCommand(workspaceId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        var pinnedId = reader.GetString(1);
+        var snapshotMissing = reader.IsDBNull(4);
+        return snapshotMissing || !IsCompleteSnapshot(pinnedId) ? pinnedId : null;
     }
 
     internal string? GetPinnedSnapshotId(string? workspaceId = null)

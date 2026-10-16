@@ -59,6 +59,37 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task IncrementalRun_PrintsTheSummaryOnce()
+    {
+        Seed();
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile(Project, "Widget.cs", WidgetSource + Environment.NewLine + "public class Extra { }");
+        Touch(Path.Combine(TestDir, "src", Project, "Widget.cs"));
+
+        var output = await RunIncrementalAsync();
+
+        Assert.Equal(1, CountOccurrences(output, "Incremental index complete"));
+        Assert.Contains("documents_in_snapshot:", output);
+        Assert.Contains("projects_reextracted_this_run:", output);
+        Assert.True(
+            CountOccurrences(output, "edges_dropped_reason_other") <= 1,
+            "the orphan-drop warning must print at most once");
+    }
+
+    private static int CountOccurrences(string text, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+        return count;
+    }
+
+    [Fact]
     public async Task NewSourceFile_DoesNotSkipWorkspaceLoad()
     {
         Seed();

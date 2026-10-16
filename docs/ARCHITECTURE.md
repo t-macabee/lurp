@@ -45,7 +45,9 @@ One primary SQLite database (`index.db` in the output directory) is the
 canonical persisted state. JSON is appropriate for CLI response output and
 one-way export, but it is never a parallel authority. Snapshot identity is
 content-derived and content-addressed: when source content and compilation
-inputs are unchanged, a re-index reuses the existing snapshot.
+inputs are unchanged, a re-index reuses the existing snapshot. Source content,
+compilation inputs and the version of each extractor and adapter make up the
+identity, so a version bump also gives a new snapshot id.
 
 Logical boundaries:
 
@@ -99,7 +101,7 @@ reused via content-addressed dedup.
 |---|---|
 | `compiler_proved` | Directly verified by the compiler |
 | `framework_derived` | Derived from framework conventions |
-| `global_implementation_relation` | Implementation relationship across the graph |
+| `global_implementation_relation` | Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges. |
 | `possible` | Possible target (e.g. `MayDispatchTo` inherited-only) |
 | `convention` | Convention-based inference |
 | `name_candidate` | Name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically |
@@ -120,7 +122,7 @@ pin-snapshot, annotations (attach/retrieve/retract), and dead-candidates. MCP su
 `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
 `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`); `--enable-write-tools` additionally registers `lurp_index` and `lurp_retract_annotation` (write),
 which start a background (re-)index or a retraction through a separate writer connection (see
-[CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server-mode-serve)).
+[CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server---modeserve)).
 
 Read commands never migrate `index.db`. They refuse a database whose schema
 version differs from `VersionConstants.DatabaseSchemaVersion` and name the fix
@@ -143,14 +145,17 @@ symbol-ID order, so the witness paths and the output are the same on every run.
 
 A context capsule is a bounded, evidence-backed package of relevant code
 assembled for an agent task. Built by `ContextAssembler` with tier builders
-(priority order: contracts → direct callees → direct callers → registered
-implementations → relevant tests → surrounding source → second-degree context)
-and enforced by `CapsuleBudgetEnforcer`.
+and enforced by `CapsuleBudgetEnforcer`. Default priority order: contracts,
+direct callees, direct callers, registered implementations, relevant tests,
+second-degree context, surrounding source. The intent (`modify`, `diagnose`)
+reorders it, and a type anchor puts surrounding source before relevant tests.
 
 Budgeting: `--content-budget` bounds content tokens; tiers are included in
 priority order (greedy-prefix) until the budget is exhausted; omitted tiers
 are reported with reason (`budget_exhausted`, `empty`, `unresolved`,
-`summarized`). Individual tiers can be refetched with `--tier=<name>`.
+`summarized`, `unmodeled_construct`). `unmodeled_construct` is used by the
+registered-implementations tier when an unmodeled registration form exists.
+Individual tiers can be refetched with `--tier=<name>`.
 
 Every capsule records its origin at the top level (`snapshot_id`,
 `tool_version`, `output_schema_version`) and is written atomically, so a
@@ -166,25 +171,28 @@ Construct classes Lurp does not model are registered in
 `src/Workspace/DeclaredBoundaries.cs`. New unmodeled construct → add a registry
 entry, not a new extractor.
 
-| Id | Construct Class | Description |
-|---|---|---|
-| `di_hosted_service` | `AddHostedService<T>` | Concrete type resolved, activation semantics not captured |
-| `di_options` | `Configure<T>` / `AddOptions<T>` | Options type resolved, binding semantics not captured |
-| `di_external_extension` | External IServiceCollection extensions | Source outside compilation, semantics unknown |
-| `masstransit_consumer` | MassTransit consumer registration | No adapter; wiring edges never emitted |
-| `ef_convention` | EF Core model conventions beyond query filters/indexes | Fluent API model building not modeled |
-| `shape_similarity` | Semantic sibling similarity | No compiler oracle; deliberately not modeled |
-| `mediatr_stream_handler` | `IStreamRequestHandler` / `IAsyncStreamHandler` | Implementing type detected, no `Handles` edge |
-| `mediatr_pipeline_behavior` | `IPipelineBehavior` | Implementing type detected, no edge |
-| `mediatr_exception_handler` | `IRequestExceptionHandler` | Implementing type detected, no edge |
-| `mediatr_pre_post_processor` | `IRequestPreProcessor` / `IRequestPostProcessor` | Implementing type detected, no edge |
-| `source_generators` | Source generators | Generated code never executed or indexed |
-| `razor_blazor` | Razor / Blazor components | Not parsed; only C# documents are indexed |
-| `minimal_api_endpoints` | Minimal APIs and non-controller endpoints | Adapter recognizes only `Controller`-derived types |
-| `multi_target_union` | Multi-target projects | One union snapshot; per-symbol TFM set recorded, not surfaced in reads |
-| `non_csharp_projects` | F# / VB projects | Skipped by `MSBuildWorkspace`, reported as a warning |
-| `static_abstract_dispatch` | Static abstract interface dispatch | Interface-member `Calls` extracted; implementation dispatch not emitted |
-| `collection_expression_implicit_calls` | Collection expression `Add` calls and spread enumeration | `ConstructMethod` extracted; `Add` calls and spread `GetEnumerator` produce no edge |
+<!-- generated:declared-boundaries -->
+| Id | Description |
+|---|---|
+| `di_hosted_service` | Hosted-service registration form AddHostedService<T> is not fully modeled: the concrete type is resolved but the runtime activation semantics of the hosted-service lifecycle are not captured. |
+| `di_options` | Options-pattern registration Configure<T>/AddOptions<T> is not fully modeled: the options type is resolved but the configuration-binding semantics are not captured. |
+| `di_external_extension` | An external IServiceCollection extension method was detected but could not be analyzed: the method lives outside the compilation so its registration semantics are unknown. |
+| `masstransit_consumer` | MassTransit consumer registration is not modeled: no adapter exists to emit consumer-wiring edges for AddConsumer or endpoint configuration. |
+| `ef_convention` | EF Core model conventions beyond query filters and indexes (e.g. IsRequired, HasMaxLength, HasDefaultSchema) are not modeled. |
+| `shape_similarity` | Semantic sibling similarity is not modeled: consistency audits requiring comparison against 'similar' implementations are unsupported. Use the proved neighborhood instead — implementations of a shared interface, shared base types and overrides, callers/callees, and containing-declaration siblings. |
+| `mediatr_stream_handler` | MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: the implementing type was detected but no Handles edge was emitted. |
+| `mediatr_pipeline_behavior` | MediatR pipeline behavior (IPipelineBehavior) is not modeled: the implementing type was detected but no edge was emitted. Pipeline behaviors affect all requests passing through the pipeline. |
+| `mediatr_exception_handler` | MediatR exception handler (IRequestExceptionHandler) is not modeled: the implementing type was detected but no edge was emitted. |
+| `mediatr_pre_post_processor` | MediatR pre/post processor (IRequestPreProcessor or IRequestPostProcessor) is not modeled: the implementing type was detected but no edge was emitted. |
+| `source_generators` | Source-generated code is not executed or indexed (generated trees are excluded and obj/ output is path-filtered), so symbols, calls, and registrations declared only by a source generator are absent from the graph. |
+| `razor_blazor` | Razor (.cshtml) and Blazor components are not parsed: only C# documents in the solution's compilations are indexed, so component event handlers and render-tree calls are absent from the graph. |
+| `minimal_api_endpoints` | Minimal API endpoints and non-controller ASP.NET Core surfaces (MapGet/MapPost, endpoint filters, SignalR hubs, gRPC services) are not modeled: the ASP.NET Core adapter recognizes only Controller-derived types, so endpoint-to-handler routes are absent from the graph. |
+| `multi_target_union` | Multi-target projects are indexed as one union snapshot over every declared target framework: the declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but reads do not surface the per-symbol set, so a construct present in only one target framework cannot be told apart by a consumer from one present in all of them. |
+| `non_csharp_projects` | F# and VB projects are out of scope: MSBuildWorkspace skips non-C# languages and the skip is reported as a warning, so symbols and relationships declared in those projects are absent from the graph. |
+| `intermediate_redirect_not_applied` | A project's build files set the intermediate output path after Lurp's redirect (or assign CustomBeforeMicrosoftCommonTargets in the project file), so its design-time build files are written under its own obj/ directory in the target tree. The project's own build hooks do take effect; the indexed compilation is not affected. |
+| `static_abstract_dispatch` | Static-abstract interface dispatch is not modeled as a direct edge to the implementation: a generic method constrained to an interface with a static abstract member is extracted as a Calls edge to the interface member, but the implementing type selected at dispatch time is not emitted as a relation. |
+| `collection_expression_implicit_calls` | A collection expression whose target type has Add lowers to the constructor plus one Add call per element, and a spread element is enumerated; Roslyn exposes the construct method only, so Add calls and spread GetEnumerator produce no edge. |
+<!-- /generated:declared-boundaries -->
 
 ## 7. Glossary
 
@@ -199,12 +207,12 @@ entry, not a new extractor.
 
 ## 8. Non-Negotiable Design Rules
 
-1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes. Lurp loads projects through MSBuild design-time builds, but redirects their intermediates into `%LOCALAPPDATA%\lurp\<hash>\obj\<project>\` (through the `CustomAfterDirectoryBuildProps` global property on `MSBuildWorkspace`; the solution's own `CustomBeforeMicrosoftCommonTargets` hook still runs), so an index run does not create or change `bin/` or `obj/` files in the target tree; restore assets are still read from the real `obj/`. A project that moves its own intermediate path or assigns that hook in its project file is reported with a warning (declared boundary `intermediate_redirect_not_applied`) and keeps its files in its own `obj/`. The only locations Lurp writes are its own cache/output directory, the lock directory under `%TEMP%\lurp-locks`, and any explicit `--output-dir=`/`--output-json=` path the caller names.
+1. **Read-only relationship to source**: may read, index, report consequences; must not apply fixes. Lurp loads projects through MSBuild design-time builds, but redirects their intermediates into `%LOCALAPPDATA%\lurp\<hash>\obj\<project>\<tfm>\` and their `OutputPath` into `...\obj\<project>\<tfm>\bin\` (through the `CustomAfterDirectoryBuildProps` global property on `MSBuildWorkspace`; the solution's own `CustomBeforeMicrosoftCommonTargets` hook still runs), so an index run does not create or change `bin/` or `obj/` files in the target tree; restore assets are still read from the real `obj/`. A project that moves its own intermediate path or assigns that hook in its project file is reported with a warning (declared boundary `intermediate_redirect_not_applied`) and keeps its files in its own `obj/`. A solution that sets `CustomAfterDirectoryBuildProps` itself loses that value while Lurp loads it; Lurp does not detect this. The only locations Lurp writes are its own cache/output directory, the lock directory under `%TEMP%\lurp-locks`, and any explicit `--output-dir=`/`--output-json=` path the caller names.
 2. **C#/.NET specialization**: remain Roslyn-native; do not weaken the semantic model for multiple languages.
 3. **Fact before interpretation**: record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
 4. **Unknown is a valid result**: make each blind spot the strongest honest form available.
 5. **Schema stability**: every field is a contract; renaming/removing requires a major revision.
-6. **Roslyn boundary**: Roslyn analysis belongs in `src/Workspace/` and `src/Adapters/` only; never in `src/Storage/`.
+6. **Roslyn boundary**: Roslyn analysis belongs in `src/Workspace/`, `src/Adapters/`, `src/Shared/` and `src/Helpers/`, plus the MSBuild workspace load in `status`. Never in `src/Storage/`.
 
 ## 9. What Not to Build
 

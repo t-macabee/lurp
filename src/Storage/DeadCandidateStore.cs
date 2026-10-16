@@ -66,7 +66,7 @@ internal sealed class DeadCandidateStore
         if (string.IsNullOrEmpty(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
         if (limit <= 0)
-            throw new ArgumentException("--limit must be a positive integer.", nameof(limit));
+            throw new ArgumentException("--limit must be a positive integer.");
 
         limit = Math.Max(1, limit);
         var fingerprint = DeadCandidateCursor.ComputeFingerprint(project, document, kind, includePublic, includeGenerated, includeTests);

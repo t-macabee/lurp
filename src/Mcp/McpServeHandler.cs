@@ -57,6 +57,7 @@ internal static class McpServeHandler
         builder.Services.AddSingleton<McpIndexSessionState>();
         var mcp = builder.Services.AddMcpServer()
             .WithStdioServerTransport()
+            .WithRequestFilters(filters => filters.AddCallToolFilter(McpArgumentGuard.Filter))
             // The cast selects WithTools(IEnumerable<Type>). Without it the generic
             // WithTools<TTool>(TTool target) overload binds the array as one tool instance
             // and registers no tool.

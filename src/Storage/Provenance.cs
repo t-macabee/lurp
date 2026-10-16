@@ -35,4 +35,7 @@ public static class Provenance
     /// </summary>
     public const string GlobalImplementationRelation = "global_implementation_relation";
 
+    /// <summary>Every provenance value, in the evidence-ladder order of the architecture doc.</summary>
+    public static readonly IReadOnlyList<string> All = [CompilerProved, FrameworkDerived, GlobalImplementationRelation, Possible, Convention, NameCandidate, RuntimeUnknown];
+
 }

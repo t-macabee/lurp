@@ -130,6 +130,22 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void ImpactHandler_UnknownKind_ThrowsCliExit()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--kinds=Bogus"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("Unknown edge kind 'Bogus'", ex.Message);
+    }
+
+    [Fact]
+    public void ImpactHandler_UnknownProvenance_ThrowsCliExit()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--provenance=bogus"]));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("Unknown provenance 'bogus'", ex.Message);
+    }
+
+    [Fact]
     public void ContextHandler_BadIntent_ThrowsCliExit()
     {
         var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"]));
@@ -377,6 +393,49 @@ public sealed class CliExitSmokeTests : IDisposable
             var ex = Assert.Throws<CliExitException>(() =>
                 DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=s1", "--to-snapshot=bogus"]));
             Assert.Contains("snapshot 'bogus' not found", ex.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void FindSymbol_UnknownSnapshot_FailsWithSnapshotText()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            var ex = Assert.Throws<CliExitException>(() => FindSymbolHandler.Run([
+                "--symbol=T:Some.Type|assembly",
+                "--snapshot=nope",
+                $"--output-dir={dir}"
+            ]));
+            Assert.Equal(1, ex.ExitCode);
+            Assert.Equal("ERROR: snapshot 'nope' not found.", ex.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Diagnostics_UnknownSeverity_ExactText()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            var ex = Assert.Throws<CliExitException>(() => DiagnosticsHandler.Run([
+                "--severity=bogus",
+                $"--output-dir={dir}"
+            ]));
+            Assert.Equal(1, ex.ExitCode);
+            Assert.Equal(
+                "ERROR: Unknown severity 'bogus'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).",
+                ex.Message);
         }
         finally
         {

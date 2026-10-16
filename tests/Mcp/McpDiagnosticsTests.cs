@@ -107,6 +107,19 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Diagnostics_UnknownSeverity_DoesNotCarryTheParameterSuffix()
+    {
+        await IndexDiagnosticsFixtureAsync();
+        await using var session = CreateSession();
+        var tool = new DiagnosticsTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(
+            () => tool.LurpDiagnostics(severity: "bogus"));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.DoesNotContain("(Parameter", ex.Message);
+    }
+
+    [Fact]
     public async Task Diagnostics_DocumentFilter_NarrowsToDocument()
     {
         var snapshotId = await IndexDiagnosticsFixtureAsync();

@@ -1,6 +1,8 @@
 using Lurp.Handlers;
+using Lurp.Mcp;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Lurp.Tests;
 
@@ -327,6 +329,121 @@ public sealed class PinSnapshotTests : IDisposable
 
         Assert.Null(readOnly.GetPinnedSnapshot("ws-stale"));
         readOnly.Close();
+    }
+
+    [Fact]
+    public void ReadCommand_StalePin_WarnsAndUsesLatest()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        try
+        {
+            var result = TestConsole.Capture(() => FindSymbolHandler.Run([
+                "--symbol=T:Missing.Type|assembly",
+                $"--output-dir={dir}"
+            ]));
+
+            Assert.NotNull(result.Failure);
+            Assert.Contains(
+                $"WARNING: pinned snapshot '{staleId}' is not complete; this command uses the latest snapshot '{latestId}'.",
+                result.Stderr);
+            Assert.Contains($"'{latestId}'", result.Failure!.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task McpSession_StalePin_WarnsAndUsesLatest()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        try
+        {
+            McpSessionContext? session = null;
+            var result = TestConsole.Capture(() => session = McpSessionContext.Create([$"--output-dir={dir}"]));
+
+            Assert.Contains(HandlerBootstrap.StalePinWarning(staleId, latestId), result.Stderr);
+            Assert.Equal(latestId, session!.PinnedSnapshotId);
+            await session.DisposeAsync();
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task Status_StalePin_ShowsIgnoredPin()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out _);
+        try
+        {
+            var text = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}"]));
+            Assert.Null(text.Failure);
+            Assert.Contains(
+                $"Pin: snapshot '{staleId}' is not complete and is ignored. Clear it with --mode=pin-snapshot --clear.",
+                text.Stdout);
+
+            var json = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
+            Assert.Null(json.Failure);
+            using (var doc = JsonDocument.Parse(json.Stdout))
+                Assert.Equal(staleId, doc.RootElement.GetProperty("stale_pinned_snapshot_id").GetString());
+
+            // Without a stale pin, no stale id is reported.
+            using (var store = new SqliteIndexStore(Path.Combine(dir, "index.db")))
+            {
+                store.Open();
+                store.ClearPinnedSnapshot();
+            }
+
+            var noPin = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
+            Assert.Null(noPin.Failure);
+            using (var noPinDoc = JsonDocument.Parse(noPin.Stdout))
+            {
+                if (noPinDoc.RootElement.TryGetProperty("stale_pinned_snapshot_id", out var field))
+                    Assert.Equal(JsonValueKind.Null, field.ValueKind);
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private static string CreateIndexedDirWithTwoSnapshots(out string staleId, out string latestId)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"lurp-stale-pin-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var dbPath = Path.Combine(dir, "index.db");
+        const string ws = "ws-stale-read";
+        var stale = Guid.NewGuid().ToString();
+        var latest = Guid.NewGuid().ToString();
+        using (var store = new SqliteIndexStore(dbPath))
+        {
+            store.Open();
+            store.RunMigrations();
+            store.SaveWorkspace(ws, "/repo", "/repo/Test.slnx");
+            InsertSnapshot(store, stale, ws, DateTime.UtcNow.AddHours(-1));
+            InsertSnapshot(store, latest, ws, DateTime.UtcNow);
+            store.SetPinnedSnapshot(stale);
+        }
+
+        using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE snapshots SET status = 'failed' WHERE snapshot_id = @stale;";
+            command.Parameters.AddWithValue("@stale", stale);
+            command.ExecuteNonQuery();
+        }
+
+        staleId = stale;
+        latestId = latest;
+        return dir;
     }
 
     private void ExecuteSql(string sql)

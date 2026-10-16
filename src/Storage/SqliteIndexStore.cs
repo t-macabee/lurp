@@ -292,6 +292,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _pinStore!.GetPinnedSnapshotId(workspaceId);
     }
 
+    public string? GetStalePinnedSnapshotId(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _pinStore!.GetStalePinnedSnapshotId(workspaceId);
+    }
+
     public void SetPinnedSnapshot(string snapshotId)
     {
         EnsureOpen();
@@ -642,6 +648,18 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _diagnostics!.CountDiagnostics(snapshotId);
+    }
+
+    public int CountDocumentsInSnapshot(string snapshotId)
+    {
+        EnsureOpen();
+        return _documents!.CountDocumentsInSnapshot(snapshotId);
+    }
+
+    public int CountProjectsInSnapshot(string snapshotId)
+    {
+        EnsureOpen();
+        return _lifecycle!.CountProjectsInSnapshot(snapshotId);
     }
 
     public List<EdgeRecord> GetEdgesByKind(string snapshotId, string kind)

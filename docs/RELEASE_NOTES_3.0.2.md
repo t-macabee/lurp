@@ -50,14 +50,27 @@ cross-generated only because a tool wrote another part.
 - **Stale pin.** When a command that can write to the database finds a pin on a
   snapshot that is no longer complete, it removes the pin. If that removal
   fails, the command now fails with the database error. 3.0.1 ignored the error
-  and used the latest snapshot. A read-only command (status, the MCP read tools)
-  still uses the latest snapshot, because it cannot remove the pin.
+  and used the latest snapshot. A read-only command (`status`, the CLI read modes, the MCP read tools)
+  cannot remove the pin. It still uses the latest snapshot, and it now prints
+  `WARNING: pinned snapshot '<id>' is not complete; this command uses the
+  latest snapshot '<id>'.` to stderr. `status` shows the ignored pin, and
+  `status --json` has the new field `stale_pinned_snapshot_id`.
 - **Damaged index.** A missing pins table, or a stored source span outside its
   file, now fails with an error on every path. 3.0.1 answered "no pin", or left
   the source view out of a `get-symbol` answer.
 
 ### Inputs and output
 
+- `impact` (CLI `--kinds=` / `--provenance=`, MCP `kinds` / `provenance`):
+  names are now matched case-insensitively (`calls` finds `Calls` edges), and
+  an unknown name is an error. 3.0.1 matched the exact case and returned an
+  empty result for any other spelling, which read as "nothing depends on this".
+  The contract stays v5: no document, tool description or test listed those
+  spellings as accepted.
+- MCP: an argument name that the tool does not declare (for example a typo
+  such as `max_depht`) is now an invalid-params error that names the valid
+  parameters. 3.0.1 ignored it and ran the tool with the default. The CLI
+  already rejected an unknown flag. The contract stays v5.
 - MCP `lurp_impact`: an empty `direction` (`""`) is now an invalid-params error,
   like every other unknown value. 3.0.1 read it as `downstream`. Leave out
   `direction` to get `downstream`. The CLI/MCP contract stays v5: no document,
@@ -65,6 +78,22 @@ cross-generated only because a tool wrote another part.
   rejects an input that 3.0.1 accepted by accident.
 - The text output of `dead-candidates` shows only the file path for a candidate
   that has no line. 3.0.1 printed `<path>:0`.
+- Every CLI read mode now checks `--snapshot=<id>` first and fails with
+  `ERROR: snapshot '<id>' not found.`, the text `diff` already used. 3.0.1
+  reported the symbol or document as not found in that snapshot.
+- Error texts no longer end with a .NET `(Parameter '…')` suffix (for example
+  an unknown `--severity=`), and MCP `lurp_dead_candidates` reports its limit
+  as `limit must be <= 200.`, like the other tools.
+- An incremental index run prints its summary once. 3.0.1 printed two blocks
+  with the same counters.
+- MCP `lurp_index` now declares `destructiveHint: true`: an index run prunes old
+  snapshots. 3.0.1 left the hint out, so it depended on the client's default.
+
+## Known issue
+
+- `status --json` writes the keys of `latest_failure` in PascalCase
+  (`SnapshotId`, `ReasonCode`, `Message`, `CreatedAtUtc`). Every other key is
+  snake_case. A rename changes the contract, so it waits for contract v6.
 
 ## Versions
 

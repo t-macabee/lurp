@@ -1,7 +1,6 @@
 # scripts/perf/
 
-Performance measurement for Lurp. This folder **measures**, and it also holds the growth gate
-(the `--evaluate` mode of the harness). Baseline files are a later phase.
+Performance measurement for Lurp. This folder measures, and it holds the growth gate (`--evaluate`) and the baseline gate (`--baseline`). Committed baselines are in `perf/baselines/`.
 
 - `gen/`: deterministic generator for synthetic C# solutions. `--size=1` writes 5 projects,
   `4` writes 20, `16` writes 80; every project has 50 `.cs` files (250 / 1,000 / 4,000

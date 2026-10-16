@@ -324,11 +324,23 @@ internal static class HandlerBootstrap
         return store;
     }
 
+    public static void RequireSnapshotExists(SqliteIndexStore store, string snapshotId)
+    {
+        if (store.LoadSnapshotMetadata(snapshotId) == null)
+            Fail($"ERROR: snapshot '{snapshotId}' not found.");
+    }
+
+    public static string StalePinWarning(string stalePinnedSnapshotId, string usedSnapshotId) =>
+        $"WARNING: pinned snapshot '{stalePinnedSnapshotId}' is not complete; this command uses the latest snapshot '{usedSnapshotId}'. Clear the pin with --mode=pin-snapshot --clear.";
+
     public static string ResolveSnapshotId(SqliteIndexStore store, string? snapshotArg)
     {
         if (!string.IsNullOrEmpty(snapshotArg) &&
             !string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase))
+        {
+            RequireSnapshotExists(store, snapshotArg);
             return snapshotArg;
+        }
 
         var snapshotId = store.GetLatestSnapshotId();
         if (snapshotId == null) Fail("ERROR: No snapshots found in the database.");
@@ -348,7 +360,12 @@ internal static class HandlerBootstrap
         var store = OpenStore(dbPath);
         try
         {
+            var stalePin = string.IsNullOrEmpty(snapshotArg) || string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase)
+                ? store.GetStalePinnedSnapshotId()
+                : null;
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
+            if (stalePin != null)
+                Console.Error.WriteLine(HandlerBootstrap.StalePinWarning(stalePin, snapshotId));
             body(store, snapshotId);
         }
         finally

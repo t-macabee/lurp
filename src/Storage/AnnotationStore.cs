@@ -92,7 +92,7 @@ internal sealed class AnnotationStore
         if (string.IsNullOrEmpty(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
         if (annotationId <= 0)
-            throw new ArgumentException("annotationId must be a positive integer.", nameof(annotationId));
+            throw new ArgumentException("annotationId must be a positive integer.");
 
         using var command = _connection.CreateCommand();
         command.CommandText = """
@@ -121,7 +121,7 @@ internal sealed class AnnotationStore
         if (string.IsNullOrEmpty(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
         if (limit <= 0)
-            throw new ArgumentException("--limit must be a positive integer.", nameof(limit));
+            throw new ArgumentException("--limit must be a positive integer.");
 
         limit = Math.Max(1, limit);
         var fingerprint = AnnotationCursor.ComputeFingerprint(symbolId, documentPath, kind);

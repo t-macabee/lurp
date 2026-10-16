@@ -26,6 +26,40 @@ internal static class ImpactHandler
         }
     }
 
+    internal static readonly IReadOnlyList<string> EdgeKindNames = Enum.GetNames<EdgeKind>();
+
+    /// <summary>
+    ///     Parses a repeatable, comma-separated name filter (CLI <c>--kinds=</c> / <c>--provenance=</c>,
+    ///     MCP <c>kinds</c> / <c>provenance</c>). Each part is matched against <paramref name="known" />
+    ///     case-insensitively and replaced with its canonical spelling; input order is kept and
+    ///     duplicates are dropped. On the first unknown part <paramref name="unknown" /> is set and the
+    ///     method returns false. When no part remains, <paramref name="canonical" /> is null (no filter).
+    /// </summary>
+    internal static bool TryParseNameFilter(IEnumerable<string> values, IReadOnlyList<string> known, out IReadOnlyList<string>? canonical, out string? unknown)
+    {
+        canonical = null;
+        unknown = null;
+        var result = new List<string>();
+        foreach (var value in values)
+        {
+            foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var match = known.FirstOrDefault(name => string.Equals(name, part, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                {
+                    unknown = part;
+                    return false;
+                }
+
+                if (!result.Contains(match, StringComparer.Ordinal))
+                    result.Add(match);
+            }
+        }
+
+        canonical = result.Count > 0 ? result : null;
+        return true;
+    }
+
     public static void Run(string[] args)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
@@ -43,14 +77,19 @@ internal static class ImpactHandler
         if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1)) HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
 
         var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");
-        HashSet<string>? allowedKinds = !string.IsNullOrEmpty(kindsArg)
-            ? [.. kindsArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
-            : null;
+        IReadOnlyList<string>? canonicalKinds = null;
+        if (!string.IsNullOrEmpty(kindsArg)
+            && !TryParseNameFilter([kindsArg], EdgeKindNames, out canonicalKinds, out var unknownKind))
+            HandlerBootstrap.Fail($"ERROR: Unknown edge kind '{unknownKind}' in --kinds. Use one of: {string.Join(", ", EdgeKindNames)} (case-insensitive).");
 
         var provenanceArg = HandlerBootstrap.GetArgValue(args, "--provenance=");
-        HashSet<string>? allowedProvenance = !string.IsNullOrEmpty(provenanceArg)
-            ? [.. provenanceArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
-            : null;
+        IReadOnlyList<string>? canonicalProvenance = null;
+        if (!string.IsNullOrEmpty(provenanceArg)
+            && !TryParseNameFilter([provenanceArg], Provenance.All, out canonicalProvenance, out var unknownProvenance))
+            HandlerBootstrap.Fail($"ERROR: Unknown provenance '{unknownProvenance}' in --provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).");
+
+        HashSet<string>? allowedKinds = canonicalKinds is null ? null : new HashSet<string>(canonicalKinds, StringComparer.Ordinal);
+        HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
 
         var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
@@ -63,8 +102,8 @@ internal static class ImpactHandler
                 resolvedSymbolId,
                 direction.ToString(),
                 maxDepth.ToString(CultureInfo.InvariantCulture),
-                kindsArg,
-                provenanceArg,
+                canonicalKinds is null ? null : string.Join(",", canonicalKinds),
+                canonicalProvenance is null ? null : string.Join(",", canonicalProvenance),
                 "symbols");
             var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
             var offset = cursor?.Offset ?? 0;

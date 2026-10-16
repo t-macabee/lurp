@@ -11,7 +11,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
 {
     private static readonly string[] CallsKind = ["Calls"];
     private static readonly string[] InheritsKind = ["Inherits"];
-    private static readonly string[] ResolvedProvenance = ["resolved"];
+    private static readonly string[] CompilerProvedProvenance = ["compiler_proved"];
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
@@ -55,7 +55,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
         Assert.Equal(0, docInherits.RootElement.GetProperty("symbols").GetArrayLength());
 
         // provenance filtering does not throw
-        var jsonProv = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: ResolvedProvenance);
+        var jsonProv = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: CompilerProvedProvenance);
         using var docProv = JsonDocument.Parse(jsonProv);
         Assert.True(docProv.RootElement.TryGetProperty("symbols", out _));
 
@@ -206,5 +206,51 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", direction: ""));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Mcp_UnknownKind_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", kinds: ["Bogus"]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Mcp_UnknownProvenance_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: ["bogus"]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Mcp_KindsAreCaseInsensitive()
+    {
+        var snap = await IndexInitialAsync();
+        await using var session = CreateSession();
+        var impact = new ImpactTool(session);
+
+        string callerId;
+        using (var store = OpenStore(DbPath))
+            callerId = store.GetSymbolIdsInSnapshot(snap).First(id => store.GetSymbolInfo(id, snap)?.FullyQualifiedName?.Contains("ImpactProj.Foo.Caller") == true);
+
+        using var lower = JsonDocument.Parse(impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: ["calls"]));
+        using var upper = JsonDocument.Parse(impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: ["Calls"]));
+        var lowerTotal = lower.RootElement.GetProperty("symbol_count_total").GetInt32();
+        Assert.Equal(lowerTotal, upper.RootElement.GetProperty("symbol_count_total").GetInt32());
+        Assert.True(lowerTotal > 0);
+
+        using var provLower = JsonDocument.Parse(impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: ["compiler_proved"]));
+        using var provUpper = JsonDocument.Parse(impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: ["COMPILER_PROVED"]));
+        var provLowerTotal = provLower.RootElement.GetProperty("symbol_count_total").GetInt32();
+        Assert.Equal(provLowerTotal, provUpper.RootElement.GetProperty("symbol_count_total").GetInt32());
+        Assert.True(provLowerTotal > 0);
     }
 }

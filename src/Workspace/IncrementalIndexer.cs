@@ -59,7 +59,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         timings.Add(new SnapshotTimingRow("change_detection", sw1.ElapsedMilliseconds));
 
         if (changedDocs.Count == 0)
-            return new IncrementalResult(previousSnapshotId, previousSnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty);
+            return new IncrementalResult(previousSnapshotId, previousSnapshotId, 0, 0, 0, 0, OrphanEdgeDropSummary.Empty)
+            {
+                DocumentsInSnapshot = workspaceInfo.Documents.Count,
+                ProjectsInSnapshot = solution.Projects.Count()
+            };
 
         // Deterministic identity: identical indexed state must produce the
         // identical snapshot id, so a complete snapshot with this id must be
@@ -78,7 +82,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 else
                 {
                     _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-                    return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty);
+                    return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty)
+                    {
+                        DocumentsInSnapshot = workspaceInfo.Documents.Count,
+                        ProjectsInSnapshot = solution.Projects.Count()
+                    };
                 }
                 break;
             case ExistingSnapshotDisposition.Retry:
@@ -315,27 +323,14 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             _output.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
         }
 
-        var declarationsInSnapshot = _store.CountSymbolsInSnapshot(newSnapshotIdStr);
-        var edgesInSnapshot = _store.CountEdges(newSnapshotIdStr);
-        var diagnosticsInSnapshot = _store.CountDiagnostics(newSnapshotIdStr);
         var projectsInSnapshot = solution.Projects.Count();
-
-        _output.WriteLine();
-        _output.WriteLine($"Incremental index complete for snapshot {newSnapshotIdStr}");
-        _output.WriteLine($"  Previous snapshot: {previousSnapshotId}");
-        _output.WriteLine($"  documents_changed_this_run:          {changedDocs.Count}      documents_in_snapshot: {workspaceInfo.Documents.Count}");
-        _output.WriteLine($"  projects_reextracted_this_run:       {affectedProjects.Count}/{projectsInSnapshot}");
-        _output.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
-        _output.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped.FormatDropSummary()}");
-        _output.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {edgesInSnapshot}");
-        var warning = orphanEdgesDropped.FormatWarning();
-        if (warning != null)
-            _output.WriteErrorLine(warning);
-        _output.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
 
         return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, totalDeclarations, totalEdges, totalDiagnostics, orphanEdgesDropped)
         {
-            SnapshotWritten = true
+            SnapshotWritten = true,
+            DocumentsInSnapshot = workspaceInfo.Documents.Count,
+            ProjectsReextracted = affectedProjects.Count,
+            ProjectsInSnapshot = projectsInSnapshot
         };
     }
 
@@ -761,5 +756,14 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
     {
         /// <summary>True when this run wrote the snapshot named by <see cref="NewSnapshotId" />; false when it returned an existing snapshot (no change, or reuse).</summary>
         public bool SnapshotWritten { get; init; }
+
+        /// <summary>Documents stored in <see cref="NewSnapshotId" />.</summary>
+        public int DocumentsInSnapshot { get; init; }
+
+        /// <summary>Projects re-extracted by this run.</summary>
+        public int ProjectsReextracted { get; init; }
+
+        /// <summary>Projects stored in <see cref="NewSnapshotId" />.</summary>
+        public int ProjectsInSnapshot { get; init; }
     }
 }

@@ -18,6 +18,13 @@ internal static class DocRenderers
         $"extractor {VersionConstants.ExtractorVersion}, CLI/MCP contract v{VersionConstants.CliMcpContractVersion}, " +
         $"output schema v{VersionConstants.OutputSchemaVersion}";
 
+    internal static string RenderDeclaredBoundaries()
+    {
+        var rows = DeclaredBoundaries.Known.Select(entry =>
+            $"| `{entry.Id}` | {entry.UncertaintyReason.Replace("|", "\\|")} |");
+        return "\n| Id | Description |\n|---|---|\n" + string.Join("\n", rows) + "\n";
+    }
+
     internal static string RenderFlagTable(IEnumerable<FlagSpec> specs)
     {
         var rows = specs.Select(RenderRow);
