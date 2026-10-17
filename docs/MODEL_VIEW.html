@@ -388,55 +388,76 @@ footer.chart-footer .credit {
 <div class="page">
 
   <header class="cartouche">
-    <p class="eyebrow">A Lurp survey &middot; snapshot 0df9876893b4&hellip;</p>
+    <p class="eyebrow">A Lurp survey &middot; snapshot df13bcdd08c0&hellip;</p>
     <h1 class="hero">Chart of eNote</h1>
     <p class="hero-sub">What a Roslyn semantic index sees when it looks at <strong>t-macabee/eNoteV2/eNote/eNote.sln</strong>: not a UML diagram, a graded record of proof. Every line below carries the evidence level Lurp assigned it, from &ldquo;the compiler checked this&rdquo; down to &ldquo;only known at run time.&rdquo; This page is a point-in-time demo of one snapshot, not living documentation. Run <code style="font-family:var(--mono);color:var(--brass)">lurp --version</code> to see which schema/extractor/contract versions <em>your</em> build reports.</p>
     <div class="meta-strip">
-      <span><b>built</b> 2026-10-02T19:56:23.1715046Z</span>
+      <span><b>built</b> 2026-10-17T08:53:32.0235201Z</span>
       <span><b>sdk</b> 10.0.401</span>
       <span><b>roslyn</b> 5.6.0.0</span>
-      <span><b>schema</b> v30</span>
-      <span><b>output schema</b> v5</span>
-      <span><b>extractor</b> 1.6.0</span>
-      <span><b>reflection</b> reflection-v3</span>
-      <span><b>tool</b> 2.0.0</span>
+      <span><b>schema</b> v37</span>
+      <span><b>output schema</b> v6</span>
+      <span><b>extractor</b> 1.10.0</span>
+      <span><b>contract</b> v5</span>
+      <span><b>ASP.NET Core</b> aspnetcore-v2</span>
+      <span><b>Calls</b> calls-v2</span>
+      <span><b>Constructs</b> constructs-v1</span>
+      <span><b>Declares</b> declares-v1</span>
+      <span><b>Dependency Injection</b> di-v1</span>
+      <span><b>EF Core</b> efcore-v1</span>
+      <span><b>ExtensionReceiver</b> extension-receiver-v1</span>
+      <span><b>Hides</b> hides-v1</span>
+      <span><b>MediatR</b> mediatr-v1</span>
+      <span><b>OperationShapes</b> operation-shapes-v1</span>
+      <span><b>Overrides</b> overrides-v1</span>
+      <span><b>ParameterDependencies</b> parameter-deps-v1</span>
+      <span><b>Polymorphism</b> polymorphism-v1</span>
+      <span><b>ReadsWrites</b> readswrites-v1</span>
+      <span><b>Reflection</b> reflection-v3</span>
+      <span><b>Returns</b> returns-v1</span>
+      <span><b>Serialization</b> serialization-v1</span>
+      <span><b>StaticDispatch</b> statically-calls-v1</span>
+      <span><b>Structural</b> 1.10.0</span>
+      <span><b>Test</b> test-v3</span>
+      <span><b>Throws</b> throws-v1</span>
+      <span><b>tool</b> 3.0.2</span>
       <span><b>projects</b> 7</span>
     </div>
   </header>
 
   <section>
     <h2 class="section-title">The evidence ladder</h2>
-    <p class="section-lede">Lurp never states a relationship without saying how sure it is. The vocabulary has 7 levels; this snapshot uses 5 of them across all 24,766 typed edges. Dimmed levels have no edges here.</p>
+    <p class="section-lede">Lurp never states a relationship without saying how sure it is. The vocabulary has 7 levels; this snapshot uses 6 of them across all 31,605 typed edges. Dimmed levels have no edges here.</p>
     <div class="ladder-grid">
       <div class="ladder-tier tier-compiler_proved">
         <span class="tier-name"><span class="tier-line"></span><span>compiler_<wbr>proved</span></span>
-        <span class="tier-count">21,243</span>
+        <span class="tier-count">28,080</span>
         <span class="tier-desc">The compiler resolved it. Calls, inheritance, field reads: verified, not guessed.</span>
       </div>
       <div class="ladder-tier tier-framework_derived">
         <span class="tier-name"><span class="tier-line"></span><span>framework_<wbr>derived</span></span>
         <span class="tier-count">3,500</span>
-        <span class="tier-desc">An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery) and emitted a typed fact.</span>
+        <span class="tier-desc">An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery, MediatR Handles, serialization References) and emitted a typed fact.</span>
       </div>
       <div class="ladder-tier tier-global_implementation_relation tier-empty">
         <span class="tier-name"><span class="tier-line"></span><span>global_<wbr>implementation_<wbr>relation</span></span>
         <span class="tier-count">0</span>
-        <span class="tier-desc">An implementation relationship that holds across the whole graph.</span>
+        <span class="tier-desc">Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges.</span>
       </div>
       <div class="ladder-tier tier-possible">
         <span class="tier-name"><span class="tier-line"></span><span>possible</span></span>
         <span class="tier-count">3</span>
-        <span class="tier-desc">An interface dispatch that could not be narrowed to one concrete implementation.</span>
+        <span class="tier-desc">An interface member implemented through an inherited member: the type gets the implementation from a base class, so the dispatch target is valid but not declared on the type (MayDispatchTo).</span>
       </div>
       <div class="ladder-tier tier-convention">
         <span class="tier-name"><span class="tier-line"></span><span>convention</span></span>
         <span class="tier-count">2</span>
         <span class="tier-desc">Inferred from a convention such as an assembly scan, not from a direct reference.</span>
       </div>
-      <div class="ladder-tier tier-name_candidate tier-empty">
+      <div class="ladder-tier tier-name_candidate">
         <span class="tier-name"><span class="tier-line"></span><span>name_<wbr>candidate</span></span>
-        <span class="tier-count">0</span>
-        <span class="tier-desc">The name argument of a runtime name-binding API (reflection lookup, EF Core string API, binding attribute), resolved semantically. Not compiler-checked.</span>
+        <span class="tier-count">2</span>
+        <span class="tier-desc">The name argument of a runtime name-binding API (reflection lookup, PropertyChanged / [CallerMemberName], EF Core string API, binding attribute, MVC action name), resolved semantically. Not compiler-checked.</span>
       </div>
       <div class="ladder-tier tier-runtime_unknown">
         <span class="tier-name"><span class="tier-line"></span><span>runtime_<wbr>unknown</span></span>
@@ -448,7 +469,7 @@ footer.chart-footer .credit {
 
   <section>
     <h2 class="section-title">The survey</h2>
-    <p class="section-lede">A curated cross-section of the graph: the dependency-injection registration sites, the ASP.NET routing surface, and the EF Core mappings. <span class="mono-inline">Brass</span> lines are compiler-proved; <span class="mono-inline">verdigris</span> lines are framework-derived; dashed lines are convention or runtime-unknown. Hover any point or line for its fully-qualified name.</p>
+    <p class="section-lede">A curated cross-section of the graph: the dependency-injection registration sites, the ASP.NET routing surface, and the EF Core mappings. <span class="mono-inline">Brass</span> lines are compiler-proved; <span class="mono-inline">verdigris</span> lines are framework-derived; dashed lines are convention; dotted lines are possible, name-candidate or runtime-unknown. Hover any point or line for its fully-qualified name.</p>
     <div class="chart-frame">
       <div class="chart-scroll">
         <svg viewBox="0 0 1500 1892" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Semantic map of the indexed solution">
@@ -891,24 +912,24 @@ footer.chart-footer .credit {
     </div>
     <div class="panel">
       <h3>Evidence, by tier</h3>
-      <table class="data-table"><thead><tr><th>Evidence tier</th><th class="num">Edges</th><th class="num">Share</th></tr></thead><tbody><tr><td><span class="tier-swatch tier-compiler_proved"></span>compiler_<wbr>proved</td><td class="num">21,243</td><td class="num">85.8%</td></tr><tr><td><span class="tier-swatch tier-framework_derived"></span>framework_<wbr>derived</td><td class="num">3,500</td><td class="num">14.1%</td></tr><tr><td><span class="tier-swatch tier-global_implementation_relation"></span>global_<wbr>implementation_<wbr>relation</td><td class="num">0</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-possible"></span>possible</td><td class="num">3</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-convention"></span>convention</td><td class="num">2</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-name_candidate"></span>name_<wbr>candidate</td><td class="num">0</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-runtime_unknown"></span>runtime_<wbr>unknown</td><td class="num">18</td><td class="num">0.1%</td></tr><tr class="total-row"><td>Total typed edges</td><td class="num">24,766</td><td class="num">100%</td></tr></tbody></table>
+      <table class="data-table"><thead><tr><th>Evidence tier</th><th class="num">Edges</th><th class="num">Share</th></tr></thead><tbody><tr><td><span class="tier-swatch tier-compiler_proved"></span>compiler_<wbr>proved</td><td class="num">28,080</td><td class="num">88.8%</td></tr><tr><td><span class="tier-swatch tier-framework_derived"></span>framework_<wbr>derived</td><td class="num">3,500</td><td class="num">11.1%</td></tr><tr><td><span class="tier-swatch tier-global_implementation_relation"></span>global_<wbr>implementation_<wbr>relation</td><td class="num">0</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-possible"></span>possible</td><td class="num">3</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-convention"></span>convention</td><td class="num">2</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-name_candidate"></span>name_<wbr>candidate</td><td class="num">2</td><td class="num">0.0%</td></tr><tr><td><span class="tier-swatch tier-runtime_unknown"></span>runtime_<wbr>unknown</td><td class="num">18</td><td class="num">0.1%</td></tr><tr class="total-row"><td>Total typed edges</td><td class="num">31,605</td><td class="num">100%</td></tr></tbody></table>
     </div>
     <div class="panel">
       <h3>Diagnostics</h3>
-      <table class="data-table"><thead><tr><th>Project</th><th>Severity</th><th class="num">Count</th></tr></thead><tbody><tr><td>eNote.API</td><td class="muted">Hidden</td><td class="num">28</td></tr><tr><td>eNote.API</td><td class="muted">Info</td><td class="num">95</td></tr><tr><td>eNote.Application</td><td class="muted">Hidden</td><td class="num">102</td></tr><tr><td>eNote.Application</td><td class="muted">Info</td><td class="num">14</td></tr><tr><td>eNote.Contracts</td><td class="muted">Hidden</td><td class="num">12</td></tr><tr><td>eNote.Domain</td><td class="muted">Hidden</td><td class="num">18</td></tr><tr><td>eNote.Domain</td><td class="muted">Info</td><td class="num">1</td></tr><tr><td>eNote.Infrastructure</td><td class="muted">Hidden</td><td class="num">97</td></tr><tr><td>eNote.Infrastructure</td><td class="muted">Info</td><td class="num">30</td></tr><tr><td>eNote.Tests</td><td class="muted">Hidden</td><td class="num">884</td></tr><tr><td>eNote.Tests</td><td class="muted">Info</td><td class="num">15</td></tr><tr><td>eNote.Worker</td><td class="muted">Hidden</td><td class="num">23</td></tr><tr><td>eNote.Worker</td><td class="muted">Info</td><td class="num">3</td></tr><tr class="total-row"><td colspan="2">Total diagnostics</td><td class="num">1,322</td></tr></tbody></table><table class="data-table"><thead><tr><th>Diagnostic ID</th><th class="num">Occurrences</th></tr></thead><tbody><tr><td class="mono">CA1707</td><td class="num">718</td></tr><tr><td class="mono">CS8019</td><td class="num">194</td></tr><tr><td class="mono">CS8933</td><td class="num">119</td></tr><tr><td class="mono">ASP0018</td><td class="num">92</td></tr><tr><td class="mono">CA1848</td><td class="num">50</td></tr><tr><td class="mono">CA1305</td><td class="num">43</td></tr><tr><td class="mono">CA1873</td><td class="num">24</td></tr><tr><td class="mono">CA1861</td><td class="num">20</td></tr><tr><td class="mono">CA2201</td><td class="num">15</td></tr><tr><td class="mono">CA1311</td><td class="num">8</td></tr><tr><td class="mono">CA1304</td><td class="num">8</td></tr><tr><td class="mono">CA1869</td><td class="num">7</td></tr><tr><td class="mono">CA1862</td><td class="num">5</td></tr><tr><td class="mono">CA1716</td><td class="num">5</td></tr><tr><td class="mono">CA1859</td><td class="num">4</td></tr><tr><td class="mono">CA1000</td><td class="num">2</td></tr><tr><td class="mono">AV0011</td><td class="num">1</td></tr><tr><td class="mono">AV0025</td><td class="num">1</td></tr><tr><td class="mono">CA1852</td><td class="num">1</td></tr><tr><td class="mono">CA1725</td><td class="num">1</td></tr><tr><td class="mono">SYSLIB1045</td><td class="num">1</td></tr><tr><td class="mono">CA1822</td><td class="num">1</td></tr><tr><td class="mono">xUnit2024</td><td class="num">1</td></tr><tr><td class="mono">xUnit2032</td><td class="num">1</td></tr></tbody></table>
+      <table class="data-table"><thead><tr><th>Project</th><th>Severity</th><th class="num">Count</th></tr></thead><tbody><tr><td>eNote.API</td><td class="muted">Hidden</td><td class="num">28</td></tr><tr><td>eNote.API</td><td class="muted">Info</td><td class="num">95</td></tr><tr><td>eNote.Application</td><td class="muted">Hidden</td><td class="num">102</td></tr><tr><td>eNote.Application</td><td class="muted">Info</td><td class="num">14</td></tr><tr><td>eNote.Contracts</td><td class="muted">Hidden</td><td class="num">12</td></tr><tr><td>eNote.Domain</td><td class="muted">Hidden</td><td class="num">18</td></tr><tr><td>eNote.Domain</td><td class="muted">Info</td><td class="num">1</td></tr><tr><td>eNote.Infrastructure</td><td class="muted">Hidden</td><td class="num">97</td></tr><tr><td>eNote.Infrastructure</td><td class="muted">Info</td><td class="num">30</td></tr><tr><td>eNote.Tests</td><td class="muted">Hidden</td><td class="num">884</td></tr><tr><td>eNote.Tests</td><td class="muted">Info</td><td class="num">15</td></tr><tr><td>eNote.Worker</td><td class="muted">Hidden</td><td class="num">23</td></tr><tr><td>eNote.Worker</td><td class="muted">Info</td><td class="num">3</td></tr><tr class="total-row"><td colspan="2">Total diagnostics</td><td class="num">1,322</td></tr></tbody></table><table class="data-table"><thead><tr><th>Diagnostic ID</th><th class="num">Occurrences</th></tr></thead><tbody><tr><td class="mono">CA1707</td><td class="num">718</td></tr><tr><td class="mono">CS8019</td><td class="num">194</td></tr><tr><td class="mono">CS8933</td><td class="num">119</td></tr><tr><td class="mono">ASP0018</td><td class="num">92</td></tr><tr><td class="mono">CA1848</td><td class="num">50</td></tr><tr><td class="mono">CA1305</td><td class="num">43</td></tr><tr><td class="mono">CA1873</td><td class="num">24</td></tr><tr><td class="mono">CA1861</td><td class="num">20</td></tr><tr><td class="mono">CA2201</td><td class="num">15</td></tr><tr><td class="mono">CA1304</td><td class="num">8</td></tr><tr><td class="mono">CA1311</td><td class="num">8</td></tr><tr><td class="mono">CA1869</td><td class="num">7</td></tr><tr><td class="mono">CA1716</td><td class="num">5</td></tr><tr><td class="mono">CA1862</td><td class="num">5</td></tr><tr><td class="mono">CA1859</td><td class="num">4</td></tr><tr><td class="mono">CA1000</td><td class="num">2</td></tr><tr><td class="mono">AV0011</td><td class="num">1</td></tr><tr><td class="mono">AV0025</td><td class="num">1</td></tr><tr><td class="mono">CA1725</td><td class="num">1</td></tr><tr><td class="mono">CA1822</td><td class="num">1</td></tr><tr><td class="mono">CA1852</td><td class="num">1</td></tr><tr><td class="mono">SYSLIB1045</td><td class="num">1</td></tr><tr><td class="mono">xUnit2024</td><td class="num">1</td></tr><tr><td class="mono">xUnit2032</td><td class="num">1</td></tr></tbody></table>
     </div>
   </section>
 
   <section>
     <h2 class="section-title">Per-project extraction</h2>
-    <p class="section-lede">Raw figures from the index run, one row per project, before cross-project dedup collapses them into the snapshot's 24,766 kept edges.</p>
-    <div class="panel"><table class="data-table"><thead><tr><th>Project</th><th class="num">Symbols</th><th class="num">Edges extracted</th><th class="num">Diagnostics</th></tr></thead><tbody><tr><td>eNote.API</td><td class="num">366</td><td class="num">3,414</td><td class="num">123</td></tr><tr><td>eNote.Infrastructure</td><td class="num">414</td><td class="num">4,472</td><td class="num">127</td></tr><tr><td>eNote.Domain</td><td class="num">940</td><td class="num">2,789</td><td class="num">19</td></tr><tr><td>eNote.Application</td><td class="num">2,419</td><td class="num">11,296</td><td class="num">116</td></tr><tr><td>eNote.Contracts</td><td class="num">193</td><td class="num">289</td><td class="num">12</td></tr><tr><td>eNote.Worker</td><td class="num">67</td><td class="num">310</td><td class="num">26</td></tr><tr><td>eNote.Tests</td><td class="num">1,812</td><td class="num">26,415</td><td class="num">899</td></tr><tr class="total-row"><td>7 projects (raw, pre-dedup)</td><td class="num">6,211</td><td class="num">48,985</td><td class="num">1,322</td></tr><tr class="muted-row"><td colspan="4">After cross-project dedup: 44,279 edges. Scope filtering then drops 19,513 (19,143 to external symbols, 370 compiler-synthesized, 0 other), so 24,766 edges are kept in the snapshot.</td></tr></tbody></table></div>
+    <p class="section-lede">Raw figures from the index run, one row per project, before cross-project dedup collapses them into the snapshot's 31,605 kept edges.</p>
+    <div class="panel"><table class="data-table"><thead><tr><th>Project</th><th class="num">Symbols</th><th class="num">Edges extracted</th><th class="num">Diagnostics</th></tr></thead><tbody><tr><td>eNote.API</td><td class="num">366</td><td class="num">6,073</td><td class="num">123</td></tr><tr><td>eNote.Infrastructure</td><td class="num">414</td><td class="num">5,694</td><td class="num">127</td></tr><tr><td>eNote.Domain</td><td class="num">940</td><td class="num">2,441</td><td class="num">19</td></tr><tr><td>eNote.Application</td><td class="num">2,419</td><td class="num">12,534</td><td class="num">116</td></tr><tr><td>eNote.Contracts</td><td class="num">193</td><td class="num">145</td><td class="num">12</td></tr><tr><td>eNote.Worker</td><td class="num">67</td><td class="num">396</td><td class="num">26</td></tr><tr><td>eNote.Tests</td><td class="num">1,812</td><td class="num">38,157</td><td class="num">899</td></tr><tr class="total-row"><td>7 projects (raw, pre-dedup)</td><td class="num">6,211</td><td class="num">65,440</td><td class="num">1,322</td></tr><tr class="muted-row"><td colspan="4">After cross-project dedup: 64,159 edges. Scope filtering then drops 32,554 (31,967 to external symbols, 587 compiler-synthesized, 0 other), so 31,605 edges are kept in the snapshot.</td></tr></tbody></table></div>
   </section>
 
   <section>
     <h2 class="section-title">Edge kinds, complete</h2>
-    <p class="section-lede">All 22 relationship kinds Lurp extracted from this solution, with the evidence tier attached to each.</p>
-    <div class="panel"><table class="data-table"><thead><tr><th>Edge kind</th><th>Provenance</th><th class="num">Count</th></tr></thead><tbody><tr><td>Reads</td><td class="muted">compiler_proved</td><td class="num">5,934</td></tr><tr><td>Declares</td><td class="muted">compiler_proved</td><td class="num">4,334</td></tr><tr><td>Calls</td><td class="muted">compiler_proved</td><td class="num">4,010</td></tr><tr><td>TestedBy</td><td class="muted">framework_derived</td><td class="num">3,203</td></tr><tr><td>Constructs</td><td class="muted">compiler_proved</td><td class="num">1,969</td></tr><tr><td>References</td><td class="muted">compiler_proved</td><td class="num">1,828</td></tr><tr><td>Writes</td><td class="muted">compiler_proved</td><td class="num">1,465</td></tr><tr><td>StaticallyCalls</td><td class="muted">compiler_proved</td><td class="num">382</td></tr><tr><td>MayDispatchTo</td><td class="muted">compiler_proved</td><td class="num">346</td></tr><tr><td>Implements</td><td class="muted">compiler_proved</td><td class="num">198</td></tr><tr><td>Returns</td><td class="muted">compiler_proved</td><td class="num">154</td></tr><tr><td>Inherits</td><td class="muted">compiler_proved</td><td class="num">153</td></tr><tr><td>RoutesTo</td><td class="muted">framework_derived</td><td class="num">150</td></tr><tr><td>Throws</td><td class="muted">compiler_proved</td><td class="num">146</td></tr><tr><td>ReflectionTypeRef</td><td class="muted">compiler_proved</td><td class="num">142</td></tr><tr><td>Registers</td><td class="muted">framework_derived</td><td class="num">114</td></tr><tr><td>Overrides</td><td class="muted">compiler_proved</td><td class="num">72</td></tr><tr><td>Contains</td><td class="muted">compiler_proved</td><td class="num">60</td></tr><tr><td>ReflectionMemberRef</td><td class="muted">compiler_proved</td><td class="num">42</td></tr><tr><td>MapsTo</td><td class="muted">framework_derived</td><td class="num">33</td></tr><tr><td>Registers</td><td class="muted">runtime_unknown</td><td class="num">12</td></tr><tr><td>ExtensionReceiver</td><td class="muted">compiler_proved</td><td class="num">8</td></tr><tr><td>ReflectionTargetUnknown</td><td class="muted">runtime_unknown</td><td class="num">6</td></tr><tr><td>MayDispatchTo</td><td class="muted">possible</td><td class="num">3</td></tr><tr><td>Registers</td><td class="muted">convention</td><td class="num">2</td></tr><tr class="total-row"><td>Total</td><td></td><td class="num">24,766</td></tr></tbody></table></div>
+    <p class="section-lede">All 24 relationship kinds Lurp extracted from this solution, with the evidence tier attached to each.</p>
+    <div class="panel"><table class="data-table"><thead><tr><th>Edge kind</th><th>Provenance</th><th class="num">Count</th></tr></thead><tbody><tr><td>References</td><td class="muted">compiler_proved</td><td class="num">6,350</td></tr><tr><td>Reads</td><td class="muted">compiler_proved</td><td class="num">6,119</td></tr><tr><td>Calls</td><td class="muted">compiler_proved</td><td class="num">5,537</td></tr><tr><td>Declares</td><td class="muted">compiler_proved</td><td class="num">4,753</td></tr><tr><td>TestedBy</td><td class="muted">framework_derived</td><td class="num">3,203</td></tr><tr><td>Constructs</td><td class="muted">compiler_proved</td><td class="num">2,077</td></tr><tr><td>Writes</td><td class="muted">compiler_proved</td><td class="num">1,495</td></tr><tr><td>StaticallyCalls</td><td class="muted">compiler_proved</td><td class="num">382</td></tr><tr><td>MayDispatchTo</td><td class="muted">compiler_proved</td><td class="num">346</td></tr><tr><td>Implements</td><td class="muted">compiler_proved</td><td class="num">198</td></tr><tr><td>Returns</td><td class="muted">compiler_proved</td><td class="num">177</td></tr><tr><td>Inherits</td><td class="muted">compiler_proved</td><td class="num">153</td></tr><tr><td>RoutesTo</td><td class="muted">framework_derived</td><td class="num">150</td></tr><tr><td>Throws</td><td class="muted">compiler_proved</td><td class="num">150</td></tr><tr><td>ReflectionTypeRef</td><td class="muted">compiler_proved</td><td class="num">142</td></tr><tr><td>Registers</td><td class="muted">framework_derived</td><td class="num">114</td></tr><tr><td>Overrides</td><td class="muted">compiler_proved</td><td class="num">73</td></tr><tr><td>Contains</td><td class="muted">compiler_proved</td><td class="num">60</td></tr><tr><td>ReflectionMemberRef</td><td class="muted">compiler_proved</td><td class="num">42</td></tr><tr><td>MapsTo</td><td class="muted">framework_derived</td><td class="num">33</td></tr><tr><td>MethodGroupRef</td><td class="muted">compiler_proved</td><td class="num">18</td></tr><tr><td>Registers</td><td class="muted">runtime_unknown</td><td class="num">12</td></tr><tr><td>ExtensionReceiver</td><td class="muted">compiler_proved</td><td class="num">8</td></tr><tr><td>ReflectionTargetUnknown</td><td class="muted">runtime_unknown</td><td class="num">6</td></tr><tr><td>MayDispatchTo</td><td class="muted">possible</td><td class="num">3</td></tr><tr><td>ReflectionNameCandidate</td><td class="muted">name_candidate</td><td class="num">2</td></tr><tr><td>Registers</td><td class="muted">convention</td><td class="num">2</td></tr><tr class="total-row"><td>Total</td><td></td><td class="num">31,605</td></tr></tbody></table></div>
   </section>
 
   <section style="display:flex; flex-direction:column; gap:0.9rem;">
@@ -942,10 +963,10 @@ footer.chart-footer .credit {
   </section>
 
   <footer class="chart-footer">
-    <p>Built by running Lurp 2.0.0 from source against <code>t-macabee/eNoteV2/eNote/eNote.sln</code> at commit <code>5b13fbd</code>:</p>
+    <p>Built by running Lurp 3.0.2 from source against <code>t-macabee/eNoteV2/eNote/eNote.sln</code> at commit <code>5b13fbd</code>:</p>
     <p><code>dotnet build src/Lurp.csproj -c Release</code><br>
-    <code>python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution &lt;path&gt;/eNote/eNote.sln --work-dir &lt;empty folder&gt;</code></p>
-    <p>Full index took 27.5s into an empty output folder. Snapshot <code>0df9876893b40c5a28b71dd52cecad1e</code>, schema v30. Everything on this page comes from that one <code>index.db</code> and the index run's per-project counts: no re-parsing, no re-grepping. <code>scripts/model-view/</code> regenerates it.</p>
+    <code>python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution &lt;path&gt;/eNote/eNote.sln --work-dir &lt;empty folder&gt; --out docs/MODEL_VIEW.html</code></p>
+    <p>Full index took 27.7s into an empty output folder. Snapshot <code>df13bcdd08c021420ab6391b93d5856a</code>, schema v37. Everything on this page comes from that one <code>index.db</code> and the index run's per-project counts: no re-parsing, no re-grepping. <code>scripts/model-view/</code> regenerates it.</p>
     <p class="credit">Lurp &middot; MIT &middot; github.com/t-macabee/lurp</p>
   </footer>
 

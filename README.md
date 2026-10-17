@@ -17,8 +17,8 @@ source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-A point-in-time map of one Lurp 2.0.0 index of
-[eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln`, 7 projects):
+A point-in-time map of one Lurp 3.0.2 index of
+[eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln` at `5b13fbd`, 7 projects):
 the evidence level of every edge, the DI, routing and EF Core surfaces, and the
 full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
 regenerates it.
@@ -195,7 +195,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 | Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
 
-Measured 2026-10-14 on commit `cfa43f3` (Release build; the 3.0.0 changes touch no extraction or query code) and eNoteV2 at `4ba9901`: wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
+Measured 2026-10-16 on commit `c5127d1` (Release build) and eNoteV2 at `4ba9901`: wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
 
 ## Status & roadmap
 
