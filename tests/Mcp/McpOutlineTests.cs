@@ -70,6 +70,25 @@ public sealed class McpOutlineTests : IntegrationTestBase
         return (snapshotId, docPath);
     }
 
+    private async Task<(string snapshotId, string docPath)> IndexRecordFixtureAsync()
+    {
+        CreateProject("OutlineRecordProj", new Dictionary<string, string>
+        {
+            ["Record.cs"] = """
+                namespace OutlineRecordProj {
+                    public sealed record R(int A);
+                }
+                """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        string docPath;
+        using (var store = OpenStore(DbPath))
+        {
+            docPath = store.GetDocumentVersionIdsByPath(snapshotId).Keys.First(k => k.Contains("Record.cs"));
+        }
+        return (snapshotId, docPath);
+    }
+
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
     [Fact]
@@ -285,6 +304,25 @@ public sealed class McpOutlineTests : IntegrationTestBase
         var regular = decls.FirstOrDefault(e => e.GetProperty("fully_qualified_name").GetString()!.Contains("RegularClass"));
         if (regular.ValueKind != JsonValueKind.Undefined)
             Assert.False(regular.GetProperty("is_partial").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Outline_Record_SkipsCompilerGeneratedMembers()
+    {
+        var (_, docPath) = await IndexRecordFixtureAsync();
+        await using var session = CreateSession();
+        var tool = new OutlineTool(session);
+
+        var json = tool.LurpOutline(document: docPath, include_generated: true);
+        using var doc = JsonDocument.Parse(json);
+        var symbolIds = doc.RootElement.GetProperty("declarations").EnumerateArray()
+            .Select(e => e.GetProperty("symbol_id").GetString()!)
+            .ToList();
+
+        Assert.Contains(symbolIds, id => id.StartsWith("T:OutlineRecordProj.R|", StringComparison.Ordinal));
+        Assert.Contains(symbolIds, id => id.StartsWith("P:OutlineRecordProj.R.A|", StringComparison.Ordinal));
+        foreach (var name in new[] { "Equals", "GetHashCode", "ToString", "PrintMembers", "Deconstruct", "op_Equality", "op_Inequality" })
+            Assert.DoesNotContain(symbolIds, id => id.Contains($"R.{name}", StringComparison.Ordinal));
     }
 
     [Fact]

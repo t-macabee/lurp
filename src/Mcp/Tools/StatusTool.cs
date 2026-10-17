@@ -32,7 +32,7 @@ internal sealed class StatusTool
         [Description("Sections to include, comma-separated: freshness, manifest, documents, references, completeness or all. Values combine as a union; documents returns the per-document version map. Unknown values are an error.")] string? sections = null,
         int? max_documents = null,
         int? max_mismatches = null,
-        object? documents = null,
+        [Description("JSON array of document paths (strings) for the per-document map. Any other JSON type is an error.")] object? documents = null,
         bool? full = null,
         [Description("Project names (the keys of detail.manifest.target_frameworks). Builds the manifest from these projects only: their per-project maps, documents and binding rows. Needs a manifest section: any sections value except freshness.")] string[]? projects = null,
         [Description("Response size cap in UTF-8 bytes (default 40000, at most 400000). Over the cap, the largest manifest parts are summarized or left out and named in detail.manifest.omitted_fields. Above about 44000 bytes of reference identities, MCP clients with a 25000-token output limit may flag the result as truncated.")] int? max_bytes = null,
@@ -46,9 +46,9 @@ internal sealed class StatusTool
             var maxDocs = max_documents ?? DefaultMaxDocuments;
             var maxMism = max_mismatches ?? StatusHandler.DefaultMaxMismatches;
             if (maxDocs < 1)
-                throw new McpProtocolException("max-documents must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max_documents must be a positive integer.", McpErrorCode.InvalidParams);
             if (maxMism < 1)
-                throw new McpProtocolException("max-mismatches must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max_mismatches must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_documents, McpLimits.MaxLimit, "max_documents");
             McpLimits.RequireAtMost(max_mismatches, McpLimits.MaxLimit, "max_mismatches");
 
@@ -196,12 +196,10 @@ internal sealed class StatusTool
                     ["contract_version"] = Lurp.Workspace.VersionConstants.CliMcpContractVersion,
                     ["freshness"] = freshness,
                     ["pinned"] = true,
-                    ["detail"] = detailObj
+                    ["detail"] = detailObj,
+                    ["document_freshness"] = documentFreshness,
+                    ["truncated"] = truncated
                 };
-                if (documentFreshness != null)
-                    envelope["document_freshness"] = documentFreshness;
-                if (truncated)
-                    envelope["truncated"] = true;
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 

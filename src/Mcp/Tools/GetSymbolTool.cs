@@ -41,7 +41,7 @@ internal sealed class GetSymbolTool
                 throw new McpProtocolException("view must be one of: summary, source, all.", McpErrorCode.InvalidParams);
 
             if (context_lines.HasValue && context_lines.Value < 0)
-                throw new McpProtocolException("context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context_lines must be a non-negative integer.", McpErrorCode.InvalidParams);
 
             var includeGenerated = include_generated ?? false;
             var contextLines = context_lines ?? GetSymbolHandler.DefaultContextLines;

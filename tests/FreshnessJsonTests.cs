@@ -55,7 +55,7 @@ public sealed class FreshnessJsonTests
         Assert.True(cut.GetProperty("changed_documents_sample_truncated").GetBoolean());
 
         var whole = ToElement(FreshnessJson.Cheap(stamp, 3));
-        Assert.Equal(JsonValueKind.Null, whole.GetProperty("changed_documents_sample_truncated").ValueKind);
+        Assert.False(whole.GetProperty("changed_documents_sample_truncated").GetBoolean());
     }
 
     [Theory]
@@ -123,7 +123,7 @@ public sealed class FreshnessJsonTests
         Assert.Equal(0, element.GetProperty("changed_document_count").GetInt32());
         Assert.Equal(0, element.GetProperty("changed_documents_sample").GetArrayLength());
         Assert.Equal(0, element.GetProperty("mismatches").GetArrayLength());
-        Assert.Equal(JsonValueKind.Null, element.GetProperty("mismatches_truncated").ValueKind);
+        Assert.False(element.GetProperty("mismatches_truncated").GetBoolean());
     }
 
     [Fact]

@@ -52,6 +52,7 @@ internal static class DeclarationSpanComputer
                 EventDeclarationSyntax e => e.Identifier,
                 VariableDeclaratorSyntax v => v.Identifier,
                 EnumMemberDeclarationSyntax em => em.Identifier,
+                ParameterListSyntax { Parent: TypeDeclarationSyntax type } => type.Identifier,
                 _ => null
             };
         }

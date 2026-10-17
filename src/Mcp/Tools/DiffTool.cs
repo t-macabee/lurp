@@ -30,9 +30,9 @@ internal sealed class DiffTool
             cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
             if (string.IsNullOrEmpty(from_snapshot))
-                throw new McpProtocolException("from-snapshot is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("from_snapshot is required.", McpErrorCode.InvalidParams);
             if (string.IsNullOrEmpty(to_snapshot))
-                throw new McpProtocolException("to-snapshot is required.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("to_snapshot is required.", McpErrorCode.InvalidParams);
 
             ValidateSnapshotExists(store, from_snapshot);
             ValidateSnapshotExists(store, to_snapshot);

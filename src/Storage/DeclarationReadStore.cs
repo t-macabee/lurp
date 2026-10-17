@@ -52,10 +52,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 startCol = "body_start";
                 endCol = "body_end";
                 break;
-            case ViewKind.Name:
-                startCol = "name_start";
-                endCol = "name_end";
-                break;
             // default: ContainingType/Surrounding intentionally routed to GetContainingTypeSource/GetSurroundingLines — throw is intentional
             default:
                 throw new ArgumentOutOfRangeException(nameof(viewKind), viewKind,
@@ -449,11 +445,13 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 JOIN document_versions dv ON dv.document_version_id = d.document_version_id
                 JOIN documents doc ON doc.document_id = dv.document_id
                 JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+                JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = sd.snapshot_id
                 WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
                   AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
                 """;
             if (!includeGenerated)
                 countCmd.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
+            countCmd.CommandText += $" AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}";
             countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             countCmd.Parameters.AddWithValue("@relativePath", relativePath);
             totalCount = Convert.ToInt32(countCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
@@ -475,6 +473,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sd.snapshot_id
             WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
               AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
+              AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}
             {(includeGenerated ? string.Empty : " AND COALESCE(d.is_generated, 0) = 0")}
             {whereCursor}
             ORDER BY d.full_start ASC, d.symbol_id ASC
@@ -490,9 +489,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         }
 
         var rows = new List<DeclarationOutlineEntry>();
-        int fetchedFullStartsForCursor = 0;
-        string fetchedLastSymbolId = string.Empty;
-        int fetchedLastFullStart = 0;
         using (var reader = cmd.ExecuteReader())
         {
             while (reader.Read())
@@ -529,9 +525,6 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
                 }
 
                 rows.Add(new DeclarationOutlineEntry(symbolId, kind, fqn, startLine, endLine, sigStartLine, nameStartLine, isPartial, isGenerated, fullStart));
-                fetchedLastFullStart = fullStart;
-                fetchedLastSymbolId = symbolId;
-                fetchedFullStartsForCursor = fullStart;
             }
         }
 

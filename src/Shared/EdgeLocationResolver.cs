@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Lurp.Shared;
@@ -43,7 +44,23 @@ public sealed class EdgeLocationResolver
         if (syntaxRef == null)
             return (null, null, null, null, null);
 
-        return Resolve(syntaxRef.GetSyntax().GetLocation());
+        return Resolve(DeclarationNode(symbol, syntaxRef.GetSyntax()).GetLocation());
+    }
+
+    /// <summary>
+    ///     Roslyn reports the type declaration as a primary constructor's declaring syntax,
+    ///     so its span would be the whole type: any member edit would move every edge located
+    ///     at the constructor, and a line anywhere in the type would resolve to it. The
+    ///     parameter list is the primary constructor's own declaration; every other symbol
+    ///     keeps the syntax node Roslyn reports.
+    /// </summary>
+    internal static SyntaxNode DeclarationNode(ISymbol symbol, SyntaxNode declaringSyntax)
+    {
+        if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } &&
+            declaringSyntax is TypeDeclarationSyntax { ParameterList: { } parameterList })
+            return parameterList;
+
+        return declaringSyntax;
     }
 
     /// <summary>
@@ -58,7 +75,7 @@ public sealed class EdgeLocationResolver
     public static SyntaxReference? PrimaryDeclaration(ISymbol symbol)
     {
         return symbol.DeclaringSyntaxReferences
-            .OrderBy(static r => IsGeneratedFilePath(PathNormalizer.ToForwardSlash(r.SyntaxTree.FilePath)))
+            .OrderBy(static r => GeneratedFilePaths.IsGenerated(PathNormalizer.ToForwardSlash(r.SyntaxTree.FilePath)))
             .ThenBy(static r => r.SyntaxTree.FilePath, StringComparer.Ordinal)
             .ThenBy(static r => r.Span.Start)
             .FirstOrDefault();
@@ -73,29 +90,7 @@ public sealed class EdgeLocationResolver
         if (_generatedDocumentPaths.Contains(normalized))
             return true;
 
-        return IsGeneratedFilePath(normalized);
-    }
-
-    /// <summary>
-    ///     <c>ModelSnapshot.cs</c> (e.g. <c>AppDbContextModelSnapshot.cs</c>) is scaffolded by
-    ///     <c>dotnet ef migrations add</c> alongside each migration's own <c>.Designer.cs</c>,
-    ///     and hand-editing it is discouraged the same way hand-editing a designer file is —
-    ///     so it counts as generated here even though, unlike <c>obj/**</c>, it is normally
-    ///     committed to source control rather than gitignored.
-    /// </summary>
-    public static bool IsGeneratedFilePath(string normalizedPath)
-    {
-        if (normalizedPath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        return GeneratedFilePaths.IsGenerated(normalized);
     }
 
     private string? ResolveDocumentPath(SyntaxTree? syntaxTree)

@@ -189,7 +189,7 @@ public sealed class McpContextTests : IntegrationTestBase
             var ex = Assert.Throws<McpProtocolException>(() =>
                 tool.LurpContext(symbol: "CtxProj.Foo.Bar", snapshot_id: "mismatch-snapshot-id"));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("snapshot mismatch", ex.Message);
+            Assert.Equal("snapshot 'mismatch-snapshot-id' not found.", ex.Message);
         }
     }
 

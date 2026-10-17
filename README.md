@@ -17,7 +17,7 @@ source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-A point-in-time map of one Lurp 3.0.2 index of
+A point-in-time map of one Lurp 3.5.0 index of
 [eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln` at `5b13fbd`, 7 projects):
 the evidence level of every edge, the DI, routing and EF Core surfaces, and the
 full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
@@ -68,27 +68,35 @@ lurp --mode=index --solution=MySolution.slnx --output-dir=./out
 lurp --mode=context --file=eNote.Application/Features/Academic/Courses/Services/CourseService.cs --line=11 --output-dir=./out --output=summary
 ```
 
-`--output=summary` prints the handoff facts instead of the full JSON capsule:
+`--output=summary` prints the handoff facts instead of the full JSON capsule. The `freshness:` line goes to stderr; the block below is stdout:
 
 ```
-freshness: state=fresh method=stat changedDocuments=0 snapshot=3a69acadd9659d0f27d349c73d63fb9c scope=documents_only (not a full compilation check)
 capsule global::eNote.Application.Features.Academic.Courses.Services.CourseService.GetByIdForInstructorAsync (Method)
-  snapshot: 3a69acadd9659d0f27d349c73d63fb9c  intent: inspect  maxHops: 3
-  content tokens:  6908/8000  (estimated_tokens: the budget basis)
-  delivery tokens: ~15026  (estimated_artifact_tokens: whole emitted file; size the context window from this)
+  snapshot: 9e997aadc404c302f308a82f42e4e01c  intent: inspect  maxHops: 3
+  content tokens:  7933/8000  (estimated_tokens: the budget basis)
+  delivery tokens: ~16986  (estimated_artifact_tokens: whole emitted file; size the context window from this)
   truncated: True
   contracts                    0
-  direct_callees               6
-  direct_callers               2
+  direct_callees               5
+  direct_callers               3
   registered_implementations   1
-  relevant_tests               5
-  second_degree_context        2
+  relevant_tests               18
+  second_degree_context        0
   surrounding_source           0
-  incoming_witness_paths: 3  outgoing_witness_paths: 3  uncertainties: 2
+  incoming_witness_paths: 3  outgoing_witness_paths: 3  uncertainties: 1
   omitted: contracts (empty)
+  omitted: relevant_tests (summarized) : fetch with --tier=relevant_tests
+  omitted: second_degree_context (budget_exhausted) : fetch with --tier=second_degree_context
+  omitted: surrounding_source (budget_exhausted) : fetch with --tier=surrounding_source
   omitted: incoming_paths (summarized)
   omitted: outgoing_paths (summarized)
-  omitted: surrounding_source (budget_exhausted) : fetch with --tier=surrounding_source
+  omitted: registered_implementations (summarized) : fetch with --tier=registered_implementations
+  omitted: inclusion_reasons (budget_exhausted)
+  omitted: affected_public_surfaces (budget_exhausted)
+  omitted: likely_change_sites (budget_exhausted)
+  omitted: completeness (budget_exhausted)
+  omitted: constraints (budget_exhausted)
+  omitted: topology (budget_exhausted)
   written: ./out/capsule-<id>.json
 ```
 
@@ -110,7 +118,7 @@ older runtime does not. Indexing and solution-backed status
 solution must be restored.
 
 ```bash
-dotnet tool install --global lurp --version 3.0.2
+dotnet tool install --global lurp --version 3.5.0
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -159,7 +167,8 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 | Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
 | See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
 | Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
-| Find every caller of a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
+| Find what depends on a symbol | `lurp --mode=impact --symbol=<id> --direction=upstream --output-dir=./out` |
+| Find direct callers of a symbol | `lurp --mode=context --symbol=<id> --tier=direct_callers --output-dir=./out` |
 
 ## Framework adapters
 
@@ -190,20 +199,20 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 | Measurement | Value |
 |---|---|
-| eNoteV2 (402 docs) full index | ~18 s |
+| eNoteV2 (402 docs at `4ba9901`) full index | ~18 s |
 | eNoteV2 incremental (no changes) | ~0.3 s |
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
 | Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
 
-Measured 2026-10-16 on commit `c5127d1` (Release build) and eNoteV2 at `4ba9901`: wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
+Measured 2026-10-16 on commit `c5127d1` (Release build) and eNoteV2 at `4ba9901` (402 documents; the `5b13fbd` tree named at the top of this file has 562 documents and is newer, so these timings do not describe it): wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.0.2. This source tree is <!-- generated:versions -->tool 3.0.2, schema v37, extractor 1.10.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.5.0. This source tree is <!-- generated:versions -->tool 3.5.0, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
-2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). `windows-latest`
+2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
 CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
 `workflow_dispatch`); a release publishes only the CI-built package of a commit
 that passed that gate. Roadmap: surfacing the
@@ -215,6 +224,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md): the 3.5.0 changes (CLI/MCP contract 6, primary-constructor and `nameof` facts, new input errors) and the one index run it needs.
 - [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md): the 3.0.2 changes (partial-type edge locations, errors that 3.0.1 hid) and the one index run it needs.
 - [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md): the 3.0.1 fix (an index run that failed after a re-pin).
 - [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md): changes from 2.0.0 and how to upgrade.

@@ -398,6 +398,35 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
+    // ── R152 B ──────────────────────────────────────────────────────────
+
+    // R152: the CLI tier page is a CLI response, so it prints every key; a key with
+    // no value is null. A last page has no next_cursor and must still print it.
+    [SkippableFact]
+    public async Task Cli_TierPage_LastPage_PrintsNextCursorAsNull()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+        var (_, _, usedId, _, _, _) = await IndexFixtureAsync();
+
+        var json = await CliModeRunner.RunAsync("context", [
+            $"--symbol={usedId}", "--tier=direct_callers", "--tier-limit=100",
+            "--output=json", $"--output-dir={TestDir}"]);
+        using (var doc = JsonDocument.Parse(json))
+        {
+            Assert.True(doc.RootElement.TryGetProperty("next_cursor", out var nextCursor));
+            Assert.Equal(JsonValueKind.Null, nextCursor.ValueKind);
+        }
+
+        var jsonl = await CliModeRunner.RunAsync("context", [
+            $"--symbol={usedId}", "--tier=direct_callers", "--tier-limit=100",
+            "--output=jsonl", $"--output-dir={TestDir}"]);
+        var metaLine = jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].TrimEnd('\r');
+        using var metaDoc = JsonDocument.Parse(metaLine);
+        var meta = metaDoc.RootElement.GetProperty("meta");
+        Assert.True(meta.TryGetProperty("next_cursor", out var metaCursor));
+        Assert.Equal(JsonValueKind.Null, metaCursor.ValueKind);
+    }
+
     // ── A1 ──────────────────────────────────────────────────────────────
 
     private const string TestTargetSource = """

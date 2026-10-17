@@ -94,9 +94,25 @@ public sealed class McpGetSymbolTests : IntegrationTestBase
 
         var ex1 = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: barId, snapshot_id: "bad"));
         Assert.Equal(McpErrorCode.InvalidParams, ex1.ErrorCode);
+        Assert.Equal("snapshot 'bad' not found.", ex1.Message);
         var ex2 = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: "NonExistent.Symbol"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
         var ex3 = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: barId, view: "invalid"));
         Assert.Equal(McpErrorCode.InvalidParams, ex3.ErrorCode);
+    }
+
+    [Fact]
+    public async Task GetSymbol_NegativeContextLines_NamesContextLines()
+    {
+        var snap = await IndexFixtureAsync();
+        string barId;
+        using (var store = OpenStore(DbPath))
+            barId = store.GetSymbolIdsInSnapshot(snap).First(id => store.GetSymbolInfo(id, snap)?.FullyQualifiedName?.Contains("SymProj.Foo.Bar") == true);
+        await using var session = CreateSession();
+        var tool = new GetSymbolTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpGetSymbol(symbol: barId, context_lines: -1));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("context_lines must be a non-negative integer.", ex.Message);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
@@ -33,12 +34,14 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
 
                 var sourceSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol);
                 var loc = context.GetMemberSourceLocation(sourceSymbol);
-                var signatureTypes = method.Parameters.Select(param => param.Type);
+                var signatureTypes = method.Parameters
+                    .Select(param => (Type: param.Type, Location: ParameterTypeLocation(param)))
+                    .ToList();
                 // B58: a block member's receiver is declared on the block, not in the member's parameter list.
                 if (method.ContainingType is { IsExtension: true, ExtensionParameter: { } receiver })
-                    signatureTypes = signatureTypes.Append(receiver.Type);
+                    signatureTypes.Add((receiver.Type, null));
 
-                foreach (var signatureType in signatureTypes)
+                foreach (var (signatureType, parameterLocation) in signatureTypes)
                 {
                     foreach (var usedType in ExtractionUtils.TypeUses(signatureType))
                     {
@@ -52,12 +55,30 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                         if (!seen.Add(key))
                             continue;
 
+                        // The edge names the parameter's type, so it is located at that
+                        // type's syntax. For a primary constructor Roslyn reports the
+                        // type declaration as the parameter's declaring syntax, so the
+                        // member span would be the whole type and any member edit would
+                        // move every parameter edge.
                         edges.Add(context.MakeEdge(sourceId, usedTypeId, nameof(EdgeKind.References),
-                            ExtractorConstants.ParameterDependenciesExtractor, loc));
+                            ExtractorConstants.ParameterDependenciesExtractor, parameterLocation ?? loc));
                     }
                 }
             }
 
         return edges;
+    }
+
+    /// <summary>
+    ///     Source location of the parameter's type syntax, or null when the parameter
+    ///     has none (an extension block's receiver).
+    /// </summary>
+    private (string? path, int? sl, int? sc, int? el, int? ec)? ParameterTypeLocation(IParameterSymbol parameter)
+    {
+        foreach (var syntaxRef in parameter.DeclaringSyntaxReferences)
+            if (syntaxRef.GetSyntax() is ParameterSyntax { Type: { } typeSyntax } && !typeSyntax.IsMissing)
+                return context.GetLocationInfo(typeSyntax.GetLocation());
+
+        return null;
     }
 }

@@ -83,7 +83,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
     [Fact]
     public async Task Refresh_WithMismatchedAck_ReturnsInvalidParams()
     {
-        var snapshot1 = await IndexInitialAsync();
+        await IndexInitialAsync();
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
@@ -91,11 +91,11 @@ public sealed class McpRefreshTests : IntegrationTestBase
         {
             ["B.cs"] = "namespace RefreshProj2 { public class B { public void Bar() {} } }"
         });
-        await RunFullIndexNoDeleteAsync(DbPath);
+        var latest = await RunFullIndexNoDeleteAsync(DbPath);
         var tool = new RefreshTool(session);
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRefresh(ack: "bogus-snapshot-id"));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Contains("snapshot mismatch", ex.Message);
+        Assert.Equal($"ack must equal the new_snapshot_id of a lurp_refresh call without ack ({latest}).", ex.Message);
     }
 
     [Fact]

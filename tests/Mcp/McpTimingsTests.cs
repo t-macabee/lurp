@@ -64,7 +64,7 @@ public sealed class McpTimingsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Timings_SnapshotMismatch_ReturnsInvalidParams()
+    public async Task Timings_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexAsync();
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
@@ -73,8 +73,7 @@ public sealed class McpTimingsTests : IntegrationTestBase
 
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpTimings(snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Contains("snapshot mismatch", ex.Message);
-        Assert.Contains("lurp_refresh", ex.Message);
+        Assert.Equal("snapshot 'mismatch' not found.", ex.Message);
     }
 
     [Fact]

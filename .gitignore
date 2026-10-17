@@ -22,6 +22,7 @@ artifacts/
 .claude/
 CLAUDE.md
 AGENTS.md
+docs/AGENT_CHECKLISTS.md
 .tokensave/
 .mimocode/
 .repograph/

@@ -83,9 +83,9 @@ internal static class FlagCatalog
     public static readonly FlagSpec IgnoreCase = new("--ignore-case", "Make the search case-insensitive (default: case-sensitive).");
 
     // impact
-    public static readonly FlagSpec Direction = new("--direction=", "Traversal direction (default: `downstream`). Use `upstream` to find all references to a symbol.", AllowedValues: ["downstream", "upstream"]);
-    public static readonly FlagSpec Kinds = new("--kinds=", "Comma-separated edge kinds to follow, matched case-insensitively. An unknown kind is rejected with an error.", "list", AllowedValues: Enum.GetNames<EdgeKind>());
-    public static readonly FlagSpec Provenance = new("--provenance=", "Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Values are matched case-insensitively; an unknown value is rejected with an error.", "list", AllowedValues: Lurp.Storage.Provenance.All);
+    public static readonly FlagSpec Direction = new("--direction=", "Traversal direction (default: `downstream`). `upstream` follows every edge kind except `Declares`, `Contains` and `TestedBy` unless `--kinds=` is given; `downstream` follows every kind.", AllowedValues: ["downstream", "upstream"]);
+    public static readonly FlagSpec Kinds = new("--kinds=", "Comma-separated edge kinds to follow, matched case-insensitively. An unknown kind is rejected with an error. An empty value or an empty item (`Calls,`) is an error. Replaces the default set for the direction (see `--direction=`).", "list", AllowedValues: Enum.GetNames<EdgeKind>());
+    public static readonly FlagSpec Provenance = new("--provenance=", "Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Values are matched case-insensitively; an unknown value is rejected with an error. An empty value or an empty item is an error.", "list", AllowedValues: Lurp.Storage.Provenance.All);
     public static readonly FlagSpec MaxDepth = new("--max-depth=", $"Maximum traversal depth (default: {ImpactHandler.DefaultMaxDepth}).", "n");
 
     // diff
@@ -117,7 +117,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec AnnotationId = new("--annotation-id=", "Surrogate PK from `get-annotations` annotation_id (positive integer).", "n", Requirement: FlagRequirement.Required);
 
     // pin-snapshot
-    public static readonly FlagSpec Clear = new("--clear", "Clear the pin; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`).");
+    public static readonly FlagSpec Clear = new("--clear", "Remove every pin in the database; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`).");
 
     // diagnostics: no description in the former help map; the text comes from the CLI reference.
     public static readonly FlagSpec Severity = new("--severity=", "Filter by severity: Roslyn `DiagnosticSeverity` names, matched case-insensitively, or `all` for every severity including `Hidden`. When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result.", "level", AllowedValues: DiagnosticSeverityFilters.Values);

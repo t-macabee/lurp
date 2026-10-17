@@ -18,7 +18,7 @@ internal static class FreshnessJson
             method = stamp.Method,
             changed_document_count = stamp.ChangedDocumentCount,
             changed_documents_sample = sample,
-            changed_documents_sample_truncated = truncated ? true : (bool?)null,
+            changed_documents_sample_truncated = truncated,
             checked_at_utc = stamp.CheckedAtUtc,
             snapshot_id = stamp.SnapshotId,
             scope = stamp.Scope
@@ -112,7 +112,7 @@ internal static class FreshnessJson
             sampleTruncated,
             result.IsFresh,
             includeMismatches ? capped.Rows : null,
-            includeMismatches && capped.Truncated ? true : (bool?)null,
+            includeMismatches ? capped.Truncated : (bool?)null,
             result.Mismatches.Count);
     }
 
@@ -141,7 +141,7 @@ internal static class FreshnessJson
         DateTime checkedAtUtc,
         int changedDocumentCount,
         IReadOnlyList<string>? sample,
-        bool sampleTruncated,
+        bool? sampleTruncated,
         bool? isFresh,
         object? mismatches,
         object? mismatchesTruncated,
@@ -156,7 +156,7 @@ internal static class FreshnessJson
             ["checked_at_utc"] = checkedAtUtc,
             ["changed_document_count"] = changedDocumentCount,
             ["changed_documents_sample"] = sample,
-            ["changed_documents_sample_truncated"] = sampleTruncated ? true : (bool?)null,
+            ["changed_documents_sample_truncated"] = sample == null ? null : sampleTruncated,
             ["is_fresh"] = isFresh,
             ["mismatches"] = mismatches,
             ["mismatches_truncated"] = mismatchesTruncated,

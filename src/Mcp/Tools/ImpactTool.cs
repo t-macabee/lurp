@@ -20,7 +20,7 @@ internal sealed class ImpactTool
     }
 
     [McpServerTool(Name = "lurp_impact", Title = "Lurp Impact", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination.")]
+    [Description("Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. The upstream direction follows every edge kind except Declares, Contains and TestedBy unless kinds names the set; the downstream direction follows every kind.")]
     public string LurpImpact(
         string? symbol = null,
         string? direction = null,
@@ -47,7 +47,7 @@ internal sealed class ImpactTool
 
             var maxDepth = max_depth ?? ImpactHandler.DefaultMaxDepth;
             if (maxDepth < 1)
-                throw new McpProtocolException("max-depth must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("max_depth must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_depth, McpLimits.MaxMaxDepth, "max_depth");
 
             var limitValue = limit ?? ImpactHandler.DefaultLimit;
@@ -57,23 +57,39 @@ internal sealed class ImpactTool
 
             IReadOnlyList<string>? canonicalKinds = null;
             string? kindsRaw = null;
-            if (kinds != null && kinds.Length > 0)
+            if (kinds is not null)
             {
-                if (!ImpactHandler.TryParseNameFilter(kinds, ImpactHandler.EdgeKindNames, out canonicalKinds, out var unknownKind))
+                var kindsOutcome = ImpactHandler.TryParseNameFilter(kinds, ImpactHandler.EdgeKindNames, out canonicalKinds, out var unknownKind);
+                if (kindsOutcome == ImpactHandler.NameFilterParseOutcome.EmptyItem)
+                    throw new McpProtocolException("kinds contains an empty item.", McpErrorCode.InvalidParams);
+                if (kindsOutcome == ImpactHandler.NameFilterParseOutcome.UnknownName)
                     throw new McpProtocolException($"kinds: unknown edge kind '{unknownKind}'. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).", McpErrorCode.InvalidParams);
-                kindsRaw = canonicalKinds is null ? null : string.Join(",", canonicalKinds);
+                if (canonicalKinds is null)
+                    throw new McpProtocolException($"kinds must name at least one edge kind. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).", McpErrorCode.InvalidParams);
+
+                kindsRaw = string.Join(",", canonicalKinds);
             }
 
             IReadOnlyList<string>? canonicalProvenance = null;
             string? provenanceRaw = null;
-            if (provenance != null && provenance.Length > 0)
+            if (provenance is not null)
             {
-                if (!ImpactHandler.TryParseNameFilter(provenance, Provenance.All, out canonicalProvenance, out var unknownProvenance))
+                var provenanceOutcome = ImpactHandler.TryParseNameFilter(provenance, Provenance.All, out canonicalProvenance, out var unknownProvenance);
+                if (provenanceOutcome == ImpactHandler.NameFilterParseOutcome.EmptyItem)
+                    throw new McpProtocolException("provenance contains an empty item.", McpErrorCode.InvalidParams);
+                if (provenanceOutcome == ImpactHandler.NameFilterParseOutcome.UnknownName)
                     throw new McpProtocolException($"provenance: unknown provenance '{unknownProvenance}'. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).", McpErrorCode.InvalidParams);
-                provenanceRaw = canonicalProvenance is null ? null : string.Join(",", canonicalProvenance);
+                if (canonicalProvenance is null)
+                    throw new McpProtocolException($"provenance must name at least one provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).", McpErrorCode.InvalidParams);
+
+                provenanceRaw = string.Join(",", canonicalProvenance);
             }
 
-            HashSet<string>? allowedKinds = canonicalKinds is null ? null : new HashSet<string>(canonicalKinds, StringComparer.Ordinal);
+            HashSet<string>? allowedKinds = canonicalKinds is not null
+                ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
+                : impactDirection == ImpactDirection.Upstream
+                    ? new HashSet<string>(ImpactHandler.UpstreamDefaultKinds, StringComparer.Ordinal)
+                    : null;
             HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
 
             var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbol, snapshotId);

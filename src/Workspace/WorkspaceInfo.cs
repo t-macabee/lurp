@@ -179,7 +179,7 @@ public sealed class WorkspaceInfo
     private static bool IsGeneratedPath(string relPath)
     {
         var normalized = PathNormalizer.ToForwardSlash(relPath);
-        return EdgeLocationResolver.IsGeneratedFilePath(normalized);
+        return GeneratedFilePaths.IsGenerated(normalized);
     }
 
     private static bool IsGeneratedHeader(byte[] bytes)

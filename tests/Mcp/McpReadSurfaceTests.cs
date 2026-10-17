@@ -75,7 +75,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GetSource_MismatchedSnapshot_ReturnsInvalidParams()
+    public async Task GetSource_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexFixtureAndGetSnapshot();
         var (session, getSource, _, _, _) = CreateTools();
@@ -83,7 +83,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
         {
             var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: "ReadProj/Models.cs", snapshot_id: "mismatch"));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("snapshot mismatch", ex.Message);
+            Assert.Equal("snapshot 'mismatch' not found.", ex.Message);
         }
     }
 
@@ -129,7 +129,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Navigate_MismatchedSnapshot_ReturnsInvalidParams()
+    public async Task Navigate_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexFixtureAndGetSnapshot();
         var (session, _, navigate, _, _) = CreateTools();
@@ -137,6 +137,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
         {
             var ex = Assert.Throws<McpProtocolException>(() => navigate.LurpNavigate(file: "ReadProj/Models.cs", line: 1, snapshot_id: "bad"));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Equal("snapshot 'bad' not found.", ex.Message);
         }
     }
 
@@ -292,7 +293,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Search_MismatchedSnapshot_ReturnsInvalidParams()
+    public async Task Search_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexFixtureAndGetSnapshot();
         var (session, _, _, _, search) = CreateTools();
@@ -300,7 +301,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
         {
             var ex = Assert.Throws<McpProtocolException>(() => search.LurpSearch(query: "Foo", snapshot_id: "mismatch"));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("snapshot mismatch", ex.Message);
+            Assert.Equal("snapshot 'mismatch' not found.", ex.Message);
         }
     }
 
@@ -401,7 +402,46 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
         {
             var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, context_lines: 2));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("context-lines", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("context_lines requires start_line or end_line.", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_NegativeContextLines_ThrowsInvalidParams()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: 1, context_lines: -1));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Equal("context_lines must be a non-negative integer.", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_StartLineBelowOne_ThrowsInvalidParams()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: 0));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Equal("start_line must be a positive integer (>=1).", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task GetSource_EndLineBelowOne_ThrowsInvalidParams()
+    {
+        var (_, docPath, _) = await IndexLineFixtureAsync();
+        var (session, getSource, _, _, _) = CreateTools();
+        await using (session)
+        {
+            var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: 1, end_line: 0));
+            Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+            Assert.Equal("end_line must be a positive integer (>=1).", ex.Message);
         }
     }
 
@@ -414,7 +454,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
         {
             var ex = Assert.Throws<McpProtocolException>(() => getSource.LurpGetSource(document: docPath, start_line: 8, end_line: 5));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-            Assert.Contains("start-line", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("start_line must be <= end_line.", ex.Message);
         }
     }
 

@@ -51,7 +51,7 @@ internal sealed class RefreshTool
 
             // Ack provided: must equal latest
             if (!string.Equals(ack, latest, StringComparison.Ordinal))
-                throw new McpProtocolException($"snapshot mismatch: session pinned to {oldSnapshotId}; call lurp_refresh to advance.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException($"ack must equal the new_snapshot_id of a lurp_refresh call without ack ({latest}).", McpErrorCode.InvalidParams);
 
             // If ack equals old (no change), no advance needed
             if (string.Equals(ack, oldSnapshotId, StringComparison.Ordinal))

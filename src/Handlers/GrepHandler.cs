@@ -1,4 +1,3 @@
-using System.Globalization;
 using Lurp.Storage;
 using System.Text.Json;
 using Lurp.Workspace;
@@ -14,15 +13,12 @@ internal static class GrepHandler
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=grep.");
 
-        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var includeGenerated = args.Contains("--include-generated");
         var ignoreCase = args.Contains("--ignore-case");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        var limit = DefaultLimit;
-        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)) HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
-        if (limit < 1) HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {

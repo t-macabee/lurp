@@ -170,6 +170,19 @@ public sealed class AnnotationRetractionTests : IntegrationTestBase
         // cross-snapshot mismatch
         var ex2 = Assert.Throws<McpProtocolException>(() => retractTool.LurpRetractAnnotation(annotation_id: otherId, snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
+        Assert.Equal("snapshot 'mismatch' not found.", ex2.Message);
+    }
+
+    [Fact]
+    public async Task Retract_Mcp_MissingAnnotationId_ThrowsRequired()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var retractTool = new RetractAnnotationTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => retractTool.LurpRetractAnnotation());
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("annotation_id is required.", ex.Message);
     }
 
     [Fact]

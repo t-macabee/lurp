@@ -96,9 +96,16 @@ internal sealed class McpSessionContext : IAsyncDisposable
     /// </summary>
     public string RequirePinnedSnapshot(string? requestedSnapshotId)
     {
-        if (!string.IsNullOrEmpty(requestedSnapshotId) && !string.Equals(requestedSnapshotId, PinnedSnapshotId, StringComparison.Ordinal))
-            throw new McpProtocolException($"snapshot mismatch: session pinned to {PinnedSnapshotId}; call lurp_refresh to advance.", McpErrorCode.InvalidParams);
-        return PinnedSnapshotId;
+        if (string.IsNullOrEmpty(requestedSnapshotId) || string.Equals(requestedSnapshotId, PinnedSnapshotId, StringComparison.Ordinal))
+            return PinnedSnapshotId;
+
+        using (var store = OpenReadStore())
+        {
+            if (store.LoadSnapshotMetadata(requestedSnapshotId) == null)
+                throw new McpProtocolException($"snapshot '{requestedSnapshotId}' not found.", McpErrorCode.InvalidParams);
+        }
+
+        throw new McpProtocolException($"snapshot mismatch: session pinned to {PinnedSnapshotId}; call lurp_refresh to advance.", McpErrorCode.InvalidParams);
     }
 
     public FreshnessStamp GetFreshness()

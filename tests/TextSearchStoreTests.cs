@@ -22,7 +22,7 @@ public sealed class TextSearchStoreTests : IDisposable
 
     public void Dispose()
     {
-        try { _store.Close(); } catch {}
+        _store.Close();
         TestDatabase.Delete(_dbPath);
         GC.SuppressFinalize(this);
     }

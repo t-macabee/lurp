@@ -84,11 +84,15 @@ public sealed class McpDiffTests : IntegrationTestBase
 
         var ex1 = Assert.Throws<McpProtocolException>(() => diff.LurpDiff(from_snapshot: "nonexistent", to_snapshot: snap2));
         Assert.Equal(McpErrorCode.InvalidParams, ex1.ErrorCode);
+        Assert.Equal("snapshot 'nonexistent' not found.", ex1.Message);
         var ex2 = Assert.Throws<McpProtocolException>(() => diff.LurpDiff(from_snapshot: snap1, to_snapshot: "nonexistent"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
+        Assert.Equal("snapshot 'nonexistent' not found.", ex2.Message);
         var ex3 = Assert.Throws<McpProtocolException>(() => diff.LurpDiff(from_snapshot: null, to_snapshot: snap2));
         Assert.Equal(McpErrorCode.InvalidParams, ex3.ErrorCode);
+        Assert.Equal("from_snapshot is required.", ex3.Message);
         var ex4 = Assert.Throws<McpProtocolException>(() => diff.LurpDiff(from_snapshot: snap1, to_snapshot: null));
         Assert.Equal(McpErrorCode.InvalidParams, ex4.ErrorCode);
+        Assert.Equal("to_snapshot is required.", ex4.Message);
     }
 }

@@ -315,14 +315,14 @@ public static class IndexRunner
             }
 
             var totalProjects = extractedProjects + blindProjects.Count;
-            var declarationsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);
+            var symbolsInSnapshot = store.CountSymbolsInSnapshot(snapshotIdStr);
             var edgesInSnapshot = store.CountEdges(snapshotIdStr);
             var diagnosticsInSnapshot = store.CountDiagnostics(snapshotIdStr);
 
             sink.WriteLine();
             sink.WriteLine($"Index complete for snapshot {snapshotIdStr}");
             sink.WriteLine($"  projects_reextracted_this_run:       {extractedProjects}/{totalProjects}");
-            sink.WriteLine($"  declarations_extracted_this_run:     {totalDeclarations}      declarations_in_snapshot: {declarationsInSnapshot}");
+            sink.WriteLine(FormatIndexSummary(totalDeclarations, symbolsInSnapshot));
             sink.WriteLine($"  edge_relations_after_dedup_this_run: {totalEdges}      edges_dropped_outside_snapshot_scope: {orphanEdgesDropped.FormatDropSummary()}");
             sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {edgesInSnapshot}");
             var fullWarning = orphanEdgesDropped.FormatWarning();
@@ -450,6 +450,16 @@ public static class IndexRunner
         return IncrementalStrategy;
     }
 
+    /// <summary>
+    ///     The two counters measure different things: extracted declaration records for
+    ///     this run, and the distinct symbols the snapshot holds (a symbol declared in
+    ///     several documents is one symbol and several records).
+    /// </summary>
+    private static string FormatIndexSummary(int extractedDeclarations, int symbolsInSnapshot)
+    {
+        return $"  declarations_extracted_this_run:     {extractedDeclarations}      symbols_in_snapshot: {symbolsInSnapshot}";
+    }
+
     private static void WriteIncrementalSummary(SqliteIndexStore store, IOutputSink sink, IncrementalIndexer.IncrementalResult result)
     {
         sink.WriteLine();
@@ -457,7 +467,7 @@ public static class IndexRunner
         sink.WriteLine($"  Previous snapshot: {result.PreviousSnapshotId}");
         sink.WriteLine($"  documents_changed_this_run:          {result.ChangedDocumentCount}      documents_in_snapshot: {result.DocumentsInSnapshot}");
         sink.WriteLine($"  projects_reextracted_this_run:       {result.ProjectsReextracted}/{result.ProjectsInSnapshot}");
-        sink.WriteLine($"  declarations_extracted_this_run:     {result.DeclarationsExtracted}      declarations_in_snapshot: {store.CountSymbolsInSnapshot(result.NewSnapshotId)}");
+        sink.WriteLine(FormatIndexSummary(result.DeclarationsExtracted, store.CountSymbolsInSnapshot(result.NewSnapshotId)));
         sink.WriteLine($"  edge_relations_after_dedup_this_run: {result.EdgesExtracted}      edges_dropped_outside_snapshot_scope: {result.OrphanEdgesDropped.FormatDropSummary()}");
         sink.WriteLine($"                                     {"",27}  edge_relations_in_snapshot:          {store.CountEdges(result.NewSnapshotId)}");
         var warning = result.OrphanEdgesDropped.FormatWarning();

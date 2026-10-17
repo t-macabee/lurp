@@ -60,8 +60,12 @@ internal static class ContextHandler
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
 
         var hasSymbol = !string.IsNullOrEmpty(symbolArg);
-        var hasFile = !string.IsNullOrEmpty(fileArg) && !string.IsNullOrEmpty(lineArg);
-        if (!hasSymbol && !hasFile) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
+        var hasFileArg = !string.IsNullOrEmpty(fileArg);
+        var hasLineArg = !string.IsNullOrEmpty(lineArg);
+        if (!hasSymbol && !hasFileArg && !hasLineArg) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
+        if (hasSymbol && hasFileArg && hasLineArg) HandlerBootstrap.Fail("ERROR: Provide either --symbol or --file with --line, not both.");
+        if (hasFileArg != hasLineArg) HandlerBootstrap.Fail("ERROR: --file and --line must be given together.");
+        var hasFile = hasFileArg && hasLineArg;
 
         if (!TryParseIntent(intentArg, out var intent))
             HandlerBootstrap.Fail("ERROR: --intent must be one of: inspect, modify, diagnose.");
@@ -155,7 +159,7 @@ internal static class ContextHandler
             foreach (var item in page.Items)
                 Console.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
             if (nextCursor != null)
-                Console.WriteLine("  more available: re-run with --cursor=<nextCursor from --output=json>.");
+                Console.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
             return;
         }
 
@@ -179,7 +183,7 @@ internal static class ContextHandler
         {
             Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
             foreach (var item in page.Items)
-                Console.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, ContextCapsuleJson.CompactOptions));
+                Console.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, HandlerBootstrap.CompactJson));
             return;
         }
 
@@ -196,7 +200,7 @@ internal static class ContextHandler
             meta.next_cursor,
             meta.budget_applied,
             items = page.Items
-        }, ContextCapsuleJson.Options));
+        }, HandlerBootstrap.IndentedJson));
     }
 
     internal static bool TryParseIntent(string value, out ContextIntent intent)

@@ -8,7 +8,7 @@ internal static class VersionConstants
     // adapter's version). Bump this value for every other change to extraction output:
     // declarations, symbol metadata, structural edges, binding-incompleteness rows. Both
     // versions are part of the snapshot identity, so either bump produces a new snapshot.
-    internal const string ExtractorVersion = "1.10.0";
-    internal const string ToolVersion = "3.0.2";
-    internal const int CliMcpContractVersion = 5;
+    internal const string ExtractorVersion = "1.11.0";
+    internal const string ToolVersion = "3.5.0";
+    internal const int CliMcpContractVersion = 6;
 }

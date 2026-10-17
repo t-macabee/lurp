@@ -114,6 +114,21 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>
+    ///     Parses an optional non-negative integer argument. Returns null when the flag is
+    ///     absent, so the caller keeps its own default; <c>0</c> is a valid value.
+    /// </summary>
+    public static int? ParseNonNegativeIntArg(string? raw, string prefix)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return null;
+
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value < 0)
+            Fail($"ERROR: {prefix.TrimEnd('=')} must be a non-negative integer.");
+
+        return value;
+    }
+
+    /// <summary>
     ///     Decodes and validates a <see cref="SequenceCursor" />, exiting 1 with an explicit
     ///     message rather than resuming an offset against a sequence it was not issued for.
     /// </summary>
@@ -333,6 +348,18 @@ internal static class HandlerBootstrap
     public static string StalePinWarning(string stalePinnedSnapshotId, string usedSnapshotId) =>
         $"WARNING: pinned snapshot '{stalePinnedSnapshotId}' is not complete; this command uses the latest snapshot '{usedSnapshotId}'. Clear the pin with --mode=pin-snapshot --clear.";
 
+    public static string StalePinRemovedNotice(string stalePinnedSnapshotId) =>
+        $"NOTICE: removed the stale pin on snapshot '{stalePinnedSnapshotId}' (the snapshot is not complete).";
+
+    /// <summary>
+    ///     True when the caller did not name a snapshot, or named the literal
+    ///     <c>latest</c>: the cases in which the database pin decides the snapshot.
+    /// </summary>
+    private static bool UsesLatestSnapshot(string? snapshotArg)
+    {
+        return string.IsNullOrEmpty(snapshotArg) || string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string ResolveSnapshotId(SqliteIndexStore store, string? snapshotArg)
     {
         if (!string.IsNullOrEmpty(snapshotArg) &&
@@ -360,7 +387,7 @@ internal static class HandlerBootstrap
         var store = OpenStore(dbPath);
         try
         {
-            var stalePin = string.IsNullOrEmpty(snapshotArg) || string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase)
+            var stalePin = UsesLatestSnapshot(snapshotArg)
                 ? store.GetStalePinnedSnapshotId()
                 : null;
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
@@ -385,6 +412,8 @@ internal static class HandlerBootstrap
         var store = OpenWritableStore(dbPath);
         try
         {
+            if (UsesLatestSnapshot(snapshotArg))
+                ClearStalePinWithNotice(store);
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
             body(store, snapshotId);
         }
@@ -392,6 +421,14 @@ internal static class HandlerBootstrap
         {
             store.Close();
         }
+    }
+
+    /// <summary>Clears one stale pin if there is one, and names it on stderr.</summary>
+    internal static void ClearStalePinWithNotice(SqliteIndexStore store)
+    {
+        var stalePin = store.ClearStalePin();
+        if (stalePin != null)
+            Console.Error.WriteLine(StalePinRemovedNotice(stalePin));
     }
 
     /// <summary>

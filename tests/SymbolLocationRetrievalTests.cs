@@ -1,5 +1,7 @@
 using Lurp.Handlers;
+using Lurp.Storage;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace Lurp.Tests;
@@ -330,4 +332,65 @@ public sealed class SymbolLocationRetrievalTests : IntegrationTestBase
         Assert.Equal(Document, target.GetProperty("document_path").GetString());
     }
 
+    // R147: a primary parameter list is a declaration span of its own, so a line inside it
+    // resolves to the constructor. Lines 1-based: 6 is inside the list, 9 is inside M, 10 is
+    // the type's closing brace.
+    private const string PrimaryConstructorHostSource = """
+                                                         namespace Core;
+
+                                                         public class Foo { }
+                                                         public class Bar { }
+                                                         public class Host(
+                                                             Foo a,
+                                                             Bar b)
+                                                         {
+                                                             public void M() { }
+                                                         }
+                                                         """;
+
+    [Fact]
+    public async Task ResolveSymbolByLocation_PrimaryConstructorParameterListResolvesToTheConstructor()
+    {
+        CreateProject(Project, new Dictionary<string, string>
+        {
+            ["Host.cs"] = PrimaryConstructorHostSource
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var ctorId = ResolveSymbolId(snapshotId, "global::Core.Host.Host");
+        var methodId = ResolveSymbolId(snapshotId, "global::Core.Host.M");
+        var typeId = ResolveSymbolId(snapshotId, "global::Core.Host");
+        const string hostDocument = "src/Core/Host.cs";
+
+        using var store = OpenStore(DbPath);
+
+        Assert.Equal(ctorId, store.ResolveSymbolByLocation(hostDocument, 6, snapshotId));
+        Assert.Equal(methodId, store.ResolveSymbolByLocation(hostDocument, 9, snapshotId));
+        Assert.Equal(typeId, store.ResolveSymbolByLocation(hostDocument, 10, snapshotId));
+
+        // R151: a primary constructor's name position is the type name.
+        var navigated = store.NavigateToLocation(hostDocument, 6, snapshotId);
+        Assert.NotNull(navigated);
+        var hostBytes = File.ReadAllBytes(Path.Combine(TestDir, "src", Project, "Host.cs"));
+        Assert.Equal("Host", Encoding.UTF8.GetString(hostBytes, navigated.NameStart, navigated.NameEnd - navigated.NameStart));
+    }
+
+    [Fact]
+    public async Task ResolveSymbolByLocation_AgreesWithNavigateToLocationOnEveryLine()
+    {
+        CreateProject(Project, new Dictionary<string, string>
+        {
+            ["Host.cs"] = PrimaryConstructorHostSource
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        const string hostDocument = "src/Core/Host.cs";
+
+        using var store = OpenStore(DbPath);
+
+        // R151: one rule answers "the declaration at a line", so both paths must agree.
+        for (var line = 1; line <= 10; line++)
+        {
+            var navigated = store.NavigateToLocation(hostDocument, line, snapshotId)?.SymbolId;
+            Assert.Equal(navigated, store.ResolveSymbolByLocation(hostDocument, line, snapshotId));
+        }
+    }
 }

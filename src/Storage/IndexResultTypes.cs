@@ -32,8 +32,7 @@ public enum ViewKind
 {
     Declaration,
     Signature,
-    Body,
-    Name
+    Body
 }
 
 public sealed class IndexedSymbolInfo

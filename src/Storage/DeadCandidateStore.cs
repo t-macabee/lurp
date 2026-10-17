@@ -653,23 +653,16 @@ internal sealed class DeadCandidateStore
             metadata,
             GetString(metadata, SymbolMetadataKeys.Accessibility),
             MetadataReferenceIdentity.SimpleName(row.AssemblyIdentity),
-            IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
-            IsTrue(metadata, SymbolMetadataKeys.IsStaticConstructor),
-            IsTrue(metadata, SymbolMetadataKeys.IsImplicitlyDeclared),
-            IsTrue(metadata, SymbolMetadataKeys.ImplementsExternalInterface),
+            SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
+            SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsStaticConstructor),
+            SymbolMetadata.IsImplicitlyDeclared(metadata),
+            SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.ImplementsExternalInterface),
             accessorKind,
             accessorKind != null && associatedSymbol != null
                 ? SymbolId.Compose(associatedSymbol, row.AssemblyIdentity)
                 : null,
-            IsTrue(metadata, SymbolMetadataKeys.ContainsEntryPoint),
-            IsTrue(metadata, SymbolMetadataKeys.IsEntryPoint));
-    }
-
-    private static bool IsTrue(JsonElement? metadata, string key)
-    {
-        return metadata is not null
-            && metadata.Value.TryGetProperty(key, out var el)
-            && el.ValueKind == JsonValueKind.True;
+            SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.ContainsEntryPoint),
+            SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsEntryPoint));
     }
 
     private static string? GetString(JsonElement? metadata, string key)

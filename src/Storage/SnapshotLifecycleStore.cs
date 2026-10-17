@@ -207,20 +207,39 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    ///     Returns the newest failed snapshot, and only when no complete snapshot of the
+    ///     same workspace was built at or after it. A failure that the workspace has since
+    ///     replaced with a complete snapshot is history, not a current failure.
+    /// </summary>
     internal SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = string.IsNullOrEmpty(workspaceId)
             ? """
-SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
-                FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;
+SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
+                FROM snapshots f
+                WHERE f.status = @status
+                  AND NOT EXISTS (
+                      SELECT 1 FROM snapshots c
+                      WHERE c.workspace_id = f.workspace_id
+                        AND c.status = @completeStatus
+                        AND c.built_at_utc >= f.built_at_utc)
+                ORDER BY f.built_at_utc DESC LIMIT 1;
 """
             : """
-SELECT snapshot_id, failure_reason_code, failure_message, built_at_utc
-                FROM snapshots WHERE status = @status AND workspace_id = @workspaceId
-                ORDER BY built_at_utc DESC LIMIT 1;
+SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
+                FROM snapshots f
+                WHERE f.status = @status AND f.workspace_id = @workspaceId
+                  AND NOT EXISTS (
+                      SELECT 1 FROM snapshots c
+                      WHERE c.workspace_id = f.workspace_id
+                        AND c.status = @completeStatus
+                        AND c.built_at_utc >= f.built_at_utc)
+                ORDER BY f.built_at_utc DESC LIMIT 1;
 """;
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Failed);
+        command.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
         if (!string.IsNullOrEmpty(workspaceId))
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
         using var reader = command.ExecuteReader();

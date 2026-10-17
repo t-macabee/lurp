@@ -50,7 +50,7 @@ public sealed class McpPinningTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task MismatchedSnapshotId_ReturnsInvalidParams_ForAllTools()
+    public async Task UnknownSnapshotId_ReturnsNotFound_ForAllTools()
     {
         CreateProject("PinnedMismatchProj", new Dictionary<string, string>
         {
@@ -60,12 +60,11 @@ public sealed class McpPinningTests : IntegrationTestBase
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
 
-        // Every tool that accepts snapshot_id must reject mismatch with -32602
+        // Every tool that accepts snapshot_id must reject an id that is not in the database with -32602
         var contextTool = new Lurp.Mcp.Tools.ContextTool(session);
         var ex1 = Assert.Throws<McpProtocolException>(() => contextTool.LurpContext(symbol: "PinnedMismatchProj.A", snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex1.ErrorCode);
-        Assert.Contains("snapshot mismatch", ex1.Message);
-        Assert.Contains("lurp_refresh", ex1.Message);
+        Assert.Equal("snapshot 'mismatch' not found.", ex1.Message);
 
         var sourceTool = new Lurp.Mcp.Tools.GetSourceTool(session);
         string docPath;
@@ -73,10 +72,53 @@ public sealed class McpPinningTests : IntegrationTestBase
             docPath = store.GetDocumentVersionIdsByPath(snapshot1).Keys.First();
         var ex2 = Assert.Throws<McpProtocolException>(() => sourceTool.LurpGetSource(document: docPath, snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
+        Assert.Equal("snapshot 'mismatch' not found.", ex2.Message);
 
         var statusTool = new Lurp.Mcp.Tools.StatusTool(session);
         var ex3 = await Assert.ThrowsAsync<McpProtocolException>(async () => await statusTool.LurpStatus(snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex3.ErrorCode);
+        Assert.Equal("snapshot 'mismatch' not found.", ex3.Message);
+    }
+
+    [Fact]
+    public async Task ExistingUnpinnedSnapshotId_ReturnsMismatch_ForAllTools()
+    {
+        CreateProject("PinnedOlderProj", new Dictionary<string, string>
+        {
+            ["A.cs"] = "namespace PinnedOlderProj { public class A { public void Foo() {} } }"
+        });
+        var snapshot1 = await RunFullIndexAsync(DbPath);
+
+        CreateProject("PinnedNewerProj", new Dictionary<string, string>
+        {
+            ["B.cs"] = "namespace PinnedNewerProj { public class B { public void Bar() {} } }"
+        });
+        var snapshot2 = await RunFullIndexNoDeleteAsync(DbPath);
+        Assert.NotEqual(snapshot1, snapshot2);
+
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        Assert.Equal(snapshot2, session.PinnedSnapshotId);
+        var expected = $"snapshot mismatch: session pinned to {snapshot2}; call lurp_refresh to advance.";
+
+        // The id exists but is not the pinned one: the caller is told how to advance.
+        var contextTool = new Lurp.Mcp.Tools.ContextTool(session);
+        var ex1 = Assert.Throws<McpProtocolException>(() => contextTool.LurpContext(symbol: "PinnedOlderProj.A", snapshot_id: snapshot1));
+        Assert.Equal(McpErrorCode.InvalidParams, ex1.ErrorCode);
+        Assert.Equal(expected, ex1.Message);
+
+        var sourceTool = new Lurp.Mcp.Tools.GetSourceTool(session);
+        string docPath;
+        using (var store = OpenStore(DbPath))
+            docPath = store.GetDocumentVersionIdsByPath(snapshot1).Keys.First();
+        var ex2 = Assert.Throws<McpProtocolException>(() => sourceTool.LurpGetSource(document: docPath, snapshot_id: snapshot1));
+        Assert.Equal(McpErrorCode.InvalidParams, ex2.ErrorCode);
+        Assert.Equal(expected, ex2.Message);
+
+        var statusTool = new Lurp.Mcp.Tools.StatusTool(session);
+        var ex3 = await Assert.ThrowsAsync<McpProtocolException>(async () => await statusTool.LurpStatus(snapshot_id: snapshot1));
+        Assert.Equal(McpErrorCode.InvalidParams, ex3.ErrorCode);
+        Assert.Equal(expected, ex3.Message);
     }
 
     [Fact]

@@ -24,7 +24,13 @@ internal sealed class ReadsWritesEdgeExtractor(MemberEdgeExtractionContext conte
                 continue;
 
             var accesses = bodySyntax.DescendantNodes()
-                .Where(n => n is IdentifierNameSyntax or MemberAccessExpressionSyntax);
+                .Where(n => n is IdentifierNameSyntax or MemberAccessExpressionSyntax)
+                // A nameof argument is a compile-time name, not a read;
+                // NameOfReflectionExtractor records every symbol in it as
+                // ReflectionMemberRef (R142, R147). A method group inside nameof has no
+                // symbol, only candidate symbols, so recording it as an unresolved read
+                // wrote a false unsupported_syntax row for the whole document (R142).
+                .Where(static node => !NameOfReflectionExtractor.IsInsideNameOf(node));
 
             foreach (var access in accesses)
             {

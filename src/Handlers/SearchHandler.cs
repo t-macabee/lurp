@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Lurp.Workspace;
 
@@ -16,18 +15,13 @@ internal static class SearchHandler
 
         var typeArg = (HandlerBootstrap.GetArgValue(args, "--type=") ?? "all").ToLowerInvariant();
         if (typeArg is not ("all" or "source" or "symbol")) HandlerBootstrap.Fail("ERROR: --type must be one of: all, source, symbol.");
-        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
-        var snippetTokensArg = HandlerBootstrap.GetArgValue(args, "--snippet-tokens=");
         var includeGenerated = args.Contains("--include-generated");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
-        var limit = DefaultLimit;
-        if (!string.IsNullOrEmpty(limitArg) && !int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit)) HandlerBootstrap.Fail("ERROR: --limit must be an integer.");
-
-        var snippetTokens = DefaultSnippetTokens;
-        if (!string.IsNullOrEmpty(snippetTokensArg) && !int.TryParse(snippetTokensArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out snippetTokens)) HandlerBootstrap.Fail("ERROR: --snippet-tokens must be an integer.");
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
+        var snippetTokens = HandlerBootstrap.ParsePositiveIntArg(args, "--snippet-tokens=", DefaultSnippetTokens);
 
         if (!string.IsNullOrEmpty(cursorArg) && typeArg != "symbol") HandlerBootstrap.Fail("ERROR: --cursor is only supported with --type=symbol.");
 

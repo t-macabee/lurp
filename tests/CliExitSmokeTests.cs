@@ -170,6 +170,28 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void ParseNonNegativeIntArg_ZeroAndMissing_Parse()
+    {
+        Assert.Null(HandlerBootstrap.ParseNonNegativeIntArg(null, "--context-lines="));
+        Assert.Null(HandlerBootstrap.ParseNonNegativeIntArg(string.Empty, "--context-lines="));
+        Assert.Equal(0, HandlerBootstrap.ParseNonNegativeIntArg("0", "--context-lines="));
+        Assert.Equal(7, HandlerBootstrap.ParseNonNegativeIntArg("7", "--context-lines="));
+    }
+
+    [Fact]
+    public void ParseNonNegativeIntArg_NegativeOrInvalid_Throws()
+    {
+        var negative = Assert.Throws<CliExitException>(() =>
+            HandlerBootstrap.ParseNonNegativeIntArg("-1", "--context-lines="));
+        Assert.Equal(1, negative.ExitCode);
+        Assert.Equal("ERROR: --context-lines must be a non-negative integer.", negative.Message);
+
+        var invalid = Assert.Throws<CliExitException>(() =>
+            HandlerBootstrap.ParseNonNegativeIntArg("abc", "--context-lines="));
+        Assert.Equal("ERROR: --context-lines must be a non-negative integer.", invalid.Message);
+    }
+
+    [Fact]
     public void ResolveOutputDir_NoSource_Throws()
     {
         Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveOutputDir([]));
@@ -387,11 +409,11 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void Diff_MissingToSnapshot_Throws()
     {
-        var dir = CreateIndexedDir(withSnapshot: true);
+        var dir = CreateIndexedDir(withSnapshot: true, out var snapshotId);
         try
         {
             var ex = Assert.Throws<CliExitException>(() =>
-                DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=s1", "--to-snapshot=bogus"]));
+                DiffHandler.Run([$"--output-dir={dir}", $"--from-snapshot={snapshotId}", "--to-snapshot=bogus"]));
             Assert.Contains("snapshot 'bogus' not found", ex.Message);
         }
         finally
@@ -449,20 +471,20 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void Timings_SnapshotLatest_ResolvesToLatestSnapshot()
     {
-        var dir = CreateIndexedDir(withSnapshot: true);
+        var dir = CreateIndexedDir(withSnapshot: true, out var snapshotId);
         try
         {
             using (var store = new SqliteIndexStore(Path.Combine(dir, "index.db")))
             {
                 store.Open();
-                store.SaveTimings("s1", [new SnapshotTimingRow("extraction_loop", 42)]);
+                store.SaveTimings(snapshotId, [new SnapshotTimingRow("extraction_loop", 42)]);
             }
 
-            var result = RunTimingsCaptured([$"--output-dir={dir}", "--snapshot=latest", "--json"]);
+            var result = TestConsole.Capture(() => TimingsHandler.Run([$"--output-dir={dir}", "--snapshot=latest", "--json"]));
 
             Assert.Null(result.Failure);
             using var doc = JsonDocument.Parse(result.Stdout);
-            Assert.Equal("s1", doc.RootElement.GetProperty("snapshot_id").GetString());
+            Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
             Assert.Equal(42, doc.RootElement.GetProperty("steps")[0].GetProperty("elapsed_ms").GetInt64());
         }
         finally
@@ -472,58 +494,183 @@ public sealed class CliExitSmokeTests : IDisposable
         }
     }
 
-    /// <summary>
-    ///     Creates a temp directory holding a migrated index.db (with the workspace
-    ///     row DiffHandler's metadata join needs), optionally containing one complete
-    ///     snapshot 's1', so <see cref="DiffHandler.Run" /> can resolve the database
-    ///     through its own <c>--output-dir</c> path.
-    /// </summary>
-    private static string CreateIndexedDir(bool withSnapshot)
+    // R137: --mode=timings goes through HandlerBootstrap.WithStore like every other
+    // read mode, so a missing database is an ERROR on stderr with exit 1 instead of
+    // a stdout note with exit 0.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Timings_MissingDatabase_ExitsOneWithOneErrorLine(bool asJson)
     {
-        var dir = Path.Combine(Path.GetTempPath(), $"lurp-diff-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dir);
-        var dbPath = Path.Combine(dir, "index.db");
-        using (var store = new SqliteIndexStore(dbPath))
-        {
-            store.Open();
-            store.RunMigrations();
-            store.SaveWorkspace("w1", "gitroot", "solution.sln");
-            if (withSnapshot)
-            {
-                store.SaveSnapshot(new SnapshotRow
-                {
-                    SnapshotId = "s1",
-                    WorkspaceId = "w1",
-                    GitRoot = "gitroot",
-                    SolutionPath = "solution.sln",
-                    CreatedAtUtc = DateTime.UtcNow
-                });
-                store.MarkSnapshotComplete("s1");
-            }
-        }
+        var dir = NoIndexOutputDir();
+        string[] args = asJson
+            ? ["--mode=timings", "--json", $"--output-dir={dir}"]
+            : ["--mode=timings", $"--output-dir={dir}"];
 
-        return dir;
+        var result = RunCli(args);
+
+        AssertSingleCliError(result, "ERROR: Index database not found at " + Path.Combine(Path.GetFullPath(dir), "index.db"));
     }
 
-    private static (string Stdout, CliExitException? Failure) RunTimingsCaptured(string[] args)
+    // R135: each bad input must fail the whole CLI with exit 1, one ERROR line on
+    // stderr, and no stdout. These run the built CLI as a child process, so the
+    // assertions cover Program.Main's stderr write and exit code, not only the
+    // handler's exception.
+    private static (int ExitCode, string Stdout, string Stderr) RunCli(params string[] args)
     {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        CliExitException? failure = null;
+        var argv = LurpTool.Argv(args);
+        return TestProcess.Run(argv[0], argv[1..], TimeSpan.FromMinutes(2));
+    }
+
+    private static void AssertSingleCliError((int ExitCode, string Stdout, string Stderr) result, string expected)
+    {
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.Stdout);
+
+        var lines = result.Stderr.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n').Split('\n');
+        Assert.Equal(expected, Assert.Single(lines));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("abc")]
+    public void Search_InvalidLimit_ExitsOneWithOneErrorLine(string value)
+    {
+        var result = RunCli("--mode=search", "--query=x", $"--limit={value}", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --limit must be a positive integer.");
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    public void Search_InvalidSnippetTokens_ExitsOneWithOneErrorLine(string value)
+    {
+        var result = RunCli("--mode=search", "--query=x", $"--snippet-tokens={value}", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --snippet-tokens must be a positive integer.");
+    }
+
+    [Fact]
+    public void Grep_InvalidLimit_ExitsOneWithOneErrorLine()
+    {
+        var result = RunCli("--mode=grep", "--query=x", "--limit=abc", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --limit must be a positive integer.");
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("-1")]
+    public void GetSymbol_InvalidContextLines_ExitsOneWithOneErrorLine(string value)
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
         try
         {
-            Console.SetOut(stdout);
-            TimingsHandler.Run(args);
-        }
-        catch (CliExitException ex)
-        {
-            failure = ex;
+            var result = RunCli("--mode=get-symbol", "--symbol=T:Some.Type|assembly", "--view=surrounding",
+                $"--context-lines={value}", $"--output-dir={dir}");
+            AssertSingleCliError(result, "ERROR: --context-lines must be a non-negative integer.");
         }
         finally
         {
-            Console.SetOut(originalOut);
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
         }
+    }
 
-        return (stdout.ToString(), failure);
+    [Fact]
+    public void Context_BothAnchorForms_ExitsOneWithOneErrorLine()
+    {
+        var result = RunCli("--mode=context", "--symbol=T:Some.Type|assembly", "--file=a.cs", "--line=3",
+            $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: Provide either --symbol or --file with --line, not both.");
+    }
+
+    [Theory]
+    [InlineData("--file=a.cs")]
+    [InlineData("--line=3")]
+    public void Context_HalfOfFileAndLine_ExitsOneWithOneErrorLine(string anchor)
+    {
+        var result = RunCli("--mode=context", anchor, $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --file and --line must be given together.");
+    }
+
+    [Fact]
+    public void PinSnapshot_ClearWithSnapshotId_ExitsOneWithOneErrorLine()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            var result = RunCli("--mode=pin-snapshot", "--snapshot=s1", "--clear", $"--output-dir={dir}");
+            AssertSingleCliError(result, "ERROR: --clear cannot be combined with --snapshot=<id>. Pass one of them.");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void PinSnapshot_ClearWithLatest_StaysValid()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true);
+        try
+        {
+            var result = RunCli("--mode=pin-snapshot", "--snapshot=latest", "--clear", $"--output-dir={dir}");
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(string.Empty, result.Stderr);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // R136: an empty or comma-only name filter is a rejection, not "no filter". A
+    // wrong filter must not read as a real answer (3.0.2 notes).
+    [Fact]
+    public void Impact_EmptyKinds_ExitsOneWithOneErrorLine()
+    {
+        var result = RunCli("--mode=impact", "--symbol=T:Some.Type|assembly", "--kinds=", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, $"ERROR: --kinds must name at least one edge kind. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).");
+    }
+
+    [Fact]
+    public void Impact_EmptyProvenance_ExitsOneWithOneErrorLine()
+    {
+        var result = RunCli("--mode=impact", "--symbol=T:Some.Type|assembly", "--provenance=", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, $"ERROR: --provenance must name at least one provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).");
+    }
+
+    [Theory]
+    [InlineData("Calls,")]
+    [InlineData(",Calls")]
+    public void Impact_KindsWithEmptyItem_ExitsOneWithOneErrorLine(string value)
+    {
+        var result = RunCli("--mode=impact", "--symbol=T:Some.Type|assembly", $"--kinds={value}", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --kinds contains an empty item.");
+    }
+
+    [Theory]
+    [InlineData("compiler_proved,")]
+    [InlineData(",compiler_proved")]
+    public void Impact_ProvenanceWithEmptyItem_ExitsOneWithOneErrorLine(string value)
+    {
+        var result = RunCli("--mode=impact", "--symbol=T:Some.Type|assembly", $"--provenance={value}", $"--output-dir={NoIndexOutputDir()}");
+        AssertSingleCliError(result, "ERROR: --provenance contains an empty item.");
+    }
+
+    /// <summary>
+    ///     A temp directory holding a migrated index.db with the workspace row
+    ///     <see cref="DiffHandler.Run" /> joins against, optionally containing one
+    ///     complete snapshot.
+    /// </summary>
+    private static string CreateIndexedDir(bool withSnapshot) => CreateIndexedDir(withSnapshot, out _);
+
+    private static string CreateIndexedDir(bool withSnapshot, out string snapshotId)
+    {
+        var dir = IndexedDirFixture.Create(withSnapshot ? 1 : 0, stalePin: false, out _, out var latestId);
+        snapshotId = latestId;
+        return dir;
     }
 }

@@ -25,16 +25,19 @@ internal sealed class RetractAnnotationTool
     [McpServerTool(Name = "lurp_retract_annotation", Title = "Lurp Retract Annotation", ReadOnly = false, Destructive = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Retract (hard-delete) one annotation by annotation_id, scoped to the pinned snapshot — any provenance, not limited to user-authored (`--mode=annotate`) rows; extractor-derived rows can be removed the same way. The annotation_id is the surrogate PK from lurp_get_annotations. The delete is WHERE snapshot_id=@pinned AND annotation_id=@id — one row only, no cross-snapshot effect. Copy-forward clones allocate fresh ids, so retracting in snapshot A does not affect snapshot B's clone.")]
     public string LurpRetractAnnotation(
-        long annotation_id,
+        long? annotation_id = null,
         string? snapshot_id = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (annotation_id == null)
+                throw new McpProtocolException("annotation_id is required.", McpErrorCode.InvalidParams);
             if (annotation_id <= 0)
                 throw new McpProtocolException("annotation_id must be a positive integer.", McpErrorCode.InvalidParams);
 
+            var annotationId = annotation_id.Value;
             var snapshotId = _session.RequirePinnedSnapshot(snapshot_id);
 
             // The session's read connections are read-only; retraction requires a
@@ -47,7 +50,7 @@ internal sealed class RetractAnnotationTool
                 bool deleted;
                 try
                 {
-                    deleted = writable.TryRetractAnnotation(snapshotId, annotation_id);
+                    deleted = writable.TryRetractAnnotation(snapshotId, annotationId);
                 }
                 catch (ArgumentException ex)
                 {
@@ -55,14 +58,14 @@ internal sealed class RetractAnnotationTool
                 }
 
                 if (!deleted)
-                    throw new McpProtocolException($"annotation_id {annotation_id} not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException($"annotation_id {annotationId} not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
 
                 var freshness = _session.GetFreshnessJson();
                 var envelope = new
                 {
                     status = "ok",
                     snapshot_id = snapshotId,
-                    annotation_id,
+                    annotation_id = annotationId,
                     retracted = true,
                     freshness,
                     pinned = true

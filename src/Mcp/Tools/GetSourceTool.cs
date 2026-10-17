@@ -18,7 +18,7 @@ internal sealed class GetSourceTool
     }
 
     [McpServerTool(Name = "lurp_get_source", Title = "Lurp Get Source", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response.")]
+    [Description("Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response; compiler-generated members (record Equals, ToString and similar) are not listed.")]
     public string LurpGetSource(
         string? document = null,
         int? start_line = null,
@@ -39,15 +39,15 @@ internal sealed class GetSourceTool
                 throw new McpProtocolException("document is required.", McpErrorCode.InvalidParams);
 
             if (start_line.HasValue && start_line.Value < 1)
-                throw new McpProtocolException("start-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("start_line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
             if (end_line.HasValue && end_line.Value < 1)
-                throw new McpProtocolException("end-line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("end_line must be a positive integer (>=1).", McpErrorCode.InvalidParams);
             if (context_lines.HasValue && context_lines.Value < 0)
-                throw new McpProtocolException("context-lines must be a non-negative integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context_lines must be a non-negative integer.", McpErrorCode.InvalidParams);
             if (context_lines.HasValue && start_line == null && end_line == null)
-                throw new McpProtocolException("context-lines requires start-line or end-line.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("context_lines requires start_line or end_line.", McpErrorCode.InvalidParams);
             if (start_line.HasValue && end_line.HasValue && start_line.Value > end_line.Value)
-                throw new McpProtocolException("start-line must be <= end-line.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("start_line must be <= end_line.", McpErrorCode.InvalidParams);
 
             SourceSlice? slice;
             try

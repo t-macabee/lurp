@@ -32,6 +32,50 @@ public abstract class ImpactIndexFixture : IntegrationTestBase
         });
     }
 
+    /// <summary>
+    ///     Builds the direction-default fixture (R141): one production type with a declared
+    ///     member and a nested type, one caller of the member, and an xunit test that calls
+    ///     it, so one snapshot carries <c>Declares</c> (Target -> Hit), <c>Contains</c>
+    ///     (Target -> Inner) and <c>TestedBy</c> (Target -> CallHit) edges.
+    /// </summary>
+    protected async Task<string> IndexDirectionFixtureAsync()
+    {
+        CreateProject("DirProj", new Dictionary<string, string>
+        {
+            ["Target.cs"] = """
+                namespace DirProj;
+                public class Target
+                {
+                    public void Hit() { }
+                    public class Inner { public void Bump() { } }
+                }
+                """,
+            ["Caller.cs"] = """
+                namespace DirProj;
+                public class Caller
+                {
+                    public void Call() { new Target().Hit(); }
+                }
+                """
+        });
+
+        CreateProject("DirProj.Tests", new Dictionary<string, string>
+        {
+            ["TargetTests.cs"] = """
+                using Xunit;
+                namespace DirProj;
+                public class TargetTests
+                {
+                    [Fact]
+                    public void CallHit() { new Target().Hit(); }
+                }
+                """
+        }, projectReferences: ["DirProj"], packageReferences: ["xunit@2.9.3"]);
+
+        RestoreSolution();
+        return await RunFullIndexAsync(DbPath);
+    }
+
     protected async Task<string> IndexSecondAsync()
     {
         WriteFile("ImpactProj", "Models.cs", """

@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using System.Globalization;
 using System.Text.Json;
 
 namespace Lurp.Handlers;
@@ -47,9 +46,7 @@ internal static class GetSymbolHandler
             case "containing-type":
                 return new ViewSelection(ViewKind.Declaration, false, true, false, DefaultContextLines);
             case "surrounding":
-                var contextLines = DefaultContextLines;
-                if (!string.IsNullOrEmpty(contextLinesArg) && int.TryParse(contextLinesArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-                    contextLines = parsed;
+                var contextLines = HandlerBootstrap.ParseNonNegativeIntArg(contextLinesArg, "--context-lines=") ?? DefaultContextLines;
                 return new ViewSelection(ViewKind.Declaration, false, false, true, contextLines);
             default:
                 HandlerBootstrap.Fail($"ERROR: Unknown view kind '{viewArg}'." + Environment.NewLine +

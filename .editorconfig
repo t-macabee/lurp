@@ -23,6 +23,14 @@ dotnet_diagnostic.CA1707.severity = none
 [src/Shared/**]
 dotnet_diagnostic.CA1716.severity = none
 
+# PathNormalizer and GeneratedFilePaths moved into the Storage project (R151 F) and
+# keep the Lurp.Shared namespace, so CA1716 stays the same false positive there.
+[src/Storage/PathNormalizer.cs]
+dotnet_diagnostic.CA1716.severity = none
+
+[src/Storage/GeneratedFilePaths.cs]
+dotnet_diagnostic.CA1716.severity = none
+
 # The parity shared project carries the same 'Lurp.Parity.Shared' namespace;
 # CA1716 is the same false positive there.
 [scripts/parity/**]

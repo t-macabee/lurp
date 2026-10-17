@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.0.2, schema v37, extractor 1.10.0, CLI/MCP contract v5, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.5.0, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -83,6 +83,11 @@ Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts only
 changed documents and creates a new snapshot when content changes; it never
 mutates an existing snapshot. When nothing changed, the existing snapshot is
 reused via content-addressed dedup.
+
+Declarations are per document: a `partial` type declared in two documents
+yields two declaration records with one symbol id, and the snapshot's symbol
+set holds that symbol once. `declarations_extracted_this_run` therefore counts
+declaration records while `symbols_in_snapshot` counts symbols.
 
 ### 4.1 Framework adapters
 

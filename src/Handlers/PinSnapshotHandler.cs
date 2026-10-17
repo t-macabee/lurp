@@ -26,6 +26,8 @@ internal static class PinSnapshotHandler
 
             // Clear path: --clear or --snapshot=latest
             var isLatestLiteral = string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase);
+            if (clear && !string.IsNullOrEmpty(snapshotArg) && !isLatestLiteral)
+                HandlerBootstrap.Fail("ERROR: --clear cannot be combined with --snapshot=<id>. Pass one of them.");
             if (clear || isLatestLiteral)
             {
                 var cleared = store.ClearPinnedSnapshot();
@@ -48,8 +50,6 @@ internal static class PinSnapshotHandler
                         Console.WriteLine($"Pin cleared. Effective latest is now built-at latest: {effectiveLatest ?? "(none)"}");
                     else
                         Console.WriteLine($"No pin was set. Effective latest remains: {effectiveLatest ?? "(none)"}");
-                    if (!string.Equals(effectiveLatest, builtAtLatest, StringComparison.Ordinal))
-                        Console.WriteLine($"Note: effective latest ({effectiveLatest}) still differs from built-at latest ({builtAtLatest}) — pin table may still hold a row for another workspace.");
                 }
                 return;
             }
@@ -69,7 +69,8 @@ internal static class PinSnapshotHandler
             if (!string.Equals(status, SnapshotStatusValues.Complete, StringComparison.Ordinal))
                 HandlerBootstrap.Fail($"ERROR: snapshot '{snapshotId}' has status '{status}' and cannot be pinned. Only snapshots with status 'complete' can be pinned.");
 
-            var previousPin = store.GetPinnedSnapshot();
+            HandlerBootstrap.ClearStalePinWithNotice(store);
+            var previousPin = store.GetPinnedSnapshot(workspaceId);
             var previousId = previousPin?.PinnedSnapshotId;
 
             try
@@ -82,7 +83,9 @@ internal static class PinSnapshotHandler
                 return;
             }
 
-            var pinnedRow = store.GetPinnedSnapshot();
+            var pinnedRow = store.GetPinnedSnapshot(workspaceId);
+            if (pinnedRow == null)
+                HandlerBootstrap.Fail($"ERROR: the pin on snapshot '{snapshotId}' was not stored.");
             var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
             var effectiveLatestId = store.GetLatestSnapshotId();
 
@@ -91,10 +94,10 @@ internal static class PinSnapshotHandler
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     status = "pinned",
-                    pinned_snapshot_id = pinnedRow?.PinnedSnapshotId ?? snapshotId,
+                    pinned_snapshot_id = pinnedRow.PinnedSnapshotId,
                     previous_pinned_snapshot_id = previousId,
-                    pinned_at_utc = pinnedRow?.PinnedAtUtc,
-                    built_at_utc = pinnedRow?.BuiltAtUtc,
+                    pinned_at_utc = pinnedRow.PinnedAtUtc,
+                    built_at_utc = pinnedRow.BuiltAtUtc,
                     effective_latest_snapshot_id = effectiveLatestId,
                     built_at_latest_snapshot_id = builtAtLatestId,
                     pin_active = true
@@ -102,7 +105,7 @@ internal static class PinSnapshotHandler
             }
             else
             {
-                Console.WriteLine($"Pinned snapshot {snapshotId} (workspace {workspaceId}) at {pinnedRow?.PinnedAtUtc:O}");
+                Console.WriteLine($"Pinned snapshot {snapshotId} (workspace {workspaceId}) at {pinnedRow.PinnedAtUtc:O}");
                 if (previousId != null && !string.Equals(previousId, snapshotId, StringComparison.Ordinal))
                     Console.WriteLine($"  Previous pin: {previousId}");
                 Console.WriteLine($"  Effective latest (reads default to): {effectiveLatestId}");

@@ -1,10 +1,75 @@
+using System.Globalization;
 using System.Text.Json;
 using Lurp.Handlers;
+using Lurp.Storage;
 
 namespace Lurp.Tests;
 
 public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
 {
+    // Contract/acceptance (R141, decision 20): the upstream default follows every edge kind
+    // except Declares, Contains and TestedBy; an explicit --kinds= replaces that default;
+    // downstream keeps every kind.
+    [Fact]
+    public async Task ImpactHandler_UpstreamDefault_SkipsDeclaresContainsAndTestedBy()
+    {
+        var snapshotId = await IndexDirectionFixtureAsync();
+        var hitId = ResolveSymbolId(snapshotId, "global::DirProj.Target.Hit");
+        var targetId = ResolveSymbolId(snapshotId, "global::DirProj.Target");
+        var callId = ResolveSymbolId(snapshotId, "global::DirProj.Caller.Call");
+        var callHitId = ResolveSymbolId(snapshotId, "global::DirProj.TargetTests.CallHit");
+
+        // (a) Nothing reached only over Declares (Target -> Hit) or TestedBy (Target ->
+        // CallHit) appears in the default upstream answer.
+        using (var upstream = RunImpactJson(hitId, "upstream"))
+            Assert.Equal(
+                new[] { callId, callHitId }.OrderBy(id => id, StringComparer.Ordinal),
+                SymbolIds(upstream).OrderBy(id => id, StringComparer.Ordinal));
+
+        using (var upstreamOfTest = RunImpactJson(callHitId, "upstream"))
+            Assert.DoesNotContain(targetId, SymbolIds(upstreamOfTest));
+
+        // (b) An explicit --kinds= replaces the default: Declares is followed again.
+        using (var declaresOnly = RunImpactJson(hitId, "upstream", kinds: nameof(EdgeKind.Declares)))
+            Assert.Equal([targetId], SymbolIds(declaresOnly));
+
+        // (c) Downstream keeps every kind: declared members, nested types and the tests
+        // that cover the type are correct downstream answers.
+        using var downstream = RunImpactJson(targetId, "downstream", maxDepth: 1);
+        Assert.Equal(
+            new[] { nameof(EdgeKind.Contains), nameof(EdgeKind.Declares), nameof(EdgeKind.TestedBy) }
+                .OrderBy(kind => kind, StringComparer.Ordinal),
+            downstream.RootElement.GetProperty("groups").EnumerateArray()
+                .Select(group => group.GetProperty("edge_kind").GetString()!)
+                .OrderBy(kind => kind, StringComparer.Ordinal));
+    }
+
+    private JsonDocument RunImpactJson(string symbolId, string direction, string? kinds = null, int? maxDepth = null)
+    {
+        var args = new List<string>
+        {
+            "--mode=impact",
+            $"--symbol={symbolId}",
+            $"--direction={direction}",
+            $"--output-dir={TestDir}",
+            "--output=json",
+            "--limit=200"
+        };
+        if (kinds is not null)
+            args.Add($"--kinds={kinds}");
+        if (maxDepth is not null)
+            args.Add($"--max-depth={maxDepth.Value.ToString(CultureInfo.InvariantCulture)}");
+
+        var result = TestConsole.Capture(() => ImpactHandler.Run([.. args]));
+        Assert.Null(result.Failure);
+        return JsonDocument.Parse(result.Stdout);
+    }
+
+    private static List<string> SymbolIds(JsonDocument document) =>
+        document.RootElement.GetProperty("symbols").EnumerateArray()
+            .Select(symbol => symbol.GetProperty("symbol_id").GetString()!)
+            .ToList();
+
     // Contract/acceptance: pins the v2 impact symbols paging contract.
     [Fact]
     public async Task ImpactHandler_Paging_MatchesFullSymbolListAndSortsGroups()

@@ -528,4 +528,248 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         Assert.Contains(extraction.Result.BindingIncompleteness,
             r => r.DocumentPath?.EndsWith(Doc, StringComparison.Ordinal) == true && r.Reason == "ambiguous_overload");
     }
+
+    [Fact]
+    public async Task ParameterDependenciesEdge_MethodParameterUsesTheParameterTypeLocation()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Foo { }
+                                                public class Bar { }
+                                                public class Host
+                                                {
+                                                    public void M(Foo a, Bar b) { }
+                                                }
+                                                """));
+
+        // The edge names the parameter's type, so its location is that type's syntax
+        // (`Foo` / `Bar`), not the member span: a body edit must not move it.
+        var foo = extraction.SingleEdge("References", "global::N.Host.M", "global::N.Foo");
+        Assert.Equal((5, 18, 5, 21), (foo.SourceStartLine, foo.SourceStartColumn, foo.SourceEndLine, foo.SourceEndColumn));
+
+        var bar = extraction.SingleEdge("References", "global::N.Host.M", "global::N.Bar");
+        Assert.Equal((5, 25, 5, 28), (bar.SourceStartLine, bar.SourceStartColumn, bar.SourceEndLine, bar.SourceEndColumn));
+    }
+
+    [Fact]
+    public async Task ParameterDependenciesEdge_PrimaryConstructorParameterUsesTheTypeLocation()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Foo { }
+                                                public class Bar { }
+                                                public class Host(Foo a, Bar b) { }
+                                                """));
+
+        // A primary constructor has no parameter-list syntax of its own in Roslyn's
+        // declaring-syntax view (it reports the type declaration); the edge still
+        // points at the type inside the primary parameter list.
+        var foo = extraction.SingleEdge("References", "global::N.Host.Host", "global::N.Foo");
+        Assert.Equal((3, 18, 3, 21), (foo.SourceStartLine, foo.SourceStartColumn, foo.SourceEndLine, foo.SourceEndColumn));
+
+        var bar = extraction.SingleEdge("References", "global::N.Host.Host", "global::N.Bar");
+        Assert.Equal((3, 25, 3, 28), (bar.SourceStartLine, bar.SourceStartColumn, bar.SourceEndLine, bar.SourceEndColumn));
+    }
+
+    [Fact]
+    public async Task ParameterDependenciesEdge_AddingAMethodBelow_DoesNotMoveTheEdgesOfM()
+    {
+        const string before = """
+                              namespace N;
+                              public class Foo { }
+                              public class Host(Foo a)
+                              {
+                                  public void M(Foo b) { }
+                              }
+                              """;
+        // The new member lengthens the type but leaves the parameter lists alone.
+        const string after = """
+                             namespace N;
+                             public class Foo { }
+                             public class Host(Foo a)
+                             {
+                                 public void M(Foo b) { }
+                                 public void Added(int x) { }
+                             }
+                             """;
+
+        var from = await ExtractAsync(One(before));
+        var to = await ExtractAsync(One(after));
+
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-r142-diff-{Guid.NewGuid():N}.db");
+        try
+        {
+            using var store = new SqliteIndexStore(dbPath);
+            store.Open();
+            store.RunMigrations();
+            store.SaveEdges("snap-from", from.Result.Edges);
+            store.SaveEdges("snap-to", to.Result.Edges);
+
+            var (changes, _) = new SemanticDiffer(store, store, store).ComputeDiff("snap-from", "snap-to");
+
+            // R147: the primary constructor is located at its parameter list, so no edge
+            // with the constructor as source or target may move when the type grows.
+            var ctorId = from.ResolveId("global::N.Host.Host");
+            var locationChanges = changes
+                .Where(c => c.ChangeType == ChangeType.EdgeLocationChanged)
+                .Where(c => c.DetailJson!.Contains($"\"source\":\"{ctorId}\"", StringComparison.Ordinal) ||
+                            c.DetailJson!.Contains($"\"target\":\"{ctorId}\"", StringComparison.Ordinal))
+                .ToList();
+            Assert.True(locationChanges.Count == 0,
+                "edge_location_changed for an edge of the primary constructor that did not move: " +
+                string.Join("; ", locationChanges.Select(c => c.DetailJson)));
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task DeclaresEdge_PrimaryConstructorUsesItsParameterListLocation()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                class Foo { }
+                                                class Bar { }
+                                                class Host(Foo a, Bar b) { public void M() { } }
+                                                """));
+
+        var edge = extraction.SingleEdge("Declares", "global::N.Host", "global::N.Host.Host");
+        Assert.Equal((3, 10, 3, 24),
+            (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+    }
+
+    [Fact]
+    public async Task SymbolDeclaration_PrimaryConstructorSpansItsParameterList()
+    {
+        const string source = """
+                              namespace N;
+                              class Foo { }
+                              class Bar { }
+                              class Host(Foo a, Bar b) { public void M() { } }
+                              """;
+        var extraction = await ExtractAsync(One(source));
+
+        var ctor = Assert.Single(extraction.Result.Declarations,
+            d => d.SymbolId.DocCommentId == "M:N.Host.#ctor(N.Foo,N.Bar)");
+        var listStart = source.IndexOf("(Foo a, Bar b)", StringComparison.Ordinal);
+        Assert.Equal(listStart, ctor.FullSpan.Start);
+        // FullSpan includes the trailing trivia after the parameter list.
+        Assert.Equal("(Foo a, Bar b)",
+            source.Substring(ctor.FullSpan.Start!.Value, ctor.FullSpan.Length).TrimEnd());
+
+        // R151: a constructor is named after its type, as ConstructorDeclarationSyntax.Identifier is.
+        // The parameter list is both the declaration and the signature; there is no body.
+        Assert.Equal(ctor.FullSpan.Start, ctor.SignatureSpan.Start);
+        Assert.Equal(ctor.FullSpan.End, ctor.SignatureSpan.End);
+        Assert.Null(ctor.BodySpan.Start);
+        Assert.Equal("Host", source.Substring(ctor.NameSpan.Start!.Value, ctor.NameSpan.Length));
+
+        // The type keeps its whole declaration span.
+        var type = Assert.Single(extraction.Result.Declarations,
+            d => d.SymbolId.DocCommentId == "T:N.Host");
+        Assert.Equal(source.IndexOf("class Host", StringComparison.Ordinal), type.FullSpan.Start);
+        Assert.Equal(source.Length, type.FullSpan.End);
+    }
+
+    [Fact]
+    public async Task SymbolDeclaration_RecordPrimaryConstructorSpansItsParameterList()
+    {
+        const string source = """
+                              namespace N;
+                              public sealed record R(int A);
+                              """;
+        var extraction = await ExtractAsync(One(source));
+
+        var ctor = Assert.Single(extraction.Result.Declarations,
+            d => d.SymbolId.DocCommentId == "M:N.R.#ctor(System.Int32)");
+        var listStart = source.IndexOf("(int A)", StringComparison.Ordinal);
+        Assert.Equal(listStart, ctor.FullSpan.Start);
+        Assert.Equal("(int A)",
+            source.Substring(ctor.FullSpan.Start!.Value, ctor.FullSpan.Length).TrimEnd());
+        Assert.Equal("R", source.Substring(ctor.NameSpan.Start!.Value, ctor.NameSpan.Length));
+    }
+
+    [Fact]
+    public async Task NameOfChain_RecordsEveryNamedSymbolAsReflectionMemberRef()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Holder { public int Value { get; } }
+                                                public class C
+                                                {
+                                                    private readonly Holder _holder = new();
+                                                    public string N() => nameof(_holder.Value);
+                                                }
+                                                """));
+
+        // R147: a nameof is a compile-time name for every symbol in its chain, not a read.
+        var field = extraction.SingleEdge("ReflectionMemberRef", "global::N.C.N", "global::N.C._holder");
+        Assert.Equal(Provenance.CompilerProved, field.Provenance);
+
+        // The argument's own symbol keeps its edge.
+        extraction.SingleEdge("ReflectionMemberRef", "global::N.C.N", "global::N.Holder.Value");
+
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => (e.Kind == "Reads" || e.Kind == "Writes") &&
+                 (e.TargetSymbolId == extraction.ResolveId("global::N.C._holder") ||
+                  e.TargetSymbolId == extraction.ResolveId("global::N.Holder.Value")));
+
+        var rows = string.Join(", ", extraction.Result.BindingIncompleteness
+            .Select(r => $"{r.DocumentPath}|{r.Reason}|{r.Count}"));
+        Assert.True(extraction.Result.BindingIncompleteness.All(r => r.Reason == "filtered_external"),
+            $"non-filtered binding-incompleteness row for the nameof document: {rows}");
+    }
+
+    [Fact]
+    public async Task NameOfMethodGroup_IsNotAnUnresolvedRead()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class C
+                                                {
+                                                    public string? Name => nameof(N);
+                                                    public void N() { }
+                                                }
+                                                """));
+
+        // R142: a method group inside nameof has no symbol, only candidate symbols. The
+        // Reads/Writes extractor recorded it as an unresolved read, which wrote one
+        // unsupported_syntax row for the whole document.
+        var rows = string.Join(", ", extraction.Result.BindingIncompleteness
+            .Select(r => $"{r.DocumentPath}|{r.Reason}|{r.Count}"));
+        Assert.True(extraction.Result.BindingIncompleteness.All(r => r.Reason != "unsupported_syntax"),
+            $"unsupported_syntax row: {rows}");
+        Assert.DoesNotContain(extraction.Result.Edges,
+            e => e.Kind == "Reads" && e.TargetSymbolId.Contains("C.N(", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PrimaryConstructorController_WithNameOfAction_RecordsNoIncompleteBinding()
+    {
+        // R142 probe: the shape of an eNoteV2 controller document that held one
+        // unsupported_syntax row and so made its primary constructor an `unresolved`
+        // dead candidate. The row must not appear.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public abstract class ControllerBase { }
+                                                [System.AttributeUsage(System.AttributeTargets.Method)]
+                                                public sealed class HttpGetAttribute : System.Attribute { }
+                                                public interface IService { string Name(); }
+                                                public sealed class C(IService s) : ControllerBase
+                                                {
+                                                    [HttpGet]
+                                                    public string Get() => s.Name();
+                                                    public string? Route() => nameof(GetContent);
+                                                    [HttpGet("{id}")]
+                                                    public string GetContent() => string.Empty;
+                                                }
+                                                """));
+
+        var rows = string.Join(", ", extraction.Result.BindingIncompleteness
+            .Select(r => $"{r.DocumentPath}|{r.Reason}|{r.Count}"));
+        Assert.True(extraction.Result.BindingIncompleteness.All(r => r.Reason != "unsupported_syntax"),
+            $"unsupported_syntax row for the controller document: {rows}");
+    }
 }

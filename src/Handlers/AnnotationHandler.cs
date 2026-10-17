@@ -80,7 +80,6 @@ internal static class AnnotationHandler
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
-        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
@@ -91,12 +90,7 @@ internal static class AnnotationHandler
         var hasDocument = !string.IsNullOrEmpty(documentArg);
         var kindFilter = string.IsNullOrEmpty(kindArg) ? null : kindArg;
 
-        var limit = DefaultLimit;
-        if (!string.IsNullOrEmpty(limitArg))
-        {
-            if (!int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit) || limit < 1)
-                HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
-        }
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {

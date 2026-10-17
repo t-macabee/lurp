@@ -51,7 +51,7 @@ internal sealed class SearchTool
 
             var snippetTokens = snippet_tokens ?? SearchHandler.DefaultSnippetTokens;
             if (snippetTokens < 1)
-                throw new McpProtocolException("snippet-tokens must be a positive integer.", McpErrorCode.InvalidParams);
+                throw new McpProtocolException("snippet_tokens must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(snippet_tokens, McpLimits.MaxSnippetTokens, "snippet_tokens");
 
             if (!string.IsNullOrEmpty(cursor) && typeArg != "symbol")

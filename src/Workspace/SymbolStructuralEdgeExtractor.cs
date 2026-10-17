@@ -151,7 +151,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             return false;
         if (context.GeneratedDocuments.Contains(documentId.Value))
             return true;
-        return EdgeLocationResolver.IsGeneratedFilePath(documentId.Value.ToString());
+        return GeneratedFilePaths.IsGenerated(documentId.Value.ToString());
     }
 
     private (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)?

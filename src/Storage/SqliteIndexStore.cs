@@ -298,6 +298,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _pinStore!.GetStalePinnedSnapshotId(workspaceId);
     }
 
+    public string? ClearStalePin(string? workspaceId = null)
+    {
+        EnsureOpen();
+        return _pinStore!.ClearStalePin(workspaceId);
+    }
+
     public void SetPinnedSnapshot(string snapshotId)
     {
         EnsureOpen();

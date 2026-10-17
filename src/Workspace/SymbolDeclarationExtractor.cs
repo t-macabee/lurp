@@ -140,7 +140,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
             var sourceText = syntaxTree.GetText();
             var sourceString = sourceText.ToString();
 
-            var (fullSpan, signatureSpan, bodySpan, nameSpan) = DeclarationSpanComputer.ComputeSpans(syntaxNode, sourceString, encoding);
+            var (fullSpan, signatureSpan, bodySpan, nameSpan) = DeclarationSpanComputer.ComputeSpans(
+                EdgeLocationResolver.DeclarationNode(symbol, syntaxNode), sourceString, encoding);
 
             var isGenerated = context.GeneratedDocuments.Contains(documentId.Value);
             string? generatorIdentity = null;

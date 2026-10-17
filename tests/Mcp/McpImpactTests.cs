@@ -12,6 +12,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
     private static readonly string[] CallsKind = ["Calls"];
     private static readonly string[] InheritsKind = ["Inherits"];
     private static readonly string[] CompilerProvedProvenance = ["compiler_proved"];
+    private static readonly string[] StructuralDownstreamKinds = ["Contains", "Declares", "TestedBy"];
 
     private McpSessionContext CreateSession() => McpSessionContext.Create([$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"]);
 
@@ -126,8 +127,51 @@ public sealed class McpImpactTests : ImpactIndexFixture
                 cause.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
     }
 
+    // Contract/acceptance (R141, decision 20): the upstream default follows every edge kind
+    // except Declares, Contains and TestedBy; an explicit kinds array replaces that default;
+    // downstream keeps every kind.
     [Fact]
-    public async Task Impact_SnapshotMismatch_ReturnsInvalidParams()
+    public async Task Impact_UpstreamDefault_SkipsDeclaresContainsAndTestedBy()
+    {
+        var snapshotId = await IndexDirectionFixtureAsync();
+        await using var session = CreateSession();
+        var impact = new ImpactTool(session);
+
+        var hitId = ResolveSymbolId(snapshotId, "global::DirProj.Target.Hit");
+        var targetId = ResolveSymbolId(snapshotId, "global::DirProj.Target");
+        var callId = ResolveSymbolId(snapshotId, "global::DirProj.Caller.Call");
+        var callHitId = ResolveSymbolId(snapshotId, "global::DirProj.TargetTests.CallHit");
+
+        // (a) Nothing reached only over Declares (Target -> Hit) or TestedBy (Target ->
+        // CallHit) appears in the default upstream answer.
+        using (var upstream = JsonDocument.Parse(impact.LurpImpact(symbol: hitId, direction: "upstream", limit: 200)))
+            Assert.Equal(
+                new[] { callId, callHitId }.OrderBy(id => id, StringComparer.Ordinal),
+                McpSymbolIds(upstream).OrderBy(id => id, StringComparer.Ordinal));
+
+        using (var upstreamOfTest = JsonDocument.Parse(impact.LurpImpact(symbol: callHitId, direction: "upstream", limit: 200)))
+            Assert.DoesNotContain(targetId, McpSymbolIds(upstreamOfTest));
+
+        // (b) An explicit kinds array replaces the default: Declares is followed again.
+        using (var declaresOnly = JsonDocument.Parse(impact.LurpImpact(symbol: hitId, direction: "upstream", kinds: ["Declares"], limit: 200)))
+            Assert.Equal([targetId], McpSymbolIds(declaresOnly));
+
+        // (c) Downstream keeps every kind.
+        using var downstream = JsonDocument.Parse(impact.LurpImpact(symbol: targetId, direction: "downstream", max_depth: 1, limit: 200));
+        Assert.Equal(
+            StructuralDownstreamKinds.OrderBy(kind => kind, StringComparer.Ordinal),
+            downstream.RootElement.GetProperty("groups").EnumerateArray()
+                .Select(group => group.GetProperty("edge_kind").GetString()!)
+                .OrderBy(kind => kind, StringComparer.Ordinal));
+    }
+
+    private static List<string> McpSymbolIds(JsonDocument document) =>
+        document.RootElement.GetProperty("symbols").EnumerateArray()
+            .Select(symbol => symbol.GetProperty("symbol_id").GetString()!)
+            .ToList();
+
+    [Fact]
+    public async Task Impact_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexInitialAsync();
         await using var session = CreateSession();
@@ -137,7 +181,21 @@ public sealed class McpImpactTests : ImpactIndexFixture
             anyId = store.GetSymbolIdsInSnapshot(session.PinnedSnapshotId).First();
         var ex = Assert.Throws<McpProtocolException>(() => impact.LurpImpact(symbol: anyId, snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Contains("snapshot mismatch", ex.Message);
+        Assert.Equal("snapshot 'mismatch' not found.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Impact_MaxDepthBelowOne_NamesMaxDepth()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var impact = new ImpactTool(session);
+        string anyId;
+        using (var store = OpenStore(DbPath))
+            anyId = store.GetSymbolIdsInSnapshot(session.PinnedSnapshotId).First();
+        var ex = Assert.Throws<McpProtocolException>(() => impact.LurpImpact(symbol: anyId, max_depth: 0));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("max_depth must be a positive integer.", ex.Message);
     }
 
     [Fact]
@@ -217,6 +275,79 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", kinds: ["Bogus"]));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+    }
+
+    // R136: an empty filter is a rejection, not "no filter".
+    [Fact]
+    public async Task Mcp_EmptyKinds_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", kinds: []));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.StartsWith("kinds must name at least one edge kind. Use one of: ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mcp_BlankKindsItem_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", kinds: [""]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.StartsWith("kinds must name at least one edge kind. Use one of: ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mcp_KindsWithEmptyItem_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", kinds: ["Calls", ""]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("kinds contains an empty item.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Mcp_EmptyProvenance_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: []));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.StartsWith("provenance must name at least one provenance. Use one of: ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mcp_BlankProvenanceItem_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: [""]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.StartsWith("provenance must name at least one provenance. Use one of: ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Mcp_ProvenanceWithEmptyItem_IsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: ["compiler_proved", ""]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("provenance contains an empty item.", ex.Message);
     }
 
     [Fact]

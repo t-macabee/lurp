@@ -65,17 +65,7 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 
     internal string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
     {
-        var (docVersionId, lineStarts) = GetDocumentLineStarts(relativePath, snapshotId);
-        if (docVersionId == null || lineStarts == null || lineStarts.Length == 0)
-            return null;
-
-        var lineIndex = Math.Max(0, line - 1);
-        if (lineIndex >= lineStarts.Length)
-            return null;
-
-        var byteOffset = lineStarts[lineIndex];
-
-        return FindSymbolAtOffset(docVersionId, byteOffset, includeGenerated);
+        return NavigateToLocation(relativePath, line, snapshotId, includeGenerated)?.SymbolId;
     }
 
     internal NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
@@ -103,7 +93,9 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             """;
         if (!includeGenerated)
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
-        command.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
+        // A primary constructor and its type share a span in an older snapshot; the id
+        // tie-break keeps the answer for one snapshot the same on every run.
+        command.CommandText += " ORDER BY (d.full_end - d.full_start) ASC, d.symbol_id ASC LIMIT 1;";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@docVersionId", docVersionId);
         command.Parameters.AddWithValue("@byteOffset", lineStarts[lineIndex]);
@@ -154,28 +146,5 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             return (docVersionId, null);
 
         return (docVersionId, SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId));
-    }
-
-    private string? FindSymbolAtOffset(string docVersionId, int byteOffset, bool includeGenerated)
-    {
-        using var findCmd = _connection.CreateCommand();
-        findCmd.CommandText = """
-            SELECT d.symbol_id
-            FROM declarations d
-            WHERE d.document_version_id = @docVersionId
-              AND d.full_start IS NOT NULL
-              AND d.full_end IS NOT NULL
-              AND d.full_start <= @byteOffset
-              AND d.full_end > @byteOffset
-            """;
-
-        if (!includeGenerated) findCmd.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
-
-        findCmd.CommandText += " ORDER BY (d.full_end - d.full_start) ASC LIMIT 1;";
-
-        findCmd.Parameters.AddWithValue("@docVersionId", docVersionId);
-        findCmd.Parameters.AddWithValue("@byteOffset", byteOffset);
-
-        return findCmd.ExecuteScalar() as string;
     }
 }

@@ -2,6 +2,7 @@ using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Storage;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Lurp.Tests;
@@ -297,7 +298,155 @@ public sealed class PinSnapshotTests : IDisposable
     }
 
     [Fact]
-    public void GetPinnedSnapshot_FailsWithTheRealError_WhenAStalePinCannotBeCleared()
+    public void GetLatestSnapshotId_StalePin_ReadsTheLatestCompleteSnapshotAndKeepsThePin()
+    {
+        using (var store = CreateStore())
+        {
+            const string ws = "ws-stale-read-2";
+            InsertSnapshot(store, "snap-a", ws, DateTime.UtcNow.AddHours(-1));
+            InsertSnapshot(store, "snap-b", ws, DateTime.UtcNow);
+            store.SetPinnedSnapshot("snap-a");
+        }
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-a';");
+
+        using var writable = new SqliteIndexStore(_dbPath);
+        writable.Open();
+
+        // R149: a pin read is a read. A stale pin is treated as absent and left in place.
+        Assert.Equal("snap-b", writable.GetLatestSnapshotId("ws-stale-read-2"));
+        Assert.Equal("snap-a", PinnedSnapshotIdInDb(_dbPath));
+        writable.Close();
+    }
+
+    [Fact]
+    public void ClearStalePin_ReturnsTheStaleIdAndRemovesTheRow()
+    {
+        using var store = CreateStore();
+        const string ws = "ws-clear-stale";
+        InsertSnapshot(store, "snap-a", ws, DateTime.UtcNow.AddHours(-1));
+        InsertSnapshot(store, "snap-b", ws, DateTime.UtcNow);
+        store.SetPinnedSnapshot("snap-a");
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-a';");
+
+        Assert.Equal("snap-a", store.ClearStalePin());
+        Assert.Null(PinnedSnapshotIdInDb(_dbPath));
+        Assert.Null(store.ClearStalePin());
+    }
+
+    [Fact]
+    public void ClearStalePin_WithoutAWorkspaceId_RemovesOnlyThePinItReturns()
+    {
+        using var store = CreateStore();
+        InsertSnapshot(store, "snap-a", "ws-one", DateTime.UtcNow.AddHours(-1));
+        InsertSnapshot(store, "snap-b", "ws-two", DateTime.UtcNow);
+        store.SetPinnedSnapshot("snap-a");
+        store.SetPinnedSnapshot("snap-b");
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id IN ('snap-a', 'snap-b');");
+
+        var staleId = store.GetStalePinnedSnapshotId();
+        Assert.NotNull(staleId);
+        var pinsBefore = PinnedSnapshotIdsByWorkspace(_dbPath);
+        var staleWorkspace = pinsBefore.Single(kv => kv.Value == staleId).Key;
+        var otherWorkspace = pinsBefore.Keys.Single(k => k != staleWorkspace);
+
+        // R151: the clear and the stale read are one rule and one row.
+        Assert.Equal(staleId, store.ClearStalePin());
+
+        var pinsAfter = PinnedSnapshotIdsByWorkspace(_dbPath);
+        Assert.Single(pinsAfter);
+        Assert.Equal(pinsBefore[otherWorkspace], pinsAfter[otherWorkspace]);
+    }
+
+    [Fact]
+    public void ClearStalePin_KeepsAPinOnACompleteSnapshot()
+    {
+        using var store = CreateStore();
+        const string ws = "ws-clear-complete";
+        InsertSnapshot(store, "snap-a", ws, DateTime.UtcNow);
+        store.SetPinnedSnapshot("snap-a");
+
+        Assert.Null(store.ClearStalePin());
+        Assert.Equal("snap-a", PinnedSnapshotIdInDb(_dbPath));
+    }
+
+    [Fact]
+    public void ClearStalePin_ReturnsNull_WhenThereIsNoPin()
+    {
+        using var store = CreateStore();
+        Assert.Null(store.ClearStalePin());
+        Assert.Null(PinnedSnapshotIdInDb(_dbPath));
+    }
+
+    [Fact]
+    public void GetPinnedSnapshot_ReturnsNull_ForAStalePin_WithoutTouchingThePin()
+    {
+        using var store = CreateStore();
+        InsertSnapshot(store, "snap-a", "ws-stale", DateTime.UtcNow);
+        store.SetPinnedSnapshot("snap-a");
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-a';");
+
+        Assert.Null(store.GetPinnedSnapshot("ws-stale"));
+        Assert.Equal("snap-a", PinnedSnapshotIdInDb(_dbPath));
+        store.Close();
+    }
+
+    // R152 (decision 29): the active pin is the most recently set pin whose snapshot
+    // exists, has built_at_utc and is complete. A failed pin of another workspace
+    // never hides it, whatever order the pin rows were inserted in.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GetPinnedSnapshot_WithoutAWorkspaceId_SkipsAFailedPinOfAnotherWorkspace(bool pinBFirst)
+    {
+        using var store = CreateStore();
+        var older = DateTime.UtcNow.AddMinutes(-30);
+        var newer = DateTime.UtcNow.AddMinutes(-20);
+        InsertSnapshot(store, "snap-fail-a", "ws-pin-a", older);
+        InsertSnapshot(store, "snap-ok-b", "ws-pin-b", newer);
+
+        if (pinBFirst)
+        {
+            store.SetPinnedSnapshot("snap-ok-b");
+            store.SetPinnedSnapshot("snap-fail-a");
+        }
+        else
+        {
+            store.SetPinnedSnapshot("snap-fail-a");
+            store.SetPinnedSnapshot("snap-ok-b");
+        }
+
+        SetPinnedAt("ws-pin-b", DateTime.UtcNow.AddMinutes(-10));
+        // The failed pin is the most recently set pin; it is still the stale one.
+        SetPinnedAt("ws-pin-a", DateTime.UtcNow);
+        ExecuteSql("UPDATE snapshots SET status = 'failed' WHERE snapshot_id = 'snap-fail-a';");
+
+        var active = store.GetPinnedSnapshot();
+        Assert.NotNull(active);
+        Assert.Equal("snap-ok-b", active.PinnedSnapshotId);
+        Assert.Equal("ws-pin-b", active.WorkspaceId);
+        Assert.Equal("snap-ok-b", store.GetLatestSnapshotId());
+        Assert.Equal("snap-fail-a", store.GetStalePinnedSnapshotId());
+    }
+
+    [Fact]
+    public void GetPinnedSnapshot_WithoutAWorkspaceId_ChoosesTheMostRecentlySetCompletePin()
+    {
+        using var store = CreateStore();
+        InsertSnapshot(store, "snap-a", "ws-order-a", DateTime.UtcNow.AddMinutes(-2));
+        InsertSnapshot(store, "snap-b", "ws-order-b", DateTime.UtcNow.AddMinutes(-1));
+        store.SetPinnedSnapshot("snap-a");
+        store.SetPinnedSnapshot("snap-b");
+
+        SetPinnedAt("ws-order-a", DateTime.UtcNow.AddMinutes(-10));
+        SetPinnedAt("ws-order-b", DateTime.UtcNow.AddMinutes(-5));
+        Assert.Equal("snap-b", store.GetPinnedSnapshot()!.PinnedSnapshotId);
+
+        SetPinnedAt("ws-order-a", DateTime.UtcNow);
+        Assert.Equal("snap-a", store.GetPinnedSnapshot()!.PinnedSnapshotId);
+    }
+
+    [Fact]
+    public void ClearStalePin_FailsWithTheRealError_WhenTheDeleteIsBlocked()
     {
         using var store = CreateStore();
         InsertSnapshot(store, "snap-a", "ws-stale", DateTime.UtcNow);
@@ -307,7 +456,7 @@ public sealed class PinSnapshotTests : IDisposable
             CREATE TRIGGER block_pin_delete BEFORE DELETE ON snapshot_pins BEGIN SELECT RAISE(ABORT, 'pin delete blocked'); END;
             """);
 
-        var ex = Assert.Throws<SqliteException>(() => store.GetPinnedSnapshot("ws-stale"));
+        var ex = Assert.Throws<SqliteException>(() => store.ClearStalePin());
 
         Assert.Contains("pin delete blocked", ex.Message);
         store.Close();
@@ -328,7 +477,28 @@ public sealed class PinSnapshotTests : IDisposable
         readOnly.OpenReadOnly();
 
         Assert.Null(readOnly.GetPinnedSnapshot("ws-stale"));
+        Assert.Equal("snap-a", PinnedSnapshotIdInDb(_dbPath));
         readOnly.Close();
+    }
+
+    [Fact]
+    public void Timings_StalePin_WarnsAndUsesLatest()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        try
+        {
+            var result = TestConsole.Capture(() => TimingsHandler.Run([$"--output-dir={dir}", "--json"]));
+
+            Assert.Null(result.Failure);
+            Assert.Contains(HandlerBootstrap.StalePinWarning(staleId, latestId), result.Stderr);
+            using var doc = JsonDocument.Parse(result.Stdout);
+            Assert.Equal(latestId, doc.RootElement.GetProperty("snapshot_id").GetString());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]
@@ -414,36 +584,186 @@ public sealed class PinSnapshotTests : IDisposable
         }
     }
 
-    private static string CreateIndexedDirWithTwoSnapshots(out string staleId, out string latestId)
+    [Fact]
+    public void Annotate_StalePin_PrintsNoticeAndClearsThePin()
     {
-        var dir = Path.Combine(Path.GetTempPath(), $"lurp-stale-pin-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dir);
-        var dbPath = Path.Combine(dir, "index.db");
-        const string ws = "ws-stale-read";
-        var stale = Guid.NewGuid().ToString();
-        var latest = Guid.NewGuid().ToString();
-        using (var store = new SqliteIndexStore(dbPath))
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        try
+        {
+            var result = TestConsole.Capture(() => AnnotationHandler.RunAnnotate([
+                "--symbol=T:Some.Type|asm",
+                "--annotation-kind=note",
+                "--value=v1",
+                $"--output-dir={dir}"
+            ]));
+
+            Assert.Null(result.Failure);
+            Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
+            Assert.DoesNotContain("NOTICE", result.Stdout);
+            using (var doc = JsonDocument.Parse(result.Stdout))
+            {
+                Assert.Equal("ok", doc.RootElement.GetProperty("status").GetString());
+                Assert.Equal(latestId, doc.RootElement.GetProperty("snapshot_id").GetString());
+                Assert.Equal("T:Some.Type|asm", doc.RootElement.GetProperty("symbol_id").GetString());
+            }
+
+            Assert.Null(PinnedSnapshotIdIn(dir));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void RetractAnnotation_StalePin_PrintsNoticeAndClearsThePin()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        long annotationId;
+        using (var store = new SqliteIndexStore(Path.Combine(dir, "index.db")))
         {
             store.Open();
-            store.RunMigrations();
-            store.SaveWorkspace(ws, "/repo", "/repo/Test.slnx");
-            InsertSnapshot(store, stale, ws, DateTime.UtcNow.AddHours(-1));
-            InsertSnapshot(store, latest, ws, DateTime.UtcNow);
-            store.SetPinnedSnapshot(stale);
+            store.SaveAnnotations(latestId, [new AnnotationRecord("T:Some.Type|asm", "note", "v1")]);
+            annotationId = store.GetAnnotations(latestId).Single().AnnotationId;
         }
 
-        using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+        try
         {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE snapshots SET status = 'failed' WHERE snapshot_id = @stale;";
-            command.Parameters.AddWithValue("@stale", stale);
-            command.ExecuteNonQuery();
-        }
+            var result = TestConsole.Capture(() => AnnotationHandler.RunRetractAnnotation([
+                $"--annotation-id={annotationId}",
+                $"--output-dir={dir}"
+            ]));
 
-        staleId = stale;
-        latestId = latest;
+            Assert.Null(result.Failure);
+            Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
+            Assert.DoesNotContain("NOTICE", result.Stdout);
+            using (var doc = JsonDocument.Parse(result.Stdout))
+            {
+                Assert.Equal("ok", doc.RootElement.GetProperty("status").GetString());
+                Assert.Equal(latestId, doc.RootElement.GetProperty("snapshot_id").GetString());
+                Assert.Equal(annotationId, doc.RootElement.GetProperty("annotation_id").GetInt64());
+                Assert.True(doc.RootElement.GetProperty("retracted").GetBoolean());
+            }
+
+            Assert.Null(PinnedSnapshotIdIn(dir));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void PinSnapshot_ReplacingAStalePin_PrintsNotice()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        try
+        {
+            var result = TestConsole.Capture(() => PinSnapshotHandler.Run([
+                $"--snapshot={latestId}",
+                $"--output-dir={dir}"
+            ]));
+
+            Assert.Null(result.Failure);
+            Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
+            Assert.Contains($"Pinned snapshot {latestId}", result.Stdout);
+            Assert.Equal(latestId, PinnedSnapshotIdIn(dir));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    // R152 (decision 29): `pin-snapshot --snapshot=<id>` reports the pin of that
+    // snapshot's workspace, so another workspace's pin is neither the new pin nor the
+    // previous one.
+    [Fact]
+    public void PinSnapshot_WithOnlyAnotherWorkspacePinned_ReportsTheNewPinAndNoPreviousPin()
+    {
+        var dir = CreateTwoWorkspaceDir(out var completeSpaceId);
+        try
+        {
+            var result = TestConsole.Capture(() => PinSnapshotHandler.Run([
+                $"--snapshot={completeSpaceId}",
+                "--json",
+                $"--output-dir={dir}"
+            ]));
+
+            Assert.Null(result.Failure);
+            using var doc = JsonDocument.Parse(result.Stdout);
+            Assert.Equal(completeSpaceId, doc.RootElement.GetProperty("pinned_snapshot_id").GetString());
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("previous_pinned_snapshot_id").ValueKind);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private static string? PinnedSnapshotIdIn(string dir)
+    {
+        return PinnedSnapshotIdInDb(Path.Combine(dir, "index.db"));
+    }
+
+    private static string? PinnedSnapshotIdInDb(string dbPath)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT pinned_snapshot_id FROM snapshot_pins LIMIT 1;";
+        return command.ExecuteScalar() as string;
+    }
+
+    private static Dictionary<string, string> PinnedSnapshotIdsByWorkspace(string dbPath)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT workspace_id, pinned_snapshot_id FROM snapshot_pins;";
+        using var reader = command.ExecuteReader();
+        var rows = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (reader.Read())
+            rows[reader.GetString(0)] = reader.GetString(1);
+        return rows;
+    }
+
+    private static string CreateIndexedDirWithTwoSnapshots(out string staleId, out string latestId)
+    {
+        return IndexedDirFixture.Create(2, stalePin: true, out staleId, out latestId);
+    }
+
+    private static string CreateTwoWorkspaceDir(out string completeSnapshotId)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"lurp-pin-ws-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var pinnedEarlier = Guid.NewGuid().ToString();
+        completeSnapshotId = Guid.NewGuid().ToString();
+
+        using var store = new SqliteIndexStore(Path.Combine(dir, "index.db"));
+        store.Open();
+        store.RunMigrations();
+        store.SaveWorkspace("ws-pinned", "gitroot-pinned", "pinned.sln");
+        store.SaveWorkspace("ws-new", "gitroot-new", "new.sln");
+        InsertSnapshot(store, pinnedEarlier, "ws-pinned", DateTime.UtcNow.AddMinutes(-10));
+        InsertSnapshot(store, completeSnapshotId, "ws-new", DateTime.UtcNow.AddMinutes(-5));
+        store.SetPinnedSnapshot(pinnedEarlier);
         return dir;
+    }
+
+    private void SetPinnedAt(string workspaceId, DateTime pinnedAtUtc)
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE snapshot_pins SET pinned_at_utc = @pinnedAtUtc WHERE workspace_id = @workspaceId;";
+        command.Parameters.AddWithValue("@pinnedAtUtc", pinnedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        command.ExecuteNonQuery();
     }
 
     private void ExecuteSql(string sql)

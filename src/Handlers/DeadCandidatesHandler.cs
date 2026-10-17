@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -14,7 +13,6 @@ internal static class DeadCandidatesHandler
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         var kindArg = HandlerBootstrap.GetArgValue(args, "--kind=");
-        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var includePublic = args.Contains("--include-public");
         var includeGenerated = args.Contains("--include-generated");
@@ -24,12 +22,7 @@ internal static class DeadCandidatesHandler
         if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateLiveness.IsCandidateKind(kindArg))
             HandlerBootstrap.Fail($"ERROR: --kind must be one of: {DeadCandidateLiveness.CandidateKindsText} (case-insensitive). Got '{kindArg}'.");
 
-        var limit = DefaultLimit;
-        if (!string.IsNullOrEmpty(limitArg))
-        {
-            if (!int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit) || limit < 1)
-                HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
-        }
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
         if (limit > DeadCandidateLiveness.MaxPageSize)
             HandlerBootstrap.Fail($"ERROR: --limit must be <= {DeadCandidateLiveness.MaxPageSize}.");
 

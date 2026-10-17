@@ -9,7 +9,6 @@ internal static class GetSourceHandler
 
         var startLineRaw = HandlerBootstrap.GetArgValue(args, "--start-line=");
         var endLineRaw = HandlerBootstrap.GetArgValue(args, "--end-line=");
-        var contextLinesRaw = HandlerBootstrap.GetArgValue(args, "--context-lines=");
 
         int? startLine = null, endLine = null, contextLines = null;
 
@@ -23,11 +22,7 @@ internal static class GetSourceHandler
             if (!int.TryParse(endLineRaw, out var v) || v < 1) HandlerBootstrap.Fail("ERROR: --end-line must be a positive integer (>=1).");
             endLine = v;
         }
-        if (!string.IsNullOrEmpty(contextLinesRaw))
-        {
-            if (!int.TryParse(contextLinesRaw, out var v) || v < 0) HandlerBootstrap.Fail("ERROR: --context-lines must be a non-negative integer.");
-            contextLines = v;
-        }
+        contextLines = HandlerBootstrap.ParseNonNegativeIntArg(HandlerBootstrap.GetArgValue(args, "--context-lines="), "--context-lines=");
         if (contextLines.HasValue && startLine == null && endLine == null)
             HandlerBootstrap.Fail("ERROR: --context-lines requires --start-line or --end-line.");
         if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)

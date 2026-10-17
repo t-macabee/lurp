@@ -95,6 +95,20 @@ public sealed class McpBoundaryTests : IntegrationTestBase
         Assert.Contains("<= ", ex.Message);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public async Task Search_SnippetTokensBelowOne_IsRejected(int snippetTokens)
+    {
+        await IndexAsync();
+        await using var session = CreateSession();
+        var tool = new SearchTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpSearch(query: "Foo", snippet_tokens: snippetTokens));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Equal("snippet_tokens must be a positive integer.", ex.Message);
+    }
+
     [Fact]
     public async Task Context_AboveCaps_IsRejected()
     {

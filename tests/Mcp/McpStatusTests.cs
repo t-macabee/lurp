@@ -167,7 +167,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
-    public async Task Status_SnapshotMismatch_ReturnsInvalidParams()
+    public async Task Status_UnknownSnapshot_ReturnsInvalidParams()
     {
         await IndexAsync();
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
@@ -175,8 +175,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         var tool = new StatusTool(session);
         var ex = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(snapshot_id: "mismatch"));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Contains("snapshot mismatch", ex.Message);
-        Assert.Contains("lurp_refresh", ex.Message);
+        Assert.Equal("snapshot 'mismatch' not found.", ex.Message);
     }
 
     [Fact]
@@ -698,7 +697,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     }
 
     [Fact]
-    public async Task Status_FreshnessSection_MaxBytesTiny_NoTruncatedMarker()
+    public async Task Status_FreshnessSection_MaxBytesTiny_KeysAlwaysPresent()
     {
         await IndexAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
@@ -707,7 +706,8 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
 
         var json = await tool.LurpStatus(sections: "freshness", max_bytes: 100);
         using var doc = JsonDocument.Parse(json);
-        Assert.False(doc.RootElement.TryGetProperty("truncated", out _));
+        Assert.False(doc.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("document_freshness").ValueKind);
     }
 
     [Fact]
@@ -720,7 +720,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
 
         var json = await tool.LurpStatus(sections: "references", projects: _statusProjProjects, max_bytes: 400000);
         using var doc = JsonDocument.Parse(json);
-        Assert.False(doc.RootElement.TryGetProperty("truncated", out _));
+        Assert.False(doc.RootElement.GetProperty("truncated").GetBoolean());
 
         var detail = doc.RootElement.GetProperty("detail");
         var manifest = detail.GetProperty("manifest");
@@ -936,7 +936,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
 
         var ex0 = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_documents: 0));
         Assert.Equal(McpErrorCode.InvalidParams, ex0.ErrorCode);
-        Assert.Contains("max-documents", ex0.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("max_documents must be a positive integer.", ex0.Message);
 
         var exNeg = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_documents: -5));
         Assert.Equal(McpErrorCode.InvalidParams, exNeg.ErrorCode);
@@ -952,7 +952,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
 
         var ex0 = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_mismatches: 0));
         Assert.Equal(McpErrorCode.InvalidParams, ex0.ErrorCode);
-        Assert.Contains("max-mismatches", ex0.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("max_mismatches must be a positive integer.", ex0.Message);
 
         var exNeg = await Assert.ThrowsAsync<McpProtocolException>(async () => await tool.LurpStatus(max_mismatches: -1));
         Assert.Equal(McpErrorCode.InvalidParams, exNeg.ErrorCode);

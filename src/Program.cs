@@ -58,7 +58,7 @@ public static class Program
                 FlagCatalog.Type, FlagCatalog.Kind,
                 FlagCatalog.Limit with { Description = $"Max results per scope (default: {SearchHandler.DefaultLimit})." },
                 FlagCatalog.SnippetTokens,
-                FlagCatalog.Cursor with { Description = "Continue from a previous page's `nextCursor` (`--type=symbol` only)." },
+                FlagCatalog.Cursor with { Description = "Continue from a previous page's `next_cursor` (`--type=symbol` only)." },
                 FlagCatalog.IncludeGenerated,
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet

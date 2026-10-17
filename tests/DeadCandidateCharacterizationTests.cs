@@ -81,6 +81,46 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task NameOfReceiver_IsNotProvedDead()
+    {
+        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
+
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Holder.cs"] = """
+                            namespace TestProject;
+
+                            internal sealed class Holder
+                            {
+                                public int Value { get; }
+                            }
+
+                            internal sealed class Consumer
+                            {
+                                private readonly Holder _holder = new();
+
+                                public string Name() => nameof(_holder.Value);
+                            }
+                            """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var fieldId = ResolveSymbolId(snapshotId, "global::TestProject.Consumer._holder");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            // R147: removing the field breaks compilation, so a nameof receiver is live.
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId == fieldId && c.Status == DeadCandidateStatus.ProvedDead);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [SkippableFact]
     public async Task CorruptMetadataJson_ThrowsNamingSymbol()
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");

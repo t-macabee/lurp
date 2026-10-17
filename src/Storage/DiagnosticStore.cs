@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 
@@ -221,14 +222,15 @@ internal sealed class DiagnosticStore
                 {
                     try
                     {
-                        // Inline PathNormalizer.ToGitRelative (Lurp.Storage can't reference Lurp.Shared).
-                        var root = Path.GetFullPath(gitRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                        normalized = Path.GetRelativePath(root + Path.DirectorySeparatorChar, raw.DocumentPath).Replace('\\', '/');
+                        normalized = PathNormalizer.ToGitRelative(raw.DocumentPath, gitRoot);
                         inSnapshot = snapshotDocumentPaths.Contains(normalized);
                     }
-                    catch
+                    catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
                     {
-                        // Path outside git root (e.g. linked file) — leave as-is, mark out-of-snapshot.
+                        // Path.GetFullPath (on the git root) throws for an invalid or too-long
+                        // path, and Path.GetRelativePath throws for an empty one. A path
+                        // outside the git root does not throw: it comes back with a leading
+                        // '..'. Leave it as-is and mark it out-of-snapshot.
                         normalized = raw.DocumentPath;
                         inSnapshot = false;
                     }
@@ -247,7 +249,8 @@ internal sealed class DiagnosticStore
         if (documentPath != null)
             filtered = all.Where(x => string.Equals(x.Entry.NormalizedDocumentPath, documentPath, StringComparison.Ordinal));
         if (!includeGenerated)
-            filtered = filtered.Where(x => !IsGeneratedDiagnosticPath(x.Entry.NormalizedDocumentPath));
+            filtered = filtered.Where(x => string.IsNullOrEmpty(x.Entry.NormalizedDocumentPath) ||
+                                           !GeneratedFilePaths.IsGenerated(PathNormalizer.ToForwardSlash(x.Entry.NormalizedDocumentPath)));
 
         // Keyset pagination: skip past cursor, take limit + 1.
         var windowed = filtered;
@@ -268,36 +271,6 @@ internal sealed class DiagnosticStore
         var totalCount = filtered.Count();
         var items = rows.Select(r => r.Entry).ToList();
         return new DiagnosticsPage(items, nextCursor, totalCount);
-    }
-
-    /// <summary>
-    ///     Path-pattern generated-code detection for the <c>--include-generated</c> filter.
-    ///     Duplicated from <c>EdgeLocationResolver.IsGeneratedFilePath</c> (Lurp.Shared)
-    ///     because Lurp.Storage is a separate assembly with no reference back to the main
-    ///     Lurp assembly (the same constraint the inlined <c>PathNormalizer.ToGitRelative</c>
-    ///     logic above works around) — keep the two definitions in sync by hand.
-    ///     <c>ModelSnapshot.cs</c> is treated as generated alongside <c>*.Designer.cs</c>:
-    ///     EF Core scaffolds both from migrations and hand-editing either is discouraged,
-    ///     even though — unlike <c>obj/**</c> — both are normally committed to source control.
-    /// </summary>
-    private static bool IsGeneratedDiagnosticPath(string? path)
-    {
-        if (string.IsNullOrEmpty(path))
-            return false;
-
-        var normalized = path.Replace('\\', '/');
-
-        if (normalized.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalized.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
     }
 
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)

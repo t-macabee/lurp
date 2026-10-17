@@ -56,5 +56,14 @@ public sealed class McpStdioBoundaryTests : IntegrationTestBase
         Assert.Equal(18, names.Count);
         Assert.Contains("lurp_index", names);
         Assert.Contains("lurp_retract_annotation", names);
+
+        // annotation_id is optional in the tool schema: the SDK binds a missing value
+        // as null and the tool answers with its own named -32602 error.
+        var retract = list.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Single(t => t.GetProperty("name").GetString() == "lurp_retract_annotation");
+        var schema = retract.GetProperty("inputSchema");
+        Assert.False(
+            schema.TryGetProperty("required", out var required) &&
+            required.EnumerateArray().Any(name => name.GetString() == "annotation_id"));
     }
 }

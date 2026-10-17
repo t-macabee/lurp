@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
@@ -15,7 +14,6 @@ internal static class DiagnosticsHandler
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
         var severityArg = HandlerBootstrap.GetArgValue(args, "--severity=");
         var idArg = HandlerBootstrap.GetArgValue(args, "--id=");
-        var limitArg = HandlerBootstrap.GetArgValue(args, "--limit=");
         var cursorArg = HandlerBootstrap.GetArgValue(args, "--cursor=");
         var includeGenerated = args.Contains("--include-generated");
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
@@ -24,12 +22,7 @@ internal static class DiagnosticsHandler
         var severityFilter = string.IsNullOrEmpty(severityArg) ? null : severityArg;
         var idFilter = string.IsNullOrEmpty(idArg) ? null : idArg;
 
-        var limit = DefaultLimit;
-        if (!string.IsNullOrEmpty(limitArg))
-        {
-            if (!int.TryParse(limitArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out limit) || limit < 1)
-                HandlerBootstrap.Fail("ERROR: --limit must be a positive integer.");
-        }
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {

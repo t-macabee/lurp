@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -294,15 +295,40 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
             await RunMode("status", "--output=json"), "pinned");
         await RunMode("pin-snapshot", "--clear", "--json");
 
-        // status with a stale pin (T12, R107): stale_pinned_snapshot_id. Use a
-        // non-complete, non-failed status so latest_failure stays absent and the
-        // shape under test is the stale pin alone.
+        // status with a stale pin (T12, R107): stale_pinned_snapshot_id. Snapshot A is failed, so the pin is stale. The newer complete B replaced it, so latest_failure is absent.
         await RunMode("pin-snapshot", $"--snapshot={fixture.SnapshotA}", "--json");
-        SetSnapshotStatus(fixture.SnapshotA, "in_progress");
+        SetSnapshotState(fixture.SnapshotA, "failed", "fixture_failure", "fixture failure message");
         ExtractJsonShape("cli:status:json",
             await RunMode("status", "--output=json"), "stale-pin");
-        SetSnapshotStatus(fixture.SnapshotA, "complete");
+        SetSnapshotState(fixture.SnapshotA, "complete");
         await RunMode("pin-snapshot", "--clear", "--json");
+
+        // status with a failed snapshot newer than the last complete one (B115, R139): latest_failure is present.
+        var snapshotABuiltAtUtc = GetSnapshotBuiltAtUtc(fixture.SnapshotA);
+        SetSnapshotState(fixture.SnapshotA, "failed", "fixture_failure", "fixture failure message",
+            DateTime.UtcNow.AddDays(1).ToString("O", CultureInfo.InvariantCulture));
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", "--output=json"), "failed-snapshot");
+        SetSnapshotState(fixture.SnapshotA, "complete", builtAtUtc: snapshotABuiltAtUtc);
+
+        // status with an older failed snapshot and a newer complete one (R139, F13): the
+        // newest snapshot did not fail, so latest_failure must be absent.
+        var failedThenCompleteDir = CopyDatabaseWithFailedThenComplete();
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", $"--output-dir={failedThenCompleteDir}", "--output=json"), "failed-then-complete");
+
+        // status with no database at all (R129, B120): the never-indexed branch follows the
+        // same null rule as the other branches, so no latest_failure or schema_version key.
+        var noDbDir = Path.Combine(fixture.TempDir, "never-indexed-no-db");
+        Directory.CreateDirectory(noDbDir);
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", $"--output-dir={noDbDir}", "--output=json"), "never-indexed-no-db");
+
+        // status with a database whose snapshots are all failed (R129, B123): the
+        // never-indexed branch with schema_version and latest_failure present.
+        var failedDir = CopyDatabaseWithFailedSnapshots();
+        ExtractJsonShape("cli:status:json",
+            await RunMode("status", $"--output-dir={failedDir}", "--output=json"), "never-indexed-failed");
 
         // --- MCP tools (T9) ---
         // One session for every tool call; it pins to the latest snapshot, which is
@@ -908,13 +934,82 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         return File.ReadAllText(path);
     }
 
-    private void SetSnapshotStatus(string snapshotId, string status)
+    private void SetSnapshotState(string snapshotId, string status, string? reasonCode = null, string? message = null,
+        string? builtAtUtc = null)
     {
-        using var connection = new SqliteConnection($"Data Source={fixture.DbPath}");
-        connection.Open();
+        using var connection = TestDatabase.Open(fixture.DbPath);
+        SetSnapshotState(connection, snapshotId, status, reasonCode, message, builtAtUtc);
+    }
+
+    private string GetSnapshotBuiltAtUtc(string snapshotId)
+    {
+        using var connection = TestDatabase.Open(fixture.DbPath);
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @id;";
+        command.CommandText = "SELECT built_at_utc FROM snapshots WHERE snapshot_id = @id;";
+        command.Parameters.AddWithValue("@id", snapshotId);
+        return (string)command.ExecuteScalar()!;
+    }
+
+    // R129: a copy of the fixture database whose every snapshot row is failed and whose pin
+    // row is cleared, so LoadLatestSnapshot (complete rows only) finds no snapshot.
+    private string CopyDatabaseWithFailedSnapshots()
+    {
+        var directory = Path.Combine(fixture.TempDir, "never-indexed-failed");
+        Directory.CreateDirectory(directory);
+        var dbPath = Path.Combine(directory, "index.db");
+        SqliteConnection.ClearAllPools();
+        File.Copy(fixture.DbPath, dbPath, overwrite: true);
+
+        using var connection = TestDatabase.Open(dbPath);
+        var snapshotIds = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT snapshot_id FROM snapshots;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                snapshotIds.Add(reader.GetString(0));
+        }
+
+        foreach (var snapshotId in snapshotIds)
+            SetSnapshotState(connection, snapshotId, "failed", "fixture_failure", "fixture failure message");
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DELETE FROM snapshot_pins;";
+            command.ExecuteNonQuery();
+        }
+
+        return directory;
+    }
+
+    // R139: a copy of the fixture database where snapshot A (the older one) is failed and
+    // snapshot B (the newer one) is complete. latest_failure must be absent: the newest
+    // snapshot did not fail.
+    private string CopyDatabaseWithFailedThenComplete()
+    {
+        var directory = Path.Combine(fixture.TempDir, "failed-then-complete");
+        Directory.CreateDirectory(directory);
+        var dbPath = Path.Combine(directory, "index.db");
+        SqliteConnection.ClearAllPools();
+        File.Copy(fixture.DbPath, dbPath, overwrite: true);
+
+        using var connection = TestDatabase.Open(dbPath);
+        SetSnapshotState(connection, fixture.SnapshotA, "failed", "fixture_failure", "fixture failure message");
+        return directory;
+    }
+
+    private static void SetSnapshotState(SqliteConnection connection, string snapshotId, string status, string? reasonCode,
+        string? message, string? builtAtUtc = null)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = builtAtUtc is null
+            ? "UPDATE snapshots SET status = @status, failure_reason_code = @reasonCode, failure_message = @message WHERE snapshot_id = @id;"
+            : "UPDATE snapshots SET status = @status, failure_reason_code = @reasonCode, failure_message = @message, built_at_utc = @builtAtUtc WHERE snapshot_id = @id;";
         command.Parameters.AddWithValue("@status", status);
+        command.Parameters.AddWithValue("@reasonCode", (object?)reasonCode ?? DBNull.Value);
+        command.Parameters.AddWithValue("@message", (object?)message ?? DBNull.Value);
+        if (builtAtUtc is not null)
+            command.Parameters.AddWithValue("@builtAtUtc", builtAtUtc);
         command.Parameters.AddWithValue("@id", snapshotId);
         command.ExecuteNonQuery();
     }
@@ -1066,11 +1161,6 @@ public sealed class OutputContractFixture : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        try
-        {
-            SqliteConnection.ClearAllPools();
-        }
-        catch { }
         if (!string.IsNullOrEmpty(SolutionPath))
             TestDatabase.DeleteSolutionCache(SolutionPath);
         TestDatabase.DeleteDirectory(TempDir);

@@ -609,6 +609,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         List<EdgeRecord> edges,
         HashSet<(string Source, string Target, string Kind)> seen)
     {
+        // A nameof argument is a compile-time name, not a read
+        // (NameOfReflectionExtractor records it as ReflectionMemberRef).
+        if (NameOfReflectionExtractor.IsInsideNameOf(operation.Syntax))
+            return;
+
         context.RecordFilteredExternal(member, operation.Syntax);
         var targetId = context.MakeSymbolId(member);
         if (targetId == null)
