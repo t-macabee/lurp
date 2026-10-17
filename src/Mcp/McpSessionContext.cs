@@ -68,9 +68,10 @@ internal sealed class McpSessionContext : IAsyncDisposable
 
         // Only sanctioned console call in src/Mcp/** — before stdio handshake.
         var shortId = snapshotId.Length > 12 ? snapshotId[..12] : snapshotId;
-        Console.Error.WriteLine($"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}");
+        var startupNotice = $"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}";
         if (stalePin != null)
-            Console.Error.WriteLine(HandlerBootstrap.StalePinWarning(stalePin, snapshotId));
+            startupNotice += Environment.NewLine + HandlerBootstrap.StalePinWarning(stalePin, snapshotId);
+        Console.Error.WriteLine(startupNotice);
 
         return new McpSessionContext(snapshotId, dbPath, outputDir, solutionPath);
     }
