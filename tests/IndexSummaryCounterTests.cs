@@ -11,44 +11,10 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class IndexSummaryCounterTests : IntegrationTestBase
 {
-    private const string Project = "Core";
-
-    private const string PartialPartOneSource = """
-                                               namespace Core;
-
-                                               public partial class PartialShape
-                                               {
-                                                   public int FromPartOne() => 1;
-                                               }
-                                               """;
-
-    private const string PartialPartTwoSource = """
-                                               namespace Core;
-
-                                               public partial class PartialShape
-                                               {
-                                                   public int FromPartTwo() => 2;
-                                               }
-                                               """;
-
-    private const string WidgetSource = """
-                                        namespace Core;
-
-                                        public class Widget
-                                        {
-                                            public int Value { get; set; }
-                                        }
-                                        """;
-
     [Fact]
     public async Task FullIndex_SummaryCountsExtractedRecordsAndDistinctSymbols()
     {
-        CreateProject(Project, new Dictionary<string, string>
-        {
-            ["PartialShape.Part1.cs"] = PartialPartOneSource,
-            ["PartialShape.Part2.cs"] = PartialPartTwoSource,
-            ["Widget.cs"] = WidgetSource
-        });
+        CreateProject(PartialShapeFixture.ProjectName, PartialShapeFixture.Sources);
 
         using var store = OpenStore(DbPath);
         var sink = new CapturingOutputSink();

@@ -118,7 +118,7 @@ older runtime does not. Indexing and solution-backed status
 solution should be restored (an unrestored project still indexes, with a warning and missing edges; see "Restore first" below).
 
 ```bash
-dotnet tool install --global lurp --version 3.5.0
+dotnet tool install --global lurp --version 3.5.1
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -205,14 +205,13 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 | eNoteV2 (402 docs at `4ba9901`) full index | ~18 s |
 | eNoteV2 incremental (no changes) | ~0.3 s |
 | Capsule token estimates | `estimated_tokens` (content) vs `estimated_artifact_tokens` (delivery) |
-| Incremental↔full convergence | 5 cycles; 0 changed docs after cycle 1 |
 
-Measured 2026-10-16 on commit `c5127d1` (Release build) and eNoteV2 at `4ba9901` (402 documents; the `5b13fbd` tree named at the top of this file has 562 documents and is newer, so these timings do not describe it): wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document; in a synthetic 4,000-document solution that takes about 0.6 s. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
+Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 at `4ba9901` (402 documents; the `5b13fbd` tree named at the top of this file has 562 documents and is newer, so these timings do not describe it): wall time, median of three warm runs; 12th Gen Intel(R) Core(TM) i5-12500H, 16 GB RAM, NVMe SSD, Microsoft Windows 11 Education, AC power, Best performance mode. A no-change run hashes every document. The first run after the machine has been idle for hours can be much slower, because the source files are read cold.
 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.5.0. This source tree is <!-- generated:versions -->tool 3.5.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.5.1. This source tree is <!-- generated:versions -->tool 3.5.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`

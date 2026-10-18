@@ -47,7 +47,26 @@ public abstract class IntegrationTestBase : IDisposable
         IReadOnlyDictionary<string, string>? msbuildProperties = null,
         string targetFramework = "net10.0")
     {
-        var projDir = Path.Combine(TestDir, "src", projectName);
+        WriteSolution(TestDir, projectName, sourceFiles,
+            packageReferences, projectReferences, frameworkReferences, msbuildProperties, targetFramework);
+    }
+
+    /// <summary>
+    ///     Writes one .csproj, its source files and the project's folder entry in
+    ///     <c>{solutionDir}/Test.slnx</c>.
+    /// </summary>
+    public static void WriteSolution(
+        string solutionDir,
+        string projectName,
+        IReadOnlyDictionary<string, string> sourceFiles,
+        string[]? packageReferences = null,
+        string[]? projectReferences = null,
+        string[]? frameworkReferences = null,
+        IReadOnlyDictionary<string, string>? msbuildProperties = null,
+        string targetFramework = "net10.0")
+    {
+        var solutionPath = Path.Combine(solutionDir, "Test.slnx");
+        var projDir = Path.Combine(solutionDir, "src", projectName);
         Directory.CreateDirectory(projDir);
 
         var sb = new StringBuilder();
@@ -99,10 +118,10 @@ public abstract class IntegrationTestBase : IDisposable
         foreach (var (fileName, content) in sourceFiles)
             File.WriteAllText(Path.Combine(projDir, fileName), content);
 
-        var slnxContent = File.Exists(SolutionPath) ? File.ReadAllText(SolutionPath) : "<Solution>\n</Solution>";
+        var slnxContent = File.Exists(solutionPath) ? File.ReadAllText(solutionPath) : "<Solution>\n</Solution>";
         slnxContent = slnxContent.Replace("</Solution>",
             $"  <Folder Name=\"/src/{projectName}/\">\n    <Project Path=\"src/{projectName}/{projectName}.csproj\" />\n  </Folder>\n</Solution>");
-        File.WriteAllText(SolutionPath, slnxContent);
+        File.WriteAllText(solutionPath, slnxContent);
     }
 
     private static (string Name, string? Version) SplitPackage(string package)
