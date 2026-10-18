@@ -17,7 +17,7 @@ source with evidence levels each time.
 
 ## [What the model sees](https://t-macabee.github.io/lurp/MODEL_VIEW.html)
 
-A point-in-time map of one Lurp 3.5.0 index of
+A point-in-time map of one Lurp 3.5.1 index of
 [eNoteV2](https://github.com/t-macabee/eNoteV2) (`eNote/eNote.sln` at `5b13fbd`, 7 projects):
 the evidence level of every edge, the DI, routing and EF Core surfaces, and the
 full edge ledgers behind them. [`scripts/model-view/`](scripts/model-view/)
