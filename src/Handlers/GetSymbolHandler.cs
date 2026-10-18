@@ -33,6 +33,7 @@ internal static class GetSymbolHandler
 
     internal static ViewSelection ResolveViewSelection(string viewArg, string? contextLinesArg)
     {
+        var contextLines = HandlerBootstrap.ParseNonNegativeIntArg(contextLinesArg, "--context-lines=") ?? DefaultContextLines;
         switch (viewArg.ToLowerInvariant())
         {
             case "metadata":
@@ -46,7 +47,6 @@ internal static class GetSymbolHandler
             case "containing-type":
                 return new ViewSelection(ViewKind.Declaration, false, true, false, DefaultContextLines);
             case "surrounding":
-                var contextLines = HandlerBootstrap.ParseNonNegativeIntArg(contextLinesArg, "--context-lines=") ?? DefaultContextLines;
                 return new ViewSelection(ViewKind.Declaration, false, false, true, contextLines);
             default:
                 HandlerBootstrap.Fail($"ERROR: Unknown view kind '{viewArg}'." + Environment.NewLine +

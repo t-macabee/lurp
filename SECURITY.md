@@ -48,10 +48,11 @@ A database that someone else made can hold any rows.
   `trusted_schema=OFF`, so a crafted schema cannot call SQL functions from a view
   or a trigger.
 - Write modes (`index`, `annotate`, `retract-annotation`, `pin-snapshot`) open the
-  file read-write and migrate an older schema. Point them only at a database that
-  Lurp made.
+  file read-write. Only `index`, `pin-snapshot` and `lurp_index` migrate an older
+  schema; `annotate` and `retract-annotation` fail on one. Point them only at a
+  database that Lurp made.
 - The freshness check reads the time stamp, and in `hash` mode the content, of
-  each document path that the database stores, relative to the repository root. A
+  each document path that the database stores, relative to the solution directory. A
   crafted path can name a file outside the repository. The check reports only
   whether that file changed. It returns no file content.
 
@@ -107,7 +108,8 @@ invalid-params error.
 
 ## What Lurp writes
 
-An index run does not create or change files in the analyzed source tree. Lurp
+An index run does not create or change files in the analyzed source tree, except
+for the case below (a project that sets its own intermediate path). Lurp
 writes only here:
 
 | Path | Content |

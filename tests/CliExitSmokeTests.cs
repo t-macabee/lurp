@@ -558,14 +558,25 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Theory]
-    [InlineData("abc")]
-    [InlineData("-1")]
-    public void GetSymbol_InvalidContextLines_ExitsOneWithOneErrorLine(string value)
+    [InlineData("metadata", "abc")]
+    [InlineData("metadata", "-1")]
+    [InlineData("signature", "abc")]
+    [InlineData("signature", "-1")]
+    [InlineData("body", "abc")]
+    [InlineData("body", "-1")]
+    [InlineData("declaration", "abc")]
+    [InlineData("declaration", "-1")]
+    [InlineData("containing-type", "abc")]
+    [InlineData("containing-type", "-1")]
+    [InlineData("surrounding", "abc")]
+    [InlineData("surrounding", "-1")]
+    public void GetSymbol_InvalidContextLines_ExitsOneWithOneErrorLine(string view, string value)
     {
-        var dir = CreateIndexedDir(withSnapshot: true);
+        var dir = CreateIndexedDir(withSnapshot: true, out var snapshotId);
         try
         {
-            var result = RunCli("--mode=get-symbol", "--symbol=T:Some.Type|assembly", "--view=surrounding",
+            SeedSymbol(dir, snapshotId, "T:Some.Type|assembly");
+            var result = RunCli("--mode=get-symbol", "--symbol=T:Some.Type|assembly", $"--view={view}",
                 $"--context-lines={value}", $"--output-dir={dir}");
             AssertSingleCliError(result, "ERROR: --context-lines must be a non-negative integer.");
         }
@@ -574,6 +585,41 @@ public sealed class CliExitSmokeTests : IDisposable
             SqliteConnection.ClearAllPools();
             Directory.Delete(dir, true);
         }
+    }
+
+    [Fact]
+    public void GetSymbol_MetadataView_ValidContextLines_ExitsZero()
+    {
+        var dir = CreateIndexedDir(withSnapshot: true, out var snapshotId);
+        try
+        {
+            SeedSymbol(dir, snapshotId, "T:Some.Type|assembly");
+            var result = RunCli("--mode=get-symbol", "--symbol=T:Some.Type|assembly", "--view=metadata",
+                "--context-lines=2", $"--output-dir={dir}");
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("\"symbol_id\": \"T:Some.Type|assembly\"", result.Stdout);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private static void SeedSymbol(string dir, string snapshotId, string symbolId)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(dir, "index.db")}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
+            VALUES (@symbolId, 'T:Some.Type', 'assembly', 'Type', NULL, 'Some.Type');
+            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
+            VALUES (@snapshotId, @symbolId, 'Some.Type', NULL);
+            """;
+        command.Parameters.AddWithValue("@symbolId", symbolId);
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.ExecuteNonQuery();
     }
 
     [Fact]

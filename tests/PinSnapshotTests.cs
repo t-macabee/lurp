@@ -705,6 +705,96 @@ public sealed class PinSnapshotTests : IDisposable
         }
     }
 
+    // F8 / decision 2: index writes a snapshot and reads no pin, so it leaves a stale
+    // pin in place and prints no stale-pin warning. Only annotate, retract-annotation
+    // and pin-snapshot remove a stale pin.
+    [Fact]
+    public async Task Index_StalePin_LeavesThePinAndPrintsNoWarning()
+    {
+        var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
+        var solutionDir = Path.Combine(Path.GetTempPath(), $"lurp-pin-solution-{Guid.NewGuid():N}");
+        try
+        {
+            WriteMinimalSolution(solutionDir);
+
+            var result = await TestConsole.CaptureAsync(() => IndexHandler.Run([
+                $"--solution={Path.Combine(solutionDir, "Test.slnx")}",
+                $"--output-dir={dir}",
+                "--strategy=full"
+            ], CancellationToken.None));
+
+            Assert.Null(result.Failure);
+            Assert.DoesNotContain("pinned snapshot", result.Stderr);
+            Assert.DoesNotContain("NOTICE", result.Stderr);
+            Assert.Equal(staleId, PinnedSnapshotIdIn(dir));
+
+            // Positive control: the same database still has a stale pin, and a read
+            // command still warns about it.
+            var read = TestConsole.Capture(() => FindSymbolHandler.Run([
+                "--symbol=T:Missing.Type|assembly",
+                $"--output-dir={dir}"
+            ]));
+            Assert.Contains($"WARNING: pinned snapshot '{staleId}' is not complete;", read.Stderr);
+            Assert.Contains($"'{latestId}'", read.Failure!.Message);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, true);
+            TestDatabase.DeleteDirectory(solutionDir);
+        }
+    }
+
+    /// <summary>
+    ///     The R156 fixture shape: one project, a partial type in two documents and
+    ///     an ordinary type in a third.
+    /// </summary>
+    private static void WriteMinimalSolution(string solutionDir)
+    {
+        var projectDir = Path.Combine(solutionDir, "src", "Core");
+        Directory.CreateDirectory(projectDir);
+        File.WriteAllText(Path.Combine(solutionDir, "Test.slnx"), """
+            <Solution>
+              <Folder Name="/src/Core/">
+                <Project Path="src/Core/Core.csproj" />
+              </Folder>
+            </Solution>
+            """);
+        File.WriteAllText(Path.Combine(projectDir, "Core.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(projectDir, "PartialShape.Part1.cs"), """
+            namespace Core;
+
+            public partial class PartialShape
+            {
+                public int FromPartOne() => 1;
+            }
+            """);
+        File.WriteAllText(Path.Combine(projectDir, "PartialShape.Part2.cs"), """
+            namespace Core;
+
+            public partial class PartialShape
+            {
+                public int FromPartTwo() => 2;
+            }
+            """);
+        File.WriteAllText(Path.Combine(projectDir, "Widget.cs"), """
+            namespace Core;
+
+            public class Widget
+            {
+                public int Value { get; set; }
+            }
+            """);
+    }
+
     private static string? PinnedSnapshotIdIn(string dir)
     {
         return PinnedSnapshotIdInDb(Path.Combine(dir, "index.db"));

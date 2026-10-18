@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.5.0, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.5.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -131,7 +131,8 @@ which start a background (re-)index or a retraction through a separate writer co
 
 Read commands never migrate `index.db`. They refuse a database whose schema
 version differs from `VersionConstants.DatabaseSchemaVersion` and name the fix
-(`--mode=index`, or a newer Lurp). Only `index`, `pin-snapshot` and `lurp_index`
+(`--mode=index`, or a newer Lurp). The exception is `status`, which reports
+both versions and exits 0. Only `index`, `pin-snapshot` and `lurp_index`
 migrate.
 
 ### 5.1 Impact reachability

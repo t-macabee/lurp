@@ -57,8 +57,7 @@ and reads keep using it. Pin the new snapshot, or remove the pin with
   `direction: "upstream"`) follows every edge kind except `Declares`,
   `Contains` and `TestedBy` when you give no kinds. These three kinds lead from
   a member to its type and from a test to the code that the test covers. That
-  is not "what depends on this symbol". On eNoteV2, upstream of one service
-  method went from 521 symbols to 6. `--kinds=` (MCP `kinds`) still replaces
+  is not "what depends on this symbol". `--kinds=` (MCP `kinds`) still replaces
   the default set. The downstream direction does not change.
 - `outline` and `lurp_outline` do not list compiler-generated members (for
   example the `Equals` and `ToString` of a record). They list only
@@ -82,8 +81,7 @@ and reads keep using it. Pin the new snapshot, or remove the pin with
   and `Value` in `nameof(_holder.Value)`. It records no `Reads` edge, because
   a `nameof` reads nothing at run time. In 3.0.2, a `nameof` of a method group
   also added a false `unsupported_syntax` completeness row, and that row made
-  the dead-candidate results of the whole document `unresolved`. On eNoteV2
-  the `unresolved` count went from 12 to 0.
+  the dead-candidate results of the whole document `unresolved`.
 
 ### Inputs that are now errors
 
@@ -124,10 +122,12 @@ Each error is one `ERROR:` line on stderr with exit code 1.
 - Only `annotate`, `retract-annotation` and `pin-snapshot` remove a stale pin
   (a pin on a snapshot that is missing or not complete). They print
   `NOTICE: removed the stale pin on snapshot '<id>' (the snapshot is not
-  complete).` to stderr. Every other command, `index` and `lurp_index`
-  included, leaves the pin in place, uses the latest complete snapshot and
-  prints the stale-pin `WARNING:`. 3.0.2 removed the pin without a message in
-  every command that opened the database for writing.
+  complete).` to stderr. `index`, `lurp_index` and `status` leave the pin in
+  place and print no `WARNING:` (`status` shows an ignored pin on its `Pin:`
+  line and in `stale_pinned_snapshot_id`; the MCP server prints the warning once
+  at startup). Every other command leaves the pin in place, uses the latest
+  complete snapshot and prints the stale-pin `WARNING:`. 3.0.2 removed the pin
+  without a message in every command that opened the database for writing.
 - `timings` now prints the stale-pin `WARNING:` like the other read commands.
 - One database can hold more than one workspace (two solutions indexed into
   one output folder). Reads then use the most recently set pin whose snapshot

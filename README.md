@@ -115,7 +115,7 @@ Requires a .NET 10 runtime to run any mode; the package declares
 older runtime does not. Indexing and solution-backed status
 (`--mode=index`, `status --solution=`, MCP `lurp_index`, and MCP `lurp_status` with
 `full:true`) also require a .NET SDK that can build the target solution, and the
-solution must be restored.
+solution should be restored (an unrestored project still indexes, with a warning and missing edges; see "Restore first" below).
 
 ```bash
 dotnet tool install --global lurp --version 3.5.0
@@ -124,8 +124,11 @@ lurp --mode=index --solution=path/to/Your.slnx
 
 Without `--output-dir`, the database and the capsule files go to
 `%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`. Pass `--output-dir=./out`
-to put them elsewhere. The MSBuild design-time intermediates always go to that
-`%LOCALAPPDATA%\` folder.
+to put them elsewhere. The MSBuild design-time intermediates go to that `%LOCALAPPDATA%\` folder,
+unless the project moves its own intermediate path or assigns
+`CustomBeforeMicrosoftCommonTargets` in its project file; then the design-time
+files stay in the project's own `obj/` and the run reports
+`intermediate_redirect_not_applied`.
 
 <details>
 <summary>Build from source & environment variables</summary>
@@ -209,13 +212,13 @@ Measured 2026-10-16 on commit `c5127d1` (Release build) and eNoteV2 at `4ba9901`
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.5.0. This source tree is <!-- generated:versions -->tool 3.5.0, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.5.0. This source tree is <!-- generated:versions -->tool 3.5.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
 CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
 `workflow_dispatch`); a release publishes only the CI-built package of a commit
-that passed that gate. Roadmap: surfacing the
+that passed that gate, unless the release run is started with an `override_reason` (see [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). Roadmap: surfacing the
 per-symbol TFM set in reads and richer DI parameter-type matching are postponed
 by design (see
 [DeclaredBoundaries](notes/TRUST_KERNEL.md#declared-boundaries-registry-capsule-audit-task-7)).
@@ -224,6 +227,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_3.5.1.md](docs/RELEASE_NOTES_3.5.1.md): the 3.5.1 changes (the `--context-lines=` rule for every `get-symbol` view, the annotations path description, and the 3.5.0 documentation corrections); no index run is needed.
 - [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md): the 3.5.0 changes (CLI/MCP contract 6, primary-constructor and `nameof` facts, new input errors) and the one index run it needs.
 - [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md): the 3.0.2 changes (partial-type edge locations, errors that 3.0.1 hid) and the one index run it needs.
 - [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md): the 3.0.1 fix (an index run that failed after a re-pin).

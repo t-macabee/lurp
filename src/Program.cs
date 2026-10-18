@@ -88,7 +88,7 @@ public static class Program
             [
                 FlagCatalog.Symbol with { Description = "The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name.", Requirement = FlagRequirement.Required },
                 FlagCatalog.Direction, FlagCatalog.Kinds, FlagCatalog.Provenance, FlagCatalog.MaxDepth,
-                FlagCatalog.Limit with { Description = $"Symbols per page (default: {ImpactHandler.DefaultLimit}). When more exist, the response carries `truncated.{{reason,total,remaining,cursor}}`." },
+                FlagCatalog.Limit with { Description = $"Symbols per page (default: {ImpactHandler.DefaultLimit}). When more exist, the response carries `truncated.{{reason,returned,total,remaining,cursor}}`." },
                 FlagCatalog.Cursor with { Description = "Continue from a previous page's `truncated.cursor`." },
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
