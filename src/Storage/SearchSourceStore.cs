@@ -65,7 +65,6 @@ internal sealed class SearchSourceStore
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
             return [];
 
-        limit = Math.Max(1, limit);
         snippetTokens = Math.Max(1, snippetTokens);
 
         using var command = _connection.CreateCommand();

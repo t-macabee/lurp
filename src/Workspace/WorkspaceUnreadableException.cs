@@ -10,4 +10,9 @@ namespace Lurp.Workspace;
 ///     A snapshot indexed from an unbindable compilation reports "no callers" for symbols
 ///     that have callers, which is more damaging than producing no snapshot at all.
 /// </remarks>
-internal sealed class WorkspaceUnreadableException(string message) : InvalidOperationException(message);
+internal sealed class WorkspaceUnreadableException : InvalidOperationException
+{
+    public WorkspaceUnreadableException(string message) : base(message) { }
+
+    public WorkspaceUnreadableException(string message, Exception innerException) : base(message, innerException) { }
+}

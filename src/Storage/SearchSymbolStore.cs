@@ -32,8 +32,6 @@ internal sealed class SearchSymbolStore
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
             return [];
 
-        limit = Math.Max(1, limit);
-
         using var command = _connection.CreateCommand();
         command.CommandText = """
             SELECT symbol_fts.symbol_id, fqn, doc_comment_id, kind
@@ -109,7 +107,6 @@ internal sealed class SearchSymbolStore
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
             return new SymbolSearchPage([], null);
 
-        limit = Math.Max(1, limit);
         var fingerprint = SearchCursor.ComputeFingerprint(query, kind, includeGenerated);
         cursor?.Validate(snapshotId, fingerprint);
 

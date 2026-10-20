@@ -92,9 +92,9 @@ internal sealed class UncertaintyDetector
             foreach (var edge in edges)
                 if (edge.Kind == nameof(EdgeKind.ReflectionNameCandidate))
                     capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                        $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime."));
+                        UncertaintyDescriptions.NameCandidate(edge.TargetSymbolId)));
                 else if (edge.Kind == nameof(EdgeKind.ReflectionTargetUnknown))
-                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, "Unknown reflection target: the runtime target of this reflection call cannot be statically determined."));
+                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, UncertaintyDescriptions.UnknownReflectionTarget));
         }
     }
 
@@ -112,7 +112,7 @@ internal sealed class UncertaintyDetector
                     continue;
 
                 capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                    $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation."));
+                    UncertaintyDescriptions.DispatchCandidate(edge.TargetSymbolId, edge.Provenance)));
             }
         }
     }
@@ -170,7 +170,7 @@ internal sealed class UncertaintyDetector
                     continue;
 
                 capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                    $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime."));
+                    UncertaintyDescriptions.FrameworkConvention(edge.Kind)));
             }
         }
     }
@@ -279,7 +279,7 @@ internal sealed class UncertaintyDetector
             var hasNonGeneratedSource = _declarationStore.GetSymbolSource(symbolId, _snapshotId, ViewKind.Declaration);
 
             if (hasGeneratedSource != null && hasNonGeneratedSource == null)
-                capsule.Uncertainties.Add(new UncertaintyEntry([symbolId], "generated_excluded", $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it."));
+                capsule.Uncertainties.Add(new UncertaintyEntry([symbolId], "generated_excluded", UncertaintyDescriptions.GeneratedExcludedFromCapsule(symbolId)));
         }
     }
 

@@ -7,7 +7,7 @@ public interface IBindingIncompletenessStore
     void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records);
     List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null);
     void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId);
-    void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null);
+    void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName);
 }
 
 internal sealed class BindingIncompletenessStore(SqliteConnection connection) : IBindingIncompletenessStore
@@ -83,20 +83,23 @@ SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extrac
         command.ExecuteNonQuery();
     }
 
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null)
+    internal static string DeleteByProjectAndDocumentPathsSql() => """
+        DELETE FROM binding_incompleteness
+        WHERE snapshot_id = @snapshotId
+          AND project_name = @projectName
+          AND document_path IN (SELECT value FROM json_each(@documentPaths));
+        """;
+
+    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName)
     {
+        var paths = documentPaths.ToList();
+        if (paths.Count == 0)
+            return;
         using var command = _connection.CreateCommand();
-        command.CommandText = projectName == null
-            ? "DELETE FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND document_path = @path;"
-            : "DELETE FROM binding_incompleteness WHERE snapshot_id = @snapshotId AND document_path = @path AND project_name = @projectName;";
-        foreach (var path in documentPaths.Distinct(StringComparer.Ordinal))
-        {
-            command.Parameters.Clear();
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            command.Parameters.AddWithValue("@path", path);
-            if (projectName != null)
-                command.Parameters.AddWithValue("@projectName", projectName);
-            command.ExecuteNonQuery();
-        }
+        command.CommandText = DeleteByProjectAndDocumentPathsSql();
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@projectName", projectName);
+        SqlIdList.Bind(command, "@documentPaths", paths);
+        command.ExecuteNonQuery();
     }
 }

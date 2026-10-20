@@ -50,5 +50,11 @@ public sealed class MaintenanceQueryPlanTests : IntegrationTestBase
             Lurp.Storage.DiagnosticStore.DeleteDiagnosticsByProjectNamesSql(),
             new Dictionary<string, object> { ["@snapshotId"] = snapshotId, ["@projectNames"] = ListJson });
         Assert.DoesNotContain(diagnosticsPlan, detail => detail.Contains("idx_diagnostics_snapshot_id", StringComparison.Ordinal));
+
+        var bindingPlan = QueryPlanFixture.Explain(
+            connection,
+            Lurp.Storage.BindingIncompletenessStore.DeleteByProjectAndDocumentPathsSql(),
+            new Dictionary<string, object> { ["@snapshotId"] = snapshotId, ["@projectName"] = "MaintenancePlanProbe", ["@documentPaths"] = ListJson });
+        Assert.DoesNotContain(bindingPlan, detail => detail.Contains("idx_binding_incompleteness_snapshot_reason", StringComparison.Ordinal));
     }
 }

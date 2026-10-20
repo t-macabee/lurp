@@ -44,7 +44,6 @@ internal sealed class TextSearchStore
         if (string.IsNullOrEmpty(query) || limit <= 0)
             return new TextSearchPage([], null, 0);
 
-        limit = Math.Max(1, limit);
         var fingerprint = TextSearchCursor.ComputeFingerprint(query, includeGenerated, ignoreCase);
         cursor?.Validate(snapshotId, fingerprint);
 

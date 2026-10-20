@@ -1170,21 +1170,16 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableFact]
-    public async Task BindingIncompleteness_Overlap_Unresolved()
+    [SkippableTheory]
+    [InlineData("internal")]
+    [InlineData("public")]
+    public async Task BindingIncompleteness_Overlap_Unresolved(string accessibility)
     {
         Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
 
         CreateProject("TestProject", new Dictionary<string, string>
         {
-            ["Util.cs"] = """
-                          namespace TestProject;
-
-                          internal static class Util
-                          {
-                              internal static void Helper() { }
-                          }
-                          """
+            ["Util.cs"] = $"namespace TestProject;\n\n{accessibility} static class Util\n{{\n    {accessibility} static void Helper() {{ }}\n}}"
         });
         var snapshotId = await RunFullIndexAsync(DbPath);
         var helperId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Helper");
@@ -1291,7 +1286,7 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             Assert.True(entry.IsGenerated);
             Assert.Equal(DeadCandidateStatus.Uncertain, entry.Status);
             Assert.Equal(DeadCandidateReason.GeneratedExcluded, entry.Reason);
-            Assert.Contains("includeGenerated is set to false", Assert.Single(entry.Uncertainties).Description);
+            Assert.Contains("no LIVE incoming edge reaches it", Assert.Single(entry.Uncertainties).Description);
         }
         finally
         {

@@ -123,18 +123,10 @@ internal sealed class AnnotationStore
         if (limit <= 0)
             throw new ArgumentException("--limit must be a positive integer.");
 
-        limit = Math.Max(1, limit);
         var fingerprint = AnnotationCursor.ComputeFingerprint(symbolId, documentPath, kind);
         if (cursor != null)
         {
-            try
-            {
-                cursor.Validate(snapshotId, fingerprint);
-            }
-            catch (ArgumentException ex)
-            {
-                throw new ArgumentException(ex.Message, ex);
-            }
+            cursor.Validate(snapshotId, fingerprint);
         }
 
         // Total count (without cursor/limit) for the header.
@@ -232,11 +224,7 @@ internal sealed class AnnotationStore
         {
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                DELETE FROM annotations
-                WHERE snapshot_id = @snapshotId
-                  AND document_path IN (SELECT value FROM json_each(@documentPaths));
-                """;
+            command.CommandText = DeleteAnnotationsByDocumentPathsSql();
             command.Parameters.AddWithValue("@snapshotId", snapshotId);
             SqlIdList.Bind(command, "@documentPaths", pathList);
             command.ExecuteNonQuery();
@@ -248,4 +236,9 @@ internal sealed class AnnotationStore
             throw;
         }
     }
+    internal static string DeleteAnnotationsByDocumentPathsSql() => """
+        DELETE FROM annotations
+        WHERE snapshot_id = @snapshotId
+          AND document_path IN (SELECT value FROM json_each(@documentPaths));
+        """;
 }

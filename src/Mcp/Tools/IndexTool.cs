@@ -122,8 +122,6 @@ internal sealed class IndexTool
             bool forceFlag = false;
             CancellationTokenSource? cts = null;
             IndexOperation? op = null;
-            CancellationTokenRegistration registration = default;
-            bool registrationCreated = false;
             McpIndexOutputSink? sink = null;
             Task? task = null;
             try
@@ -137,22 +135,14 @@ internal sealed class IndexTool
                 strategyArg = strategy;
                 forceFlag = force ?? false;
 
-                // Link external cancellation (MCP notifications/cancelled) to the operation CTS.
-                registration = cancellationToken.Register(() =>
-                {
-                    try { cts.Cancel(); } catch { }
-                });
-                registrationCreated = true;
-
                 sink = new McpIndexOutputSink(op);
 
                 // Background Task — Option B: in-process IndexRunner.RunAsync.
-                // Locks, the registration and the CTS are owned by this method until the task
-                // starts, then by the task, which releases them in its finally.
+                // Locks and the CTS are owned by this method until the task starts, then by
+                // the task, which releases them in its finally.
                 var opCts = cts!;
                 var opSink = sink!;
                 var opRef = op!;
-                var opRegistration = registration;
                 task = Task.Run(async () =>
                 {
                     using var _solLock = solutionLock;
@@ -172,8 +162,7 @@ internal sealed class IndexTool
                         await IndexRunner.RunAsync(store, solutionPath!, skipAdapters, null, strategyArg, verbose: false, output: opSink, skipDiff: false, force: forceFlag, cancellationToken: opCts.Token);
 
                         // On success, detect the new complete snapshot (may be identical to previous when dedup reused).
-                        string? latest = null;
-                        try { latest = store.GetLatestSnapshotId(); } catch { }
+                        string? latest = store.GetLatestSnapshotId();
 
                         // If no new snapshot (dedup reuse), latest == previous. Still mark completed.
                         opRef.Complete(latest, previousSnapshotId);
@@ -182,23 +171,6 @@ internal sealed class IndexTool
                     }
                     catch (OperationCanceledException)
                     {
-                        // IndexRunner already did MarkSnapshotFailed(..., "cancelled", ...). Ensure state reflects it.
-                        // Confirm no partial Complete row is visible: GetLatestSnapshotId still returns the old pin.
-                        // The Failed row is a tombstone with payload_pruned; it must not be returned as latest.
-                        try
-                        {
-                            // Best-effort cleanup of payload for the cancelled attempt.
-                            // DeleteIncompleteSnapshots would normally prune on the next successful run;
-                            // we trigger it now so a test that checks "no partial data" sees the old pin unchanged.
-                            // This respects snapshot-immutability: a Failed row is not a Complete snapshot,
-                            // and its payload is unreferenced once cancelled — pruning it does not mutate a
-                            // Complete snapshot.
-                            var tmp = new SqliteIndexStore(dbPath);
-                            tmp.Open();
-                            try { tmp.DeleteIncompleteSnapshots(); } finally { tmp.Close(); }
-                        }
-                        catch { }
-
                         opRef.Cancel();
                         opSink.WriteLine($"index operation {operationId} cancelled.");
                     }
@@ -231,7 +203,6 @@ internal sealed class IndexTool
                             try { store.Close(); } catch { }
                         }
 
-                        try { opRegistration.Dispose(); } catch { }
                         try { opCts.Dispose(); } catch { }
                     }
                 }, CancellationToken.None);
@@ -240,16 +211,11 @@ internal sealed class IndexTool
             }
             catch (Exception ex)
             {
-                // The task did not start: this method still owns the locks, the registration
-                // and the CTS. Release them, and mark the operation failed so a later call
-                // does not see a stuck "Running".
+                // The task did not start: this method still owns the locks and the CTS.
+                // Release them, and mark the operation failed so a later call does not see a
+                // stuck "Running".
                 if (task == null)
                 {
-                    if (registrationCreated)
-                    {
-                        try { registration.Dispose(); } catch { }
-                    }
-
                     solutionLock.Dispose();
                     databaseLock.Dispose();
 

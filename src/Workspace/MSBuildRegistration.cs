@@ -16,9 +16,9 @@ internal static class MSBuildRegistration
         {
             instances = MSBuildLocator.QueryVisualStudioInstances().ToList();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            throw new WorkspaceUnreadableException(NoSdkMessage);
+            throw new WorkspaceUnreadableException(NoSdkMessage, ex);
         }
 
         if (instances.Count == 0) throw new WorkspaceUnreadableException(NoSdkMessage);

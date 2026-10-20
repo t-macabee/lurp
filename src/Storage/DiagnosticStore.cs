@@ -141,18 +141,10 @@ internal sealed class DiagnosticStore
             }
         }
 
-        limit = Math.Max(1, limit);
         var fingerprint = DiagnosticsCursor.ComputeFingerprint(projectName, documentPath, severity, excludeHidden, includeGenerated, id);
         if (cursor != null)
         {
-            try
-            {
-                cursor.Validate(snapshotId, fingerprint);
-            }
-            catch (ArgumentException ex)
-            {
-                throw new ArgumentException(ex.Message, ex);
-            }
+            cursor.Validate(snapshotId, fingerprint);
         }
 
         // SQL query — push down project, severity (or excludeHidden), and id.

@@ -7,6 +7,9 @@ namespace Lurp;
 
 public static class Program
 {
+    private static bool IsTraceRequested(string[] args) =>
+        args.Contains("--verbose") || Environment.GetEnvironmentVariable("LURP_DEBUG") == "1";
+
     /// <summary>
     ///     Single source of truth for the CLI mode registry : mode name, one-line help
     ///     text, flag inventory, and dispatch handler. The unknown-mode error's mode list
@@ -278,6 +281,11 @@ public static class Program
                 Console.Error.WriteLine();
                 // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine($"ERROR: {ex.Message}");
+                if (IsTraceRequested(args))
+                {
+                    // ReSharper disable once MethodHasAsyncOverload
+                    Console.Error.WriteLine(ex.ToString());
+                }
                 Environment.Exit(2);
             }
             catch (Exception ex)
@@ -290,7 +298,7 @@ public static class Program
                 // paths from the shipped PDB. The full trace is opt-in.
                 // ReSharper disable once MethodHasAsyncOverload
                 Console.Error.WriteLine($"ERROR: {ex.Message}");
-                if (args.Contains("--verbose") || Environment.GetEnvironmentVariable("LURP_DEBUG") == "1")
+                if (IsTraceRequested(args))
                 {
                     // ReSharper disable once MethodHasAsyncOverload
                     Console.Error.WriteLine(ex.ToString());

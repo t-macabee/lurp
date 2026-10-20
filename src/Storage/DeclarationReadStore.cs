@@ -399,18 +399,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         if (string.IsNullOrEmpty(relativePath) || string.IsNullOrEmpty(snapshotId) || limit <= 0)
             return null;
 
-        limit = Math.Max(1, limit);
         var fingerprint = OutlineCursor.ComputeFingerprint(relativePath, includeGenerated);
         if (cursor != null)
         {
-            try
-            {
-                cursor.Validate(snapshotId, fingerprint);
-            }
-            catch (ArgumentException ex)
-            {
-                throw new ArgumentException(ex.Message, ex);
-            }
+            cursor.Validate(snapshotId, fingerprint);
         }
 
         // Resolve document version and line_starts for this snapshot/document.

@@ -68,12 +68,10 @@ internal sealed class DeadCandidateStore
         if (limit <= 0)
             throw new ArgumentException("--limit must be a positive integer.");
 
-        limit = Math.Max(1, limit);
         var fingerprint = DeadCandidateCursor.ComputeFingerprint(project, document, kind, includePublic, includeGenerated, includeTests);
         if (cursor != null)
         {
-            try { cursor.Validate(snapshotId, fingerprint); }
-            catch (ArgumentException ex) { throw new ArgumentException(ex.Message, ex); }
+            cursor.Validate(snapshotId, fingerprint);
         }
 
         // Fetch base candidate rows for snapshot
@@ -100,7 +98,7 @@ internal sealed class DeadCandidateStore
             if (!CandidateKinds.Contains(c.Kind))
                 continue;
 
-            var facts = BuildFacts(c);
+            var facts = BuildFacts(c, projectFacts);
             factsById[facts.SymbolId] = facts;
 
             if (!string.IsNullOrEmpty(kind) && !string.Equals(c.Kind, kind, StringComparison.OrdinalIgnoreCase))
@@ -112,8 +110,7 @@ internal sealed class DeadCandidateStore
                 continue;
 
             var assemblyName = facts.AssemblyName;
-            var isTestProject = projectFacts.IsTestProject(assemblyName);
-            if (!includeTests && isTestProject)
+            if (!includeTests && facts.IsTest)
                 continue;
 
             // project filter: exact match on assembly name
@@ -201,180 +198,54 @@ internal sealed class DeadCandidateStore
 
         // Evaluate each candidate to status/reason
         var evaluated = new List<DeadCandidateEntry>();
-        var deadCount = 0;
-        var uncertainCount = 0;
-        var unresolvedCount = 0;
 
         foreach (var cand in filteredCandidates)
         {
             var decl = declInfo.TryGetValue(cand.SymbolId, out var d) ? d : new DeclInfo { IsGenerated = false, Locations = [], DeclarationCount = 0, DocumentPaths = [] };
-            var docPaths = decl.DocumentPaths;
-            var accessibility = cand.Accessibility;
             var assemblyName = cand.AssemblyName;
-            var isTest = projectFacts.IsTestProject(assemblyName);
 
             var incoming = BuildEffectiveIncoming(cand, incomingByTarget, typeUseByTarget, subtreeByType);
             var hasStrong = incoming.Any(e => StrongProvenance.Contains(e.Provenance));
             if (hasStrong)
-            {
-                // Alive - not included in dead page, but provenance still needed for summary if we ever wanted
                 continue;
-            }
 
             // Prepare incoming summary
             var summary = BuildIncomingSummary(incoming);
 
             // Determine if overlaps binding incompleteness (unobservable)
-            var overlapsBinding = OverlapsBindingIncompleteness(docPaths, assemblyName, incompletenessByDocument, incompletenessProjects);
+            var overlapsBinding = OverlapsBindingIncompleteness(decl.DocumentPaths, assemblyName, incompletenessByDocument, incompletenessProjects);
 
-            string status;
-            string reason;
-            List<DeadCandidateUncertainty> uncertainties;
-
-            if (overlapsBinding)
-            {
-                status = DeadCandidateStatus.Unresolved;
-                reason = DeadCandidateReason.BindingIncompleteness;
-                uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, projectFacts, docPaths, assemblyName)];
-                unresolvedCount++;
-            }
-            else if (IsProcessEntryPoint(cand))
-            {
-                // Checked ahead of the public/protected suppression below: the entry point's own
-                // accessibility varies by coding style (private for top-level statements, often
-                // public/internal for an explicit Main), and either way "nothing in-repo calls the
-                // process entry point" is definitional, not evidence of dead code. Surface it
-                // visibly as uncertain rather than either proved_dead or silently excluded.
-                status = DeadCandidateStatus.UncertainDead;
-                reason = DeadCandidateReason.EntryPointConvention;
-                uncertainties = [MakeEntryPointConventionUncertainty(cand.SymbolId, cand.Kind == nameof(IndexedSymbolKind.Type))];
-                uncertainCount++;
-            }
-            else if (cand.ImplementsExternalInterface)
-            {
-                // The runtime or a framework calls an explicitly implemented interface member
-                // through the interface, so the index cannot observe the call (B26).
-                status = DeadCandidateStatus.UncertainDead;
-                reason = DeadCandidateReason.ExternalInterfaceImplementation;
-                uncertainties = [MakeExternalInterfaceImplementationUncertainty(cand.SymbolId)];
-                uncertainCount++;
-            }
-            else if (IsPublicOrProtected(accessibility) && !includePublic)
-            {
-                // Excluded from proved_dead - not counted as dead at all
+            var verdict = ClassifyCandidate(
+                cand, decl, incoming, includePublic, includeGenerated, includeTests,
+                overlapsBinding, bindingRecords, projectFacts,
+                factsById, subtreeByType, mapsToTargets);
+            if (verdict is null)
                 continue;
-            }
-            else if (IsPublicOrProtected(accessibility) && includePublic)
-            {
-                status = DeadCandidateStatus.UncertainDead;
-                reason = DeadCandidateReason.PublicSurface;
-                uncertainties = [MakePublicSurfaceUncertainty(cand.SymbolId)];
-                uncertainCount++;
-            }
-            else if (decl.IsGenerated && includeGenerated)
-            {
-                status = DeadCandidateStatus.Uncertain;
-                reason = DeadCandidateReason.GeneratedExcluded;
-                uncertainties = [MakeGeneratedUncertainty(cand.SymbolId)];
-                uncertainCount++;
-            }
-            else if (isTest && includeTests)
-            {
-                // Test harness reflection discovery
-                status = DeadCandidateStatus.Uncertain;
-                reason = DeadCandidateReason.TestHarness;
-                uncertainties = [MakeTestHarnessUncertainty(cand.SymbolId)];
-                uncertainCount++;
-            }
-            else if (incoming.Count > 0)
-            {
-                // Weak-only incoming
-                var best = GetStrongestWeak(incoming);
-                if (best.Provenance == Provenance.Possible && string.Equals(best.Kind, nameof(EdgeKind.MayDispatchTo), StringComparison.Ordinal))
-                {
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.PossibleDispatch;
-                    uncertainties = [MakePossibleDispatchUncertainty(best)];
-                    uncertainCount++;
-                }
-                else if (best.Provenance == Provenance.Convention)
-                {
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.FrameworkConvention;
-                    uncertainties = [MakeFrameworkConventionUncertainty(best)];
-                    uncertainCount++;
-                }
-                else if (best.Provenance == Provenance.NameCandidate)
-                {
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.NameCandidate;
-                    uncertainties = [MakeNameCandidateUncertainty(best)];
-                    uncertainCount++;
-                }
-                else if (best.Provenance == Provenance.RuntimeUnknown)
-                {
-                    status = DeadCandidateStatus.Unresolved;
-                    reason = DeadCandidateReason.RuntimeUnknown;
-                    uncertainties = [MakeRuntimeUnknownUncertainty(best)];
-                    // RuntimeUnknown is counted as unresolved per spec table
-                    unresolvedCount++;
-                }
-                else
-                {
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = DeadCandidateReason.FrameworkConvention;
-                    uncertainties = [MakeFrameworkConventionUncertainty(best)];
-                    uncertainCount++;
-                }
-            }
-            else
-            {
-                // No LIVE incoming at all - check the conventions before proved
-                if (TryConventionVerdict(cand, factsById, subtreeByType, mapsToTargets, out var conventionReason, out var conventionSymbolId))
-                {
-                    // The candidate's own EF or serialization verdict comes first. Then (B34) an
-                    // accessor inherits its associated symbol's verdict, and a type inherits the
-                    // first verdict among its descendant members.
-                    status = DeadCandidateStatus.UncertainDead;
-                    reason = conventionReason;
-                    uncertainties = [MakeConventionUncertainty(conventionReason, conventionSymbolId)];
-                    uncertainCount++;
-                }
-                else
-                {
-                    status = DeadCandidateStatus.ProvedDead;
-                    reason = DeadCandidateReason.NoIncomingLiveEdges;
-                    uncertainties = [];
-                    deadCount++;
-                }
-            }
 
-            var projectName = assemblyName;
             var documentPath = decl.DocumentPaths.Count > 0 ? decl.DocumentPaths[0] : null;
-            // Find best declaration location for start line? Use first location's start
             var entry = new DeadCandidateEntry(
                 cand.SymbolId,
                 cand.Row.Fqn,
                 cand.Kind,
-                accessibility,
+                cand.Accessibility,
                 documentPath,
                 decl.Locations,
-                projectName,
+                assemblyName,
                 decl.DeclarationCount,
                 decl.IsGenerated,
-                status,
-                reason,
-                uncertainties,
+                verdict.Status,
+                verdict.Reason,
+                verdict.Uncertainties,
                 summary);
             evaluated.Add(entry);
         }
 
-        // Sort evaluated by symbol_id ASC (already in order because filteredCandidates sorted and we iterated in order)
-        // Apply cursor pagination over evaluated (dead) list
-        var totalDeadAndUncertain = evaluated; // includes proved, uncertain, unresolved
-        // But counts above are for totals; pagination over all dead candidates (proved+uncertain+unresolved)
-        // Cursor is over dead symbol ids, not candidate universe.
-        IEnumerable<DeadCandidateEntry> windowed = totalDeadAndUncertain;
+        var deadCount = evaluated.Count(e => e.Status == DeadCandidateStatus.ProvedDead);
+        var uncertainCount = evaluated.Count(e => e.Status == DeadCandidateStatus.UncertainDead || e.Status == DeadCandidateStatus.Uncertain);
+        var unresolvedCount = evaluated.Count(e => e.Status == DeadCandidateStatus.Unresolved);
+
+        // The cursor is keyset over dead symbol ids, not over the candidate universe.
+        IEnumerable<DeadCandidateEntry> windowed = evaluated;
         if (cursor != null)
         {
             windowed = windowed.Where(e => string.Compare(e.SymbolId, cursor.LastSymbolId, StringComparison.Ordinal) > 0);
@@ -416,6 +287,127 @@ internal sealed class DeadCandidateStore
                 reader.GetString(5)));
         }
         return list;
+    }
+
+    internal sealed record CandidateVerdict(string Status, string Reason, List<DeadCandidateUncertainty> Uncertainties);
+
+    internal static CandidateVerdict? ClassifyCandidate(
+        CandidateFacts cand,
+        DeclInfo decl,
+        List<EdgeRecord> incoming,
+        bool includePublic,
+        bool includeGenerated,
+        bool includeTests,
+        bool overlapsBinding,
+        List<BindingIncompletenessRecord> bindingRecords,
+        ProjectFacts projectFacts,
+        Dictionary<string, CandidateFacts> factsById,
+        Dictionary<string, TypeSubtree> subtreeByType,
+        HashSet<string> mapsToTargets)
+    {
+        string status;
+        string reason;
+        List<DeadCandidateUncertainty> uncertainties;
+
+        if (overlapsBinding)
+        {
+            status = DeadCandidateStatus.Unresolved;
+            reason = DeadCandidateReason.BindingIncompleteness;
+            uncertainties = [MakeBindingIncompletenessUncertainty(cand.SymbolId, bindingRecords, projectFacts, decl.DocumentPaths, cand.AssemblyName)];
+        }
+        else if (IsProcessEntryPoint(cand))
+        {
+            // Checked ahead of the public/protected suppression below: the entry point's own
+            // accessibility varies by coding style (private for top-level statements, often
+            // public/internal for an explicit Main), and either way "nothing in-repo calls the
+            // process entry point" is definitional, not evidence of dead code. Surface it
+            // visibly as uncertain rather than either proved_dead or silently excluded.
+            status = DeadCandidateStatus.UncertainDead;
+            reason = DeadCandidateReason.EntryPointConvention;
+            uncertainties = [MakeEntryPointConventionUncertainty(cand.SymbolId, cand.Kind == nameof(IndexedSymbolKind.Type))];
+        }
+        else if (cand.ImplementsExternalInterface)
+        {
+            // The runtime or a framework calls an explicitly implemented interface member
+            // through the interface, so the index cannot observe the call (B26).
+            status = DeadCandidateStatus.UncertainDead;
+            reason = DeadCandidateReason.ExternalInterfaceImplementation;
+            uncertainties = [MakeExternalInterfaceImplementationUncertainty(cand.SymbolId)];
+        }
+        else if (IsPublicOrProtected(cand.Accessibility))
+        {
+            if (!includePublic)
+                return null;
+
+            status = DeadCandidateStatus.UncertainDead;
+            reason = DeadCandidateReason.PublicSurface;
+            uncertainties = [MakePublicSurfaceUncertainty(cand.SymbolId)];
+        }
+        else if (decl.IsGenerated && includeGenerated)
+        {
+            status = DeadCandidateStatus.Uncertain;
+            reason = DeadCandidateReason.GeneratedExcluded;
+            uncertainties = [MakeGeneratedUncertainty(cand.SymbolId)];
+        }
+        else if (cand.IsTest && includeTests)
+        {
+            status = DeadCandidateStatus.Uncertain;
+            reason = DeadCandidateReason.TestHarness;
+            uncertainties = [MakeTestHarnessUncertainty(cand.SymbolId)];
+        }
+        else if (incoming.Count > 0)
+        {
+            var best = GetStrongestWeak(incoming);
+            if (best.Provenance == Provenance.Possible && string.Equals(best.Kind, nameof(EdgeKind.MayDispatchTo), StringComparison.Ordinal))
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.PossibleDispatch;
+                uncertainties = [MakePossibleDispatchUncertainty(best)];
+            }
+            else if (best.Provenance == Provenance.Convention)
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.FrameworkConvention;
+                uncertainties = [MakeFrameworkConventionUncertainty(best)];
+            }
+            else if (best.Provenance == Provenance.NameCandidate)
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.NameCandidate;
+                uncertainties = [MakeNameCandidateUncertainty(best)];
+            }
+            else if (best.Provenance == Provenance.RuntimeUnknown)
+            {
+                status = DeadCandidateStatus.Unresolved;
+                reason = DeadCandidateReason.RuntimeUnknown;
+                uncertainties = [MakeRuntimeUnknownUncertainty(best)];
+            }
+            else
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = DeadCandidateReason.FrameworkConvention;
+                uncertainties = [MakeFrameworkConventionUncertainty(best)];
+            }
+        }
+        else
+        {
+            // B34: the candidate's own EF or serialization verdict comes first, then the
+            // verdict inherited from its associated symbol or descendants.
+            if (TryConventionVerdict(cand, factsById, subtreeByType, mapsToTargets, out var conventionReason, out var conventionSymbolId))
+            {
+                status = DeadCandidateStatus.UncertainDead;
+                reason = conventionReason;
+                uncertainties = [MakeConventionUncertainty(conventionReason, conventionSymbolId)];
+            }
+            else
+            {
+                status = DeadCandidateStatus.ProvedDead;
+                reason = DeadCandidateReason.NoIncomingLiveEdges;
+                uncertainties = [];
+            }
+        }
+
+        return new CandidateVerdict(status, reason, uncertainties);
     }
 
     private HashSet<string> FetchMapsToTargets(string snapshotId)
@@ -641,18 +633,20 @@ internal sealed class DeadCandidateStore
         return result;
     }
 
-    private static CandidateFacts BuildFacts(CandidateRow row)
+    private static CandidateFacts BuildFacts(CandidateRow row, ProjectFacts projectFacts)
     {
         // One metadata parse per candidate row (R5.1). A row that does not parse still fails
         // loudly and names the offending symbol (SymbolMetadata.Parse).
         var metadata = SymbolMetadata.Parse(row.MetadataJson, row.SymbolId);
         var accessorKind = GetString(metadata, SymbolMetadataKeys.AccessorKind);
         var associatedSymbol = GetString(metadata, SymbolMetadataKeys.AssociatedSymbol);
+        var assemblyName = MetadataReferenceIdentity.SimpleName(row.AssemblyIdentity);
         return new CandidateFacts(
             row,
             metadata,
             GetString(metadata, SymbolMetadataKeys.Accessibility),
-            MetadataReferenceIdentity.SimpleName(row.AssemblyIdentity),
+            assemblyName,
+            projectFacts.IsTestProject(assemblyName),
             SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
             SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsStaticConstructor),
             SymbolMetadata.IsImplicitlyDeclared(metadata),
@@ -979,7 +973,7 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakeGeneratedUncertainty(string symbolId)
     {
-        return new DeadCandidateUncertainty([symbolId], "generated_excluded", $"Generated symbol '{symbolId}' was excluded because includeGenerated is set to false. Review generated code if runtime behavior depends on it.");
+        return new DeadCandidateUncertainty([symbolId], "generated_excluded", UncertaintyDescriptions.GeneratedDeadCandidate(symbolId));
     }
 
     private static DeadCandidateUncertainty MakeTestHarnessUncertainty(string symbolId)
@@ -989,17 +983,17 @@ internal sealed class DeadCandidateStore
 
     private static DeadCandidateUncertainty MakePossibleDispatchUncertainty(EdgeRecord edge)
     {
-        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Dispatch candidate '{edge.TargetSymbolId}' was resolved with evidence level '{edge.Provenance}'. Manually verify that the runtime dispatch reaches the correct implementation.");
+        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, UncertaintyDescriptions.DispatchCandidate(edge.TargetSymbolId, edge.Provenance));
     }
 
     private static DeadCandidateUncertainty MakeFrameworkConventionUncertainty(EdgeRecord edge)
     {
-        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Convention-based framework binding: the '{edge.Kind}' edge was inferred by naming convention, not explicit registration. Verify that the expected target is reached at runtime.");
+        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, UncertaintyDescriptions.FrameworkConvention(edge.Kind));
     }
 
     private static DeadCandidateUncertainty MakeNameCandidateUncertainty(EdgeRecord edge)
     {
-        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, $"Reflection name candidate: the string-based reference to '{edge.TargetSymbolId}' was matched by name. Verify that this reference correctly resolves at runtime.");
+        return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, UncertaintyDescriptions.NameCandidate(edge.TargetSymbolId));
     }
 
     private static DeadCandidateUncertainty MakeRuntimeUnknownUncertainty(EdgeRecord edge)
@@ -1007,7 +1001,7 @@ internal sealed class DeadCandidateStore
         var desc = $"Unmodeled construct: a '{edge.Kind}' edge carries 'runtime_unknown' provenance because the construct is listed in DeclaredBoundaries.Known as deliberately not fully modeled. The concrete type was resolved but the runtime activation/registration semantics are not captured. See DeclaredBoundaries.Known for the full, closed list of declared boundaries.";
         // For ReflectionTargetUnknown the more specific wording is:
         if (string.Equals(edge.Kind, nameof(EdgeKind.ReflectionTargetUnknown), StringComparison.Ordinal))
-            desc = "Unknown reflection target: the runtime target of this reflection call cannot be statically determined.";
+            desc = UncertaintyDescriptions.UnknownReflectionTarget;
         return new DeadCandidateUncertainty([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, desc);
     }
 
@@ -1041,17 +1035,18 @@ internal sealed class DeadCandidateStore
             : MakeSerializationConventionUncertainty(symbolId);
     }
 
-    private sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);
+    internal sealed record CandidateRow(string SymbolId, string Kind, string? Fqn, string? MetadataJson, string DocCommentId, string AssemblyIdentity);
 
     /// <summary>
     ///     One metadata parse per candidate row (R5.1). Every filter and ladder decision reads
     ///     these parsed fields instead of re-parsing <see cref="CandidateRow.MetadataJson" />.
     /// </summary>
-    private sealed record CandidateFacts(
+    internal sealed record CandidateFacts(
         CandidateRow Row,
         JsonElement? Metadata,
         string? Accessibility,
         string AssemblyName,
+        bool IsTest,
         bool IsExtensionBlock,
         bool IsStaticConstructor,
         bool IsImplicitlyDeclared,
@@ -1065,9 +1060,9 @@ internal sealed class DeadCandidateStore
         public string Kind => Row.Kind;
     }
 
-    private sealed record TypeSubtree(HashSet<string> Symbols, List<string> Descendants);
+    internal sealed record TypeSubtree(HashSet<string> Symbols, List<string> Descendants);
 
-    private sealed class DeclInfo
+    internal sealed class DeclInfo
     {
         public bool IsGenerated { get; set; }
         public List<DeclarationLocation> Locations { get; set; } = [];

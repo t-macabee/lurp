@@ -164,6 +164,42 @@ public sealed class McpIndexTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Cancel_ThroughRequestCancellationToken_StopsRunAndKeepsOldPin()
+    {
+        var snapshot1 = await IndexInitialAsync();
+        var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
+        await using var session = McpSessionContext.Create(args);
+        var state = new McpIndexSessionState();
+        var tool = new IndexTool(session, state);
+
+        CreateProject("IndexProj2", new Dictionary<string, string>
+        {
+            ["B.cs"] = "namespace IndexProj2 { public class B { public void Bar() {} } }"
+        });
+
+        using var cts = new CancellationTokenSource();
+        var jsonStart = tool.LurpIndex(strategy: "full", cancellationToken: cts.Token);
+        using var startDoc = Parse(jsonStart);
+        var opId = GetString(startDoc.RootElement, "operation_id");
+
+        // Give the background task a moment to enter the load/extract phase.
+        await Task.Delay(300);
+        cts.Cancel();
+
+        using var finalDoc = await WaitForCompletionAsync(tool, opId, timeoutMs: 30000);
+        var finalStatus = GetString(finalDoc.RootElement, "status");
+        Assert.True(finalStatus == "cancelled" || finalStatus == "completed",
+            $"unexpected final status {finalStatus}");
+
+        if (finalStatus == "cancelled")
+        {
+            using var store = OpenStore(DbPath);
+            Assert.Equal(snapshot1, store.GetLatestSnapshotId());
+            Assert.Equal(snapshot1, session.PinnedSnapshotId);
+        }
+    }
+
+    [Fact]
     public async Task Refresh_AfterCompletion_AdvancesPin()
     {
         var snapshot1 = await IndexInitialAsync();

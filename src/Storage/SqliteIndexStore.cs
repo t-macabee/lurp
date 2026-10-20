@@ -483,7 +483,7 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _bindingIncompletenessStore!.CopyBindingIncompleteness(fromSnapshotId, toSnapshotId);
     }
 
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string? projectName = null)
+    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName)
     {
         EnsureOpen();
         _bindingIncompletenessStore!.DeleteBindingIncompletenessByDocumentPaths(snapshotId, documentPaths, projectName);
@@ -892,14 +892,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
 
     /// <summary>
     ///     Deletes edges, binding-incompleteness rows, and annotations for the
-    ///     given document paths in one transaction. Populates a temp table with
-    ///     the path set once and joins all three deletes against it, instead of
-    ///     each of <see cref="IEdgeStore.DeleteEdgesByDocumentPaths" />,
-    ///     <see cref="IBindingIncompletenessStore.DeleteBindingIncompletenessByDocumentPaths" />,
-    ///     and <see cref="IEdgeStore.DeleteAnnotationsByDocumentPaths" /> rebuilding
-    ///     its own IN-list (or, for binding-incompleteness, issuing one DELETE per
-    ///     path) over the same set. Callers scoping a delete to exactly one of
-    ///     those tables should keep using the individual methods.
+    ///     given document paths. Each statement binds the path list once as a JSON
+    ///     parameter, and the three deletes run in one transaction. Callers scoping
+    ///     a delete to exactly one of those tables should keep using the individual
+    ///     methods.
     /// </summary>
     public void DeleteFactsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
     {
@@ -936,11 +932,7 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
             using (var deleteAnnotationsCmd = _connection.CreateCommand())
             {
                 deleteAnnotationsCmd.Transaction = transaction;
-                deleteAnnotationsCmd.CommandText = """
-                        DELETE FROM annotations
-                        WHERE snapshot_id = @snapshotId
-                          AND document_path IN (SELECT value FROM json_each(@documentPaths));
-                        """;
+                deleteAnnotationsCmd.CommandText = AnnotationStore.DeleteAnnotationsByDocumentPathsSql();
                 deleteAnnotationsCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
                 SqlIdList.Bind(deleteAnnotationsCmd, "@documentPaths", pathList);
                 deleteAnnotationsCmd.ExecuteNonQuery();
