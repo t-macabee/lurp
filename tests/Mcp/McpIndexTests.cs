@@ -182,21 +182,18 @@ public sealed class McpIndexTests : IntegrationTestBase
         using var startDoc = Parse(jsonStart);
         var opId = GetString(startDoc.RootElement, "operation_id");
 
-        // Give the background task a moment to enter the load/extract phase.
-        await Task.Delay(300);
+        // The request token is linked into the run's token, so cancelling it as soon as the
+        // run is accepted must stop the run before it completes. A removed link would let the
+        // run finish and flip the final status to completed.
         cts.Cancel();
 
         using var finalDoc = await WaitForCompletionAsync(tool, opId, timeoutMs: 30000);
         var finalStatus = GetString(finalDoc.RootElement, "status");
-        Assert.True(finalStatus == "cancelled" || finalStatus == "completed",
-            $"unexpected final status {finalStatus}");
+        Assert.Equal("cancelled", finalStatus);
 
-        if (finalStatus == "cancelled")
-        {
-            using var store = OpenStore(DbPath);
-            Assert.Equal(snapshot1, store.GetLatestSnapshotId());
-            Assert.Equal(snapshot1, session.PinnedSnapshotId);
-        }
+        using var store = OpenStore(DbPath);
+        Assert.Equal(snapshot1, store.GetLatestSnapshotId());
+        Assert.Equal(snapshot1, session.PinnedSnapshotId);
     }
 
     [Fact]
