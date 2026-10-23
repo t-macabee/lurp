@@ -1,0 +1,2626 @@
+{
+  "schema_version": 1,
+  "tool_cmd": "/home/runner/work/lurp/lurp/t/lurp",
+  "tool_version": "lurp 3.6.0",
+  "repo_commit": "a30e920",
+  "repo_dirty": true,
+  "os": "Ubuntu 24.04.5 LTS",
+  "runner_image": "20261012.334.1",
+  "runner_os": "ubuntu24",
+  "solution_commit": "4ba9901a527b12978d3d86996026ce16fe2475e1",
+  "fixture": null,
+  "solution": "/home/runner/work/_temp/eNoteV2/eNote/eNote.sln",
+  "work_dir": "/home/runner/work/_temp/perf-work",
+  "run_dir": "/home/runner/work/_temp/perf-work/run-20261023-143747-3612",
+  "started_at_utc": "2026-10-23T14:37:47.8372778Z",
+  "finished_at_utc": "2026-10-23T14:42:04.1717704Z",
+  "protocol": "gate",
+  "runs": 5,
+  "warmup": 3,
+  "keep_work": false,
+  "operations": [
+    {
+      "name": "full_index",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 21925,
+          "peak_working_set_mb": 475,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": null,
+          "timings_total_ms": 21691,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2287
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 99
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 24
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 18887
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 349
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 37
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 7
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 475,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 22080,
+          "peak_working_set_mb": 486,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 21847,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2346
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 95
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 27
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 18989
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 343
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 40
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 6
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 486,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 21905,
+          "peak_working_set_mb": 475,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 21673,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2247
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 93
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 21
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 18925
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 342
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 37
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 7
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 475,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 22326,
+          "peak_working_set_mb": 470,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": 22096,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2241
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 83
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 20
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 19332
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 375
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 37
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 7
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 470,
+          "peak_cross_check": "ok",
+          "error": null
+        },
+        {
+          "wall_ms": 23029,
+          "peak_working_set_mb": 472,
+          "exit_code": 0,
+          "db_bytes": 54030336,
+          "db_delta_bytes": -4096,
+          "timings_total_ms": 22794,
+          "timings_steps": [
+            {
+              "step": "solution_load",
+              "elapsed_ms": 2298
+            },
+            {
+              "step": "workspace_info",
+              "elapsed_ms": 96
+            },
+            {
+              "step": "manifest_save",
+              "elapsed_ms": 25
+            },
+            {
+              "step": "extraction_loop",
+              "elapsed_ms": 19986
+            },
+            {
+              "step": "orphan_edge_cleanup",
+              "elapsed_ms": 344
+            },
+            {
+              "step": "fts_build",
+              "elapsed_ms": 37
+            },
+            {
+              "step": "planner_statistics",
+              "elapsed_ms": 7
+            },
+            {
+              "step": "prune_snapshots",
+              "elapsed_ms": 1
+            }
+          ],
+          "metric_peak_working_set_mb": 472,
+          "peak_cross_check": "ok",
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 22080,
+        "peak_working_set_mb": 475
+      },
+      "max": {
+        "wall_ms": 23029,
+        "peak_working_set_mb": 486
+      }
+    },
+    {
+      "name": "noop_incremental",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 174,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 172,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 176,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 175,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        },
+        {
+          "wall_ms": 174,
+          "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": 54034432,
+          "db_delta_bytes": 0,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": "no-new-snapshot",
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 174,
+        "peak_working_set_mb": 72
+      },
+      "max": {
+        "wall_ms": 176,
+        "peak_working_set_mb": 72
+      }
+    },
+    {
+      "name": "incremental_1_file",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never edit files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "incremental_20_files",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never edit files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "impact.upstream.d3.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 174,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 175,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 177,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 175,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 174,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 175,
+        "peak_working_set_mb": 55
+      },
+      "max": {
+        "wall_ms": 177,
+        "peak_working_set_mb": 55
+      }
+    },
+    {
+      "name": "impact.upstream.d6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 181,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 175,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 175,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 174,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 176,
+          "peak_working_set_mb": 55,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 175,
+        "peak_working_set_mb": 55
+      },
+      "max": {
+        "wall_ms": 181,
+        "peak_working_set_mb": 55
+      }
+    },
+    {
+      "name": "impact.downstream.d3.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 167,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 164,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 168,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 171,
+          "peak_working_set_mb": 53,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 163,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 167,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 171,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.downstream.d6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 248,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 248,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 249,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 249,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 247,
+          "peak_working_set_mb": 66,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 248,
+        "peak_working_set_mb": 66
+      },
+      "max": {
+        "wall_ms": 249,
+        "peak_working_set_mb": 66
+      }
+    },
+    {
+      "name": "context.default.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 429,
+          "peak_working_set_mb": 97,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 442,
+          "peak_working_set_mb": 96,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 408,
+          "peak_working_set_mb": 104,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 418,
+          "peak_working_set_mb": 98,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 410,
+          "peak_working_set_mb": 103,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 418,
+        "peak_working_set_mb": 98
+      },
+      "max": {
+        "wall_ms": 442,
+        "peak_working_set_mb": 104
+      }
+    },
+    {
+      "name": "context.maxhops6.upstream_wide",
+      "anchor": "upstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 616,
+          "peak_working_set_mb": 165,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 622,
+          "peak_working_set_mb": 160,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 613,
+          "peak_working_set_mb": 166,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 613,
+          "peak_working_set_mb": 166,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 610,
+          "peak_working_set_mb": 167,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 613,
+        "peak_working_set_mb": 166
+      },
+      "max": {
+        "wall_ms": 622,
+        "peak_working_set_mb": 167
+      }
+    },
+    {
+      "name": "impact.upstream.d3.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 164,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 162,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 163,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 160,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 162,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 162,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 164,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.upstream.d6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 161,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 159,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 160,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 164,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 162,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 161,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 164,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.downstream.d3.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 198,
+          "peak_working_set_mb": 58,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 204,
+          "peak_working_set_mb": 58,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 204,
+          "peak_working_set_mb": 61,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 202,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 199,
+          "peak_working_set_mb": 58,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 202,
+        "peak_working_set_mb": 58
+      },
+      "max": {
+        "wall_ms": 204,
+        "peak_working_set_mb": 61
+      }
+    },
+    {
+      "name": "impact.downstream.d6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 291,
+          "peak_working_set_mb": 76,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 291,
+          "peak_working_set_mb": 76,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 289,
+          "peak_working_set_mb": 76,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 291,
+          "peak_working_set_mb": 76,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 291,
+          "peak_working_set_mb": 76,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 291,
+        "peak_working_set_mb": 76
+      },
+      "max": {
+        "wall_ms": 291,
+        "peak_working_set_mb": 76
+      }
+    },
+    {
+      "name": "context.default.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 382,
+          "peak_working_set_mb": 82,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 389,
+          "peak_working_set_mb": 82,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 390,
+          "peak_working_set_mb": 82,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 382,
+          "peak_working_set_mb": 82,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 388,
+          "peak_working_set_mb": 82,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 388,
+        "peak_working_set_mb": 82
+      },
+      "max": {
+        "wall_ms": 390,
+        "peak_working_set_mb": 82
+      }
+    },
+    {
+      "name": "context.maxhops6.downstream_wide",
+      "anchor": "downstream_wide",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 593,
+          "peak_working_set_mb": 157,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 596,
+          "peak_working_set_mb": 157,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 594,
+          "peak_working_set_mb": 157,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 589,
+          "peak_working_set_mb": 157,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 593,
+          "peak_working_set_mb": 157,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 593,
+        "peak_working_set_mb": 157
+      },
+      "max": {
+        "wall_ms": 596,
+        "peak_working_set_mb": 157
+      }
+    },
+    {
+      "name": "impact.upstream.d3.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 160,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 160,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 162,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 162,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 160,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 160,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 162,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.upstream.d6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 161,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 164,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 163,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 165,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 161,
+          "peak_working_set_mb": 54,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 163,
+        "peak_working_set_mb": 54
+      },
+      "max": {
+        "wall_ms": 165,
+        "peak_working_set_mb": 54
+      }
+    },
+    {
+      "name": "impact.downstream.d3.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 182,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 184,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 182,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 181,
+          "peak_working_set_mb": 57,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 187,
+          "peak_working_set_mb": 56,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 182,
+        "peak_working_set_mb": 57
+      },
+      "max": {
+        "wall_ms": 187,
+        "peak_working_set_mb": 57
+      }
+    },
+    {
+      "name": "impact.downstream.d6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 269,
+          "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 269,
+          "peak_working_set_mb": 70,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 269,
+          "peak_working_set_mb": 70,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 267,
+          "peak_working_set_mb": 70,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 269,
+          "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 269,
+        "peak_working_set_mb": 70
+      },
+      "max": {
+        "wall_ms": 269,
+        "peak_working_set_mb": 71
+      }
+    },
+    {
+      "name": "context.default.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 347,
+          "peak_working_set_mb": 79,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 346,
+          "peak_working_set_mb": 80,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 352,
+          "peak_working_set_mb": 79,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 345,
+          "peak_working_set_mb": 80,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 346,
+          "peak_working_set_mb": 79,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 346,
+        "peak_working_set_mb": 79
+      },
+      "max": {
+        "wall_ms": 352,
+        "peak_working_set_mb": 80
+      }
+    },
+    {
+      "name": "context.maxhops6.middle",
+      "anchor": "middle",
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 541,
+          "peak_working_set_mb": 155,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 544,
+          "peak_working_set_mb": 155,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 544,
+          "peak_working_set_mb": 155,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 553,
+          "peak_working_set_mb": 155,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 560,
+          "peak_working_set_mb": 155,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 544,
+        "peak_working_set_mb": 155
+      },
+      "max": {
+        "wall_ms": 560,
+        "peak_working_set_mb": 155
+      }
+    },
+    {
+      "name": "search",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 133,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 133,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 134,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 133,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 131,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 133,
+        "peak_working_set_mb": 50
+      },
+      "max": {
+        "wall_ms": 134,
+        "peak_working_set_mb": 50
+      }
+    },
+    {
+      "name": "grep",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 132,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 129,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 129,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 129,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 138,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 129,
+        "peak_working_set_mb": 50
+      },
+      "max": {
+        "wall_ms": 138,
+        "peak_working_set_mb": 50
+      }
+    },
+    {
+      "name": "find_symbol",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 138,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 139,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 138,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 135,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 136,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 138,
+        "peak_working_set_mb": 50
+      },
+      "max": {
+        "wall_ms": 139,
+        "peak_working_set_mb": 50
+      }
+    },
+    {
+      "name": "diff",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 426,
+          "peak_working_set_mb": 130,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 437,
+          "peak_working_set_mb": 129,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 434,
+          "peak_working_set_mb": 129,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 449,
+          "peak_working_set_mb": 128,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 427,
+          "peak_working_set_mb": 130,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 434,
+        "peak_working_set_mb": 129
+      },
+      "max": {
+        "wall_ms": 449,
+        "peak_working_set_mb": 130
+      }
+    },
+    {
+      "name": "find_symbol.freshness_auto_untouched",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": "fresh",
+      "freshness_changed_document_count": 0,
+      "runs": [
+        {
+          "wall_ms": 140,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 138,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 140,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 138,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 139,
+          "peak_working_set_mb": 50,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 139,
+        "peak_working_set_mb": 50
+      },
+      "max": {
+        "wall_ms": 140,
+        "peak_working_set_mb": 50
+      }
+    },
+    {
+      "name": "find_symbol.freshness_hash_untouched",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": "fresh",
+      "freshness_changed_document_count": 0,
+      "runs": [
+        {
+          "wall_ms": 156,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 158,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 161,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 154,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 161,
+          "peak_working_set_mb": 69,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 158,
+        "peak_working_set_mb": 69
+      },
+      "max": {
+        "wall_ms": 161,
+        "peak_working_set_mb": 69
+      }
+    },
+    {
+      "name": "dead_candidates",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 388,
+          "peak_working_set_mb": 109,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 368,
+          "peak_working_set_mb": 110,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 366,
+          "peak_working_set_mb": 110,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 362,
+          "peak_working_set_mb": 110,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 366,
+          "peak_working_set_mb": 110,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 366,
+        "peak_working_set_mb": 110
+      },
+      "max": {
+        "wall_ms": 388,
+        "peak_working_set_mb": 110
+      }
+    },
+    {
+      "name": "mcp_status.default",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": 0,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 4,
+          "peak_working_set_mb": 70,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 3,
+          "peak_working_set_mb": 71,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 9,
+          "peak_working_set_mb": 72,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 3,
+          "peak_working_set_mb": 74,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 3,
+          "peak_working_set_mb": 74,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 3,
+        "peak_working_set_mb": 72
+      },
+      "max": {
+        "wall_ms": 9,
+        "peak_working_set_mb": 74
+      }
+    },
+    {
+      "name": "mcp_status.full",
+      "anchor": null,
+      "skipped": false,
+      "skip_reason": null,
+      "failed": false,
+      "failure": null,
+      "server_exit_code": 0,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [
+        {
+          "wall_ms": 1895,
+          "peak_working_set_mb": 294,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 1916,
+          "peak_working_set_mb": 294,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 1923,
+          "peak_working_set_mb": 311,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 1927,
+          "peak_working_set_mb": 312,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        },
+        {
+          "wall_ms": 1932,
+          "peak_working_set_mb": 354,
+          "exit_code": 0,
+          "db_bytes": null,
+          "db_delta_bytes": null,
+          "timings_total_ms": null,
+          "timings_steps": null,
+          "metric_peak_working_set_mb": null,
+          "peak_cross_check": null,
+          "error": null
+        }
+      ],
+      "median": {
+        "wall_ms": 1923,
+        "peak_working_set_mb": 311
+      },
+      "max": {
+        "wall_ms": 1932,
+        "peak_working_set_mb": 354
+      }
+    },
+    {
+      "name": "find_symbol.freshness_auto_touched",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never touch files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    },
+    {
+      "name": "find_symbol.freshness_hash_touched",
+      "anchor": null,
+      "skipped": true,
+      "skip_reason": "--solution runs never touch files",
+      "failed": false,
+      "failure": null,
+      "server_exit_code": null,
+      "touched_files": null,
+      "freshness_state": null,
+      "freshness_changed_document_count": null,
+      "runs": [],
+      "median": null,
+      "max": null
+    }
+  ]
+}
