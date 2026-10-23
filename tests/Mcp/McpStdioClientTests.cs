@@ -7,7 +7,7 @@ namespace Lurp.Tests.Mcp;
 public sealed class McpStdioClientTests
 {
     private static string[] Pwsh(string script) =>
-        ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(script))];
+        ["pwsh", "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(script))];
 
     [Fact]
     public async Task NonJsonStdoutLine_Throws()

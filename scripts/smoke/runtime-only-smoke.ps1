@@ -3,7 +3,7 @@
 # diagnosed "requires a .NET SDK" message when no SDK is reachable.
 #
 # Usage:
-#   pwsh -File scripts/smoke/runtime-only-smoke.ps1 -Lurp <path>/lurp.exe -ExpectedVersion <version> -DbDir <dir> -RuntimeDir <dir> -SolutionPath <path>/Smoke.slnx
+#   pwsh -File scripts/smoke/runtime-only-smoke.ps1 -Lurp <path>/lurp (`lurp.exe` on Windows) -ExpectedVersion <version> -DbDir <dir> -RuntimeDir <dir> -SolutionPath <path>/Smoke.slnx
 param(
     [Parameter(Mandatory)][string]$Lurp,
     [Parameter(Mandatory)][string]$DbDir,
@@ -28,14 +28,15 @@ function ConvertFrom-LurpJson([string]$Text) {
     return $Text.Substring($start) | ConvertFrom-Json
 }
 
-$dotnetExe = Join-Path $RuntimeDir 'dotnet.exe'
-Assert-True (Test-Path $dotnetExe) "no dotnet.exe in RuntimeDir '$RuntimeDir'"
+$dotnetName = if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' }
+$dotnetExe = Join-Path $RuntimeDir $dotnetName
+Assert-True (Test-Path $dotnetExe) "no $dotnetName in RuntimeDir '$RuntimeDir'"
 
 $env:DOTNET_ROOT = $RuntimeDir
 Get-ChildItem Env: | Where-Object { $_.Name -like 'DOTNET_ROOT*' } | ForEach-Object {
     [Environment]::SetEnvironmentVariable($_.Name, $RuntimeDir, 'Process')
 }
-$env:PATH = "$RuntimeDir;$env:PATH"
+$env:PATH = "$RuntimeDir$([IO.Path]::PathSeparator)$env:PATH"
 
 $sdks = & $dotnetExe --list-sdks
 Assert-True ($LASTEXITCODE -eq 0) "dotnet --list-sdks exited $LASTEXITCODE"

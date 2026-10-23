@@ -11,6 +11,23 @@ namespace Lurp.Shared;
 public static class PathNormalizer
 {
     /// <summary>
+    ///     Path equality and hashing for this OS: case-insensitive on Windows, ordinal
+    ///     elsewhere. Git and the file system are case-insensitive on Windows and
+    ///     case-sensitive on Linux, so a path set that merges <c>Foo.cs</c> and
+    ///     <c>foo.cs</c> there drops an invalidation and diverges from a full rebuild.
+    /// </summary>
+    public static StringComparer PathComparer { get; } =
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>
+    ///     The <see cref="StringComparison" /> counterpart of <see cref="PathComparer" />,
+    ///     for path checks written with <c>string.Equals</c>, <c>StartsWith</c> or
+    ///     <c>EndsWith</c>.
+    /// </summary>
+    public static StringComparison PathComparison { get; } =
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    /// <summary>
     ///     Rewrite a path to the persisted separator (forward slash), leaving it
     ///     otherwise unchanged.
     /// </summary>
@@ -39,8 +56,45 @@ public static class PathNormalizer
     /// </summary>
     public static string NormalizeForStorage(string path)
     {
-        var resolved = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
+        var resolved = IsRooted(path) ? path : Path.GetFullPath(path);
         return ToForwardSlash(resolved);
+    }
+
+    /// <summary>
+    ///     Returns true when <paramref name="path" /> is rooted on the current OS
+    ///     (<see cref="Path.IsPathRooted" />), or when it is a Windows drive path
+    ///     (<c>X:/</c> or <c>X:\</c>, any letter) or a UNC path
+    ///     (<c>\\server\share</c> or <c>//server/share</c>), so that manifests
+    ///     written on Windows can be read on Linux without being re-prefixed with
+    ///     the current working directory.
+    /// </summary>
+    private static bool IsRooted(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        if (Path.IsPathRooted(path))
+        {
+            return true;
+        }
+
+        // Windows drive path: "X:/" or "X:\"
+        if (path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':'
+            && (path[2] == '/' || path[2] == '\\'))
+        {
+            return true;
+        }
+
+        // UNC path: "\\server\share" or "//server/share"
+        if (path.Length >= 2 && (path[0] == '\\' || path[0] == '/')
+            && (path[1] == '\\' || path[1] == '/'))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

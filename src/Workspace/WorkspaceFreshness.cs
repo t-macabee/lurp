@@ -195,7 +195,7 @@ public static class WorkspaceFreshness
     private static bool HasNoNewSourcesOrBuildInputs(SqliteIndexStore store, string snapshotId, DateTime builtAtUtc, string gitRoot)
     {
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
-        var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var pathComparer = PathNormalizer.PathComparer;
         var knownDocuments = new HashSet<string>(store.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
         var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
 

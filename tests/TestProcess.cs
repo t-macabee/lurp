@@ -46,8 +46,8 @@ internal static class TestProcess
 
     internal static void RestoreSolution(string solutionPath)
     {
-        var (exitCode, _, stderr) = Run("dotnet", ["restore", solutionPath, "--nologo"], TimeSpan.FromMinutes(10));
+        var (exitCode, stdout, stderr) = Run("dotnet", ["restore", solutionPath, "--nologo"], TimeSpan.FromMinutes(10));
         if (exitCode != 0)
-            throw new InvalidOperationException($"dotnet restore failed ({exitCode}):\n{stderr}");
+            throw new InvalidOperationException($"dotnet restore failed ({exitCode}):\nstdout:\n{stdout}\nstderr:\n{stderr}");
     }
 }

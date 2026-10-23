@@ -7,6 +7,7 @@ namespace Lurp.Workspace;
 /// Provides file-based locking for Lurp index runs, preventing concurrent indexing of the same
 /// solution or database across both CLI and MCP entry points. Locks are held in the user's temp
 /// folder, keyed by the canonical path identity computed by <see cref="PathIdentity"/>.
+/// Lock files stay on disk after a run; only the open handle is the lock.
 /// </summary>
 internal static class IndexRunLock
 {
@@ -23,7 +24,8 @@ internal static class IndexRunLock
     /// <summary>
     /// Try to acquire a lock for the given key. Returns a FileStream if successful,
     /// or null if another process holds the lock. The returned stream should be disposed
-    /// to release the lock (FileOptions.DeleteOnClose ensures cleanup).
+    /// to release the lock. The lock file stays on disk after release; only the open
+    /// handle is the lock.
     /// </summary>
     public static FileStream? TryAcquire(string key)
     {
@@ -31,7 +33,7 @@ internal static class IndexRunLock
         Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
         try
         {
-            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1);
         }
         catch (IOException)
         {

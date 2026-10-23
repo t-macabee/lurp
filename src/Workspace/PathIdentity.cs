@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Lurp.Workspace;
@@ -52,12 +53,20 @@ internal static class PathIdentity
         string full;
         try { full = Path.GetFullPath(path); } catch { return path; }
 
-        if (!OperatingSystem.IsWindows())
-            return full;
-
         var tail = new List<string>();
-        var dir = Path.GetDirectoryName(full);
-        var name = Path.GetFileName(full);
+        string? dir;
+        string name;
+
+        if (Directory.Exists(full))
+        {
+            dir = full;
+            name = string.Empty;
+        }
+        else
+        {
+            dir = Path.GetDirectoryName(full);
+            name = Path.GetFileName(full);
+        }
 
         while (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
         {
@@ -65,7 +74,10 @@ internal static class PathIdentity
                 tail.Add(name);
             name = Path.GetFileName(dir);
             var parent = Path.GetDirectoryName(dir);
-            if (string.IsNullOrEmpty(parent) || string.Equals(parent, dir, StringComparison.OrdinalIgnoreCase))
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, dir, comparison))
             {
                 dir = null;
                 break;
@@ -77,7 +89,12 @@ internal static class PathIdentity
         if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
             return full;
 
-        var resolved = TryGetFinalPath(dir);
+        string? resolved;
+        if (OperatingSystem.IsWindows())
+            resolved = TryGetFinalPath(dir);
+        else
+            resolved = TryRealpath(dir);
+
         if (string.IsNullOrEmpty(resolved))
             return full;
 
@@ -90,6 +107,31 @@ internal static class PathIdentity
         return result;
     }
 
+    private const int PATH_MAX = 4096;
+
+    [DllImport("libc", EntryPoint = "realpath", SetLastError = true)]
+    private static extern IntPtr realpath(byte[] path, byte[] resolved_path);
+
+    private static string? TryRealpath(string directory)
+    {
+        var pathBytes = new byte[Encoding.UTF8.GetByteCount(directory) + 1];
+        Encoding.UTF8.GetBytes(directory, 0, directory.Length, pathBytes, 0);
+        // null terminator already zero
+
+        var buffer = new byte[PATH_MAX];
+        var result = realpath(pathBytes, buffer);
+        if (result == IntPtr.Zero)
+            return null;
+
+        var length = 0;
+        while (length < buffer.Length && buffer[length] != 0)
+            length++;
+
+        if (length == 0)
+            return null;
+
+        return Encoding.UTF8.GetString(buffer, 0, length);
+    }
     private static string? TryGetFinalPath(string directory)
     {
         using var handle = CreateFile(directory, GENERIC_READ,

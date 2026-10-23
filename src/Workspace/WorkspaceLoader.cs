@@ -135,7 +135,7 @@ internal sealed class WorkspaceLoader : IDisposable
         var prefix = fullDirectory.EndsWith(Path.DirectorySeparatorChar)
             ? fullDirectory
             : fullDirectory + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        return fullPath.StartsWith(prefix, PathNormalizer.PathComparison);
     }
 }
 

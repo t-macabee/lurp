@@ -452,7 +452,7 @@ internal sealed class ContextAssembler
         var anchorDocuments = anchor.Locations
             .Select(static location => location.DocumentPath)
             .Where(static path => !string.IsNullOrEmpty(path))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToHashSet(PathNormalizer.PathComparer);
 
         if (anchorDocuments.Count == 0)
             return false;

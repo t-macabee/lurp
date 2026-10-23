@@ -75,19 +75,19 @@ internal sealed class GitIgnoreMatcher
 
                 if (i == 0)
                 {
-                    if (part.Length > 0 && !remaining.StartsWith(part, StringComparison.OrdinalIgnoreCase))
+                    if (part.Length > 0 && !remaining.StartsWith(part, PathNormalizer.PathComparison))
                         return false;
                     if (part.Length > 0)
                         remaining = remaining[part.Length..];
                 }
                 else if (i == parts.Length - 1)
                 {
-                    if (part.Length > 0 && !remaining.EndsWith(part, StringComparison.OrdinalIgnoreCase))
+                    if (part.Length > 0 && !remaining.EndsWith(part, PathNormalizer.PathComparison))
                         return false;
                 }
                 else
                 {
-                    var idx = remaining.IndexOf(part, StringComparison.OrdinalIgnoreCase);
+                    var idx = remaining.IndexOf(part, PathNormalizer.PathComparison);
                     if (idx < 0)
                         return false;
                     remaining = remaining[(idx + part.Length)..];
@@ -112,22 +112,22 @@ internal sealed class GitIgnoreMatcher
             {
                 if (anchored)
                     return pathSegments.Length > 0 &&
-                           string.Equals(pathSegments[0], patternSegments[0], StringComparison.OrdinalIgnoreCase);
+                           string.Equals(pathSegments[0], patternSegments[0], PathNormalizer.PathComparison);
 
                 return pathSegments.Any(seg =>
-                    string.Equals(seg, patternSegments[0], StringComparison.OrdinalIgnoreCase));
+                    string.Equals(seg, patternSegments[0], PathNormalizer.PathComparison));
             }
 
             if (pathSegments.Length < patternSegments.Length)
                 return false;
 
             return patternSegments
-                .Select((seg, i) => string.Equals(pathSegments[i], seg, StringComparison.OrdinalIgnoreCase))
+                .Select((seg, i) => string.Equals(pathSegments[i], seg, PathNormalizer.PathComparison))
                 .All(static equal => equal);
         }
 
-        return string.Equals(path, pattern, StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith("/" + pattern, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(path, pattern, PathNormalizer.PathComparison) ||
+               path.EndsWith("/" + pattern, PathNormalizer.PathComparison);
     }
 
     private static bool WildcardMatch(string input, string pattern)
@@ -136,8 +136,7 @@ internal sealed class GitIgnoreMatcher
         int starIdx = -1, matchIdx = -1;
 
         while (i < input.Length)
-            if (p < pattern.Length && (pattern[p] == '?' ||
-                                       char.ToUpperInvariant(input[i]) == char.ToUpperInvariant(pattern[p])))
+            if (p < pattern.Length && (pattern[p] == '?' || CharsEqual(input[i], pattern[p])))
             {
                 i++;
                 p++;
@@ -163,6 +162,13 @@ internal sealed class GitIgnoreMatcher
             p++;
 
         return p == pattern.Length;
+    }
+
+    private static bool CharsEqual(char a, char b)
+    {
+        return PathNormalizer.PathComparison == StringComparison.OrdinalIgnoreCase
+            ? char.ToUpperInvariant(a) == char.ToUpperInvariant(b)
+            : a == b;
     }
 
     private sealed record GitIgnorePattern(string Pattern, bool Negated, bool IsDirectoryPattern);

@@ -21,7 +21,7 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         _output.Write("Hashing documents and detecting changes... ");
         var docChanges = DetectChanges(workspaceInfo, previousRichManifest);
         var changedDocs = docChanges.Where(c => c.ChangeKind != DocumentChangeKind.Unchanged).ToList();
-        var changedPaths = changedDocs.Select(c => c.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var changedPaths = changedDocs.Select(c => c.RelativePath).ToHashSet(PathNormalizer.PathComparer);
         _output.WriteLine($"done ({changedDocs.Count} changed, {docChanges.Count - changedDocs.Count} unchanged).");
 
         if (changedDocs.Count == 0)
@@ -59,7 +59,7 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
             if (projectDirectory != null && changedPaths.Any(path =>
                     Path.GetFullPath(Path.Combine(_gitRoot, path)).StartsWith(
                         Path.GetFullPath(projectDirectory) + Path.DirectorySeparatorChar,
-                        StringComparison.OrdinalIgnoreCase)))
+                        PathNormalizer.PathComparison)))
                 affectedIds.Add(project.Id);
         }
 

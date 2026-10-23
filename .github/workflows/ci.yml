@@ -14,7 +14,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
     timeout-minutes: 60
     permissions:
       contents: read
@@ -35,6 +39,7 @@ jobs:
         run: pwsh -NoProfile -File scripts/ci/LurpCi.Tests.ps1
 
       - name: Check for vulnerable packages
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Import-Module ./scripts/ci/LurpCi.psm1 -Force
@@ -47,9 +52,11 @@ jobs:
         run: dotnet test --no-build --configuration Release --settings tests/full.runsettings
 
       - name: Pack global tool
+        if: runner.os == 'Windows'
         run: dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
 
       - name: Write nupkg SHA-256
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $pkg = Get-ChildItem ./artifacts/*.nupkg | Select-Object -First 1
@@ -59,6 +66,7 @@ jobs:
           Get-Content ./artifacts/SHA256SUMS.txt
 
       - name: Upload nupkg
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lurp-nupkg
@@ -71,7 +79,11 @@ jobs:
   # to end (audit Phase 4: B4 packed-tool smoke, A3 runtime-only install check).
   install-smoke:
     needs: build
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -105,33 +117,41 @@ jobs:
         run: |
           $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
           dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
-          ./t/lurp.exe --version
+          $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
+          & $lurp --version
 
       - name: Packed-tool smoke (SDK)
         shell: pwsh
         run: |
           $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
-          ./scripts/smoke/packed-tool-smoke.ps1 -Lurp ./t/lurp.exe -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -WorkDir "$env:RUNNER_TEMP/lurp-smoke-work"
+          $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
+          ./scripts/smoke/packed-tool-smoke.ps1 -Lurp $lurp -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -WorkDir "$env:RUNNER_TEMP/lurp-smoke-work"
 
       # Audit Phase 6 / B2: the packed tool must leave the analyzed tree
       # byte-identical after every CLI mode and MCP tool runs against it.
       - name: Target-tree integrity (packed tool)
         shell: pwsh
         env:
-          LURP_TOOL_PATH: ${{ github.workspace }}\t\lurp.exe
+          LURP_TOOL_PATH: ${{ github.workspace }}/t/lurp${{ runner.os == 'Windows' && '.exe' || '' }}
         run: dotnet test tests/Lurp.Tests.csproj --configuration Release --filter "FullyQualifiedName~TargetTreeIntegrity"
 
       - name: Install .NET runtime only
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile "$env:RUNNER_TEMP/dotnet-install.ps1"
-          & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -InstallDir "$env:RUNNER_TEMP/dotnet-runtime" -NoPath
+          if ($IsWindows) {
+            Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile "$env:RUNNER_TEMP/dotnet-install.ps1"
+            & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -InstallDir "$env:RUNNER_TEMP/dotnet-runtime" -NoPath
+          } else {
+            Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.sh -OutFile "$env:RUNNER_TEMP/dotnet-install.sh"
+            bash "$env:RUNNER_TEMP/dotnet-install.sh" --runtime dotnet --channel 10.0 --install-dir "$env:RUNNER_TEMP/dotnet-runtime" --no-path
+          }
 
       - name: Runtime-only smoke
         shell: pwsh
         run: |
           $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
-          ./scripts/smoke/runtime-only-smoke.ps1 -Lurp ./t/lurp.exe -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -RuntimeDir "$env:RUNNER_TEMP/dotnet-runtime" -SolutionPath "$env:RUNNER_TEMP/lurp-smoke-work/src/Smoke.slnx"
+          $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
+          ./scripts/smoke/runtime-only-smoke.ps1 -Lurp $lurp -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -RuntimeDir "$env:RUNNER_TEMP/dotnet-runtime" -SolutionPath "$env:RUNNER_TEMP/lurp-smoke-work/src/Smoke.slnx"
 
   # The real-solution parity gate (self-hosted runner, eNoteV2) moved to
   # real-parity.yml: a missing/offline self-hosted runner

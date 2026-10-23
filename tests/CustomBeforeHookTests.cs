@@ -192,14 +192,14 @@ public sealed class CustomBeforeHookTests
             WriteFile(root, "Directory.Build.props",
                 "<Project>",
                 "  <PropertyGroup>",
-                @"    <CustomBeforeMicrosoftCommonTargets>$(MSBuildThisFileDirectory)hooks\solution-hook.targets</CustomBeforeMicrosoftCommonTargets>",
+                @"    <CustomBeforeMicrosoftCommonTargets>$(MSBuildThisFileDirectory)hooks/solution-hook.targets</CustomBeforeMicrosoftCommonTargets>",
                 "  </PropertyGroup>",
                 "</Project>");
         }
 
         if (placement != HookPlacement.None)
         {
-            WriteFile(root, @"hooks\solution-hook.targets",
+            WriteFile(root, @"hooks/solution-hook.targets",
                 "<Project>",
                 "  <PropertyGroup>",
                 "    <DefineConstants>$(DefineConstants);LURP_HOOK</DefineConstants>",
@@ -208,14 +208,14 @@ public sealed class CustomBeforeHookTests
                 @"    <Compile Include=""$(MSBuildThisFileDirectory)HookAdded.cs"" />",
                 "  </ItemGroup>",
                 "</Project>");
-            WriteFile(root, @"hooks\HookAdded.cs",
+            WriteFile(root, @"hooks/HookAdded.cs",
                 "namespace Fx;",
                 "",
                 "public static class HookAdded { }");
         }
 
-        WriteFile(root, @"Fx\Fx.csproj", ProjectXml(placement));
-        WriteFile(root, @"Fx\Class1.cs",
+        WriteFile(root, @"Fx/Fx.csproj", ProjectXml(placement));
+        WriteFile(root, @"Fx/Class1.cs",
             "namespace Fx;",
             "",
             "public static class Class1",
@@ -240,7 +240,7 @@ public sealed class CustomBeforeHookTests
         };
         if (placement == HookPlacement.ProjectBody)
         {
-            lines.Add(@"    <CustomBeforeMicrosoftCommonTargets>$(MSBuildProjectDirectory)\..\hooks\solution-hook.targets</CustomBeforeMicrosoftCommonTargets>");
+            lines.Add(@"    <CustomBeforeMicrosoftCommonTargets>$(MSBuildProjectDirectory)/../hooks/solution-hook.targets</CustomBeforeMicrosoftCommonTargets>");
         }
 
         lines.Add("  </PropertyGroup>");

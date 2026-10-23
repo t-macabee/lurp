@@ -8,7 +8,7 @@ internal sealed class UncertaintyDetector
     private readonly IEdgeStore _edgeStore;
     private readonly string? _gitRoot;
     private readonly bool _includeGenerated;
-    private readonly Dictionary<string, string?> _owningProjectCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> _owningProjectCache = new(PathNormalizer.PathComparer);
     private readonly string _snapshotId;
     private readonly SymbolId _symbolId;
     private string? _solutionPath;
@@ -357,7 +357,7 @@ internal sealed class UncertaintyDetector
         var projects = AllCapsuleItems(capsule)
             .Select(item => ResolveOwningProject(item.SymbolId))
             .Where(static path => path != null)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(PathNormalizer.PathComparer)
             .ToList();
         if (projects.Count >= 3)
         {
@@ -450,7 +450,7 @@ internal sealed class UncertaintyDetector
 
         string? result = null;
         var current = directory;
-        while (!string.IsNullOrEmpty(current) && current.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        while (!string.IsNullOrEmpty(current) && current.StartsWith(root, PathNormalizer.PathComparison))
         {
             if (!Directory.Exists(current))
                 break;
@@ -464,7 +464,7 @@ internal sealed class UncertaintyDetector
                 break;
             }
 
-            if (string.Equals(current, root, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(current, root, PathNormalizer.PathComparison))
                 break;
             current = Path.GetDirectoryName(current)!;
         }

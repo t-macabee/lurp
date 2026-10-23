@@ -111,14 +111,14 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var addedFilePaths = changedDocs
             .Where(static c => c.ChangeKind == DocumentChangeDetector.DocumentChangeKind.New)
             .Select(static c => c.RelativePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToHashSet(PathNormalizer.PathComparer);
         var newFileProjectPaths = addedFilePaths.Count == 0
             ? null
             : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
 
-        var invalidationPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        var invalidationPaths = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters, _output);
-        var closureSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        var closureSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         if (newFileProjectPaths != null)
             closureSeed.UnionWith(newFileProjectPaths);
         var (closurePaths, fellBackToProjectScope) = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
@@ -178,7 +178,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var extractionScopeSeed = changedPaths;
         if (newFileProjectPaths != null)
         {
-            extractionScopeSeed = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+            extractionScopeSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
             extractionScopeSeed.UnionWith(newFileProjectPaths);
             extractionScopeSeed.UnionWith(closurePaths);
         }
@@ -578,7 +578,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // re-saved idempotently here, so extraction and deletion stay in lockstep.
         var refreshPaths = new HashSet<string>(
             (HashSet<string>)context.Changes.CrossDocumentClosurePaths,
-            StringComparer.OrdinalIgnoreCase);
+            PathNormalizer.PathComparer);
         refreshPaths.UnionWith(context.Changes.ExtractedPaths);
         var crossDocEdgesProcessed = await refresher.RefreshWithAffectedPathsAsync(
             context.Solution, context.Workspace,
@@ -633,7 +633,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
     private HashSet<string> GetProjectDocumentPaths(Solution solution, HashSet<string> projectNames)
     {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var paths = new HashSet<string>(PathNormalizer.PathComparer);
         foreach (var project in solution.Projects)
         {
             if (!projectNames.Contains(project.Name))
@@ -677,7 +677,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
     /// </summary>
     private HashSet<string> ToAbsoluteNormalizedPaths(IReadOnlySet<string> relativePaths)
     {
-        var absolute = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var absolute = new HashSet<string>(PathNormalizer.PathComparer);
         var rootDir = PathNormalizer.NormalizeRoot(_gitRoot) + Path.DirectorySeparatorChar;
         foreach (var relativePath in relativePaths)
             absolute.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relativePath))));
@@ -698,7 +698,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
     /// </remarks>
     private HashSet<string> ExpandToDeclaringTypeParts(string previousSnapshotId, HashSet<string> seedPaths)
     {
-        var expanded = new HashSet<string>(seedPaths, StringComparer.OrdinalIgnoreCase);
+        var expanded = new HashSet<string>(seedPaths, PathNormalizer.PathComparer);
         if (seedPaths.Count == 0)
             return expanded;
 

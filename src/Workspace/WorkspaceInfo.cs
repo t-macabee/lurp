@@ -327,7 +327,7 @@ public sealed class WorkspaceInfo
                 {
                 }
 
-            if (string.Equals(dir, normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(dir, normalizedRoot, PathNormalizer.PathComparison))
                 break;
 
             var parent = Path.GetDirectoryName(dir);
@@ -410,8 +410,7 @@ public sealed class WorkspaceInfo
     private static Dictionary<string, ImmutableArray<string>> BuildMetadataReferenceIdentities(Solution solution)
     {
         var map = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
-        var tokensByPath = new Dictionary<string, string>(
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var tokensByPath = new Dictionary<string, string>(PathNormalizer.PathComparer);
 
         foreach (var project in solution.Projects)
         {

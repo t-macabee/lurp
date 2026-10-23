@@ -268,7 +268,7 @@ internal static class HandlerBootstrap
 
     private static bool IsSameOrSubdirectory(string path, string directory)
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var comparison = PathNormalizer.PathComparison;
         var trimmedPath = Path.TrimEndingDirectorySeparator(path);
         var trimmedDirectory = Path.TrimEndingDirectorySeparator(directory);
         if (string.Equals(trimmedPath, trimmedDirectory, comparison))

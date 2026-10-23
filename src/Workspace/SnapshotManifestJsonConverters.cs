@@ -63,7 +63,8 @@ public sealed partial class SnapshotManifest
                 return WorkspaceId.Create(gitRoot, solutionPath);
 
             if (value != null)
-                return ParseWorkspaceUri(value);
+                throw new JsonException(
+                    "Manifest has no git_root/solution_path; run --mode=index --strategy=full to rebuild it.");
 
             throw new JsonException("Insufficient data to reconstruct WorkspaceId.");
         }
@@ -75,22 +76,6 @@ public sealed partial class SnapshotManifest
             writer.WriteString("solution_path", value.SolutionPath);
             writer.WriteString("value", value.Value);
             writer.WriteEndObject();
-        }
-
-        private static WorkspaceId ParseWorkspaceUri(string uri)
-        {
-            const string prefix = "workspace://";
-            if (!uri.StartsWith(prefix, StringComparison.Ordinal))
-                throw new JsonException($"Invalid WorkspaceId URI: {uri}");
-
-            var rest = uri[prefix.Length..];
-            var slashIndex = rest.IndexOf('/');
-            if (slashIndex < 0)
-                throw new JsonException($"Invalid WorkspaceId URI (no root/solution split): {uri}");
-
-            var gitRoot = rest[..slashIndex];
-            var slnPath = rest[(slashIndex + 1)..];
-            return WorkspaceId.Create(gitRoot, slnPath, solutionPathIsRootRelative: true);
         }
     }
 

@@ -59,9 +59,9 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
     /// </remarks>
     internal DocumentClosureResult FindAffectedDocPaths(Solution solution, string previousSnapshotId, HashSet<string> changedPaths, double fallbackRatio = DefaultFallbackRatio)
     {
-        var affectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var visitedPaths = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
-        var frontier = new HashSet<string>(changedPaths, StringComparer.OrdinalIgnoreCase);
+        var affectedPaths = new HashSet<string>(PathNormalizer.PathComparer);
+        var visitedPaths = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
+        var frontier = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         var (pathToProject, projectDocCount) = BuildProjectDocIndex(solution);
         var fellBack = false;
 
@@ -82,7 +82,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
         {
             var oldDocVersionIds = store.GetDocumentVersionIdsForDocuments(previousSnapshotId, frontier);
             var symbolIds = store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIds);
-            var next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var next = new HashSet<string>(PathNormalizer.PathComparer);
             foreach (var symbolId in symbolIds)
                 foreach (var edge in store.GetIncomingEdges(previousSnapshotId, symbolId))
                     foreach (var path in ResolveSourceDocumentPaths(previousSnapshotId, edge, visitedPaths))
@@ -113,7 +113,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
 
     private (Dictionary<string, string> PathToProject, Dictionary<string, int> ProjectDocCount) BuildProjectDocIndex(Solution solution)
     {
-        var pathToProject = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pathToProject = new Dictionary<string, string>(PathNormalizer.PathComparer);
         var projectDocCount = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
         {
@@ -161,7 +161,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
             if (pathToProject.TryGetValue(path, out var project))
                 touchedProjects.Add(project);
 
-        var widened = new HashSet<string>(affectedPaths, StringComparer.OrdinalIgnoreCase);
+        var widened = new HashSet<string>(affectedPaths, PathNormalizer.PathComparer);
         foreach (var project in solution.Projects)
         {
             if (!touchedProjects.Contains(project.Name))
@@ -229,7 +229,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
         IReadOnlySet<string>? alreadyCoveredProjectNames = null)
     {
         // Compute per-project affected absolute paths for scoped re-extraction
-        var affectedAbsPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var affectedAbsPaths = new HashSet<string>(PathNormalizer.PathComparer);
         var rootDir = PathNormalizer.NormalizeRoot(gitRoot) + Path.DirectorySeparatorChar;
         foreach (var relPath in affectedDocPaths)
             affectedAbsPaths.Add(PathNormalizer.ToForwardSlash(Path.GetFullPath(Path.Combine(rootDir, relPath))));
@@ -239,7 +239,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
         {
             if (!affectedProjectNames.Contains(project.Name))
                 continue;
-            var projectAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var projectAffected = new HashSet<string>(PathNormalizer.PathComparer);
             foreach (var doc in project.Documents)
             {
                 if (doc.FilePath == null) continue;
@@ -253,7 +253,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
 
         // Only delete edges for the affected documents within each project,
         // not the entire project's documents.
-        var allAffectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allAffectedPaths = new HashSet<string>(PathNormalizer.PathComparer);
         foreach (var projectPaths in perProjectAffectedPaths.Values)
             foreach (var path in projectPaths)
                 allAffectedPaths.Add(GetRelativePath(path, gitRoot));

@@ -85,6 +85,34 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         using var databaseLock = HoldLock(IndexRunLock.GetLockFilePath(databaseKey));
     }
 
+    [Fact]
+    public void AfterRelease_LockFileStillExists_AndTryAcquireSucceedsAgain()
+    {
+        var key = "release-stays-" + Guid.NewGuid();
+        var lockPath = IndexRunLock.GetLockFilePath(key);
+        try { File.Delete(lockPath); } catch { }
+
+        using (var held = IndexRunLock.TryAcquire(key))
+        {
+            Assert.NotNull(held);
+        }
+
+        Assert.True(File.Exists(lockPath));
+        using var again = IndexRunLock.TryAcquire(key);
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public void WhileHeld_SecondTryAcquireReturnsNull()
+    {
+        var key = "held-blocks-" + Guid.NewGuid();
+
+        using var first = IndexRunLock.TryAcquire(key);
+        Assert.NotNull(first);
+
+        var second = IndexRunLock.TryAcquire(key);
+        Assert.Null(second);
+    }
     private string CreateSecondSolution()
     {
         var projectDir = Path.Combine(TestDir, "src", "LockB");

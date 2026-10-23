@@ -3,11 +3,11 @@
 # checks the next index recovers (B5 test 4).
 #
 # Usage:
-#   pwsh -File scripts/smoke/packed-tool-smoke.ps1 -Lurp <path-to>/lurp.exe -ExpectedVersion <version> -DbDir <fresh-dir>
+#   pwsh -File scripts/smoke/packed-tool-smoke.ps1 -Lurp <path-to>/lurp (`lurp.exe` on Windows) -ExpectedVersion <version> -DbDir <fresh-dir>
 param(
     [Parameter(Mandatory)][string]$Lurp,
     [Parameter(Mandatory)][string]$DbDir,
-    [string]$WorkDir = (Join-Path $env:TEMP "lurp-packed-smoke-$([guid]::NewGuid().ToString('N'))"),
+    [string]$WorkDir = (Join-Path ([IO.Path]::GetTempPath()) "lurp-packed-smoke-$([guid]::NewGuid().ToString('N'))"),
     [Parameter(Mandatory)][string]$ExpectedVersion,
     [string]$RepoRoot = '',
     [switch]$SkipKillTest,
@@ -16,10 +16,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path }
 $Lurp = (Resolve-Path $Lurp).Path
 Import-Module (Join-Path $PSScriptRoot 'LurpSmoke.psm1') -Force -ArgumentList $Lurp
-$FixturesDir = Join-Path $RepoRoot 'tests\Fixtures\Smoke'
+$FixturesDir = Join-Path $RepoRoot 'tests' 'Fixtures' 'Smoke'
 $SolutionName = 'Smoke.slnx'
 
 function Assert-True([bool]$Condition, [string]$Message) {
@@ -103,7 +103,8 @@ function Get-McpToolJson {
 }
 
 function Get-Python {
-    $py = Get-Command python -ErrorAction SilentlyContinue
+    $py = Get-Command python3 -ErrorAction SilentlyContinue
+    if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
     if (-not $py) { throw 'Python 3 is required by this smoke script (snapshot-state.py).' }
     return $py.Source
 }
@@ -190,7 +191,7 @@ Assert-True (@($annotations.annotations | Where-Object { $_.annotation_id -eq $a
 $null = Invoke-Lurp @('--mode=pin-snapshot', "--snapshot=$snapshot1", "--output-dir=$DbDir")
 $null = Invoke-Lurp @('--mode=pin-snapshot', '--clear', "--output-dir=$DbDir")
 
-Add-Content (Join-Path $srcDir 'App\Lib.cs') '// smoke edit'
+Add-Content (Join-Path $srcDir 'App' 'Lib.cs') '// smoke edit'
 $index2 = Invoke-Lurp @('--mode=index', "--solution=$solutionPath", "--output-dir=$DbDir")
 Assert-True ($index2.Text -match 'Incremental index complete') 'incremental index did not complete'
 $status2 = ConvertFrom-LurpJson (Invoke-Lurp @('--mode=status', "--output-dir=$DbDir", '--output=json')).Text
