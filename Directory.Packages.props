@@ -11,7 +11,7 @@
     <!-- src/Lurp + src/Storage -->
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" /> <!-- Compile-only surface of the workspace loader; runtime assets are excluded in src/Lurp.csproj so MSBuildLocator loads the SDK's own MSBuild assemblies. -->
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" /> <!-- Binds the process to the installed MSBuild the target solution needs; the only MSBuild source allowed in the tool package. -->
-    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.8.2" /> <!-- Transitive MSBuild dependency pulled in by Microsoft.Build.Framework; runtime copy is excluded in src/Lurp.csproj so MSBuildLocator's SDK copy is the only one loaded. -->
+    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.10.1" /> <!-- Transitive MSBuild dependency pulled in by Microsoft.Build.Framework; runtime copy is excluded in src/Lurp.csproj so MSBuildLocator's SDK copy is the only one loaded. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" /> <!-- C# syntax and semantic analysis used by extraction. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" /> <!-- Workspace-level C# services required by MSBuildWorkspace. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.6.0" /> <!-- Loads .sln/.slnx through MSBuild design-time builds. -->
