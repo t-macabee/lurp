@@ -9,6 +9,6 @@ internal static class VersionConstants
     // declarations, symbol metadata, structural edges, binding-incompleteness rows. Both
     // versions are part of the snapshot identity, so either bump produces a new snapshot.
     internal const string ExtractorVersion = "1.11.0";
-    internal const string ToolVersion = "3.5.2";
+    internal const string ToolVersion = "3.6.0";
     internal const int CliMcpContractVersion = 6;
 }
