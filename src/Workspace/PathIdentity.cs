@@ -1,3 +1,4 @@
+using Lurp.Shared;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -44,9 +45,11 @@ internal static class PathIdentity
 
     /// <summary>
     /// Resolves the deepest existing ancestor directory through the OS
-    /// (<c>GetFinalPathNameByHandle</c>) and re-appends the not-yet-existing tail.
-    /// This folds <c>subst</c> drives, junctions, symlinks, 8.3 names, and case
-    /// variants onto one key. Falls back to the full path when resolution fails.
+    /// (<c>GetFinalPathNameByHandle</c> on Windows, <c>realpath</c> on other
+    /// OSes) and re-appends the not-yet-existing tail. On Windows this folds
+    /// <c>subst</c> drives, junctions, symlinks, 8.3 names, and case variants
+    /// onto one key; on other OSes it resolves symlinks. Falls back to the
+    /// full path when resolution fails.
     /// </summary>
     private static string Canonicalize(string path)
     {
@@ -74,10 +77,7 @@ internal static class PathIdentity
                 tail.Add(name);
             name = Path.GetFileName(dir);
             var parent = Path.GetDirectoryName(dir);
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-            if (string.IsNullOrEmpty(parent) || string.Equals(parent, dir, comparison))
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, dir, PathNormalizer.PathComparison))
             {
                 dir = null;
                 break;
@@ -132,6 +132,7 @@ internal static class PathIdentity
 
         return Encoding.UTF8.GetString(buffer, 0, length);
     }
+
     private static string? TryGetFinalPath(string directory)
     {
         using var handle = CreateFile(directory, GENERIC_READ,

@@ -68,18 +68,29 @@ internal static class LurpCache
         """;
 
     /// <summary>
-    ///     <c>%LOCALAPPDATA%\lurp\&lt;sha256-12&gt;</c> for the canonical solution
+    ///     <c>&lt;CacheRoot&gt;/&lt;sha256-12&gt;</c> for the canonical solution
     ///     path: the default output directory and the intermediate-redirect root.
     /// </summary>
     public static string ResolveSolutionCacheDir(string solutionPath)
     {
         var key = PathIdentity.CanonicalKey(solutionPath);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
+        return Path.Combine(CacheRoot(), hash[..12]);
+    }
+
+    /// <summary>
+    ///     The folder that holds every solution cache: <c>%LOCALAPPDATA%\lurp</c> on
+    ///     Windows, <c>~/.local/share/lurp</c> on Linux (<c>$XDG_DATA_HOME/lurp</c> when
+    ///     that is set). Falls back to the temp folder when the OS gives no
+    ///     local-application-data folder.
+    /// </summary>
+    public static string CacheRoot()
+    {
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrEmpty(root))
             root = Path.GetTempPath();
 
-        return Path.Combine(root, "lurp", hash[..12]);
+        return Path.Combine(root, "lurp");
     }
 
     /// <summary>

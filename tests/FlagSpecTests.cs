@@ -182,6 +182,19 @@ public sealed class FlagSpecTests
     }
 
     [Fact]
+    public void Help_PrintsTheCacheRootOfThisOs()
+    {
+        var help = CaptureHelp();
+        var expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "lurp",
+            "<hash of the solution path>");
+
+        Assert.Contains(expected, help);
+        Assert.DoesNotContain("%LOCALAPPDATA%", help);
+    }
+
+    [Fact]
     public void Help_ListsADescriptionForEveryFlag()
     {
         var help = CaptureHelp();

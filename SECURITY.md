@@ -114,9 +114,9 @@ writes only here:
 
 | Path | Content |
 |---|---|
-| `%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`, or the `--output-dir=` path | `index.db` and its `-wal` and `-shm` files; CLI `context` capsule files `capsule-<symbol>.json` |
-| `%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\` (also with `--output-dir=`) | two MSBuild redirect files and the design-time intermediates under `obj\<project>\` |
-| `%TEMP%\lurp-locks\` | two lock files per index run (one for the solution, one for the database); deleted when the run ends |
+| `%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\` on Windows, `~/.local/share/lurp/<sha256-12 of the solution path>/` on Linux (under `$XDG_DATA_HOME` when it is set), or the `--output-dir=` path | `index.db` and its `-wal` and `-shm` files; CLI `context` capsule files `capsule-<symbol>.json` |
+| the same cache folder (also with `--output-dir=`) | two MSBuild redirect files and the design-time intermediates under `obj\<project>\` |
+| `%TEMP%\lurp-locks\` on Windows, `$TMPDIR/lurp-locks/` on Linux (usually `/tmp/lurp-locks/`) | two lock files per index run (one for the solution, one for the database), named by a hash of the path; the files stay after the run, and only the open handle is the lock |
 | the `--output-json=` path | the snapshot manifest export of `--mode=index` |
 
 An explicit `--output-dir=` inside the solution directory gets a warning on

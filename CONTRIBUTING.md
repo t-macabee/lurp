@@ -5,6 +5,11 @@
 - .NET 10 SDK. `global.json` pins `10.0.301` with `rollForward=latestMajor`, and
   CI installs the SDK from that same file (`setup-dotnet` `global-json-file`),
   so local and CI builds follow one selection rule. Roslyn 5.6 requires `net10.0`.
+  On Linux, distro packages ship only the 10.0.1xx band, which does not satisfy
+  the pin. Install 10.0.3xx with `dotnet-install.sh` or from Microsoft's package
+  feed.
+- PowerShell 7 (`pwsh`) on every OS. The tests start it (`McpStdioClientTests`),
+  and the CI and smoke scripts run under it.
 - Familiarity with C# and Roslyn is helpful but not required.
 
 ## Build and test

@@ -113,6 +113,7 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         var second = IndexRunLock.TryAcquire(key);
         Assert.Null(second);
     }
+
     private string CreateSecondSolution()
     {
         var projectDir = Path.Combine(TestDir, "src", "LockB");

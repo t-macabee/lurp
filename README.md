@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/t-macabee/lurp/actions/workflows/ci.yml/badge.svg)](https://github.com/t-macabee/lurp/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/lurp)](https://www.nuget.org/packages/lurp)
-![Windows only](https://img.shields.io/badge/platform-Windows%20only-4c6b8a)
+![Windows and Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-4c6b8a)
 
-> **Windows only, today.** Lurp is developed and CI-tested on Windows
-> (`windows-latest`); cross-platform support is on the roadmap but not there yet.
+> Lurp runs on Windows and Linux. CI builds and tests it on `windows-latest`
+> and `ubuntu-latest`. macOS is not tested.
 
 Lurp indexes a .NET solution into SQLite with Roslyn, so an agent gets a small,
 sufficient code neighborhood instead of re-grepping and re-parsing the whole
@@ -108,7 +108,7 @@ lurp --mode=context --file=src/Services/OrderService.cs --line=42 --output-dir=.
 
 ## Install
 
-Supported platform: Windows. Lurp 3.x is not tested on Linux or macOS.
+Supported platforms: Windows and Linux. macOS is not tested.
 
 Requires a .NET 10 runtime to run any mode; the package declares
 `RollForward=Major`, so a later major runtime (11, 12, …) also works, while an
@@ -123,8 +123,10 @@ lurp --mode=index --solution=path/to/Your.slnx
 ```
 
 Without `--output-dir`, the database and the capsule files go to
-`%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\`. Pass `--output-dir=./out`
-to put them elsewhere. The MSBuild design-time intermediates go to that `%LOCALAPPDATA%\` folder,
+`%LOCALAPPDATA%\lurp\<sha256-12 of the solution path>\` on Windows and to
+`~/.local/share/lurp/<sha256-12 of the solution path>/` on Linux (under
+`$XDG_DATA_HOME` when it is set). Pass `--output-dir=./out` to put them
+elsewhere. The MSBuild design-time intermediates go to that cache folder,
 unless the project moves its own intermediate path or assigns
 `CustomBeforeMicrosoftCommonTargets` in its project file; then the design-time
 files stay in the project's own `obj/` and the run reports
@@ -190,7 +192,7 @@ see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
 
 ## Limitations
 
-- **Windows only**: 3.x supports Windows; Linux and macOS are not tested.
+- **Windows and Linux only**: macOS is not tested.
 - **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but CLI/MCP reads do not surface the per-symbol set, so a member present in only one target framework cannot be told apart by a consumer from one present in all of them.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
@@ -215,7 +217,7 @@ Shipped as a global tool (`dotnet tool install lurp`); the published version is
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
-CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
+and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
 `workflow_dispatch`); a release publishes only the CI-built package of a commit
 that passed that gate, unless the release run is started with an `override_reason` (see [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). Roadmap: surfacing the
 per-symbol TFM set in reads and richer DI parameter-type matching are postponed

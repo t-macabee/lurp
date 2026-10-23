@@ -2,6 +2,8 @@
 // Owns: the human-readable mode/option reference printed by --help.
 // Must not contain: dispatch logic or handler calls.
 
+using Lurp.Workspace;
+
 namespace Lurp;
 
 internal static class HelpText
@@ -39,7 +41,7 @@ internal static class HelpText
         Console.WriteLine();
         Console.WriteLine("  --output-dir=<path>  Directory where index.db is stored. When omitted,");
         Console.WriteLine("                       --solution= resolves the default cache location");
-        Console.WriteLine("                       %LOCALAPPDATA%\\lurp\\<hash of the solution path>.");
+        Console.WriteLine($"                       {Path.Combine(LurpCache.CacheRoot(), "<hash of the solution path>")}.");
         Console.WriteLine("                       (LURP_OUTPUT_DIR / LURP_SOLUTION_PATH set these too.)");
         Console.WriteLine();
         Console.WriteLine("MODES");
