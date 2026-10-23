@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # R1: Five-cycle incremental convergence on eNoteV2 (7 projects).
 # Usage: ./scripts/r1-verify-enote.sh <solution-dir> <solution-file>
-# Example: ./scripts/r1-verify-enote.sh /c/Users/Tarik/Desktop/eNoteV2/eNote eNote.sln
+# Example (Windows): ./scripts/r1-verify-enote.sh /c/Users/Tarik/Desktop/eNoteV2/eNote eNote.sln
+# Example (Linux):   ./scripts/r1-verify-enote.sh /home/user/eNoteV2/eNote eNote.sln
 set -euo pipefail
 
 SOLUTION_DIR="${1:?Usage: $0 <solution-dir> <solution-file>}"
 SOLUTION_FILE="${2:?}"
+
+native_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 TMPROOT="$(mktemp -d)"
@@ -18,31 +28,33 @@ INCR_DIR="$TMPROOT/incr-db"
 FULL_DIR="$TMPROOT/full-db"
 mkdir -p "$INCR_DIR" "$FULL_DIR"
 
-WIN_INCR_DIR="$(cygpath -w "$INCR_DIR")"
-WIN_FULL_DIR="$(cygpath -w "$FULL_DIR")"
-WIN_SOLUTION_PATH="$(cygpath -w "$SOLUTION_PATH")"
+NATIVE_INCR_DIR="$(native_path "$INCR_DIR")"
+NATIVE_FULL_DIR="$(native_path "$FULL_DIR")"
+NATIVE_SOLUTION_PATH="$(native_path "$SOLUTION_PATH")"
 LURP_PROJ="$REPO_ROOT/src/Lurp.csproj"
 # Set LURP_CMD to run the packed tool instead of the local build, for example:
-#   LURP_CMD='/c/tools/lurp/lurp.exe' ./scripts/r1-verify-enote.sh <dir> <sln>
+#   LURP_CMD='/c/tools/lurp/lurp.exe' ./scripts/r1-verify-enote.sh <dir> <sln>   # Windows
+#   LURP_CMD='/usr/local/bin/lurp' ./scripts/r1-verify-enote.sh <dir> <sln>       # Linux
 LURP_CMD="${LURP_CMD:-dotnet run --no-build --project $LURP_PROJ --}"
 # Set R1_COMPARE_CMD to run a pre-built r1-compare instead of `dotnet run`, for example:
-#   R1_COMPARE_CMD='C:/tools/r1-compare.exe' ./scripts/r1-verify-enote.sh <dir> <sln>
+#   R1_COMPARE_CMD='C:/tools/r1-compare.exe' ./scripts/r1-verify-enote.sh <dir> <sln>   # Windows
+#   R1_COMPARE_CMD='/usr/local/bin/r1-compare' ./scripts/r1-verify-enote.sh <dir> <sln> # Linux
 R1_COMPARE_CMD="${R1_COMPARE_CMD:-dotnet run --no-build --project $REPO_ROOT/scripts/r1-compare/r1-compare.csproj --}"
 
 run_full() {
-    local outdir_win="$1"
-    echo "  [full] -> $outdir_win"
+    local outdir_native="$1"
+    echo "  [full] -> $outdir_native"
     # shellcheck disable=SC2086 # LURP_CMD is a command plus arguments.
     $LURP_CMD \
-        --mode=index --solution="$WIN_SOLUTION_PATH" --output-dir="$outdir_win" \
+        --mode=index --solution="$NATIVE_SOLUTION_PATH" --output-dir="$outdir_native" \
         --strategy=full 2>&1 | tail -5
 }
 
 run_incr() {
-    echo "  [incr] -> $WIN_INCR_DIR"
+    echo "  [incr] -> $NATIVE_INCR_DIR"
     # shellcheck disable=SC2086 # LURP_CMD is a command plus arguments.
     $LURP_CMD \
-        --mode=index --solution="$WIN_SOLUTION_PATH" --output-dir="$WIN_INCR_DIR" \
+        --mode=index --solution="$NATIVE_SOLUTION_PATH" --output-dir="$NATIVE_INCR_DIR" \
         2>&1 | tail -5
 }
 
@@ -57,7 +69,7 @@ REQ="eNote.Application/Features/Rentals/ReferenceData/InstrumentTypes/Instrument
 # ==================== STEP 0 ====================
 echo ""
 echo "=== STEP 0: Full index -> snapshot A ==="
-run_full "$WIN_INCR_DIR"
+run_full "$NATIVE_INCR_DIR"
 
 # ==================== EDIT 1: comment ====================
 echo ""
@@ -448,12 +460,12 @@ run_incr
 # ==================== STEP 6: fresh full rebuild ====================
 echo ""
 echo "=== STEP 6: Fresh full rebuild -> snapshot C ==="
-run_full "$WIN_FULL_DIR"
+run_full "$NATIVE_FULL_DIR"
 
 # ==================== COMPARE ====================
 echo ""
 echo "=== COMPARISON: B5 vs C ==="
-$R1_COMPARE_CMD "$WIN_INCR_DIR/index.db" "$WIN_FULL_DIR/index.db"
+$R1_COMPARE_CMD "$NATIVE_INCR_DIR/index.db" "$NATIVE_FULL_DIR/index.db"
 EXIT_CODE=$?
 
 echo ""

@@ -2,7 +2,7 @@
 
 Committed perf baselines for the baseline gate in `real-parity.yml`, one file per runner OS
 (`<ImageOS>.json`, for example `win25-vs2026.json`). Each file is a harness result file: the
-`enotev2.json` from a `real-parity.yml` `perf-enotev2` artifact, reviewed before it is
+`enotev2.json` from a `real-parity.yml` `perf-enotev2-<OS>` artifact, reviewed before it is
 committed.
 
 The baseline key is the runner OS only. `ImageVersion` changes about once a week on hosted

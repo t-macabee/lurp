@@ -21,6 +21,9 @@ and `ubuntu-latest`, and runs the packed-tool and runtime-only smoke tests on
 both. The release still publishes one framework-dependent package, built on
 Windows; the same package runs on both OSes. macOS is not tested.
 
+The real-parity gate (R1 convergence, integrity, recall, and the per-OS perf
+baseline) runs on Linux too, and a release needs both legs to pass.
+
 On Linux the default cache folder is `~/.local/share/lurp/<hash>/` (under
 `$XDG_DATA_HOME` when it is set), and the lock folder is `$TMPDIR/lurp-locks`
 (usually `/tmp/lurp-locks`). `--help` now prints the real cache folder of the

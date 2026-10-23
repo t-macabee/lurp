@@ -1,6 +1,6 @@
 name: Real Parity
 
-# Real-solution parity gate on a GitHub-hosted Windows runner.
+# Real-solution parity gate on GitHub-hosted Windows and Linux runners.
 #
 # Runs R1 (five-cycle incremental↔full convergence) on eNoteV2 at the commit
 # pinned in parity/targets.json, using the lurp-nupkg artifact that the ci.yml
@@ -14,6 +14,8 @@ name: Real Parity
 # artifact, a SHA-256 mismatch against the recorded SHA256SUMS.txt, or a failed
 # R1 run all fail the job.
 #
+# The status covers both legs: a release needs the `real-parity` status to be
+# `success`, which requires the matrix job to pass on Windows and on Linux.
 # On success the run attests the nupkg and records a `real-parity` commit
 # status carrying the nupkg digest; on failure it records a `failure` status.
 #
@@ -35,14 +37,15 @@ concurrency:
 
 jobs:
   real-parity:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     permissions:
       contents: read
       actions: read
-      statuses: write   # status on the SHA
-      id-token: write   # attestation signing
-      attestations: write   # attestation store
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -96,11 +99,10 @@ jobs:
           $version = $pkg.BaseName -replace '^lurp\.', ''
           if (-not $version) { throw "cannot parse tool version from $($pkg.Name)." }
           dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
-          $exe = "$env:GITHUB_WORKSPACE/t/lurp.exe"
+          $exe = if ($IsWindows) { "$env:GITHUB_WORKSPACE/t/lurp.exe" } else { "$env:GITHUB_WORKSPACE/t/lurp" }
           if (-not (Test-Path $exe)) { throw "installed tool not found at $exe." }
           & $exe --version
-          $bashExe = $exe -replace '\\', '/'
-          "LURP_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "LURP_CMD=$($exe -replace '\\', '/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       # r1-compare is not part of the nupkg, so it is the only project built
       # from source in this job (Release, as the R1 script expects).
@@ -108,10 +110,9 @@ jobs:
         shell: pwsh
         run: |
           dotnet build scripts/r1-compare/r1-compare.csproj -c Release
-          $exe = "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare.exe"
+          $exe = if ($IsWindows) { "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare.exe" } else { "$env:GITHUB_WORKSPACE/scripts/r1-compare/bin/Release/net10.0/r1-compare" }
           if (-not (Test-Path $exe)) { throw "r1-compare Release build not found: $exe." }
-          $bashExe = $exe -replace '\\', '/'
-          "R1_COMPARE_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "R1_COMPARE_CMD=$($exe -replace '\\', '/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       # eNoteV2 is public: a plain clone needs no credentials.
       - name: Check out eNoteV2 fresh at the pinned SHA (no credentials)
@@ -123,7 +124,11 @@ jobs:
       - name: R1 convergence on eNoteV2 (pinned SHA, CI nupkg)
         shell: bash
         run: |
-          solution_dir="$(cygpath "$RUNNER_TEMP")/eNoteV2/$enotev2_path"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            solution_dir="$(cygpath "$RUNNER_TEMP")/eNoteV2/$enotev2_path"
+          else
+            solution_dir="$RUNNER_TEMP/eNoteV2/$enotev2_path"
+          fi
           ./scripts/r1-verify-enote.sh "$solution_dir" "$enotev2_solution"
 
       # The parity gate is neither in the nupkg nor in Lurp.slnx, so it is built
@@ -134,10 +139,9 @@ jobs:
         shell: pwsh
         run: |
           dotnet build scripts/parity/gate/gate.csproj -c Release
-          $exe = "$env:GITHUB_WORKSPACE/scripts/parity/gate/bin/Release/net10.0/gate.exe"
+          $exe = if ($IsWindows) { "$env:GITHUB_WORKSPACE/scripts/parity/gate/bin/Release/net10.0/gate.exe" } else { "$env:GITHUB_WORKSPACE/scripts/parity/gate/bin/Release/net10.0/gate" }
           if (-not (Test-Path $exe)) { throw "parity gate Release build not found: $exe." }
-          $bashExe = $exe -replace '\\', '/'
-          "GATE_CMD=$bashExe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "GATE_CMD=$($exe -replace '\\', '/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       # Audit B2: every CLI mode and MCP tool must leave the analyzed tree
       # byte-identical. Runs on the fresh pinned clone (R1 mutates a scratchpad
@@ -211,8 +215,8 @@ jobs:
           $code = $LASTEXITCODE
           if (Test-Path $summary) { Get-Content $summary -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
           if (-not $exists) {
-            "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2 artifact and commit it as perf/baselines/$env:ImageOS.json" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-            throw "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2 artifact and commit it as perf/baselines/$env:ImageOS.json"
+            "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2-$env:RUNNER_OS artifact and commit it as perf/baselines/$env:ImageOS.json" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            throw "no perf baseline for runner OS '$env:ImageOS': review enotev2.json from the perf-enotev2-$env:RUNNER_OS artifact and commit it as perf/baselines/$env:ImageOS.json"
           }
           if ($code -ne 0) { throw "the baseline perf gate failed with exit code $code." }
 
@@ -220,20 +224,54 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: perf-enotev2
+          name: perf-enotev2-${{ runner.os }}
           path: ${{ runner.temp }}/perf/
           if-no-files-found: warn
 
-      # Ordered after every check, before the success status, so a success status
-      # implies the attestation of the same nupkg happened first.
+
+  record:
+    runs-on: windows-latest
+    needs: real-parity
+    if: ${{ !cancelled() }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download and verify the CI nupkg
+        if: ${{ needs.real-parity.result == 'success' }}
+        shell: pwsh
+        env:
+          SHA: ${{ inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $pkg = Get-CiNupkg -Sha $env:SHA -Destination ./artifacts
+          "run_id=$($pkg.RunId)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "nupkg_sha256=$($pkg.Digest)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "nupkg_path=$($pkg.Path)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Using ci.yml run $($pkg.RunId) for $env:SHA"
+          Write-Host "SHA-256 verified: $($pkg.Digest)"
+
       - name: Attest the CI nupkg
-        if: success()
+        if: ${{ needs.real-parity.result == 'success' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ env.nupkg_path }}
 
       - name: Record the real-parity pass
-        if: success()
+        if: ${{ needs.real-parity.result == 'success' }}
         shell: pwsh
         env:
           SHA: ${{ inputs.sha }}
@@ -245,7 +283,7 @@ jobs:
           "real-parity: success recorded on $env:SHA (nupkg sha256=$env:nupkg_sha256)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
 
       - name: Record the real-parity failure
-        if: failure()
+        if: ${{ !cancelled() && (needs.real-parity.result != 'success' || failure()) }}
         shell: pwsh
         env:
           SHA: ${{ inputs.sha }}

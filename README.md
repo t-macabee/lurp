@@ -217,8 +217,8 @@ Shipped as a global tool (`dotnet tool install lurp`); the published version is
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
-and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 (GitHub-hosted runner,
-`workflow_dispatch`); a release publishes only the CI-built package of a commit
+and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
+GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
 that passed that gate, unless the release run is started with an `override_reason` (see [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). Roadmap: surfacing the
 per-symbol TFM set in reads and richer DI parameter-type matching are postponed
 by design (see

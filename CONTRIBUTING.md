@@ -85,7 +85,7 @@ and review the diff.
 gh workflow run real-parity.yml -f sha=<sha>
 ```
 
-A pass writes the `real-parity` status and an attestation. The first run on a new runner OS fails until `perf/baselines/<ImageOS>.json` exists (see [the baseline gate](scripts/perf/README.md#baseline-gate)).
+A pass needs both legs (Windows and Linux) and writes the `real-parity` status and an attestation. The first Linux run fails until `perf/baselines/ubuntu24.json` exists (use the `ImageOS` value that the run prints; see [the baseline gate](scripts/perf/README.md#baseline-gate)).
 
 3. Optional dry run. It checks every step and stops before the push:
 

@@ -150,7 +150,7 @@ When `perf/baselines/<ImageOS>.json` does not exist, the gate runs the candidate
 baseline (memory ratios are 1.00, so only the 300 MB cap and the time caps can show), prints
 the result, and then fails with the commit instruction.
 
-To take a new baseline: download the `perf-enotev2` artifact from a `real-parity.yml` run,
+To take a new baseline: download the `perf-enotev2-<OS>` artifact from a `real-parity.yml` run,
 review the `enotev2.json` it holds, and commit it as `perf/baselines/<ImageOS>.json` in its own
 commit.
 
