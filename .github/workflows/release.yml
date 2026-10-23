@@ -225,7 +225,7 @@ jobs:
     needs: verify
     if: needs.verify.outputs.dry_run == 'false'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment: nuget
     permissions:
       contents: read

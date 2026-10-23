@@ -116,7 +116,7 @@ function Invoke-NuGetRequest([string]$Url) {
   }
 }
 
-function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 15, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }) {
+function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 30, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }) {
   $leafUrl = "https://api.nuget.org/v3/registration5-semver1/lurp/$Version.json"
   $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
   while ($true) {
