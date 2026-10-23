@@ -6,7 +6,7 @@
     <RollForward>Major</RollForward>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>3.6.0</Version>
+    <Version>3.6.1</Version>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>lurp</ToolCommandName>
     <PackageId>lurp</PackageId>

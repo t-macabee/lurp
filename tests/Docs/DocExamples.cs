@@ -38,6 +38,7 @@ internal static partial class DocExamples
         "docs/RELEASE_NOTES_3.5.1.md",
         "docs/RELEASE_NOTES_3.5.2.md",
         "docs/RELEASE_NOTES_3.6.0.md",
+        "docs/RELEASE_NOTES_3.6.1.md",
         "notes/TRUST_KERNEL.md",
     ];
 

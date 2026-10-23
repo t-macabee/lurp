@@ -118,7 +118,7 @@ older runtime does not. Indexing and solution-backed status
 solution should be restored (an unrestored project still indexes, with a warning and missing edges; see "Restore first" below).
 
 ```bash
-dotnet tool install --global lurp --version 3.6.0
+dotnet tool install --global lurp --version 3.6.1
 lurp --mode=index --solution=path/to/Your.slnx
 ```
 
@@ -213,7 +213,7 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 ## Status & roadmap
 
 Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.6.0. This source tree is <!-- generated:versions -->tool 3.6.0, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
+3.6.1. This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
 `%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
 `--enable-write-tools`, and needs one `--mode=index` run on an index built by
 2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
@@ -228,6 +228,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_3.6.1.md](docs/RELEASE_NOTES_3.6.1.md): the 3.6.1 changes (release workflow waits up to 60 minutes for nuget.org to index); no index run is needed.
 - [RELEASE_NOTES_3.6.0.md](docs/RELEASE_NOTES_3.6.0.md): the 3.6.0 changes (Linux support, Windows-built manifests read on Linux, lock files kept after a run, and a clear error for a manifest without `git_root`/`solution_path`); no index run is needed.
 - [RELEASE_NOTES_3.5.2.md](docs/RELEASE_NOTES_3.5.2.md): the 3.5.2 changes (the dead-candidate `generated_excluded` text, the `lurp_dead_candidates` description, MCP `lurp_index` failure reporting, and the MSBuild/SDK failure cause); no index run is needed.
 - [RELEASE_NOTES_3.5.1.md](docs/RELEASE_NOTES_3.5.1.md): the 3.5.1 changes (the `--context-lines=` rule for every `get-symbol` view, the annotations path description, and the 3.5.0 documentation corrections); no index run is needed.
