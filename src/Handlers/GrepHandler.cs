@@ -1,4 +1,3 @@
-using Lurp.Storage;
 using System.Text.Json;
 using Lurp.Workspace;
 
@@ -8,7 +7,7 @@ internal static class GrepHandler
 {
     internal const int DefaultLimit = 50;
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=grep.");
@@ -40,7 +39,7 @@ internal static class GrepHandler
                 return;
             }
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var results = new List<object>();
             var summaryLines = new List<string>();
@@ -73,21 +72,21 @@ internal static class GrepHandler
             {
                 case OutputMode.Summary:
                     foreach (var line in summaryLines)
-                        Console.WriteLine(line);
+                        output.WriteLine(line);
                     if (page.NextCursor != null)
-                        Console.WriteLine($"-- {page.Items.Count}/{page.TotalCount} match(es); more available (--cursor)");
+                        output.WriteLine($"-- {page.Items.Count}/{page.TotalCount} match(es); more available (--cursor)");
                     else
-                        Console.WriteLine($"-- {page.TotalCount} match(es)");
+                        output.WriteLine($"-- {page.TotalCount} match(es)");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var result in results)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new
                         {
                             snapshot_id = snapshotId,
@@ -101,6 +100,6 @@ internal static class GrepHandler
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        });
+        }, output);
     }
 }

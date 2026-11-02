@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Lurp.Shared;
 using Lurp.Workspace;
 
 namespace Lurp.Tests;

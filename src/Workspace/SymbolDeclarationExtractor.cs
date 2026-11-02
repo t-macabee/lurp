@@ -116,7 +116,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors, _extensionImplementations);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
-        var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 } typeSymbol;
+        var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 };
 
         foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
         {

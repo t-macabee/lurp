@@ -215,10 +215,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));
 
-        var totalDeclarations = 0;
-        var totalEdges = 0;
-        var totalDiagnostics = 0;
-        var orphanEdgesDropped = OrphanEdgeDropSummary.Empty;
+        int totalDeclarations;
+        int totalEdges;
+        int totalDiagnostics;
+        OrphanEdgeDropSummary orphanEdgesDropped;
 
         try
         {

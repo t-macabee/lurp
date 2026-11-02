@@ -14,10 +14,9 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
             Directory.Delete(_outputDir, true);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SelfHost_EdgeLocationResolver_CapsuleSatisfiesPhase15Contract()
     {
-        Skip.IfNot(IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
         Directory.CreateDirectory(_outputDir);
         var repositoryRoot = LocateRepositoryRoot();
         var solutionPath = Path.Combine(repositoryRoot, "Lurp.slnx");
@@ -66,6 +65,17 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         // reasons are all present.
         Assert.NotEmpty(capsule.Uncertainties);
         Assert.True(capsule.IncomingPaths.Count + capsule.OutgoingPaths.Count > 0);
+
+        // Stable value assertions on the self-host fixture. These are core
+        // production callers/callees of EdgeLocationResolver that are part of the
+        // extraction pipeline and unlikely to be removed when src/ changes;
+        // locations are pinned to the source file that declares the anchor.
+        Assert.Contains(capsule.DirectCallees,
+            item => item.FullyQualifiedName == "global::Lurp.Shared.PathNormalizer.ToForwardSlash");
+        Assert.Contains(capsule.DirectCallers,
+            item => item.FullyQualifiedName == "global::Lurp.Workspace.ExtractionContextBase.ExtractionContextBase");
+        Assert.Contains(capsule.Anchor.Locations,
+            loc => loc.DocumentPath == "src/Shared/EdgeLocationResolver.cs");
 
         // Verification section. The original Phase-15 test asserted a concrete
         // "dotnet test" suggestion, which was fed by EdgeLocationResolver's own

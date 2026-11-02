@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
 
@@ -64,6 +63,21 @@ public sealed class McpDiffTests : IntegrationTestBase
         var differ = new SemanticDiffer(store, store, store);
         var (directChanges, _) = differ.ComputeDiff(snap1, snap2);
         Assert.Equal(directChanges.Count, changes.GetArrayLength());
+        // Pair each MCP change with its direct-differ counterpart by (change_type,
+        // symbol_id) and compare those fields, not just their presence. Change IDs
+        // are regenerated per call, so they cannot be used as the join key.
+        var mcpPairs = changes.EnumerateArray()
+            .Select(c => (c.GetProperty("change_type").GetString()!,
+                          c.GetProperty("symbol_id").GetString()!))
+            .OrderBy(p => p.Item1, StringComparer.Ordinal)
+            .ThenBy(p => p.Item2, StringComparer.Ordinal)
+            .ToList();
+        var directPairs = directChanges
+            .Select(d => (d.ChangeType, d.SymbolId))
+            .OrderBy(p => p.Item1, StringComparer.Ordinal)
+            .ThenBy(p => p.Item2, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(directPairs, mcpPairs);
         // each change has required fields matching DiffHandler shape
         foreach (var c in changes.EnumerateArray())
         {

@@ -42,7 +42,7 @@ internal static class ContextHandler
         return DefaultBudget;
     }
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         var fileArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
@@ -57,7 +57,7 @@ internal static class ContextHandler
         var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
         var outputMode = HandlerBootstrap.ParseOutputMode(args, !string.IsNullOrEmpty(tierArg));
         var quiet = HandlerBootstrap.IsQuiet(args);
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
 
         var hasSymbol = !string.IsNullOrEmpty(symbolArg);
         var hasFileArg = !string.IsNullOrEmpty(fileArg);
@@ -88,7 +88,7 @@ internal static class ContextHandler
             if (!string.IsNullOrEmpty(tierArg))
             {
                 RunTierContinuation(store, args, snapshotId, tierArg, symbolArg, fileArg, lineNumber,
-                    maxHops, includeGenerated, outputMode);
+                    maxHops, includeGenerated, outputMode, output);
                 return;
             }
 
@@ -99,14 +99,14 @@ internal static class ContextHandler
                 scopeArg, affectedProjects, gitRoot, includeCompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store);
 
-            HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
-            WriteCapsuleOutput(capsule, outputDirArg, outputMode, quiet);
-        });
+            WriteCapsuleOutput(capsule, outputDirArg, outputMode, quiet, output);
+        }, output);
     }
 
     /// <summary>
-    ///     Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>): one capsule tier,
+    ///     Serves <c>--tier=&lt;name&gt;</c> (optionally with <c>--cursor=</c>, output): one capsule tier,
     ///     rebuilt outside the capsule budget and paged. This is the action a capsule's
     ///     <c>omitted_tiers: budget_exhausted</c> entry previously admitted to but offered no
     ///     way to take.
@@ -114,7 +114,7 @@ internal static class ContextHandler
     private static void RunTierContinuation(
         SqliteIndexStore store, string[] args, string snapshotId, string tierArg,
         string? symbolArg, string? fileArg, int? lineNumber, int maxHops, bool includeGenerated,
-        OutputMode outputMode)
+        OutputMode outputMode, IOutputSink output)
     {
         if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal)) HandlerBootstrap.Fail($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
 
@@ -146,7 +146,7 @@ internal static class ContextHandler
             store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tierArg,
             maxHops, includeGenerated, offset, limit);
 
-        var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+        var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
         var nextCursor = page.HasMore
             ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
@@ -154,12 +154,12 @@ internal static class ContextHandler
 
         if (outputMode == OutputMode.Summary)
         {
-            Console.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
-            Console.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
+            output.WriteLine($"tier {page.TierName} of {page.FullyQualifiedName} ({page.Kind})");
+            output.WriteLine($"  items: {page.TotalItems} total, {page.Items.Count} in this page (offset {page.Offset})");
             foreach (var item in page.Items)
-                Console.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
+                output.WriteLine($"  {item.FullyQualifiedName}  [{item.EdgeKind}/{item.Provenance}]  {item.DocumentPath}:{item.StartLine}");
             if (nextCursor != null)
-                Console.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
+                output.WriteLine("  more available: re-run with --cursor=<next_cursor from --output=json>.");
             return;
         }
 
@@ -181,13 +181,13 @@ internal static class ContextHandler
 
         if (outputMode == OutputMode.Jsonl)
         {
-            Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+            output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
             foreach (var item in page.Items)
-                Console.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, HandlerBootstrap.CompactJson));
+                output.WriteLine(JsonSerializer.Serialize(new { type = "item", item }, HandlerBootstrap.CompactJson));
             return;
         }
 
-        Console.WriteLine(JsonSerializer.Serialize(new
+        output.WriteLine(JsonSerializer.Serialize(new
         {
             meta.snapshot_id,
             meta.freshness,
@@ -246,7 +246,7 @@ internal static class ContextHandler
         return ln;
     }
 
-    internal static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet)
+    internal static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet, IOutputSink output)
     {
         var json = ContextCapsuleJson.Serialize(capsule);
         var outputPath = GetCapsuleOutputPath(outputDirArg, capsule.Anchor.SymbolId);
@@ -269,17 +269,17 @@ internal static class ContextHandler
         // context for no gain when the file path is all they needed.
         if (quiet)
         {
-            Console.WriteLine(outputPath);
+            output.WriteLine(outputPath);
             return;
         }
 
         if (outputMode == OutputMode.Summary)
         {
-            WriteCapsuleSummary(capsule, outputPath);
+            WriteCapsuleSummary(capsule, outputPath, output);
             return;
         }
 
-        Console.WriteLine(json);
+        output.WriteLine(json);
     }
 
     internal static string GetCapsuleOutputPath(string outputDirArg, string symbolId)
@@ -298,17 +298,17 @@ internal static class ContextHandler
         return Path.Combine(Path.GetFullPath(outputDirArg), outputFileName);
     }
 
-    private static void WriteCapsuleSummary(ContextCapsule capsule, string outputPath)
+    private static void WriteCapsuleSummary(ContextCapsule capsule, string outputPath, IOutputSink output)
     {
-        Console.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
-        Console.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
+        output.WriteLine($"capsule {capsule.Anchor.FullyQualifiedName} ({capsule.Anchor.Kind})");
+        output.WriteLine($"  snapshot: {capsule.Anchor.SnapshotId}  intent: {capsule.Anchor.Intent}  maxHops: {capsule.Anchor.MaxHops}");
         // The two numbers answer different questions and are not interchangeable:
         // content is what --content-budget bounded, delivery is what loading the emitted
         // file costs. The delivery number is always the larger; size a context
         // window from it, never from content.
-        Console.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimated_tokens: the budget basis)");
-        Console.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimated_artifact_tokens: whole emitted file; size the context window from this)");
-        Console.WriteLine($"  truncated: {capsule.Truncated}");
+        output.WriteLine($"  content tokens:  {capsule.EstimatedTokens}/{capsule.Budget}  (estimated_tokens: the budget basis)");
+        output.WriteLine($"  delivery tokens: ~{capsule.EstimatedArtifactTokens}  (estimated_artifact_tokens: whole emitted file; size the context window from this)");
+        output.WriteLine($"  truncated: {capsule.Truncated}");
 
         foreach (var (name, count) in new (string, int)[]
                  {
@@ -320,9 +320,9 @@ internal static class ContextHandler
                      ("second_degree_context", capsule.SecondDegreeContext.Count),
                      ("surrounding_source", capsule.SurroundingSource.Count)
                  })
-            Console.WriteLine($"  {name,-28} {count}");
+            output.WriteLine($"  {name,-28} {count}");
 
-        Console.WriteLine($"  incoming_witness_paths: {capsule.IncomingPaths.Count}  outgoing_witness_paths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
+        output.WriteLine($"  incoming_witness_paths: {capsule.IncomingPaths.Count}  outgoing_witness_paths: {capsule.OutgoingPaths.Count}  uncertainties: {capsule.Uncertainties.Count}");
 
         foreach (var omitted in capsule.OmittedTiers)
         {
@@ -333,10 +333,10 @@ internal static class ContextHandler
             var recoverable = omitted.Reason is "budget_exhausted" or "summarized"
                               && ContextAssembler.TierNames.Contains(omitted.Category, StringComparer.Ordinal);
             var continuation = recoverable ? $" : fetch with --tier={omitted.Category}" : string.Empty;
-            Console.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
+            output.WriteLine($"  omitted: {omitted.Category} ({omitted.Reason}){continuation}");
         }
 
-        Console.WriteLine($"  written: {outputPath}");
+        output.WriteLine($"  written: {outputPath}");
     }
 
     private static List<string> GetRepeatableArgs(string[] args, string prefix)

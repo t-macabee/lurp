@@ -43,7 +43,7 @@ internal sealed class EdgeOperationsStore
                 INSERT OR IGNORE INTO snapshot_graph_nodes (snapshot_id, node_id)
                 VALUES (@snapshotId, @nodeId);
                 """;
-            var memberSnapshotParam = memberCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+            memberCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
             var memberNodeParam = memberCmd.Parameters.Add(new SqliteParameter("@nodeId", null));
 
             foreach (var edge in collapsed)
@@ -88,7 +88,7 @@ internal sealed class EdgeOperationsStore
                 receiver_type_constraints_json = CASE WHEN {winnerWins} THEN excluded.receiver_type_constraints_json ELSE edges.receiver_type_constraints_json END;
             """;
 
-        var snapshotIdParam = command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+        command.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
         var sourceSymbolIdParam = command.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
         var targetSymbolIdParam = command.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
         var kindParam = command.Parameters.Add(new SqliteParameter("@kind", null));
@@ -133,7 +133,7 @@ internal sealed class EdgeOperationsStore
         using var selectCmd = _connection.CreateCommand();
         selectCmd.Transaction = transaction;
         selectCmd.CommandText = "SELECT type_arguments_json, receiver_type_constraints_json, provenance FROM edges WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k LIMIT 1;";
-        var selectS = selectCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
+        selectCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
         var selectSrc = selectCmd.Parameters.Add(new SqliteParameter("@src", null));
         var selectTgt = selectCmd.Parameters.Add(new SqliteParameter("@tgt", null));
         var selectK = selectCmd.Parameters.Add(new SqliteParameter("@k", null));
@@ -144,7 +144,7 @@ internal sealed class EdgeOperationsStore
             INSERT INTO edges (snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,extractor_version, source_document_path,source_start_line, source_start_column,source_end_line, source_end_column, is_cross_generated, type_arguments_json, receiver_type_constraints_json)
             VALUES (@snapshotId, @sourceSymbolId, @targetSymbolId, @kind, @provenance,@extractorVersion, @sourceDocumentPath,@sourceStartLine, @sourceStartColumn,@sourceEndLine, @sourceEndColumn, @isCrossGenerated, @typeArgumentsJson, @receiverTypeConstraintsJson);
             """;
-        var splitInsSid = splitInsertCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
+        splitInsertCmd.Parameters.Add(new SqliteParameter("@snapshotId", snapshotId));
         var splitInsSrc = splitInsertCmd.Parameters.Add(new SqliteParameter("@sourceSymbolId", null));
         var splitInsTgt = splitInsertCmd.Parameters.Add(new SqliteParameter("@targetSymbolId", null));
         var splitInsKind = splitInsertCmd.Parameters.Add(new SqliteParameter("@kind", null));
@@ -175,7 +175,7 @@ internal sealed class EdgeOperationsStore
                 receiver_type_constraints_json = @receiverTypeConstraintsJson
             WHERE snapshot_id = @s AND source_symbol_id = @src AND target_symbol_id = @tgt AND kind = @k;
             """;
-        var upSid = splitUpdateCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
+        splitUpdateCmd.Parameters.Add(new SqliteParameter("@s", snapshotId));
         var upSrc = splitUpdateCmd.Parameters.Add(new SqliteParameter("@src", null));
         var upTgt = splitUpdateCmd.Parameters.Add(new SqliteParameter("@tgt", null));
         var upKind = splitUpdateCmd.Parameters.Add(new SqliteParameter("@k", null));
@@ -199,7 +199,7 @@ internal sealed class EdgeOperationsStore
 
             object? existingTypeArgs = null;
             object? existingReceiverConstraints = null;
-            var hasRow = false;
+            bool hasRow;
             using (var reader = selectCmd.ExecuteReader())
             {
                 hasRow = reader.Read();

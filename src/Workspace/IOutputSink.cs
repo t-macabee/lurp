@@ -42,3 +42,27 @@ public sealed class ConsoleOutputSink : IOutputSink
         Console.Error.WriteLine(message);
     }
 }
+
+/// <summary>
+///     <see cref="IOutputSink" /> for a process whose standard output is a protocol channel
+///     (the MCP server): every line goes to standard error, so stdout carries nothing but protocol frames.
+/// </summary>
+public sealed class StderrOutputSink : IOutputSink
+{
+    public static readonly StderrOutputSink Instance = new();
+
+    public void Write(string message)
+    {
+        Console.Error.Write(message);
+    }
+
+    public void WriteLine(string message = "")
+    {
+        Console.Error.WriteLine(message);
+    }
+
+    public void WriteErrorLine(string message = "")
+    {
+        Console.Error.WriteLine(message);
+    }
+}

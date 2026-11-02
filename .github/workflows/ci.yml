@@ -38,6 +38,22 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/ci/LurpCi.Tests.ps1
 
+      - name: Static analysis (PSScriptAnalyzer)
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Scope CurrentUser -Force -AllowClobber
+          Import-Module PSScriptAnalyzer -RequiredVersion 1.24.0
+          $findings = Invoke-ScriptAnalyzer -Path scripts/ci -Recurse -Severity Warning,Error -ExcludeRule @(
+            'PSAvoidUsingWriteHost',                 # scripts write to the GitHub Actions log, including ::error:: workflow commands
+            'PSUseSingularNouns',                    # plural names say they return or check a list; renaming ripples to ci.yml and release.yml
+            'PSUseShouldProcessForStateChangingFunctions'  # test helpers are not state-changing cmdlets; WhatIf would be meaningless here
+          )
+          if ($findings) {
+            $findings | Format-Table -AutoSize
+            throw "PSScriptAnalyzer reported $($findings.Count) finding(s) in scripts/ci."
+          }
+
       - name: Check for vulnerable packages
         if: runner.os == 'Windows'
         shell: pwsh

@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -45,11 +44,9 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         return await RunFullIndexAsync(DbPath);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetSymbolSource_ReturnsDeclarationSpanText()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var snapshotId = await IndexTwoClassSolutionAsync();
         var calculatorId = ResolveSymbolId(snapshotId, "global::TestProject.Calculator");
 
@@ -67,11 +64,9 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetIncomingEdges_ReturnsCallsEdgeToCallee()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var snapshotId = await IndexTwoClassSolutionAsync();
         var addId = ResolveSymbolId(snapshotId, "global::TestProject.Calculator.Add");
 
@@ -92,11 +87,9 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetOutgoingEdges_FromComputeReturnsCallsAndConstructs()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var snapshotId = await IndexTwoClassSolutionAsync();
         var computeId = ResolveSymbolId(snapshotId, "global::TestProject.Service.Compute");
 
@@ -117,11 +110,9 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchSymbols_FindsCalculatorWithCorrectId()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var snapshotId = await IndexTwoClassSolutionAsync();
 
         using var store = OpenStore(DbPath);
@@ -138,11 +129,9 @@ public sealed class StoreReadPathTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task BlindProject_RecordsIncompletenessAndIndexesNoSymbols()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("Readable",
             new Dictionary<string, string>
             {

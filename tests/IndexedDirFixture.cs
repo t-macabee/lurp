@@ -13,11 +13,6 @@ namespace Lurp.Tests;
 /// </summary>
 internal static class IndexedDirFixture
 {
-    internal static string Create(int completeSnapshots, bool stalePin = false)
-    {
-        return Create(completeSnapshots, stalePin, out _, out _);
-    }
-
     internal static string Create(int completeSnapshots, bool stalePin, out string staleId, out string latestId)
     {
         var dir = Path.Combine(Path.GetTempPath(), $"lurp-indexed-{Guid.NewGuid():N}");

@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -56,11 +55,9 @@ public sealed class DeadCandidateIncrementalParityTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Parity_AddNewDeadInternalMethod_ConvergesBetweenIncrementalAndFullRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Calculator.cs"] = """
@@ -123,11 +120,9 @@ public sealed class DeadCandidateIncrementalParityTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Parity_AccessibilityFlip_ReclassifiesLadderTierConsistently()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // V1: Endpoint is public and uncalled -> excluded from default proved_dead
         // (Q1). V2 flips it to internal, uncalled -> proved_dead by default. The
         // ladder-tier reclassification driven by a pure accessibility edit must

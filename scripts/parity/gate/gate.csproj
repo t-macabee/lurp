@@ -45,4 +45,12 @@
     <Compile Include="..\..\..\src\Workspace\PathIdentity.cs" Link="PathIdentity.cs" />
   </ItemGroup>
 
+  <!-- The linked files are written against src/GlobalUsings.cs, so the gate
+       imports the same namespaces globally instead of relying on per-file usings
+       that the tool's own build treats as redundant. -->
+  <ItemGroup>
+    <Using Include="Lurp.Shared" />
+    <Using Include="Lurp.Storage" />
+  </ItemGroup>
+
 </Project>

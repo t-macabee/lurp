@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -33,11 +32,9 @@ public sealed class PruneTimingTests : IntegrationTestBase
         }
         """;
 
-    [SkippableFact]
+    [Fact]
     public async Task FullIndex_WritesOneRowPerRunnerStep()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource
@@ -51,11 +48,9 @@ public sealed class PruneTimingTests : IntegrationTestBase
         Assert.Equal(0L, CountStepRows(snapshotId, SnapshotTimingSteps.ChangeScope));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task IncrementalIndex_WritesOneRowPerRunnerStep()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource
@@ -75,11 +70,9 @@ public sealed class PruneTimingTests : IntegrationTestBase
         Assert.Equal(1L, CountStepRows(newSnapshotId, SnapshotTimingSteps.OrphanEdgeCleanup));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task NoOpIncremental_PrecheckSkip_WritesNoSnapshotAndNoNewPruneSnapshotsRow()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource
@@ -99,11 +92,9 @@ public sealed class PruneTimingTests : IntegrationTestBase
         Assert.DoesNotContain("Hashing documents and detecting changes", output);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task IncrementalIndex_WithNoContentChange_AddsNoTimingRowToTheExistingSnapshot()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource

@@ -99,7 +99,7 @@ internal static class ImpactHandler
         return NameFilterParseOutcome.Parsed;
     }
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
@@ -162,7 +162,7 @@ internal static class ImpactHandler
             var reachability = new ImpactReachability(store, snapshotId, store);
             var traced = reachability.Trace(resolvedSymbolId, direction, allowedKinds, allowedProvenance, maxDepth);
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var response = ImpactPaging.BuildSymbolsResponse(
                 snapshotId,
@@ -186,20 +186,20 @@ internal static class ImpactHandler
                     WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, offset,
                         response.groups.Count, response.frontier_count,
                         response.groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.symbol_count)),
-                        response.truncated);
+                        response.truncated, output);
                     break;
 
                 case OutputMode.Jsonl:
-                    WriteJsonl(response);
+                    WriteJsonl(response, output);
                     break;
 
                 // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
+                    output.WriteLine(JsonSerializer.Serialize(response, HandlerBootstrap.IndentedJson));
                     break;
             }
 
-        });
+        }, output);
     }
 
     /// <summary>
@@ -233,25 +233,25 @@ internal static class ImpactHandler
         => SymbolId.DocCommentIdOf(symbolId);
 
     private static void WriteSummary(string symbolName, string direction, int total, int returned, int offset, int groupCount, int frontierCount,
-        IEnumerable<(string Label, int Count)> groupLines, object? truncated)
+        IEnumerable<(string Label, int Count)> groupLines, object? truncated, IOutputSink output)
     {
-        Console.WriteLine($"impact {direction} of {symbolName}");
-        Console.WriteLine($"  symbols: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s); {frontierCount} at max depth");
+        output.WriteLine($"impact {direction} of {symbolName}");
+        output.WriteLine($"  symbols: {total} total, {returned} in this page (offset {offset}); {groupCount} distinct first hop(s); {frontierCount} at max depth");
         foreach (var (label, count) in groupLines)
-            Console.WriteLine($"  {count,5}  {label}");
+            output.WriteLine($"  {count,5}  {label}");
 
         if (truncated is not null)
-            Console.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
+            output.WriteLine("  truncated: pass --cursor=<token from --output=json> to continue.");
     }
 
-    private static void WriteJsonl(ImpactResponse response)
+    private static void WriteJsonl(ImpactResponse response, IOutputSink output)
     {
         // The meta line is the response without the per-symbol rows: a streaming
         // consumer reads the header first and then one symbol per line.
         var meta = JsonSerializer.SerializeToNode(response, HandlerBootstrap.CompactJson)!.AsObject();
         meta.Remove("symbols");
-        Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+        output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
         foreach (var symbol in response.symbols)
-            Console.WriteLine(JsonSerializer.Serialize(new { type = "symbol", symbol }, HandlerBootstrap.CompactJson));
+            output.WriteLine(JsonSerializer.Serialize(new { type = "symbol", symbol }, HandlerBootstrap.CompactJson));
     }
 }

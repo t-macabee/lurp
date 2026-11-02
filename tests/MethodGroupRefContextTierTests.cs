@@ -1,5 +1,4 @@
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -51,11 +50,9 @@ public sealed class MethodGroupRefContextTierTests : IntegrationTestBase
                                       }
                                       """;
 
-    [SkippableFact]
+    [Fact]
     public async Task MethodGroupOnlyCallers_AppearInDirectCallersAndRelevantTests()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string> { ["MethodGroupTargets.cs"] = ProductionSource });
         CreateProject("TestProject.Tests",
             new Dictionary<string, string> { ["MethodGroupTargetTests.cs"] = TestSource },

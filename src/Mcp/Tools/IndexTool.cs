@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -117,12 +116,12 @@ internal sealed class IndexTool
             }
 
             var operationId = Guid.NewGuid().ToString("N");
-            string? previousSnapshotId = null;
-            string? strategyArg = null;
-            bool forceFlag = false;
+            string? previousSnapshotId;
+            string? strategyArg;
+            bool forceFlag;
             CancellationTokenSource? cts = null;
             IndexOperation? op = null;
-            McpIndexOutputSink? sink = null;
+            McpIndexOutputSink? sink;
             Task? task = null;
             try
             {

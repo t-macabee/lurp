@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -29,11 +28,9 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
         Assert.NotEqual(snapshotA, snapshotB);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Incremental_FiveSequentialCycles_ConvergesWithCleanRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // Mutation 1: add a new service.
         void AddService() => WriteFile("Services", "ProductService.cs", """
                                                                         using Core;
@@ -185,11 +182,9 @@ public sealed class MultiCycleConvergenceTests : IntegrationTestBase
             RevertRename);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task MoveFileBetweenProjects_ConvergesWithCleanRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("Lib",
             new Dictionary<string, string>
             {

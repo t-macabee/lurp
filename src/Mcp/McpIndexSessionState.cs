@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 namespace Lurp.Mcp;
 
 /// <summary>Tracks one in-flight <c>lurp_index</c> run per MCP session.</summary>

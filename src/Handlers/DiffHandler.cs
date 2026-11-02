@@ -5,9 +5,9 @@ namespace Lurp.Handlers;
 
 internal static class DiffHandler
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
 
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDirArg);
 
@@ -40,7 +40,7 @@ internal static class DiffHandler
                     created_at_utc = c.CreatedAtUtc
                 })
             }, HandlerBootstrap.IndentedJson);
-            Console.WriteLine(json);
+            output.WriteLine(json);
         }
         finally
         {

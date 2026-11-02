@@ -181,7 +181,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Detail_ExpandsSample_AndIncludesDetailObject()
     {
-        var snapshotId = await IndexAsync();
+        await IndexAsync();
         // Create 12 changed files to test capping vs detail
         // We already have 1 file; create 12 more projects/files then touch them
         // Simpler: just call status with detail true and false and compare sample length behavior.
@@ -220,7 +220,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Full_AfterIndex_IsFresh_NoFalseStale()
     {
-        var snapshotId = await IndexAsync();
+        await IndexAsync();
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
@@ -264,7 +264,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Full_AfterEdit_IsStale_ReportsOneChangedDocument()
     {
-        var snapshotId = await IndexAsync();
+        await IndexAsync();
         // Edit exactly one file after indexing
         var projFile = Path.Combine(Path.GetDirectoryName(SolutionPath)!, "src", "StatusProj", "Models.cs");
         File.WriteAllText(projFile, "namespace StatusProj { public class Foo { public void Bar(int x) {} } }");
@@ -292,14 +292,14 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Full_CliParity_FreshAfterIndex()
     {
-        var snapshotId = await IndexAsync();
+        await IndexAsync();
         // CLI path parity: StatusHandler.CheckCurrentWorkspaceAsync via --mode=status --solution
         // Verify the Handler's freshness path stays correct by checking the same invariant via WorkspaceFreshness directly
         // using the store's LoadLatestSnapshot overload (CLI code path)
         using var store = OpenStore(DbPath);
         try
         {
-            IntegrationHarness.TryRegisterMSBuild();
+            IntegrationHarness.EnsureMSBuildRegistered();
             using var workspace = Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.Create(
                 Lurp.Workspace.LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
             var solution = await workspace.OpenSolutionAsync(SolutionPath);
@@ -1177,7 +1177,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Sections_Completeness_PopulatesBindingIncompletenessDetail()
     {
-        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var (_, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
@@ -1198,7 +1198,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Sections_Manifest_PopulatesSummaryButNotDetail()
     {
-        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var (_, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
@@ -1223,7 +1223,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Sections_All_PopulatesBothSummaryAndDetail()
     {
-        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var (_, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);
@@ -1244,7 +1244,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
     [Fact]
     public async Task Status_Sections_Completeness_DiffersFromManifest_ForCompletenessFields()
     {
-        var (snapshotId, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
+        var (_, dbPath) = await IndexAndSeedBindingIncompletenessAsync();
         var args = new[] { $"--output-dir={Path.GetDirectoryName(dbPath)!}" };
         await using var session = McpSessionContext.Create(args);
         var tool = new StatusTool(session);

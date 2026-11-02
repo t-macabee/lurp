@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
 
@@ -27,11 +26,9 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
     // narrower. It is the same store text with TypeUseEdgeKinds.
     private static readonly string TypeUseEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds);
 
-    [SkippableFact]
+    [Fact]
     public async Task Plans_WithAndWithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("QueryPlanProbe", new Dictionary<string, string>
         {
             ["Probe.cs"] = QueryPlanFixture.ChainedMethodsSource("QueryPlanProbe")

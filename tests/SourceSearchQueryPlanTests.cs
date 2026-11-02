@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
@@ -23,11 +22,9 @@ public sealed class SourceSearchQueryPlanTests : IntegrationTestBase
     // The candidate query of TextSearchStore.SearchTextPage, case-sensitive.
     private static readonly string GrepCandidateQuerySql = Lurp.Storage.TextSearchStore.CandidateSql(includeGenerated: false, ignoreCase: false);
 
-    [SkippableFact]
+    [Fact]
     public async Task Plans_WithAndWithoutStatistics_UseCoveringGeneratedFilterIndex()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("SearchPlanProbe", new Dictionary<string, string>
         {
             ["Probe.cs"] = QueryPlanFixture.ChainedMethodsSource("SearchPlanProbe")

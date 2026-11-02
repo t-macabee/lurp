@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -8,7 +7,7 @@ internal static class DiagnosticsHandler
 {
     internal const int DefaultLimit = 100;
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
@@ -48,7 +47,7 @@ internal static class DiagnosticsHandler
                 return;
             }
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var diagnostics = page.Items.Select(d => new
             {
@@ -81,22 +80,22 @@ internal static class DiagnosticsHandler
             {
                 case OutputMode.Summary:
                     foreach (var d in diagnostics)
-                        Console.WriteLine($"{d.severity,-10} {d.id,-10} {d.document_path ?? "<null>"}:{d.start_line}  {d.message}");
-                    Console.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                        output.WriteLine($"{d.severity,-10} {d.id,-10} {d.document_path ?? "<null>"}:{d.start_line}  {d.message}");
+                    output.WriteLine($"-- {diagnostics.Count}/{page.TotalCount} diagnostic(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var d in diagnostics)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "diagnostic", diagnostic = d }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "diagnostic", diagnostic = d }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new { snapshot_id = snapshotId, document = documentArg, project = projectFilter, severity = severityFilter, id = idFilter, include_generated = includeGenerated, diagnostics, diagnostic_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        });
+        }, output);
     }
 }

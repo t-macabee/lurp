@@ -125,12 +125,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _deadCandidates = new DeadCandidateStore(_connection!);
     }
 
-    public void EnableQueryOnly()
-    {
-        EnsureOpen();
-        ExecutePragma("PRAGMA query_only=ON;");
-    }
-
     public void RefreshPlannerStatistics()
     {
         EnsureOpen();
@@ -286,12 +280,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _pinStore!.GetPinnedSnapshot(workspaceId);
     }
 
-    public string? GetPinnedSnapshotId(string? workspaceId = null)
-    {
-        EnsureOpen();
-        return _pinStore!.GetPinnedSnapshotId(workspaceId);
-    }
-
     public string? GetStalePinnedSnapshotId(string? workspaceId = null)
     {
         EnsureOpen();
@@ -379,12 +367,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _documents!.GetDocumentVersionIdsForDocuments(snapshotId, documentPaths);
-    }
-
-    public void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds)
-    {
-        EnsureOpen();
-        _symbols!.SaveSnapshotSymbols(snapshotId, symbolIds);
     }
 
     public void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
@@ -836,12 +818,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _searchSymbols!.ResolveSymbolByDocCommentId(docCommentId, snapshotId, includeGenerated);
-    }
-
-    public List<TextSearchResult> SearchText(string query, string snapshotId, int limit = 50, bool includeGenerated = false, bool ignoreCase = false)
-    {
-        EnsureOpen();
-        return _textSearch!.SearchText(query, snapshotId, limit, includeGenerated, ignoreCase);
     }
 
     /// <summary>

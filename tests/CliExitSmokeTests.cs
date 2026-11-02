@@ -90,7 +90,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void SearchHandler_UnknownType_Throws()
     {
-        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=banana"]));
+        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=banana"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("--type must be one of: all, source, symbol", ex.Message);
     }
@@ -98,25 +98,25 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void SearchHandler_UppercaseType_PassesTheTypeCheck()
     {
-        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=ALL", $"--output-dir={NoIndexOutputDir()}"]));
+        var ex = Assert.Throws<CliExitException>(() => SearchHandler.Run(["--query=x", "--type=ALL", $"--output-dir={NoIndexOutputDir()}"], new CapturingOutputSink()));
         Assert.Contains("Index database not found", ex.Message);
     }
 
     [Fact]
     public void PinSnapshot_UnknownOutput_Throws()
     {
-        var ex = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=banana", $"--output-dir={NoIndexOutputDir()}"]));
+        var ex = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=banana", $"--output-dir={NoIndexOutputDir()}"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("--output must be one of: summary, json", ex.Message);
 
-        var jsonl = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=jsonl", $"--output-dir={NoIndexOutputDir()}"]));
+        var jsonl = Assert.Throws<CliExitException>(() => PinSnapshotHandler.Run(["--output=jsonl", $"--output-dir={NoIndexOutputDir()}"], new CapturingOutputSink()));
         Assert.Contains("jsonl is not supported", jsonl.Message);
     }
 
     [Fact]
     public void ImpactHandler_BadDirection_ThrowsCliExit()
     {
-        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction=x"]));
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction=x"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("Invalid direction 'x'. Use 'upstream' or 'downstream'.", ex.Message);
     }
@@ -124,7 +124,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ImpactHandler_EmptyDirection_ThrowsCliExit()
     {
-        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction="]));
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--direction="], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("Invalid direction ''. Use 'upstream' or 'downstream'.", ex.Message);
     }
@@ -132,7 +132,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ImpactHandler_UnknownKind_ThrowsCliExit()
     {
-        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--kinds=Bogus"]));
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--kinds=Bogus"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("Unknown edge kind 'Bogus'", ex.Message);
     }
@@ -140,7 +140,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ImpactHandler_UnknownProvenance_ThrowsCliExit()
     {
-        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--provenance=bogus"]));
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--provenance=bogus"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("Unknown provenance 'bogus'", ex.Message);
     }
@@ -148,7 +148,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ContextHandler_BadIntent_ThrowsCliExit()
     {
-        var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"]));
+        var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"], new CapturingOutputSink()));
         Assert.Equal(1, ex.ExitCode);
         Assert.Contains("--intent must be one of: inspect, modify, diagnose.", ex.Message);
     }
@@ -194,7 +194,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void ResolveOutputDir_NoSource_Throws()
     {
-        Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveOutputDir([]));
+        Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveOutputDir([], new CapturingOutputSink()));
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class CliExitSmokeTests : IDisposable
     {
         var solution = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}", "Test.slnx");
 
-        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}"]);
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}"], new CapturingOutputSink());
 
         Assert.Equal(LurpCache.ResolveSolutionCacheDir(solution), resolved);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -215,23 +215,11 @@ public sealed class CliExitSmokeTests : IDisposable
         var solutionDir = Path.Combine(Path.GetTempPath(), $"lurp-outdir-{Guid.NewGuid():N}");
         var solution = Path.Combine(solutionDir, "Test.slnx");
 
-        string warning;
-        string resolved;
-        var writer = new StringWriter();
-        var original = Console.Error;
-        try
-        {
-            Console.SetError(writer);
-            resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={solutionDir}"]);
-        }
-        finally
-        {
-            Console.SetError(original);
-            warning = writer.ToString();
-        }
+        var sink = new CapturingOutputSink();
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={solutionDir}"], sink);
 
         Assert.Equal(solutionDir, resolved);
-        Assert.Contains("is inside the solution directory", warning);
+        Assert.Contains("is inside the solution directory", sink.Stderr);
     }
 
     [Fact]
@@ -241,22 +229,11 @@ public sealed class CliExitSmokeTests : IDisposable
         var solution = Path.Combine(solutionDir, "Test.slnx");
         var outputDir = solutionDir + "-out";
 
-        string warning;
-        var writer = new StringWriter();
-        var original = Console.Error;
-        try
-        {
-            Console.SetError(writer);
-            var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={outputDir}"]);
-            Assert.Equal(outputDir, resolved);
-        }
-        finally
-        {
-            Console.SetError(original);
-            warning = writer.ToString();
-        }
+        var sink = new CapturingOutputSink();
+        var resolved = HandlerBootstrap.ResolveOutputDir([$"--solution={solution}", $"--output-dir={outputDir}"], sink);
 
-        Assert.DoesNotContain("is inside the solution directory", warning);
+        Assert.Equal(outputDir, resolved);
+        Assert.DoesNotContain("is inside the solution directory", sink.Stderr);
     }
 
     [Fact]
@@ -313,7 +290,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_UnknownFlag_Throws()
     {
-        var entry = new Program.ModeRegistryEntry("search", "help", [new FlagSpec("--query=", "x", "text")], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("search", "help", [new FlagSpec("--query=", "x", "text")], (_, _) => Task.CompletedTask);
         var ex = Assert.Throws<CliExitException>(() =>
             CliFlagValidation.Validate(entry, ["--query=x", "--bogus-flag=1"]));
         Assert.Contains("unknown flag '--bogus-flag='", ex.Message);
@@ -322,7 +299,7 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_ValueFlagTwice_Throws()
     {
-        var entry = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--symbol=", "x", "id")], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--symbol=", "x", "id")], (_, _) => Task.CompletedTask);
         var ex = Assert.Throws<CliExitException>(() =>
             CliFlagValidation.Validate(entry, ["--symbol=a", "--symbol=b"]));
         Assert.Equal(1, ex.ExitCode);
@@ -333,17 +310,17 @@ public sealed class CliExitSmokeTests : IDisposable
     [Fact]
     public void CliFlagValidation_BooleanSwitchTwice_DoesNotThrow()
     {
-        var entry = new Program.ModeRegistryEntry("status", "help", [new FlagSpec("--json", "x")], _ => Task.CompletedTask);
+        var entry = new Program.ModeRegistryEntry("status", "help", [new FlagSpec("--json", "x")], (_, _) => Task.CompletedTask);
         CliFlagValidation.Validate(entry, ["--json", "--json"]);
     }
 
     [Fact]
     public void CliFlagValidation_RepeatableValueFlagTwice_DoesNotThrow()
     {
-        var index = new Program.ModeRegistryEntry("index", "help", [new FlagSpec("--skip-adapter=", "x", "name", Repeatable: true)], _ => Task.CompletedTask);
+        var index = new Program.ModeRegistryEntry("index", "help", [new FlagSpec("--skip-adapter=", "x", "name", Repeatable: true)], (_, _) => Task.CompletedTask);
         CliFlagValidation.Validate(index, ["--skip-adapter=A", "--skip-adapter=B"]);
 
-        var context = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--affected-project=", "x", "name", Repeatable: true)], _ => Task.CompletedTask);
+        var context = new Program.ModeRegistryEntry("context", "help", [new FlagSpec("--affected-project=", "x", "name", Repeatable: true)], (_, _) => Task.CompletedTask);
         CliFlagValidation.Validate(context, ["--affected-project=A", "--affected-project=B"]);
     }
 
@@ -357,29 +334,29 @@ public sealed class CliExitSmokeTests : IDisposable
         Directory.CreateDirectory(dir);
         try
         {
-            var summaryDefault = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}"]));
+            var summaryDefault = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}"], sink));
             Assert.Null(summaryDefault.Failure);
             Assert.Contains("Status: not indexed", summaryDefault.Stdout);
 
-            var json = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=json"]));
+            var json = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--output=json"], sink));
             Assert.Null(json.Failure);
             using (var doc = JsonDocument.Parse(json.Stdout))
                 Assert.True(doc.RootElement.TryGetProperty("indexed", out _));
 
-            var jsonAlias = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
+            var jsonAlias = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--json"], sink));
             Assert.Null(jsonAlias.Failure);
             using (var docAlias = JsonDocument.Parse(jsonAlias.Stdout))
                 Assert.True(docAlias.RootElement.TryGetProperty("indexed", out _));
 
-            var summary = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=summary"]));
+            var summary = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--output=summary"], sink));
             Assert.Null(summary.Failure);
             Assert.Contains("Status: not indexed", summary.Stdout);
 
-            var jsonl = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=jsonl"]));
+            var jsonl = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--output=jsonl"], sink));
             Assert.NotNull(jsonl.Failure);
             Assert.Contains("single document", jsonl.Failure!.Message);
 
-            var invalid = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--output=banana"]));
+            var invalid = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--output=banana"], sink));
             Assert.NotNull(invalid.Failure);
             Assert.Contains("--output must be one of: summary, json.", invalid.Failure.Message);
         }
@@ -396,7 +373,7 @@ public sealed class CliExitSmokeTests : IDisposable
         try
         {
             var ex = Assert.Throws<CliExitException>(() =>
-                DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=bogus", "--to-snapshot=also-bogus"]));
+                DiffHandler.Run([$"--output-dir={dir}", "--from-snapshot=bogus", "--to-snapshot=also-bogus"], new CapturingOutputSink()));
             Assert.Contains("snapshot 'bogus' not found", ex.Message);
         }
         finally
@@ -413,7 +390,7 @@ public sealed class CliExitSmokeTests : IDisposable
         try
         {
             var ex = Assert.Throws<CliExitException>(() =>
-                DiffHandler.Run([$"--output-dir={dir}", $"--from-snapshot={snapshotId}", "--to-snapshot=bogus"]));
+                DiffHandler.Run([$"--output-dir={dir}", $"--from-snapshot={snapshotId}", "--to-snapshot=bogus"], new CapturingOutputSink()));
             Assert.Contains("snapshot 'bogus' not found", ex.Message);
         }
         finally
@@ -433,7 +410,7 @@ public sealed class CliExitSmokeTests : IDisposable
                 "--symbol=T:Some.Type|assembly",
                 "--snapshot=nope",
                 $"--output-dir={dir}"
-            ]));
+            ], new CapturingOutputSink()));
             Assert.Equal(1, ex.ExitCode);
             Assert.Equal("ERROR: snapshot 'nope' not found.", ex.Message);
         }
@@ -453,7 +430,7 @@ public sealed class CliExitSmokeTests : IDisposable
             var ex = Assert.Throws<CliExitException>(() => DiagnosticsHandler.Run([
                 "--severity=bogus",
                 $"--output-dir={dir}"
-            ]));
+            ], new CapturingOutputSink()));
             Assert.Equal(1, ex.ExitCode);
             Assert.Equal(
                 "ERROR: Unknown severity 'bogus'; must be one of: Hidden, Info, Warning, Error, or 'all' (case-insensitive).",
@@ -480,7 +457,7 @@ public sealed class CliExitSmokeTests : IDisposable
                 store.SaveTimings(snapshotId, [new SnapshotTimingRow("extraction_loop", 42)]);
             }
 
-            var result = TestConsole.Capture(() => TimingsHandler.Run([$"--output-dir={dir}", "--snapshot=latest", "--json"]));
+            var result = CapturingOutputSink.Capture(sink => TimingsHandler.Run([$"--output-dir={dir}", "--snapshot=latest", "--json"], sink));
 
             Assert.Null(result.Failure);
             using var doc = JsonDocument.Parse(result.Stdout);

@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
 
 namespace Lurp.Tests;
@@ -14,7 +13,7 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
 
     static CleanRebuildEquivalenceTest()
     {
-        IntegrationHarness.TryRegisterMSBuild();
+        IntegrationHarness.EnsureMSBuildRegistered();
     }
 
     public CleanRebuildEquivalenceTest()
@@ -32,12 +31,9 @@ public sealed class CleanRebuildEquivalenceTest : IDisposable
         TestDatabase.DeleteDirectory(_testDir);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task IncrementalIndex_Matches_FullRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered,
-            "MSBuild is not available on this system. Cannot run integration test.");
-
         CreateTestSolution();
 
         await RunFullIndexAsync("A: full initial");

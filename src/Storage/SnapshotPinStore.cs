@@ -129,7 +129,7 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
             throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' has status '{status}' and cannot be pinned. Only snapshots with status 'complete' can be pinned.");
 
         // Fetch previous pin to preserve audit trail.
-        string? previousPinned = null;
+        string? previousPinned;
         using (var cmd = _connection.CreateCommand())
         {
             cmd.CommandText = "SELECT pinned_snapshot_id FROM snapshot_pins WHERE workspace_id = @workspaceId;";

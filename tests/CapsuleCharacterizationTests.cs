@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -77,10 +76,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── D2 ──────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_RespectsContentBudget_Generous()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -102,10 +100,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_RespectsContentBudget_Mid()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -128,10 +125,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_RespectsContentBudget_SmallButAboveFloor()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -156,10 +152,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_RespectsContentBudget_FloorAnchorBudgetExhausted()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, _, _, largeAnchorId, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -181,10 +176,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── D3 ──────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_EmptyTier_MeansProvedAbsence()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, unusedId, _, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -210,10 +204,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_EmptyTier_StandaloneClassNoCallers()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, _, standaloneId, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -237,10 +230,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── D4 ──────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_UnresolvedTier_WhenAnchorRegionHasLostBindings()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, unusedId, _, _, _, anchorFile) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -279,10 +271,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_UnresolvedTier_NullBindingStoreTreatedAsUnobservable()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, unusedId, _, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -307,10 +298,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── D5 ──────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_GapAnchor_MarksEveryTierUnresolved()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, _, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -345,10 +335,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── D6 ──────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_OmittedTier_FetchCommandReturnsTheOmittedContent()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
 
         using var store = OpenStore(DbPath);
@@ -376,10 +365,29 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.Contains("--mode=context --tier=<category> --symbol=<anchor symbolId>", template);
 
             // Verify non-fetchable sections appear in the "larger --content-budget" sentence
-            if (budgetedCapsule.OmittedTiers.Any(e =>
-                    e.Reason == "budget_exhausted" &&
-                    !ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal)))
+            var hasNonFetchable = budgetedCapsule.OmittedTiers.Any(e =>
+                e.Reason == "budget_exhausted" &&
+                !ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
+            if (hasNonFetchable)
                 Assert.Contains("larger --content-budget", template);
+            else
+                Assert.DoesNotContain("larger --content-budget", template);
+
+            // Compare the fetched page against the same tier from an unbudgeted capsule
+            var unbudgetedCapsule = ContextAssembler.ResolveAndAssemble(
+                store, store, lookup, DefaultOptions(100000, 1), store, store);
+            Assert.NotNull(unbudgetedCapsule);
+            var expectedItems = omittedEntry.Category switch
+            {
+                "contracts" => unbudgetedCapsule.Contracts,
+                "direct_callees" => unbudgetedCapsule.DirectCallees,
+                "direct_callers" => unbudgetedCapsule.DirectCallers,
+                "registered_implementations" => unbudgetedCapsule.RegisteredImplementations,
+                "relevant_tests" => unbudgetedCapsule.RelevantTests,
+                "second_degree_context" => unbudgetedCapsule.SecondDegreeContext,
+                "surrounding_source" => unbudgetedCapsule.SurroundingSource,
+                _ => new List<CapsuleItem>()
+            };
 
             // Fetch the omitted tier unbudgeted via BuildTierPage
             var symbolId = SymbolId.Parse(usedId);
@@ -391,6 +399,10 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             Assert.NotNull(page);
             Assert.Equal(omittedEntry.Category, page.TierName);
             Assert.NotEmpty(page.Items);
+            Assert.Equal(expectedItems.Count, page.TotalItems);
+            Assert.Equal(
+                expectedItems.Select(i => i.SymbolId).ToList(),
+                page.Items.Select(i => i.SymbolId).ToList());
         }
         finally
         {
@@ -402,10 +414,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // R152: the CLI tier page is a CLI response, so it prints every key; a key with
     // no value is null. A last page has no next_cursor and must still print it.
-    [SkippableFact]
+    [Fact]
     public async Task Cli_TierPage_LastPage_PrintsNextCursorAsNull()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (_, _, usedId, _, _, _) = await IndexFixtureAsync();
 
         var json = await CliModeRunner.RunAsync("context", [
@@ -425,6 +436,52 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         var meta = metaDoc.RootElement.GetProperty("meta");
         Assert.True(meta.TryGetProperty("next_cursor", out var metaCursor));
         Assert.Equal(JsonValueKind.Null, metaCursor.ValueKind);
+    }
+
+    // The shape tests only pin the JSON keys, so this is the one place the CLI cursor is
+    // followed to the end: each continuation must resume where the previous page stopped.
+    [Fact]
+    public async Task Cli_TierPage_Cursor_WalksEveryItemOnce()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Pager.cs"] = """
+                           namespace TestProject;
+
+                           public class Target { public void Hit() { } }
+                           public class CallerA { public void A() => new Target().Hit(); }
+                           public class CallerB { public void B() => new Target().Hit(); }
+                           public class CallerC { public void C() => new Target().Hit(); }
+                           """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var targetId = ResolveSymbolId(snapshotId, "global::TestProject.Target.Hit");
+
+        var offsets = new List<int>();
+        var itemsSeen = new List<string>();
+        string? cursor = null;
+        do
+        {
+            var args = new List<string>
+            {
+                $"--symbol={targetId}", "--tier=direct_callers", "--tier-limit=1",
+                "--output=json", $"--output-dir={TestDir}"
+            };
+            if (cursor != null)
+                args.Add($"--cursor={cursor}");
+
+            using var doc = JsonDocument.Parse(await CliModeRunner.RunAsync("context", args.ToArray()));
+            var root = doc.RootElement;
+            Assert.Equal(3, root.GetProperty("total_items").GetInt32());
+            offsets.Add(root.GetProperty("offset").GetInt32());
+            var items = root.GetProperty("items");
+            Assert.Equal(1, items.GetArrayLength());
+            itemsSeen.Add(items[0].GetRawText());
+            cursor = root.GetProperty("next_cursor").GetString();
+        } while (cursor != null && offsets.Count < 10);
+
+        Assert.Equal([0, 1, 2], offsets);
+        Assert.Equal(3, itemsSeen.Distinct().Count());
     }
 
     // ── A1 ──────────────────────────────────────────────────────────────
@@ -468,10 +525,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         return (snapshotId, anchorId);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_TestedByManyTests_GroupsByClassAndArtifactEstimateMatchesFile()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, anchorId) = await IndexTestedAnchorAsync();
 
         using var store = OpenStore(DbPath);
@@ -493,10 +549,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_TestedByManyTests_VerificationIsBudgetGoverned()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var (snapshotId, anchorId) = await IndexTestedAnchorAsync();
 
         using var store = OpenStore(DbPath);
@@ -528,10 +583,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     ///     Assembly must complete, and topology must report the reached-symbol
     ///     and witness-leaf counts, not enumerated path counts.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_LayeredGraph_TopologyCountsWitnessReach()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         CreateProject("Layered", new Dictionary<string, string> { ["Graph.cs"] = LayeredGraphSource() });
         var snapshotId = await RunFullIndexAsync(DbPath);
         var anchorId = ResolveSymbolId(snapshotId, "global::Layered.Graph.Root");
@@ -716,11 +770,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     ///     A capsule assembled over any symbol in a project that contains pipeline
     ///     behaviors includes an uncertainty entry for the skipped MediatR pattern.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_PipelineBehavior_SurfacesUnmodeledMediatRUncertainty()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -749,7 +801,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
         // Resolve anchor = PingHandler
         var symbols = store.SearchSymbols("PingHandler", snapshotId);
-        Skip.If(symbols.Count == 0, "PingHandler not found in snapshot.");
+        Assert.True(symbols.Count > 0,
+            "PingHandler was not found in the snapshot. The fixture or the indexer lost a symbol the test depends on.");
         var anchor = symbols.First();
 
         // Assemble capsule
@@ -762,11 +815,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
     // ── B23 ─────────────────────────────────────────────────────────────
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_CarriesAnchorSemanticCausesOnce_AtTheTopLevel()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("CauseProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """
@@ -825,11 +876,9 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_ManySemanticCauses_AreBoundedToTen_UnderBudget()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("CauseProj", new Dictionary<string, string>
         {
             ["Models.cs"] = """

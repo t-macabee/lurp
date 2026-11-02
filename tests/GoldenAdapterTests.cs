@@ -1,7 +1,6 @@
 using Lurp.Adapters;
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
@@ -22,11 +21,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         "global::App.ProbeController.PublicInstance"
     ];
 
-    [SkippableFact]
+    [Fact]
     public async Task AspNetCoreAdapter_ControllerActionProducesRoutesToDeclaresReturns()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -91,11 +88,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     // Regression: a class-level [Route] used to give every ordinary method a RoutesTo
     // edge, including private helpers and protected overrides. The expected set follows
     // ASP.NET Core 10's DefaultApplicationModelProvider.IsAction for the same methods.
-    [SkippableFact]
+    [Fact]
     public async Task AspNetCoreAdapter_OnlyActionMethodsGetRoutesTo()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -145,11 +140,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(expected, routed);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DependencyInjectionAdapter_AddScopedProducesRegisters()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -209,11 +202,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     ///     version-dependent (observed to differ from the form above when the surrounding
     ///     source has unrelated syntax errors), so hardcoding it here would be fragile.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task DependencyInjectionAdapter_TopLevelStatementAddScopedProducesRegisters()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -258,11 +249,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DIConventionMatcher_ScanCallProducesConventionRegistersEdge()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -313,11 +302,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task MediatRAdapter_RequestHandlerProducesHandles()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -346,11 +333,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(new MediatRAdapter().Version, edge.ExtractorVersion);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EfCoreAdapter_DbContextDbSetProducesMapsTo()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -383,11 +368,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(new EfCoreAdapter().Version, edge.ExtractorVersion);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EfCoreAdapter_HasQueryFilterProducesQueryFilterAnnotation()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -473,11 +456,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TestAdapter_TestProjectProducesTestedBy()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -575,11 +556,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     ///     edges, NOT <see cref="Provenance.FrameworkDerived" />. The adapter detects the
     ///     registration but declares the runtime semantics unmodeled.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task DIAdapter_AddHostedService_ProducesRuntimeUnknown()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -625,11 +604,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     ///     patterns (stream handlers) are silently skipped — no edge is emitted,
     ///     and no false "proved" claim is made.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task MediatRAdapter_StreamHandler_IsSilentlySkipped()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {

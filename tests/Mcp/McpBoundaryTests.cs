@@ -252,7 +252,7 @@ public sealed class McpBoundaryTests : IntegrationTestBase
     [Fact]
     public async Task ParallelReadCalls_DuringBackgroundIndex_AllSucceed()
     {
-        var (snapshot1, _, _) = await IndexAsync();
+        await IndexAsync();
 
         CreateProject("BurstProj2", new Dictionary<string, string>
         {

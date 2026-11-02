@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis.MSBuild;
 
 namespace Lurp.Tests;
@@ -16,11 +15,9 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
 {
-    [SkippableFact]
+    [Fact]
     public async Task PackageReferenceChange_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var source = new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -93,11 +90,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.NotEmpty(mismatches);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DefineConstantsChange_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var source = new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -168,11 +163,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.NotEmpty(mismatches);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task AssemblyNameChange_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var source = new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -239,11 +232,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.Contains(mismatches, m => m.Kind == MismatchKind.AssemblyNameChanged);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CompileRemoveForOneTfm_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P",
             new Dictionary<string, string>
             {
@@ -307,11 +298,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.DoesNotContain("M:P.X.OnlyNet9", SymbolDocCommentIds(DbPath, snapshotV2));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task LinkedFileAddedToSecondProject_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("A", new Dictionary<string, string>
         {
             ["Shared.cs"] = """
@@ -378,11 +367,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.NotEqual(snapshotV1, snapshotV2);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task UnchangedMultiTargetProject_SecondIndex_ReportsNoChangesAndKeepsSnapshotId()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P",
             new Dictionary<string, string>
             {
@@ -421,11 +408,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.Single(store.GetSnapshotIds(latest.WorkspaceId));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task AddedFile_StaysIncremental()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -463,11 +448,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.DoesNotContain(mismatches, m => m.Kind == MismatchKind.ProjectDocumentsChanged);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeletedFile_StaysIncremental()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -506,11 +489,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.DoesNotContain(mismatches, m => m.Kind == MismatchKind.ProjectDocumentsChanged);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task NullStoredDocumentPaths_TreatedAsUnknown_NoMembershipMismatch()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -545,11 +526,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.DoesNotContain(mismatches, m => m.Kind == MismatchKind.ProjectDocumentsChanged);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProjectReferenceChange_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("Q", new Dictionary<string, string>
         {
             ["Q.cs"] = """
@@ -611,11 +590,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExtractorVersionBump_ForcesRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -656,11 +633,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Force_RebuildsIdenticalWorkspace()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -706,11 +681,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Freshness_StatVsHash_TouchWithoutEdit_IsFreshUnderHashMode()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = """
@@ -761,11 +734,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         return result;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SnapshotIdentity_ChangesWhenOnePerExtractorVersionChanges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
@@ -782,11 +753,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.NotEqual(SnapshotIdentity.Create(input), SnapshotIdentity.Create(input with { ExtractorVersions = versions }));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SnapshotIdentityInput_ExtractorVersions_CoverTheRegistry()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"
@@ -800,11 +769,9 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
             Assert.Equal(extractor.Version, input.ExtractorVersions[extractor.Name]);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SnapshotIdentity_IsStableForEqualInputs()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("P", new Dictionary<string, string>
         {
             ["Svc.cs"] = "namespace P; public class Svc { public int Value() => 42; }"

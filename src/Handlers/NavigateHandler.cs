@@ -7,7 +7,7 @@ namespace Lurp.Handlers;
 
 internal static class NavigateHandler
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var file = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
         var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
@@ -20,8 +20,8 @@ internal static class NavigateHandler
             var target = new FastTravelQueries(store).Navigate(file!, line, snapshot, args.Contains("--include-generated"));
             if (target == null) HandlerBootstrap.Fail($"ERROR: No indexed declaration contains {file}:{line} in snapshot '{snapshot}'.");
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshot);
-            Console.WriteLine(JsonSerializer.Serialize(new { snapshot_id = snapshot, freshness = FreshnessJson.Cheap(freshness), target }, HandlerBootstrap.IndentedJson));
-        });
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshot, output);
+            output.WriteLine(JsonSerializer.Serialize(new { snapshot_id = snapshot, freshness = FreshnessJson.Cheap(freshness), target }, HandlerBootstrap.IndentedJson));
+        }, output);
     }
 }

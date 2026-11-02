@@ -1,5 +1,4 @@
 using Lurp.Tests.Docs;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -27,10 +26,9 @@ public sealed class DocExampleExecutionTests : IntegrationTestBase
 
     private const string ChainFile = "src/TestProject/Chain.cs";
 
-    [SkippableFact]
+    [Fact]
     public async Task EveryRunnableExample_RunsOnTheFixture()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         CreateProject("TestProject", new Dictionary<string, string> { ["Chain.cs"] = ChainSource });
         var snapshotId = await RunFullIndexAsync(DbPath);
 

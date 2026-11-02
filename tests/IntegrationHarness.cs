@@ -13,19 +13,21 @@ namespace Lurp.Tests;
 /// </summary>
 internal static class IntegrationHarness
 {
-    public static bool TryRegisterMSBuild()
-    {
-        if (MSBuildLocator.IsRegistered)
-            return true;
+    private static readonly object MSBuildRegistrationLock = new();
 
-        try
+    /// <summary>
+    ///     Registers the MSBuild that ships with the .NET SDK. The test project itself
+    ///     cannot be built without that SDK, so registration cannot fail on a supported
+    ///     platform: any exception is a real failure and must not be turned into a skip.
+    /// </summary>
+    public static void EnsureMSBuildRegistered()
+    {
+        lock (MSBuildRegistrationLock)
         {
+            if (MSBuildLocator.IsRegistered)
+                return;
+
             MSBuildLocator.RegisterDefaults();
-            return true;
-        }
-        catch
-        {
-            return false;
         }
     }
 

@@ -1,6 +1,5 @@
 using Lurp.Handlers;
 using Lurp.Mcp;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp;
@@ -28,7 +27,7 @@ public static class Program
                 },
                 FlagCatalog.Strategy, FlagCatalog.OutputJson, FlagCatalog.SkipAdapter, FlagCatalog.SkipDiff, FlagCatalog.Verbose, FlagCatalog.Force
             ],
-            a => IndexHandler.Run(a)),
+            (a, output) => IndexHandler.Run(a, output)),
         new("get-source", "Retrieve source text for a document by relative path (--document=).",
             [
                 FlagCatalog.Document with { Requirement = FlagRequirement.Required }, FlagCatalog.StartLine, FlagCatalog.EndLine,
@@ -197,18 +196,18 @@ public static class Program
                 FlagCatalog.Solution with { Description = "The solution the session was started with. `lurp_index` indexes it, and `lurp_status` with `full:true` compares it to the snapshot." },
                 FlagCatalog.EnableWriteTools
             ],
-            McpServeHandler.Run)
+            (args, _) => McpServeHandler.Run(args))
     ];
 
     /// <summary>Finds a mode by exact name, or null. The single mode lookup for dispatch and tests.</summary>
     internal static ModeRegistryEntry? FindMode(string name) =>
         ModeRegistry.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.Ordinal));
 
-    private static Func<string[], Task> Sync(Action<string[]> handler)
+    private static Func<string[], IOutputSink, Task> Sync(Action<string[], IOutputSink> handler)
     {
-        return args =>
+        return (args, output) =>
         {
-            handler(args);
+            handler(args, output);
             return Task.CompletedTask;
         };
     }
@@ -228,22 +227,25 @@ public static class Program
 
     public static async Task Main(string[] args)
     {
+        // The composition root: the only place that binds the CLI's output to the process console.
+        ConsoleOutputSink output = ConsoleOutputSink.Instance;
+
         if (args.Contains("--version"))
         {
-            Console.WriteLine(BuildVersionOutput());
+            output.WriteLine(BuildVersionOutput());
             return;
         }
 
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--mode=help") || args.Length == 0)
         {
-            HelpText.PrintHelp();
+            HelpText.PrintHelp(output);
             return;
         }
 
         var modeArg = args.FirstOrDefault(a => a.StartsWith("--mode=", StringComparison.Ordinal));
         if (modeArg is null)
         {
-            HelpText.PrintUnknownModeError();
+            HelpText.PrintUnknownModeError(output);
             Environment.Exit(1);
             return;
         }
@@ -255,7 +257,7 @@ public static class Program
             try
             {
                 CliFlagValidation.Validate(entry, args);
-                await entry.Handler(args);
+                await entry.Handler(args, output);
             }
             catch (CliExitException ex)
             {
@@ -309,7 +311,7 @@ public static class Program
         }
         else
         {
-            HelpText.PrintUnknownModeError();
+            HelpText.PrintUnknownModeError(output);
             Environment.Exit(1);
         }
     }
@@ -325,7 +327,7 @@ public static class Program
     ///         the helper call is invisible to the validator.
     ///     </para>
     /// </summary>
-    internal sealed record ModeRegistryEntry(string Name, string HelpText, FlagSpec[] Specs, Func<string[], Task> Handler)
+    internal sealed record ModeRegistryEntry(string Name, string HelpText, FlagSpec[] Specs, Func<string[], IOutputSink, Task> Handler)
     {
         /// <summary>The flag names of <see cref="Specs" />, in the same order. Name-based readers use this.</summary>
         public string[] Flags { get; } = Specs.Select(static s => s.Name).ToArray();

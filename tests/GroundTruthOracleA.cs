@@ -330,10 +330,10 @@ internal static class OperationShapeOracle
                         AddForeach(ownerId, loopSyntax, model);
                         break;
                     case IUsingDeclarationOperation usingDeclaration:
-                        AddUsingDispose(ownerId, usingDeclaration.DeclarationGroup, usingDeclaration.IsAsynchronous, operation.Syntax, model);
+                        AddUsingDispose(ownerId, usingDeclaration.DeclarationGroup, usingDeclaration.IsAsynchronous, operation.Syntax);
                         break;
                     case IUsingOperation usingOperation:
-                        AddUsingDispose(ownerId, usingOperation.Resources, usingOperation.IsAsynchronous, operation.Syntax, model);
+                        AddUsingDispose(ownerId, usingOperation.Resources, usingOperation.IsAsynchronous, operation.Syntax);
                         break;
                     case IDeconstructionAssignmentOperation deconstruction when deconstruction.Syntax is AssignmentExpressionSyntax assignment:
                         AddDeconstruction(ownerId, model.GetDeconstructionInfo(assignment), assignment);
@@ -601,7 +601,7 @@ internal static class OperationShapeOracle
                 AddDeconstruction(ownerId, model.GetDeconstructionInfo(variableSyntax), variableSyntax);
         }
 
-        private void AddUsingDispose(string ownerId, IOperation? resources, bool isAsync, SyntaxNode syntax, SemanticModel model)
+        private void AddUsingDispose(string ownerId, IOperation? resources, bool isAsync, SyntaxNode syntax)
         {
             var types = new List<ITypeSymbol>();
             if (resources is IVariableDeclarationGroupOperation group)

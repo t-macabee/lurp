@@ -1,5 +1,4 @@
 using Lurp.Handlers;
-using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol;
 
@@ -16,20 +15,19 @@ internal sealed class McpSessionContext : IAsyncDisposable
     }
 
     public string DbPath { get; }
-    public string OutputDir { get; }
     public string? SolutionPath { get; }
 
-    private McpSessionContext(string pinnedSnapshotId, string dbPath, string outputDir, string? solutionPath)
+    private McpSessionContext(string pinnedSnapshotId, string dbPath, string? solutionPath)
     {
         _pinnedSnapshotId = pinnedSnapshotId;
         DbPath = dbPath;
-        OutputDir = outputDir;
         SolutionPath = solutionPath;
     }
 
-    public static McpSessionContext Create(string[] args)
+    public static McpSessionContext Create(string[] args, IOutputSink? output = null)
     {
-        var outputDir = HandlerBootstrap.ResolveOutputDir(args);
+        output ??= StderrOutputSink.Instance;
+        var outputDir = HandlerBootstrap.ResolveOutputDir(args, output);
         var dbPath = HandlerBootstrap.ResolveDbPath(outputDir);
         var solutionPath = HandlerBootstrap.GetArgValue(args, "--solution=") ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         // Normalize solution path if present
@@ -66,14 +64,13 @@ internal sealed class McpSessionContext : IAsyncDisposable
             }
         }
 
-        // Only sanctioned console call in src/Mcp/** — before stdio handshake.
         var shortId = snapshotId.Length > 12 ? snapshotId[..12] : snapshotId;
         var startupNotice = $"mcp: pinned snapshot {shortId} at {stamp.CheckedAtUtc:O} freshness:{stamp.State}";
         if (stalePin != null)
             startupNotice += Environment.NewLine + HandlerBootstrap.StalePinWarning(stalePin, snapshotId);
-        Console.Error.WriteLine(startupNotice);
+        output.WriteErrorLine(startupNotice);
 
-        return new McpSessionContext(snapshotId, dbPath, outputDir, solutionPath);
+        return new McpSessionContext(snapshotId, dbPath, solutionPath);
     }
 
     /// <summary>

@@ -1,5 +1,4 @@
 using Lurp.Workspace;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
 
@@ -46,11 +45,9 @@ public sealed class CrossProjectBoundaryTests
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task MultiTargetSolution_LoadsWithoutDuplicateOutputPathDiagnostic_AndBindsMatchingFlavor()
     {
-        Skip.If(!IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
-
         var testDir = Path.Combine(Path.GetTempPath(), $"lurp-multitfm-{Guid.NewGuid():N}");
         var treeRoot = Path.Combine(testDir, "GroundTruth");
         var solutionPath = Path.Combine(treeRoot, "CrossProject", "CrossProject.CSharp.slnx");

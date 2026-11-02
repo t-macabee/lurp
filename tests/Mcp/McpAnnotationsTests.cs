@@ -116,7 +116,7 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
     [Fact]
     public async Task Annotations_DocumentFilter_ReturnsOnlyMatchingPath()
     {
-        var snap = await IndexInitialAsync();
+        await IndexInitialAsync();
         string stableId;
         string docPath = "src/AnnoProj/Models.cs";
         // Create a second document to have another path
@@ -148,9 +148,9 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
     [Fact]
     public async Task Annotations_DocumentFilter_EmptyButValid_ReturnsEmptyNotError()
     {
-        var snap = await IndexInitialAsync();
+        await IndexInitialAsync();
         WriteFile("AnnoProj", "Empty.cs", "namespace AnnoProj { public class Empty { } }");
-        var snap2 = await RunFullIndexNoDeleteAsync(DbPath);
+        await RunFullIndexNoDeleteAsync(DbPath);
         await using var session = CreateSession();
         var tool = new AnnotationsTool(session);
         var json = tool.LurpGetAnnotations(document: "src/AnnoProj/Empty.cs");
@@ -206,13 +206,14 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
         var json = tool.LurpGetAnnotations(kind: "note");
         using var doc = JsonDocument.Parse(json);
         var arr = doc.RootElement.GetProperty("annotations");
-        Assert.True(arr.GetArrayLength() >= 2);
+        Assert.Equal(2, arr.GetArrayLength());
         foreach (var el in arr.EnumerateArray())
             Assert.Equal("note", el.GetProperty("kind").GetString());
-        // Whole snapshot without kind should be larger
+        // Without the kind filter the todo comes back as well.
         var jsonAll = tool.LurpGetAnnotations();
         using var docAll = JsonDocument.Parse(jsonAll);
-        Assert.True(docAll.RootElement.GetProperty("annotation_count").GetInt32() > arr.GetArrayLength() || docAll.RootElement.GetProperty("annotations").GetArrayLength() > arr.GetArrayLength());
+        Assert.Equal(3, docAll.RootElement.GetProperty("annotation_count").GetInt32());
+        Assert.Equal(3, docAll.RootElement.GetProperty("annotations").GetArrayLength());
     }
 
     [Fact]

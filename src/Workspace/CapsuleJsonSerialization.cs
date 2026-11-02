@@ -15,10 +15,6 @@ internal static class ContextCapsuleJson
 {
     internal static readonly JsonSerializerOptions Options = LurpJsonOptions.IndentedIgnoreNull;
 
-    // Same field contract, one line per document : used by --output=jsonl on the
-    // single-tier continuation, never for the capsule itself.
-    internal static readonly JsonSerializerOptions CompactOptions = LurpJsonOptions.CompactIgnoreNull;
-
     internal static string Serialize(ContextCapsule capsule)
     {
         return JsonSerializer.Serialize(capsule, Options);

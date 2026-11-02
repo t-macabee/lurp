@@ -19,7 +19,7 @@ public abstract class IntegrationTestBase : IDisposable
 
     static IntegrationTestBase()
     {
-        IntegrationHarness.TryRegisterMSBuild();
+        IntegrationHarness.EnsureMSBuildRegistered();
     }
 
     protected IntegrationTestBase()
@@ -45,7 +45,7 @@ public abstract class IntegrationTestBase : IDisposable
         string[]? projectReferences = null,
         string[]? frameworkReferences = null,
         IReadOnlyDictionary<string, string>? msbuildProperties = null,
-        string targetFramework = "net10.0")
+        string? targetFramework = "net10.0")
     {
         WriteSolution(TestDir, projectName, sourceFiles,
             packageReferences, projectReferences, frameworkReferences, msbuildProperties, targetFramework);
@@ -53,7 +53,9 @@ public abstract class IntegrationTestBase : IDisposable
 
     /// <summary>
     ///     Writes one .csproj, its source files and the project's folder entry in
-    ///     <c>{solutionDir}/Test.slnx</c>.
+    ///     <c>{solutionDir}/Test.slnx</c>. A <paramref name="targetFramework" /> of
+    ///     <c>null</c> omits <c>&lt;TargetFramework&gt;</c> entirely, which is the one
+    ///     shape MSBuildWorkspace cannot evaluate (and therefore falls back to C# 7.3).
     /// </summary>
     public static void WriteSolution(
         string solutionDir,
@@ -63,7 +65,7 @@ public abstract class IntegrationTestBase : IDisposable
         string[]? projectReferences = null,
         string[]? frameworkReferences = null,
         IReadOnlyDictionary<string, string>? msbuildProperties = null,
-        string targetFramework = "net10.0")
+        string? targetFramework = "net10.0")
     {
         var solutionPath = Path.Combine(solutionDir, "Test.slnx");
         var projDir = Path.Combine(solutionDir, "src", projectName);
@@ -72,10 +74,11 @@ public abstract class IntegrationTestBase : IDisposable
         var sb = new StringBuilder();
         sb.AppendLine("""<Project Sdk="Microsoft.NET.Sdk">""");
         sb.AppendLine("  <PropertyGroup>");
-        if (targetFramework.Contains(';'))
-            sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFrameworks>{targetFramework}</TargetFrameworks>");
-        else
-            sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFramework>{targetFramework}</TargetFramework>");
+        if (targetFramework != null)
+            if (targetFramework.Contains(';'))
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFrameworks>{targetFramework}</TargetFrameworks>");
+            else
+                sb.AppendLine(CultureInfo.InvariantCulture, $"    <TargetFramework>{targetFramework}</TargetFramework>");
         sb.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
         sb.AppendLine("    <Nullable>enable</Nullable>");
         if (msbuildProperties is { Count: > 0 })

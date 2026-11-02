@@ -26,7 +26,7 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
             "--mode=dead-candidates",
             "--kind=Bogus",
             $"--output-dir={TestDir}"
-        ]));
+        ], new CapturingOutputSink()));
         Assert.Contains("--kind must be one of", ex.Message);
     }
 
@@ -46,11 +46,11 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
     {
         await IndexFixtureAsync();
 
-        var cliResult = TestConsole.Capture(() => DeadCandidatesHandler.Run([
+        var cliResult = CapturingOutputSink.Capture(sink => DeadCandidatesHandler.Run([
             "--mode=dead-candidates",
             "--kind=method",
             $"--output-dir={TestDir}"
-        ]));
+        ], sink));
         Assert.Null(cliResult.Failure);
         Assert.False(string.IsNullOrEmpty(cliResult.Stdout));
 
@@ -68,7 +68,7 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
             "--mode=dead-candidates",
             "--limit=201",
             $"--output-dir={TestDir}"
-        ]));
+        ], new CapturingOutputSink()));
         Assert.Contains("--limit must be <= 200.", ex.Message);
         Assert.DoesNotContain("SQLITE_MAX_VARIABLE_NUMBER", ex.Message);
     }

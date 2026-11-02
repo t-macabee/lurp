@@ -1,5 +1,4 @@
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
@@ -241,12 +240,9 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
 
     // --- 8. A file that goes from source to binary since it was indexed reads as stale ---
 
-    [SkippableFact]
+    [Fact]
     public async Task Freshness_FileGoneInvalidSinceIndexing_IsStale_NotFatal()
     {
-        Skip.If(!MSBuildLocator.IsRegistered && !IntegrationHarness.TryRegisterMSBuild(),
-            "MSBuild is not available on this system. Cannot run integration test.");
-
         var projDir = Path.Combine(_tempDir, "src", "TestProject");
         Directory.CreateDirectory(projDir);
         File.WriteAllText(Path.Combine(projDir, "TestProject.csproj"), """
@@ -286,12 +282,9 @@ public sealed class WorkspaceInfoDecodeTests : IDisposable
 
     // --- 9. End-to-end: the reporter's headline symptom (no snapshot produced) is fixed ---
 
-    [SkippableFact]
+    [Fact]
     public async Task FullIndex_WithBinaryPulledIntoCompileGlob_ProducesSnapshot()
     {
-        Skip.If(!MSBuildLocator.IsRegistered && !IntegrationHarness.TryRegisterMSBuild(),
-            "MSBuild is not available on this system. Cannot run integration test.");
-
         var projDir = Path.Combine(_tempDir, "src", "TestProject");
         var wwwrootDir = Path.Combine(projDir, "wwwroot");
         Directory.CreateDirectory(wwwrootDir);

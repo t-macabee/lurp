@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace Lurp.Storage;
 
@@ -406,8 +405,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         }
 
         // Resolve document version and line_starts for this snapshot/document.
-        string? docVersionId = null;
-        int[]? lineStarts = null;
+        string? docVersionId;
+        int[]? lineStarts;
         using (var docCmd = _connection.CreateCommand())
         {
             docCmd.CommandText = """
@@ -523,10 +522,8 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         string? nextCursor = null;
         if (rows.Count > limit)
         {
-            // Last row is the lookahead; remove it and encode cursor from it.
-            var lookahead = rows[^1];
+            // Last row is the lookahead; drop it and encode the cursor from the last returned row.
             rows.RemoveAt(rows.Count - 1);
-            // Cursor points to the last returned row, not the lookahead.
             var last = rows[^1];
             nextCursor = new OutlineCursor(snapshotId, fingerprint, last.FullStart, last.SymbolId).Encode();
         }

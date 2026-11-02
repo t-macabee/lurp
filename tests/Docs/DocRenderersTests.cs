@@ -42,7 +42,7 @@ public sealed class DocRenderersTests
             "test-mode",
             "test",
             [FlagCatalog.Query, FlagCatalog.Output, FlagCatalog.Quiet, FlagCatalog.Freshness, FlagCatalog.RequireFresh],
-            _ => Task.CompletedTask);
+            (_, _) => Task.CompletedTask);
 
         var text = DocRenderers.RenderModeFlags(entry);
 
@@ -56,7 +56,7 @@ public sealed class DocRenderersTests
             "test-mode",
             "test",
             [FlagCatalog.Query, FlagCatalog.Output with { AllowedValues = ["summary", "json"] }, FlagCatalog.Quiet, FlagCatalog.Freshness, FlagCatalog.RequireFresh],
-            _ => Task.CompletedTask);
+            (_, _) => Task.CompletedTask);
 
         Assert.Contains("| `--output=<summary\\|json>` | No |", DocRenderers.RenderModeFlags(changed));
     }

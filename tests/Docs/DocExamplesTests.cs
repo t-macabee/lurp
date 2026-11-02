@@ -132,7 +132,9 @@ public sealed class DocExamplesTests
     [Fact]
     public void Tier1_RejectsAnUnknownMode()
     {
-        Assert.NotEmpty(Validate("lurp --mode=nope --output-dir=./out"));
+        var failures = Validate("lurp --mode=nope --output-dir=./out");
+
+        Assert.Contains(failures, failure => failure.Contains("unknown mode 'nope'", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -146,7 +148,9 @@ public sealed class DocExamplesTests
     [Fact]
     public void Tier1_RejectsADisallowedValue()
     {
-        Assert.NotEmpty(Validate("lurp --mode=search --query=x --type=banana --output-dir=./out"));
+        var failures = Validate("lurp --mode=search --query=x --type=banana --output-dir=./out");
+
+        Assert.Contains(failures, failure => failure.Contains("'banana' is not an allowed value for --type=", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -158,7 +162,9 @@ public sealed class DocExamplesTests
     [Fact]
     public void Tier1_RejectsAMissingRequiredFlag()
     {
-        Assert.NotEmpty(Validate("lurp --mode=grep --output-dir=./out"));
+        var failures = Validate("lurp --mode=grep --output-dir=./out");
+
+        Assert.Contains(failures, failure => failure.Contains("required flag --query= is missing", StringComparison.Ordinal));
     }
 
     [Fact]

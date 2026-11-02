@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -33,11 +32,9 @@ public sealed class PlannerStatisticsTests : IntegrationTestBase
         }
         """;
 
-    [SkippableFact]
+    [Fact]
     public async Task FullIndex_WritesPlannerStatistics()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource
@@ -47,11 +44,9 @@ public sealed class PlannerStatisticsTests : IntegrationTestBase
         AssertPlannerStatisticsWritten(snapshotId);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task IncrementalIndex_WritesPlannerStatistics()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject(ProjectName, new Dictionary<string, string>
         {
             ["Probe.cs"] = ProbeSource

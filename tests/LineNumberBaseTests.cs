@@ -140,12 +140,12 @@ public sealed class LineNumberBaseTests : IntegrationTestBase
             reportedStartLine = loc.StartLine.ToString(CultureInfo.InvariantCulture);
         }
 
-        var result = TestConsole.Capture(() => NavigateHandler.Run([
+        var result = CapturingOutputSink.Capture(sink => NavigateHandler.Run([
             "--mode=navigate",
             $"--file={Document}",
             $"--line={reportedStartLine}",
             $"--output-dir={TestDir}"
-        ]));
+        ], sink));
 
         Assert.Null(result.Failure);
         using var doc = JsonDocument.Parse(result.Stdout);

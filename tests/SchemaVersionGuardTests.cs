@@ -59,7 +59,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
     public void CliReadMode_OnStaleSchema_FailsWithMessage_AndDoesNotMigrate()
     {
         var ex = Assert.Throws<CliExitException>(() =>
-            GrepHandler.Run([$"--output-dir={_outputDir}", "--query=Foo"]));
+            GrepHandler.Run([$"--output-dir={_outputDir}", "--query=Foo"], new CapturingOutputSink()));
 
         Assert.Equal(Message(StaleVersion), ex.Message);
         Assert.Equal(StaleVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
@@ -78,21 +78,12 @@ public sealed class SchemaVersionGuardTests : IDisposable
     [Fact]
     public async Task Status_OnStaleSchema_ReportsMismatch_AndDoesNotMigrate()
     {
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        try
-        {
-            Console.SetOut(stdout);
-            await StatusHandler.Run([$"--output-dir={_outputDir}", "--json"]);
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
+        var sink = new CapturingOutputSink();
+        await StatusHandler.Run([$"--output-dir={_outputDir}", "--json"], sink);
 
         Assert.Equal(StaleVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
-        using var doc = JsonDocument.Parse(stdout.ToString());
+        using var doc = JsonDocument.Parse(sink.Stdout);
         Assert.Equal(StaleVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         Assert.True(doc.RootElement.GetProperty("schema_version_mismatch").GetBoolean());
         Assert.Contains("--mode=index", doc.RootElement.GetProperty("schema_version_note").GetString()!);
@@ -109,7 +100,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
         }
 
         var ex = Assert.Throws<CliExitException>(() =>
-            GrepHandler.Run([$"--output-dir={_outputDir}", "--query=Foo"]));
+            GrepHandler.Run([$"--output-dir={_outputDir}", "--query=Foo"], new CapturingOutputSink()));
 
         Assert.Equal(Message(VersionConstants.DatabaseSchemaVersion + 1), ex.Message);
         Assert.Equal(VersionConstants.DatabaseSchemaVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());

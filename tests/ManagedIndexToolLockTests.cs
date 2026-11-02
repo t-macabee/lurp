@@ -202,7 +202,7 @@ public sealed class ManagedIndexToolLockTests : IntegrationTestBase
     {
         var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
             [$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}"],
-            CancellationToken.None));
+            new CapturingOutputSink(), CancellationToken.None));
         Assert.Null(ex);
     }
 

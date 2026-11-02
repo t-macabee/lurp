@@ -191,7 +191,7 @@ internal static class HandlerBootstrap
         if (stamp.State != "fresh") Fail($"ERROR: snapshot '{stamp.SnapshotId}' is not fresh (state={stamp.State}, method={stamp.Method}, changedDocuments={stamp.ChangedDocumentCount}). Re-index, or drop --require-fresh to read it anyway.", 2);
     }
 
-    public static void PrintFreshnessLine(string[] args, FreshnessStamp stamp)
+    public static void PrintFreshnessLine(string[] args, FreshnessStamp stamp, IOutputSink output)
     {
         if (IsQuiet(args))
             return;
@@ -199,7 +199,7 @@ internal static class HandlerBootstrap
         var scope = stamp.Scope == "documents_only"
             ? " scope=documents_only (not a full compilation check)"
             : "";
-        Console.Error.WriteLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}{scope}");
+        output.WriteErrorLine($"freshness: state={stamp.State} method={stamp.Method} changedDocuments={stamp.ChangedDocumentCount} snapshot={stamp.SnapshotId}{scope}");
     }
 
     public static string RequireArg(string[] args, string prefix, params string[] errorLines)
@@ -211,7 +211,7 @@ internal static class HandlerBootstrap
         return value;
     }
 
-    public static string ResolveOutputDir(string[] args)
+    public static string ResolveOutputDir(string[] args, IOutputSink output)
     {
         var solutionArg = GetArgValue(args, "--solution=")
                           ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
@@ -220,7 +220,7 @@ internal static class HandlerBootstrap
                            ?? Environment.GetEnvironmentVariable("LURP_OUTPUT_DIR");
         if (!string.IsNullOrEmpty(outputDirArg))
         {
-            WarnIfOutputInsideSolution(outputDirArg, solutionArg);
+            WarnIfOutputInsideSolution(outputDirArg, solutionArg, output);
             return outputDirArg;
         }
 
@@ -239,7 +239,7 @@ internal static class HandlerBootstrap
     ///     and capsules, and a user who runs <c>git add .</c> commits it. The run
     ///     proceeds, but the caller is told to move it out.
     /// </summary>
-    private static void WarnIfOutputInsideSolution(string outputDirArg, string? solutionArg)
+    private static void WarnIfOutputInsideSolution(string outputDirArg, string? solutionArg, IOutputSink output)
     {
         if (string.IsNullOrEmpty(solutionArg))
             return;
@@ -260,7 +260,7 @@ internal static class HandlerBootstrap
             return;
 
         // stderr: stdout stays payload/JSON on every surface, including MCP stdio.
-        Console.Error.WriteLine(
+        output.WriteErrorLine(
             $"WARNING: --output-dir '{outputDir}' is inside the solution directory '{solutionDir}'. " +
             "Lurp writes index.db and capsule files there. Pass a directory outside the tree, or omit " +
             $"--output-dir to use the default cache at {LurpCache.ResolveSolutionCacheDir(solutionArg)}.");
@@ -380,9 +380,9 @@ internal static class HandlerBootstrap
     ///     <paramref name="snapshotArg" /> (or the latest snapshot when null), calls
     ///     <paramref name="body" />, and closes the store in a <c>finally</c>.
     /// </summary>
-    public static void WithStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body)
+    public static void WithStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body, IOutputSink output)
     {
-        var outputDir = ResolveOutputDir(args);
+        var outputDir = ResolveOutputDir(args, output);
         var dbPath = ResolveDbPath(outputDir);
         var store = OpenStore(dbPath);
         try
@@ -392,7 +392,7 @@ internal static class HandlerBootstrap
                 : null;
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
             if (stalePin != null)
-                Console.Error.WriteLine(HandlerBootstrap.StalePinWarning(stalePin, snapshotId));
+                output.WriteErrorLine(HandlerBootstrap.StalePinWarning(stalePin, snapshotId));
             body(store, snapshotId);
         }
         finally
@@ -405,15 +405,15 @@ internal static class HandlerBootstrap
     ///     Same contract as <see cref="WithStore" /> with a writable connection, for the
     ///     two annotation write modes (annotate, retract-annotation).
     /// </summary>
-    public static void WithWritableStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body)
+    public static void WithWritableStore(string[] args, string? snapshotArg, Action<SqliteIndexStore, string> body, IOutputSink output)
     {
-        var outputDir = ResolveOutputDir(args);
+        var outputDir = ResolveOutputDir(args, output);
         var dbPath = ResolveDbPath(outputDir);
         var store = OpenWritableStore(dbPath);
         try
         {
             if (UsesLatestSnapshot(snapshotArg))
-                ClearStalePinWithNotice(store);
+                ClearStalePinWithNotice(store, output);
             var snapshotId = ResolveSnapshotId(store, snapshotArg);
             body(store, snapshotId);
         }
@@ -424,11 +424,11 @@ internal static class HandlerBootstrap
     }
 
     /// <summary>Clears one stale pin if there is one, and names it on stderr.</summary>
-    internal static void ClearStalePinWithNotice(SqliteIndexStore store)
+    internal static void ClearStalePinWithNotice(SqliteIndexStore store, IOutputSink output)
     {
         var stalePin = store.ClearStalePin();
         if (stalePin != null)
-            Console.Error.WriteLine(StalePinRemovedNotice(stalePin));
+            output.WriteErrorLine(StalePinRemovedNotice(stalePin));
     }
 
     /// <summary>
@@ -436,11 +436,11 @@ internal static class HandlerBootstrap
     ///     line (unless <c>--quiet</c>). Returns the stamp so callers can embed it in
     ///     the payload.
     /// </summary>
-    public static FreshnessStamp ResolveFreshness(string[] args, SqliteIndexStore store, string snapshotId)
+    public static FreshnessStamp ResolveFreshness(string[] args, SqliteIndexStore store, string snapshotId, IOutputSink output)
     {
         var stamp = ComputeFreshnessStamp(store, snapshotId, args);
         EnforceRequireFresh(args, stamp);
-        PrintFreshnessLine(args, stamp);
+        PrintFreshnessLine(args, stamp, output);
         return stamp;
     }
 

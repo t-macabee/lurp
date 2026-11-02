@@ -5,7 +5,7 @@ namespace Lurp.Tests.Mcp;
 public sealed class McpNoConsoleTests
 {
     [Fact]
-    public void McpSource_ContainsExactlyOneConsoleCall_AllowedPreHandshake()
+    public void McpSource_ContainsNoConsoleCalls()
     {
         var mcpDir = FindMcpDirectory();
         var files = Directory.GetFiles(mcpDir, "*.cs", SearchOption.AllDirectories);
@@ -24,10 +24,8 @@ public sealed class McpNoConsoleTests
             }
         }
 
-        // Exactly one console call is sanctioned: McpSessionContext.cs before handshake
-        Assert.Single(hits);
-        Assert.Contains("McpSessionContext", hits[0]);
-        Assert.Contains("Console.Error", hits[0]);
+        // MCP writes its startup notice through the output sink, so stdout and stderr are never reached directly.
+        Assert.True(hits.Count == 0, $"src/Mcp must write through IOutputSink, not the console:\n{string.Join("\n", hits)}");
     }
 
     private static string FindMcpDirectory()

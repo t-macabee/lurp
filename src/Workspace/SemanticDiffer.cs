@@ -117,10 +117,8 @@ public class SemanticDiffer
 
         foreach (var symbolId in commonList)
         {
-            List<string>? fromDocumentVersionIds = null;
-            List<string>? toDocumentVersionIds = null;
-            fromDocumentVersionsBySymbol.TryGetValue(symbolId, out fromDocumentVersionIds);
-            toDocumentVersionsBySymbol.TryGetValue(symbolId, out toDocumentVersionIds);
+            fromDocumentVersionsBySymbol.TryGetValue(symbolId, out var fromDocumentVersionIds);
+            toDocumentVersionsBySymbol.TryGetValue(symbolId, out var toDocumentVersionIds);
             var fromInfo = fromSymbolInfo != null ? fromSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, fromSnapshotId);
             var toInfo = toSymbolInfo != null ? toSymbolInfo.GetValueOrDefault(symbolId) : ReadSymbolDiffInfo(symbolId, toSnapshotId);
             var (symbolChanges, symbolSkipped) = ComputeSymbolDiff(symbolId, fromInfo, toInfo, fromSnapshotId, toSnapshotId, fromDocumentVersionIds, toDocumentVersionIds);

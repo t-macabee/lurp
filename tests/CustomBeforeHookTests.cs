@@ -18,11 +18,9 @@ namespace Lurp.Tests;
 [Trait("Category", "Slow")]
 public sealed class CustomBeforeHookTests
 {
-    [SkippableFact]
+    [Fact]
     public async Task LurpRedirect_KeepsTheSolutionsOwnCustomBeforeHook()
     {
-        Skip.If(!IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
-
         var scenario = await RunScenarioAsync(HookPlacement.DirectoryBuildProps);
 
         AssertControlHookApplied(scenario.Control);
@@ -41,11 +39,9 @@ public sealed class CustomBeforeHookTests
         Assert.Empty(scenario.Lurp.RedirectWarnings);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task LurpRedirect_AppliesWhenTheSolutionHasNoHook()
     {
-        Skip.If(!IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
-
         var scenario = await RunScenarioAsync(HookPlacement.None);
 
         Assert.True(scenario.Control.AlwaysThere && scenario.Lurp.AlwaysThere,
@@ -61,11 +57,9 @@ public sealed class CustomBeforeHookTests
         Assert.Empty(scenario.Lurp.RedirectWarnings);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task LurpRedirect_ReportsAProjectThatAssignsTheHookInItsBody()
     {
-        Skip.If(!IntegrationHarness.TryRegisterMSBuild(), "MSBuild is not available on this system.");
-
         var scenario = await RunScenarioAsync(HookPlacement.ProjectBody);
 
         AssertControlHookApplied(scenario.Control);

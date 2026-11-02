@@ -56,7 +56,7 @@ public sealed class McpRefreshTests : IntegrationTestBase
         {
             ["B.cs"] = "namespace RefreshProj2 { public class B { public void Bar() {} } }"
         });
-        var snapshot2 = await RunFullIndexNoDeleteAsync(DbPath);
+        await RunFullIndexNoDeleteAsync(DbPath);
 
         var refreshTool = new RefreshTool(session);
         // First check without ack to get latest

@@ -9,7 +9,6 @@ public sealed class TextSearchStoreTests : IDisposable
     private readonly string _dbPath;
     private readonly SqliteIndexStore _store;
     private const string SnapshotId = "test-snap-1";
-    private const string WorkspaceId = "ws-1";
 
     public TextSearchStoreTests()
     {

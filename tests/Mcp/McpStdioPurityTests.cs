@@ -20,13 +20,6 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
         return result.ToString();
     }
 
-    private static JsonDocument? TryParseInnerJson(JsonElement result, out string? innerText)
-    {
-        innerText = ExtractInnerText(result);
-        if (innerText == null) return null;
-        try { return JsonDocument.Parse(innerText); } catch { return null; }
-    }
-
     [Fact]
     public async Task StdioPurity_FullToolSurface_NoStdoutLeak_AndJsonOnly()
     {
@@ -68,7 +61,6 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
         // Gather known identifiers from snap2 (pinned)
         string symbolId;
         string docPath;
-        string fqn;
         using (var store = OpenStore(DbPath))
         {
             var ids = store.GetSymbolIdsInSnapshot(snap2);
@@ -76,8 +68,6 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
                 var info = store.GetSymbolInfo(id, snap2);
                 return info != null && info.FullyQualifiedName != null && info.FullyQualifiedName.Contains("PurityProj.Foo");
             });
-            var infoFound = store.GetSymbolInfo(symbolId, snap2)!;
-            fqn = infoFound.FullyQualifiedName ?? symbolId;
             var docs = store.GetDocumentVersionIdsByPath(snap2);
             // Pick a doc that exists
             docPath = docs.Keys.First(k => k.Contains("Models.cs"));
@@ -100,17 +90,11 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
 
         try
         {
-            // Give process a moment to start and emit pinned line to stderr
-            await Task.Delay(500);
-
             var timeout = TimeSpan.FromSeconds(15);
 
             // Initialize
             var initResp = await server.Client.InitializeAsync("test", timeout);
             Assert.True(initResp.TryGetProperty("result", out _), "initialize must return result");
-
-            // Small delay to let server process initialized
-            await Task.Delay(200);
 
             // Helper to call tool
             async Task<JsonElement> CallTool(string name, object? args)
@@ -134,7 +118,8 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
                 var innerText = ExtractInnerText(res);
                 Assert.False(string.IsNullOrEmpty(innerText));
                 using var inner = JsonDocument.Parse(innerText!);
-                Assert.True(inner.RootElement.TryGetProperty("results", out _));
+                Assert.True(inner.RootElement.TryGetProperty("results", out var results));
+                Assert.True(results.GetArrayLength() > 0, "searching for the fixture's Foo returned nothing");
             }
 
             // 2. lurp_find_symbol
@@ -174,8 +159,8 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
                 var res = await CallTool("lurp_navigate", new { file = docPath, line = 3 });
                 var innerText = ExtractInnerText(res);
                 using var inner = JsonDocument.Parse(innerText!);
-                // navigate returns target
-                Assert.True(inner.RootElement.TryGetProperty("snapshot_id", out _) || inner.RootElement.TryGetProperty("target", out _));
+                Assert.True(inner.RootElement.TryGetProperty("snapshot_id", out _));
+                Assert.True(inner.RootElement.TryGetProperty("target", out _));
             }
 
             // 7. lurp_context
@@ -294,12 +279,12 @@ public sealed class McpStdioPurityTests : IntegrationTestBase
                 var res = await CallTool("lurp_refresh", new { ack = newSnapshotId });
                 var innerText = ExtractInnerText(res);
                 using var inner = JsonDocument.Parse(innerText!);
-                // After ack, changed should be false or new pin advanced
-                Assert.True(inner.RootElement.TryGetProperty("new_snapshot_id", out _));
+                // The ack must resolve to the snapshot the index run just produced: a refresh
+                // that advanced the pin to any other snapshot would report a different id.
+                Assert.True(inner.RootElement.TryGetProperty("new_snapshot_id", out var ackedId) && ackedId.GetString() == newSnapshotId,
+                    $"lurp_refresh with ack must report the index run's result_snapshot_id ({newSnapshotId}); got {innerText}");
             }
 
-            // Allow stderr to flush
-            await Task.Delay(500);
             server.Close(3000);
 
             // Final purity assertions

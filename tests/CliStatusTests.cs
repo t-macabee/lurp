@@ -37,9 +37,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         WriteFile("App", "Two.cs", "namespace App { public class Two { public void M(int x) {} } }");
         WriteFile("App", "Three.cs", "namespace App { public class Three { public void M(int x) {} } }");
 
-        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var result = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json", "--max-mismatches=1"
-        ]));
+        ], sink));
 
         Assert.Null(result.Failure);
         using var doc = JsonDocument.Parse(result.Stdout);
@@ -60,7 +60,7 @@ public sealed class CliStatusTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
             store.MarkSnapshotFailed(snapshotId, "extraction_failed", "adapter threw");
 
-        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={TestDir}"]));
+        var result = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={TestDir}"], sink));
 
         Assert.Null(result.Failure);
         Assert.Contains("Latest failed index:", result.Stdout);
@@ -74,9 +74,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         // Never-indexed branch: no database at all.
         var missingDir = Path.Combine(TestDir, "no-db");
         Directory.CreateDirectory(missingDir);
-        var neverIndexed = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var neverIndexed = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={missingDir}", "--json"
-        ]));
+        ], sink));
 
         Assert.Null(neverIndexed.Failure);
         using (var doc = JsonDocument.Parse(neverIndexed.Stdout))
@@ -90,9 +90,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         });
         await RunFullIndexAsync(DbPath);
 
-        var snapshotOnly = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var snapshotOnly = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={TestDir}", "--json"
-        ]));
+        ], sink));
         Assert.Null(snapshotOnly.Failure);
         using (var doc = JsonDocument.Parse(snapshotOnly.Stdout))
         {
@@ -100,9 +100,9 @@ public sealed class CliStatusTests : IntegrationTestBase
             Assert.False(doc.RootElement.GetProperty("pin_active").GetBoolean());
         }
 
-        var freshness = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var freshness = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json"
-        ]));
+        ], sink));
         Assert.Null(freshness.Failure);
         using (var doc = JsonDocument.Parse(freshness.Stdout))
         {
@@ -135,13 +135,13 @@ public sealed class CliStatusTests : IntegrationTestBase
         using (var store = OpenStore(DbPath))
             store.SetPinnedSnapshot(snapshotId);
 
-        var snapshotOnly = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={TestDir}"]));
+        var snapshotOnly = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={TestDir}"], sink));
         Assert.Null(snapshotOnly.Failure);
         Assert.Contains($"Pinned snapshot: {snapshotId} (pinned at ", snapshotOnly.Stdout);
 
-        var freshness = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var freshness = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}"
-        ]));
+        ], sink));
         Assert.Null(freshness.Failure);
         Assert.Contains($"Pinned snapshot: {snapshotId} (pinned at ", freshness.Stdout);
     }
@@ -149,7 +149,7 @@ public sealed class CliStatusTests : IntegrationTestBase
     [Fact]
     public async Task Status_UnknownDetail_FailsBeforeReadingDatabase()
     {
-        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={TestDir}", "--json", "--detail=bogus"]));
+        var result = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={TestDir}", "--json", "--detail=bogus"], sink));
 
         Assert.NotNull(result.Failure);
         Assert.Contains("--detail", result.Failure!.Message);
@@ -165,9 +165,9 @@ public sealed class CliStatusTests : IntegrationTestBase
         });
         await RunFullIndexAsync(DbPath);
 
-        var result = await TestConsole.CaptureAsync(() => StatusHandler.Run([
+        var result = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([
             $"--output-dir={TestDir}", $"--solution={SolutionPath}", "--json", "--detail=documents,references"
-        ]));
+        ], sink));
 
         Assert.Null(result.Failure);
         using var doc = JsonDocument.Parse(result.Stdout);

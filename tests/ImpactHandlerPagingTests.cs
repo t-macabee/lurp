@@ -60,7 +60,7 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         if (maxDepth is not null)
             args.Add($"--max-depth={maxDepth.Value.ToString(CultureInfo.InvariantCulture)}");
 
-        var result = TestConsole.Capture(() => ImpactHandler.Run([.. args]));
+        var result = CapturingOutputSink.Capture(sink => ImpactHandler.Run([.. args], sink));
         Assert.Null(result.Failure);
         return JsonDocument.Parse(result.Stdout);
     }
@@ -85,14 +85,14 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         }
 
         // 1. A run with a large --limit= value gives the full ordered symbol list.
-        var fullResult = TestConsole.Capture(() => ImpactHandler.Run([
+        var fullResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
             $"--output-dir={TestDir}",
             "--output=json",
             "--limit=50"
-        ]));
+        ], sink));
 
         Assert.Null(fullResult.Failure);
 
@@ -132,7 +132,7 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
                 argsList.Add($"--cursor={cursor}");
             }
 
-            var pageResult = TestConsole.Capture(() => ImpactHandler.Run(argsList.ToArray()));
+            var pageResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run(argsList.ToArray(), sink));
             Assert.Null(pageResult.Failure);
 
             using var pageDoc = JsonDocument.Parse(pageResult.Stdout);
@@ -198,14 +198,14 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         }
 
         // Summary: header, symbols line, then one row per group.
-        var summaryResult = TestConsole.Capture(() => ImpactHandler.Run([
+        var summaryResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
             $"--output-dir={TestDir}",
             "--output=summary",
             "--limit=50"
-        ]));
+        ], sink));
         Assert.Null(summaryResult.Failure);
         var summaryLines = summaryResult.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.StartsWith("impact upstream of ", summaryLines[0]);
@@ -214,14 +214,14 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         Assert.True(summaryLines.Length >= 3);
 
         // JSONL: one meta line (the response minus symbols), then one symbol line per page symbol.
-        var jsonlResult = TestConsole.Capture(() => ImpactHandler.Run([
+        var jsonlResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={barId}",
             "--direction=upstream",
             $"--output-dir={TestDir}",
             "--output=jsonl",
             "--limit=50"
-        ]));
+        ], sink));
         Assert.Null(jsonlResult.Failure);
         var jsonlLines = jsonlResult.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 

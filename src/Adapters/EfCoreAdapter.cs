@@ -286,7 +286,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                         if (symbolInfo.Symbol is IMethodSymbol
                             {
                                 ContainingType: INamedTypeSymbol { TypeArguments.Length: 1 } containingType
-                            } methodSymbol)
+                            })
                         {
                             entityTypeId = containingType.TypeArguments[0] is INamedTypeSymbol entityType
                                 ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)

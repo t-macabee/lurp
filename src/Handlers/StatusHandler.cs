@@ -9,9 +9,9 @@ internal static class StatusHandler
 {
     internal const int DefaultMaxMismatches = 50;
 
-    public static async Task Run(string[] args)
+    public static async Task Run(string[] args, IOutputSink output)
     {
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
 
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
 
@@ -39,7 +39,7 @@ internal static class StatusHandler
 
         if (!File.Exists(dbPath))
         {
-            ReportNeverIndexed(dbPath, asJson);
+            ReportNeverIndexed(dbPath, asJson, output);
             return;
         }
 
@@ -50,7 +50,7 @@ internal static class StatusHandler
             var schemaVersion = store.GetCurrentSchemaVersion();
             if (schemaVersion != VersionConstants.DatabaseSchemaVersion)
             {
-                ReportSchemaMismatch(dbPath, schemaVersion, asJson);
+                ReportSchemaMismatch(dbPath, schemaVersion, asJson, output);
                 return;
             }
 
@@ -58,7 +58,7 @@ internal static class StatusHandler
             var latestSnapshotId = latestSnapshot?.SnapshotId;
             if (latestSnapshot == null || latestSnapshotId == null)
             {
-                ReportNeverIndexed(dbPath, asJson, schemaVersion, store.GetLatestSnapshotFailure());
+                ReportNeverIndexed(dbPath, asJson, output, schemaVersion, store.GetLatestSnapshotFailure());
                 return;
             }
 
@@ -70,12 +70,12 @@ internal static class StatusHandler
                                   ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
             if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg))
             {
-                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeReferences, includeCompleteness);
+                ReportSnapshotOnly(store, dbPath, schemaVersion, latestSnapshot, asJson, includeDocuments, includeReferences, includeCompleteness, output);
                 return;
             }
 
             var freshness = await CheckCurrentWorkspaceAsync(store, solutionPathArg!);
-            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments, includeReferences, includeCompleteness, maxMismatches);
+            ReportFreshness(store, dbPath, schemaVersion, latestSnapshot, freshness, asJson, includeDocuments, includeReferences, includeCompleteness, output, maxMismatches);
         }
         finally
         {
@@ -95,7 +95,7 @@ internal static class StatusHandler
         return WorkspaceFreshness.CheckFreshness(workspaceInfo, store);
     }
 
-    private static void ReportSchemaMismatch(string dbPath, int actualVersion, bool asJson)
+    private static void ReportSchemaMismatch(string dbPath, int actualVersion, bool asJson, IOutputSink output)
     {
         var expectedVersion = VersionConstants.DatabaseSchemaVersion;
         var explanation = actualVersion < expectedVersion
@@ -104,7 +104,7 @@ internal static class StatusHandler
 
         if (asJson)
         {
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 database_exists = File.Exists(dbPath),
@@ -117,17 +117,17 @@ internal static class StatusHandler
             return;
         }
 
-        Console.WriteLine($"Database: {dbPath}");
-        Console.WriteLine($"Schema version: {actualVersion} (expected {expectedVersion})");
-        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
-        Console.WriteLine($"Status: {explanation}");
+        output.WriteLine($"Database: {dbPath}");
+        output.WriteLine($"Schema version: {actualVersion} (expected {expectedVersion})");
+        output.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
+        output.WriteLine($"Status: {explanation}");
     }
 
-    private static void ReportNeverIndexed(string dbPath, bool asJson, int? schemaVersion = null, SnapshotFailureRow? latestFailure = null)
+    private static void ReportNeverIndexed(string dbPath, bool asJson, IOutputSink output, int? schemaVersion = null, SnapshotFailureRow? latestFailure = null)
     {
         if (asJson)
         {
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 database_exists = File.Exists(dbPath),
@@ -139,14 +139,14 @@ internal static class StatusHandler
             return;
         }
 
-        Console.WriteLine($"Database: {dbPath}");
-        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
+        output.WriteLine($"Database: {dbPath}");
+        output.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
         if (latestFailure != null)
-            Console.WriteLine(LatestFailureLine(latestFailure));
-        Console.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
+            output.WriteLine(LatestFailureLine(latestFailure));
+        output.WriteLine("Status: not indexed (no snapshot found). Run --mode=index to create one.");
     }
 
-    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness)
+    private static void ReportSnapshotOnly(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, IOutputSink output)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         var pin = ReadPinPreamble(store, latestSnapshot);
@@ -154,7 +154,7 @@ internal static class StatusHandler
         {
             var timings = store.GetTimings(latestSnapshotId);
 
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
@@ -177,12 +177,12 @@ internal static class StatusHandler
             return;
         }
 
-        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin);
-        Console.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
-        ShowTimingIfAvailable(store, latestSnapshotId);
+        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin, output);
+        output.WriteLine("Freshness: unknown : pass --solution=path or set LURP_SOLUTION_PATH to compare against the current workspace.");
+        ShowTimingIfAvailable(store, latestSnapshotId, output);
     }
 
-    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, int maxMismatches = 50)
+    private static void ReportFreshness(SqliteIndexStore store, string dbPath, int schemaVersion, SnapshotRow latestSnapshot, WorkspaceFreshness.FreshnessResult freshness, bool asJson, bool includeDocuments, bool includeReferences, bool includeCompleteness, IOutputSink output, int maxMismatches = 50)
     {
         var latestSnapshotId = latestSnapshot.SnapshotId;
         var pin = ReadPinPreamble(store, latestSnapshot);
@@ -192,7 +192,7 @@ internal static class StatusHandler
 
             var capped = FreshnessJson.CapMismatches(freshness.Mismatches, maxMismatches);
 
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 database_path = dbPath,
                 schema_version = schemaVersion,
@@ -217,34 +217,34 @@ internal static class StatusHandler
             return;
         }
 
-        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin);
-        Console.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
+        WriteTextHeader(dbPath, schemaVersion, latestSnapshotId, pin, output);
+        output.WriteLine(freshness.IsFresh ? "Freshness: up to date." : $"Freshness: stale ({freshness.Mismatches.Count} mismatch(es)).");
 
-        foreach (var mismatch in freshness.Mismatches) Console.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
+        foreach (var mismatch in freshness.Mismatches) output.WriteLine($"  [{mismatch.Kind}] {mismatch.Description}");
 
-        ShowTimingIfAvailable(store, latestSnapshotId);
+        ShowTimingIfAvailable(store, latestSnapshotId, output);
     }
 
     /// <summary>The header lines both <c>status</c> text branches print: database, schema, contract, latest snapshot, pin block, stale pin and latest failure.</summary>
-    private static void WriteTextHeader(string dbPath, int schemaVersion, string latestSnapshotId, PinPreamble pin)
+    private static void WriteTextHeader(string dbPath, int schemaVersion, string latestSnapshotId, PinPreamble pin, IOutputSink output)
     {
-        Console.WriteLine($"Database: {dbPath}");
-        Console.WriteLine($"Schema version: {schemaVersion}");
-        Console.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
-        Console.WriteLine($"Latest snapshot: {latestSnapshotId}");
+        output.WriteLine($"Database: {dbPath}");
+        output.WriteLine($"Schema version: {schemaVersion}");
+        output.WriteLine($"Contract version: {VersionConstants.CliMcpContractVersion}");
+        output.WriteLine($"Latest snapshot: {latestSnapshotId}");
         if (pin.PinActive)
         {
             var pinnedRow = pin.PinnedRow!;
-            Console.WriteLine($"Pinned snapshot: {pinnedRow.PinnedSnapshotId} (pinned at {pinnedRow.PinnedAtUtc:O}, built at {pinnedRow.BuiltAtUtc:O})");
+            output.WriteLine($"Pinned snapshot: {pinnedRow.PinnedSnapshotId} (pinned at {pinnedRow.PinnedAtUtc:O}, built at {pinnedRow.BuiltAtUtc:O})");
             if (!string.Equals(latestSnapshotId, pin.BuiltAtLatestSnapshotId, StringComparison.Ordinal))
-                Console.WriteLine($"  Note: effective latest is pinned; built-at latest is {pin.BuiltAtLatestSnapshotId}");
+                output.WriteLine($"  Note: effective latest is pinned; built-at latest is {pin.BuiltAtLatestSnapshotId}");
             if (pinnedRow.PreviousPinnedSnapshotId != null)
-                Console.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
+                output.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
         }
         if (pin.StalePinnedSnapshotId != null)
-            Console.WriteLine(StalePinStatusLine(pin.StalePinnedSnapshotId));
+            output.WriteLine(StalePinStatusLine(pin.StalePinnedSnapshotId));
         if (pin.LatestFailure != null)
-            Console.WriteLine(LatestFailureLine(pin.LatestFailure));
+            output.WriteLine(LatestFailureLine(pin.LatestFailure));
     }
 
     /// <summary>The pin and failure facts both <c>status</c> branches print.</summary>
@@ -274,15 +274,15 @@ internal static class StatusHandler
     private static LatestFailurePayload? ToPayload(SnapshotFailureRow? row) =>
         row == null ? null : new LatestFailurePayload(row.SnapshotId, row.ReasonCode, row.Message, row.CreatedAtUtc);
 
-    private static void ShowTimingIfAvailable(SqliteIndexStore store, string snapshotId)
+    private static void ShowTimingIfAvailable(SqliteIndexStore store, string snapshotId, IOutputSink output)
     {
         var timings = store.GetTimings(snapshotId);
 
         if (timings.Count == 0) return;
 
         var totalMs = timings.Sum(t => t.ElapsedMs);
-        Console.WriteLine($"Timing summary ({totalMs} ms total):");
-        foreach (var t in timings) Console.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
+        output.WriteLine($"Timing summary ({totalMs} ms total):");
+        foreach (var t in timings) output.WriteLine($"  {t.StepName}: {t.ElapsedMs} ms");
     }
 
     private static int ParseMaxArg(string[] args, string prefix, int defaultValue)

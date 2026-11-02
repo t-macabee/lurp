@@ -30,8 +30,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        if (!IntegrationHarness.TryRegisterMSBuild())
-            throw new InvalidOperationException("MSBuildLocator could not register an SDK; ground-truth tests need one.");
+        IntegrationHarness.EnsureMSBuildRegistered();
 
         var fixtureRoot = LocateFixtureRoot();
         _testDir = Path.Combine(Path.GetTempPath(), $"lurp-groundtruth-{Guid.NewGuid():N}");

@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -22,10 +21,9 @@ public sealed class ContextCancellationTests : IntegrationTestBase
                                        }
                                        """;
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_CancelledInsideTier_StopsEarly()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var snapshotId = await IndexChainAsync();
         var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
         var lookup = new ContextLookup(snapshotId, typeId, null, null);
@@ -49,10 +47,9 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             $"The cancelled assembly made {cancelledProbe.Reads} edge reads; the uncancelled one made {fullReads}. The cancelled run must stop early.");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Tier_CancelledInsideTier_StopsEarly()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var snapshotId = await IndexChainAsync();
         var typeId = SymbolId.Parse(ResolveSymbolId(snapshotId, "global::TestProject.Chain"));
 
@@ -85,10 +82,9 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             "Tiers that did not stop early when cancelled: " + string.Join("; ", failures));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Capsule_CancelledInsideContractSections_Throws()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var snapshotId = await IndexChainAsync();
         var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
         var lookup = new ContextLookup(snapshotId, typeId, null, null);
@@ -108,10 +104,9 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, cancelling, cts.Token));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Uncertainties_CancelledInsideNeighborhoodLoops_StopsEarly()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var snapshotId = await IndexChainAsync();
         var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
         var lookup = new ContextLookup(snapshotId, typeId, null, null);
@@ -156,10 +151,9 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             $"The uncertainty stage did not stop within two reads of a cancel at every cancel point from 1 to {fullReads} (uncancelled reads {fullReads}): " + string.Join("; ", failures));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SuggestedVerification_PreCancelledToken_Throws()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
         var snapshotId = await IndexChainAsync();
         var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
         var lookup = new ContextLookup(snapshotId, typeId, null, null);

@@ -23,7 +23,7 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         using (HoldLock(IndexRunLock.GetLockFilePath(key)))
         {
             var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
-                [$"--solution={SolutionPath}", $"--output-dir={otherOut}"], CancellationToken.None));
+                [$"--solution={SolutionPath}", $"--output-dir={otherOut}"], new CapturingOutputSink(), CancellationToken.None));
 
             var cli = Assert.IsType<CliExitException>(ex);
             Assert.Contains("another Lurp index run is using solution", cli.Message);
@@ -31,7 +31,7 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         }
 
         var after = await Record.ExceptionAsync(() => IndexHandler.Run(
-            [$"--solution={SolutionPath}", $"--output-dir={otherOut}"], CancellationToken.None));
+            [$"--solution={SolutionPath}", $"--output-dir={otherOut}"], new CapturingOutputSink(), CancellationToken.None));
         Assert.Null(after);
         Assert.True(File.Exists(otherDb));
     }
@@ -50,7 +50,7 @@ public sealed class IndexRunLockTests : IntegrationTestBase
             using (HoldLock(IndexRunLock.GetLockFilePath(key)))
             {
                 var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
-                    [$"--solution={otherSolution}", $"--output-dir={outDir}"], CancellationToken.None));
+                    [$"--solution={otherSolution}", $"--output-dir={outDir}"], new CapturingOutputSink(), CancellationToken.None));
 
                 var cli = Assert.IsType<CliExitException>(ex);
                 Assert.Contains("another Lurp index run is using database", cli.Message);
@@ -58,7 +58,7 @@ public sealed class IndexRunLockTests : IntegrationTestBase
             }
 
             var after = await Record.ExceptionAsync(() => IndexHandler.Run(
-                [$"--solution={otherSolution}", $"--output-dir={outDir}"], CancellationToken.None));
+                [$"--solution={otherSolution}", $"--output-dir={outDir}"], new CapturingOutputSink(), CancellationToken.None));
             Assert.Null(after);
             Assert.True(File.Exists(dbPath));
         }
@@ -76,13 +76,31 @@ public sealed class IndexRunLockTests : IntegrationTestBase
         var dbPath = Path.Combine(outDir, "index.db");
 
         var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
-            [$"--solution={SolutionPath}", $"--output-dir={outDir}"], CancellationToken.None));
+            [$"--solution={SolutionPath}", $"--output-dir={outDir}"], new CapturingOutputSink(), CancellationToken.None));
         Assert.Null(ex);
 
         var solutionKey = IndexRunLock.NormalizeKey(Path.GetFullPath(SolutionPath));
         using var solutionLock = HoldLock(IndexRunLock.GetLockFilePath(solutionKey));
         var databaseKey = IndexRunLock.NormalizeKey(dbPath);
         using var databaseLock = HoldLock(IndexRunLock.GetLockFilePath(databaseKey));
+    }
+
+    [Fact]
+    public async Task NestedMissingOutputDirectory_IsCreatedBeforeTheStoreOpens()
+    {
+        CreateProject("LockA", new Dictionary<string, string> { ["A.cs"] = SourceA });
+        var outputDir = Path.Combine(TestDir, "a", "b", "c");
+        var dbPath = Path.Combine(outputDir, "index.db");
+        Assert.False(Directory.Exists(outputDir),
+            $"Fixture sanity check failed: {outputDir} must not exist before the index run.");
+
+        var ex = await Record.ExceptionAsync(() => IndexHandler.Run(
+            [$"--solution={SolutionPath}", $"--output-dir={outputDir}"], new CapturingOutputSink(), CancellationToken.None));
+
+        Assert.True(ex is null,
+            $"IndexHandler.Run into the nested nonexistent output directory {outputDir} failed: {ex}");
+        Assert.True(File.Exists(dbPath),
+            $"Expected the index database at {dbPath} after a successful index run into {outputDir}.");
     }
 
     [Fact]

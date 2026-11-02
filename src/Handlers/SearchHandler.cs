@@ -8,7 +8,7 @@ internal static class SearchHandler
     internal const int DefaultLimit = 20;
     internal const int DefaultSnippetTokens = 64;
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var queryArg = HandlerBootstrap.GetArgValue(args, "--query=");
         if (string.IsNullOrEmpty(queryArg)) HandlerBootstrap.Fail("ERROR: --query=<term> is required for --mode=search.");
@@ -81,7 +81,7 @@ internal static class SearchHandler
                 }
             }
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var meta = new { snapshot_id = snapshotId, query = queryArg, type = typeArg, result_count = results.Count, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) };
 
@@ -89,24 +89,24 @@ internal static class SearchHandler
             {
                 case OutputMode.Summary:
                     foreach (var line in summaryLines)
-                        Console.WriteLine(line);
-                    Console.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
+                        output.WriteLine(line);
+                    output.WriteLine($"-- {results.Count} result(s){(nextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var result in results)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "result", result }, HandlerBootstrap.CompactJson));
                     break;
 
                 // default: Json is the historical default — intentional fallback for OutputMode.Json and future values
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new { snapshot_id = snapshotId, query = queryArg, type = typeArg, results, next_cursor = nextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }
 
-        });
+        }, output);
     }
 }

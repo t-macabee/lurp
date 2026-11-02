@@ -5,12 +5,12 @@ namespace Lurp.Handlers;
 
 internal static class PinSnapshotHandler
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         // Parsed before the database check, so a bad --output= fails the same way whatever the database state (B70).
         var asJson = args.Contains("--json") || HandlerBootstrap.ParseOutputMode(args, allowJsonl: false, defaultMode: OutputMode.Summary) == OutputMode.Json;
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
         var dbPath = Path.Combine(Path.GetFullPath(outputDirArg), "index.db");
         if (!File.Exists(dbPath))
             HandlerBootstrap.Fail("ERROR: Index database not found at " + dbPath);
@@ -35,7 +35,7 @@ internal static class PinSnapshotHandler
                 var builtAtLatest = store.GetBuiltAtLatestSnapshotId();
                 if (asJson)
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(new
+                    output.WriteLine(JsonSerializer.Serialize(new
                     {
                         status = "cleared",
                         cleared,
@@ -47,9 +47,9 @@ internal static class PinSnapshotHandler
                 else
                 {
                     if (cleared)
-                        Console.WriteLine($"Pin cleared. Effective latest is now built-at latest: {effectiveLatest ?? "(none)"}");
+                        output.WriteLine($"Pin cleared. Effective latest is now built-at latest: {effectiveLatest ?? "(none)"}");
                     else
-                        Console.WriteLine($"No pin was set. Effective latest remains: {effectiveLatest ?? "(none)"}");
+                        output.WriteLine($"No pin was set. Effective latest remains: {effectiveLatest ?? "(none)"}");
                 }
                 return;
             }
@@ -69,7 +69,7 @@ internal static class PinSnapshotHandler
             if (!string.Equals(status, SnapshotStatusValues.Complete, StringComparison.Ordinal))
                 HandlerBootstrap.Fail($"ERROR: snapshot '{snapshotId}' has status '{status}' and cannot be pinned. Only snapshots with status 'complete' can be pinned.");
 
-            HandlerBootstrap.ClearStalePinWithNotice(store);
+            HandlerBootstrap.ClearStalePinWithNotice(store, output);
             var previousPin = store.GetPinnedSnapshot(workspaceId);
             var previousId = previousPin?.PinnedSnapshotId;
 
@@ -91,7 +91,7 @@ internal static class PinSnapshotHandler
 
             if (asJson)
             {
-                Console.WriteLine(JsonSerializer.Serialize(new
+                output.WriteLine(JsonSerializer.Serialize(new
                 {
                     status = "pinned",
                     pinned_snapshot_id = pinnedRow.PinnedSnapshotId,
@@ -105,13 +105,13 @@ internal static class PinSnapshotHandler
             }
             else
             {
-                Console.WriteLine($"Pinned snapshot {snapshotId} (workspace {workspaceId}) at {pinnedRow.PinnedAtUtc:O}");
+                output.WriteLine($"Pinned snapshot {snapshotId} (workspace {workspaceId}) at {pinnedRow.PinnedAtUtc:O}");
                 if (previousId != null && !string.Equals(previousId, snapshotId, StringComparison.Ordinal))
-                    Console.WriteLine($"  Previous pin: {previousId}");
-                Console.WriteLine($"  Effective latest (reads default to): {effectiveLatestId}");
-                Console.WriteLine($"  Built-at latest (most recent build): {builtAtLatestId}");
+                    output.WriteLine($"  Previous pin: {previousId}");
+                output.WriteLine($"  Effective latest (reads default to): {effectiveLatestId}");
+                output.WriteLine($"  Built-at latest (most recent build): {builtAtLatestId}");
                 if (!string.Equals(effectiveLatestId, builtAtLatestId, StringComparison.Ordinal))
-                    Console.WriteLine($"  Note: reads with no --snapshot= will now resolve to the pinned snapshot, not the most recently built one.");
+                    output.WriteLine($"  Note: reads with no --snapshot= will now resolve to the pinned snapshot, not the most recently built one.");
             }
         }
         finally

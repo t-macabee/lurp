@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 using System.Text.Json;
 
@@ -12,11 +11,9 @@ namespace Lurp.Tests;
 /// </summary>
 public sealed class MaintenanceQueryPlanTests : IntegrationTestBase
 {
-    [SkippableFact]
+    [Fact]
     public async Task Plans_WithAndWithoutStatistics_AreDrivenByTheJsonList()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("MaintenancePlanProbe", new Dictionary<string, string>
         {
             ["Probe.cs"] = QueryPlanFixture.ChainedMethodsSource("MaintenancePlanProbe")

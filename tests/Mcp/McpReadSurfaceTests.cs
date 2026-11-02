@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -18,6 +17,7 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
                         public void Bar() {}
                         public void Caller() { Bar(); }
                     }
+                    public class FooHelper {}
                     public class CourseService {
                         public void CreateAsync() {}
                     }
@@ -220,7 +220,8 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             var json = search.LurpSearch(query: "CourseService.CreateAsync", type: "source");
             using var doc = JsonDocument.Parse(json);
             Assert.Equal(snapshotId, doc.RootElement.GetProperty("snapshot_id").GetString());
-            Assert.True(doc.RootElement.TryGetProperty("results", out _));
+            // The dotted text is not literally in the fixture, so zero hits is correct: the regression is the throw.
+            Assert.Equal(JsonValueKind.Array, doc.RootElement.GetProperty("results").ValueKind);
 
             var jsonSymbol = search.LurpSearch(query: "CourseService.CreateAsync", type: "symbol");
             using var docSym = JsonDocument.Parse(jsonSymbol);
@@ -239,8 +240,9 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             var jsonWith = search.LurpSearch(query: "Foo", type: "symbol", include_generated: true);
             using var docWithout = JsonDocument.Parse(jsonWithout);
             using var docWith = JsonDocument.Parse(jsonWith);
-            Assert.True(docWithout.RootElement.TryGetProperty("results", out _));
-            Assert.True(docWith.RootElement.TryGetProperty("results", out _));
+            // Foo is hand-written, so the generated-code toggle must not hide it either way.
+            Assert.True(docWithout.RootElement.GetProperty("results").GetArrayLength() > 0);
+            Assert.True(docWith.RootElement.GetProperty("results").GetArrayLength() > 0);
         }
     }
 
@@ -254,20 +256,16 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             var jsonFirst = search.LurpSearch(query: "Foo", type: "symbol", limit: 1);
             using var docFirst = JsonDocument.Parse(jsonFirst);
             var nextCursor = docFirst.RootElement.GetProperty("next_cursor").GetString();
-            // If there are more than 1 result, cursor should be present
-            var resultsFirst = docFirst.RootElement.GetProperty("results").GetArrayLength();
+            // The fixture declares both Foo and FooHelper, so a one-item page must hand back a cursor.
+            var firstResults = docFirst.RootElement.GetProperty("results");
+            Assert.Equal(1, firstResults.GetArrayLength());
+            Assert.False(string.IsNullOrEmpty(nextCursor), "a limit-1 page of a 2+ match query must carry a cursor");
 
-            if (!string.IsNullOrEmpty(nextCursor))
-            {
-                var jsonSecond = search.LurpSearch(query: "Foo", type: "symbol", limit: 1, cursor: nextCursor);
-                using var docSecond = JsonDocument.Parse(jsonSecond);
-                Assert.True(docSecond.RootElement.TryGetProperty("results", out _));
-            }
-            else
-            {
-                // No more results — still success
-                Assert.True(resultsFirst >= 0);
-            }
+            var jsonSecond = search.LurpSearch(query: "Foo", type: "symbol", limit: 1, cursor: nextCursor);
+            using var docSecond = JsonDocument.Parse(jsonSecond);
+            var secondResults = docSecond.RootElement.GetProperty("results");
+            Assert.Equal(1, secondResults.GetArrayLength());
+            Assert.NotEqual(firstResults[0].GetRawText(), secondResults[0].GetRawText());
 
             // Cursor with source type should fail
             var ex = Assert.Throws<McpProtocolException>(() => search.LurpSearch(query: "Foo", type: "source", cursor: "any"));
@@ -287,7 +285,11 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             Assert.True(doc.RootElement.TryGetProperty("snapshot_id", out _));
             Assert.True(doc.RootElement.TryGetProperty("freshness", out _));
             Assert.True(doc.RootElement.GetProperty("pinned").GetBoolean());
-            Assert.True(doc.RootElement.TryGetProperty("results", out _));
+            var results = doc.RootElement.GetProperty("results");
+            Assert.True(results.GetArrayLength() > 0);
+            Assert.Contains(results.EnumerateArray(),
+                r => r.TryGetProperty("fully_qualified_name", out var fqn)
+                    && (fqn.GetString() ?? "").Contains("Foo", StringComparison.Ordinal));
             Assert.True(doc.RootElement.TryGetProperty("next_cursor", out _));
         }
     }
@@ -345,11 +347,9 @@ public sealed class McpReadSurfaceTests : IntegrationTestBase
             Assert.Equal(5, doc.RootElement.GetProperty("start_line").GetInt32());
             Assert.Equal(8, doc.RootElement.GetProperty("end_line").GetInt32());
             var source = doc.RootElement.GetProperty("source").GetString()!;
-            var expectedLines = fullContent.Split('\n').Skip(4).Take(4);
-            var expected = string.Join("\n", expectedLines) + "\n";
-            // The store slices at byte offsets including trailing newline when present; compare trimmed
-            Assert.Contains("// line 05", source);
-            Assert.Contains("// line 08", source);
+            // The store slices at byte offsets including the trailing newline of line 8.
+            var expected = string.Join("\n", fullContent.Split('\n').Skip(4).Take(4)) + "\n";
+            Assert.Equal(expected, source);
             Assert.True(doc.RootElement.GetProperty("truncated").GetBoolean(), "windowed read should be truncated");
         }
     }

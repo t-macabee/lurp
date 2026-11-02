@@ -1,4 +1,3 @@
-using Lurp.Shared;
 using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -68,11 +67,9 @@ public sealed class EdgeLocationOwnerProofTests : IDisposable
 
 public sealed class EdgeLocationGeneratorProofTests : IntegrationTestBase
 {
-    [SkippableFact]
+    [Fact]
     public async Task SourceGeneratedTree_EveryEdgeSourcePath_IsAStoredDocumentPath()
     {
-        Skip.If(!Microsoft.Build.Locator.MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("Gen", new Dictionary<string, string>
         {
             ["Model.cs"] = """

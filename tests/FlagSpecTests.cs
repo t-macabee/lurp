@@ -298,7 +298,7 @@ public sealed class FlagSpecTests
     private static async Task<string> RunToFailureAsync(string mode, string[] args)
     {
         var entry = Program.FindMode(mode) ?? throw new InvalidOperationException($"No mode '{mode}' in Program.ModeRegistry.");
-        var ex = await Assert.ThrowsAsync<CliExitException>(() => entry.Handler(args));
+        var ex = await Assert.ThrowsAsync<CliExitException>(() => entry.Handler(args, new CapturingOutputSink()));
         return ex.Message;
     }
 
@@ -307,18 +307,8 @@ public sealed class FlagSpecTests
 
     private static string CaptureHelp()
     {
-        var original = Console.Out;
-        using var writer = new StringWriter();
-        try
-        {
-            Console.SetOut(writer);
-            HelpText.PrintHelp();
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
-
-        return writer.ToString();
+        var sink = new CapturingOutputSink();
+        HelpText.PrintHelp(sink);
+        return sink.Stdout;
     }
 }

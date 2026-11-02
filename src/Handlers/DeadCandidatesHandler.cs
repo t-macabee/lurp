@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -8,7 +7,7 @@ internal static class DeadCandidatesHandler
 {
     internal const int DefaultLimit = 50;
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
@@ -51,7 +50,7 @@ internal static class DeadCandidatesHandler
                 return;
             }
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var filters = new
             {
@@ -88,19 +87,19 @@ internal static class DeadCandidatesHandler
                     {
                         var line = e.Locations.FirstOrDefault()?.StartLine;
                         var loc = e.DocumentPath == null ? "<no-doc>" : line is { } l ? $"{e.DocumentPath}:{l}" : e.DocumentPath;
-                        Console.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
+                        output.WriteLine($"{e.Kind,-12} {e.Accessibility ?? "unknown",-18} {e.Fqn ?? e.SymbolId}  {loc}  {e.Reason}  {e.Status}");
                     }
-                    Console.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                    output.WriteLine($"-- {page.Candidates.Count}/{page.DeadCount + page.UncertainCount + page.UnresolvedCount} dead candidate(s) shown (proved:{page.DeadCount} uncertain:{page.UncertainCount} unresolved:{page.UnresolvedCount} total candidates:{page.CandidateCount}){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var c in candidates)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "candidate", candidate = c }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "candidate", candidate = c }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new
                         {
                             snapshot_id = snapshotId,
@@ -120,6 +119,6 @@ internal static class DeadCandidatesHandler
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        });
+        }, output);
     }
 }

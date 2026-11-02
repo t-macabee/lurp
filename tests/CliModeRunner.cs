@@ -4,7 +4,7 @@ namespace Lurp.Tests;
 
 /// <summary>
 ///     Runs one CLI mode through the registry the way <see cref="Program.Main" /> does:
-///     resolves the entry by name, validates the flags, and captures stdout. A
+///     resolves the entry by name, validates the flags, and captures stdout through a <see cref="CapturingOutputSink" />. A
 ///     <see cref="CliExitException" /> is rethrown as <see cref="InvalidOperationException" />
 ///     with the mode, the arguments and the captured stdout, so a failed call can never pass
 ///     as an empty payload.
@@ -16,24 +16,18 @@ internal static class CliModeRunner
         var entry = Program.FindMode(mode)
             ?? throw new InvalidOperationException($"No Program.ModeRegistry entry named '{mode}'.");
 
-        var stdout = new StringWriter();
-        var original = Console.Out;
+        var sink = new CapturingOutputSink();
         try
         {
-            Console.SetOut(stdout);
             CliFlagValidation.Validate(entry, args);
-            await entry.Handler(args);
+            await entry.Handler(args, sink);
         }
         catch (CliExitException ex)
         {
             throw new InvalidOperationException(
-                $"Mode '{mode}' threw CliExitException for args [{string.Join(", ", args)}]. Captured stdout: {stdout}", ex);
-        }
-        finally
-        {
-            Console.SetOut(original);
+                $"Mode '{mode}' threw CliExitException for args [{string.Join(", ", args)}]. Captured stdout: {sink.Stdout}", ex);
         }
 
-        return stdout.ToString();
+        return sink.Stdout;
     }
 }

@@ -28,8 +28,6 @@ public sealed class McpStdioTransportTests : IntegrationTestBase
 
         await server.Client.InitializeAsync("test", TimeSpan.FromSeconds(10));
 
-        // Give stderr a moment to flush pin line
-        await Task.Delay(300);
         server.Close(5000);
 
         var stderrCollected = server.Stderr;

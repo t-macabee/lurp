@@ -118,6 +118,11 @@ public sealed class McpServeProcess : IDisposable
             Process.WaitForExit();
         }
 
+        // Both readers run to end of stream, so by the time Close returns the stdout
+        // observer has seen every line the server wrote, including any after its
+        // last response.
+        Client.StdoutReader.Wait(5000);
+
         try
         {
             _stderrTask.Wait(5000);

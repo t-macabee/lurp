@@ -143,15 +143,6 @@ internal sealed class TextSearchStore
         return new TextSearchPage(pageItems, nextCursor, totalCount);
     }
 
-    /// <summary>
-    ///     Convenience non-paginated overload: returns at most <paramref name="limit"/> results (first page).
-    /// </summary>
-    public List<TextSearchResult> SearchText(string query, string snapshotId, int limit = 20, bool includeGenerated = false, bool ignoreCase = false)
-    {
-        var page = SearchTextPage(query, snapshotId, limit, includeGenerated, ignoreCase, null);
-        return page.Items;
-    }
-
     private static List<int> FindOccurrences(string content, string query, StringComparison comparison)
     {
         var offsets = new List<int>();

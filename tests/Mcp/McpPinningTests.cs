@@ -1,6 +1,5 @@
 using Lurp.Mcp;
 using Lurp.Storage;
-using Lurp.Workspace;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -157,7 +156,7 @@ public sealed class McpPinningTests : IntegrationTestBase
         {
             ["A.cs"] = "namespace PinnedCapProj { public class A { public void Foo() {} } }"
         });
-        var snapshot1 = await RunFullIndexAsync(DbPath);
+        await RunFullIndexAsync(DbPath);
         // Add many files and then touch them to create >10 changed docs
         for (int i = 0; i < 15; i++)
         {

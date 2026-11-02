@@ -501,8 +501,15 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         Assert.NotEmpty(extraction.EdgesOf("Constructs"));
         Assert.NotEmpty(extraction.EdgesOf("Returns"));
         Assert.NotEmpty(extraction.EdgesOf("Throws"));
-        // Calls: the interface member Add is never invoked from source; the
-        // implicit ctor is not invoked either, so no Calls edge is expected.
+        Assert.NotEmpty(extraction.EdgesOf("Calls"));
+
+        // Key source/target pairs for the comprehensive source.
+        extraction.SingleEdge("Implements", "global::N.Calculator", "global::N.ICalculator");
+        extraction.SingleEdge("Constructs", "global::N.Calculator.Create", "global::N.Calculator");
+        extraction.SingleEdge("Returns", "global::N.Calculator.Create", "global::N.Calculator");
+        var calls = Assert.Single(extraction.EdgesOf("Calls"));
+        Assert.Equal(extraction.ResolveId("global::N.Calculator.Validate"), calls.SourceSymbolId);
+        Assert.StartsWith("M:System.ArgumentNullException.#ctor", calls.TargetSymbolId);
     }
 
     [Fact]

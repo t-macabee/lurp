@@ -11,12 +11,18 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Test-CommitSha([string]$Sha) {
-  return $Sha -match '^[0-9a-fA-F]{40}$'
+  return $Sha -match '\A[0-9a-fA-F]{40}\z'
 }
 
 function Get-VulnerablePackageHits([string]$Json) {
-  $list = $Json | ConvertFrom-Json
-  if (-not $list.PSObject.Properties['projects']) { return @() }
+  if ([string]::IsNullOrWhiteSpace($Json)) { throw 'dotnet package list returned no output.' }
+  $list = $null
+  try {
+    $list = $Json | ConvertFrom-Json
+  } catch {
+    throw "dotnet package list output is not JSON: $($_.Exception.Message)"
+  }
+  if (-not $list.PSObject.Properties['projects'] -or @($list.projects).Count -eq 0) { throw 'dotnet package list output has no projects.' }
   $hits = @()
   foreach ($project in $list.projects) {
     if (-not $project.PSObject.Properties['frameworks']) { continue }
@@ -59,15 +65,22 @@ function Assert-NupkgDigest([string]$Directory) {
   return [pscustomobject]@{ Path = $files[0].FullName; Name = $files[0].Name; Digest = $actual }
 }
 
+function Select-SuccessfulRunId([string]$RunsJson, [string]$Sha) {
+  if ([string]::IsNullOrWhiteSpace($RunsJson)) { throw "No ci.yml run found for commit $Sha." }
+  $runs = @($RunsJson | ConvertFrom-Json)
+  if ($runs.Count -eq 0) { throw "No ci.yml run found for commit $Sha." }
+  $successes = @($runs | Where-Object { $_.conclusion -eq 'success' })
+  if ($successes.Count -eq 0) { throw "No successful ci.yml run for commit $Sha; the lurp-nupkg artifact does not exist." }
+  return $successes[0].databaseId
+}
+
 function Resolve-CiRun([string]$Sha) {
   if (-not (Test-CommitSha $Sha)) { throw "Input 'sha' must be a full 40-character commit SHA." }
   $runsJson = gh run list --workflow=ci.yml --commit $Sha --limit 5 --json databaseId,conclusion,status
   if ($LASTEXITCODE -ne 0) { throw "gh run list failed with exit code $LASTEXITCODE." }
-  if (-not $runsJson) { throw "No ci.yml run found for commit $Sha." }
-  $run = @($runsJson | ConvertFrom-Json | Where-Object { $_.conclusion -eq 'success' })[0]
-  if (-not $run) { throw "No successful ci.yml run for commit $Sha; the lurp-nupkg artifact does not exist." }
-  Write-Host "Using ci.yml run $($run.databaseId) for $Sha"
-  return $run.databaseId
+  $runId = Select-SuccessfulRunId -RunsJson (@($runsJson) -join "`n") -Sha $Sha
+  Write-Host "Using ci.yml run $runId for $Sha"
+  return $runId
 }
 
 function Get-CiNupkg([string]$Sha, [string]$Destination, [string]$RunId) {
@@ -106,31 +119,42 @@ function Get-HttpRetryDecision([int]$StatusCode) {
   return 'error'
 }
 
-# Returns the status and the body. A network exception is status 0 (retry).
+# Returns the status and the body. A network failure is status 0 (retry);
+# anything else propagates.
 function Invoke-NuGetRequest([string]$Url) {
   try {
     $response = Invoke-WebRequest -Uri $Url -SkipHttpErrorCheck -TimeoutSec 30
     return [pscustomobject]@{ Status = [int]$response.StatusCode; Content = [string]$response.Content }
-  } catch {
+  } catch [System.Net.Http.HttpRequestException], [System.Threading.Tasks.TaskCanceledException], [System.IO.IOException] {
     return [pscustomobject]@{ Status = 0; Content = '' }
   }
 }
 
-function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 30, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }) {
+function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$TimeoutMinutes = 30, [int]$IntervalSeconds = 20, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }, [scriptblock]$Now = { Get-Date }, [scriptblock]$Sleep = { param($Seconds) Start-Sleep -Seconds $Seconds }) {
+  if ($Version -notmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z') { throw "Version must be X.Y.Z, got '$Version'." }
+  if (-not (Test-CommitSha $ExpectedCommit)) { throw "ExpectedCommit must be a full 40-character commit SHA, got '$ExpectedCommit'." }
   $leafUrl = "https://api.nuget.org/v3/registration5-semver1/lurp/$Version.json"
-  $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+  $deadline = (& $Now).AddMinutes($TimeoutMinutes)
   while ($true) {
     $leaf = & $Request $leafUrl
     $decision = Get-HttpRetryDecision $leaf.Status
     $detail = "$leafUrl HTTP $($leaf.Status)"
     if ($decision -eq 'ok') {
-      $catalogUrl = [string]((ConvertFrom-Json $leaf.Content).catalogEntry)
+      $catalogUrl = ''
+      try {
+        $leafEntry = ConvertFrom-Json $leaf.Content
+        if ($leafEntry.PSObject.Properties['catalogEntry']) { $catalogUrl = [string]$leafEntry.catalogEntry }
+      } catch {
+        throw "nuget.org registration leaf $leafUrl has no catalogEntry."
+      }
+      if ([string]::IsNullOrWhiteSpace($catalogUrl)) { throw "nuget.org registration leaf $leafUrl has no catalogEntry." }
       $catalog = & $Request $catalogUrl
       $decision = Get-HttpRetryDecision $catalog.Status
       $detail = "$catalogUrl HTTP $($catalog.Status)"
     }
     if ($decision -eq 'error') { throw "nuget.org request failed: $detail." }
     if ($decision -eq 'ok') {
+      try { [void](ConvertFrom-Json $catalog.Content) } catch { throw "nuget.org catalog entry $catalogUrl is not valid JSON." }
       $commit = Get-CatalogRepositoryCommit $catalog.Content
       if ((Get-CatalogCommitDecision -CatalogJson $catalog.Content -ExpectedCommit $ExpectedCommit) -eq 'match') {
         Write-Host "nuget.org catalog repository.commit $commit matches $ExpectedCommit."
@@ -138,9 +162,9 @@ function Wait-CatalogCommit([string]$Version, [string]$ExpectedCommit, [int]$Tim
       }
       throw "nuget.org catalog repository.commit '$commit' does not match '$ExpectedCommit'."
     }
-    if ((Get-Date) -ge $deadline) { throw "catalog entry not available after $TimeoutMinutes minutes" }
+    if ((& $Now) -ge $deadline) { throw "catalog entry not available after $TimeoutMinutes minutes" }
     Write-Host "Catalog entry not ready ($detail); retrying in $IntervalSeconds seconds."
-    Start-Sleep -Seconds $IntervalSeconds
+    & $Sleep $IntervalSeconds
   }
 }
 
@@ -170,8 +194,8 @@ function Test-VersionListed([string]$IndexJson, [string]$Version) {
   return $false
 }
 
-function Test-NuGetVersionListed([string]$Version) {
-  $response = Invoke-NuGetRequest 'https://api.nuget.org/v3-flatcontainer/lurp/index.json'
+function Test-NuGetVersionListed([string]$Version, [scriptblock]$Request = { param($Url) Invoke-NuGetRequest $Url }) {
+  $response = & $Request 'https://api.nuget.org/v3-flatcontainer/lurp/index.json'
   if ($response.Status -eq 404) { return $false }
   if ($response.Status -ne 200) { throw "nuget.org flat container returned HTTP $($response.Status)." }
   return Test-VersionListed -IndexJson $response.Content -Version $Version
@@ -203,7 +227,7 @@ function Resolve-ReleaseTarget([string]$EventName, [string]$RefName, [string]$Re
   }
   if ($EventName -ne 'workflow_dispatch') { throw "unsupported event '$EventName'." }
   $dryRun = $DryRunInput -eq 'true'
-  if ($RefInput -match '^v\d+\.\d+\.\d+$') {
+  if ($RefInput -match '\Av[0-9]+\.[0-9]+\.[0-9]+\z') {
     return [pscustomobject]@{ Ref = $RefInput; Tag = $RefInput; DryRun = $dryRun }
   }
   if (-not (Test-CommitSha $RefInput)) {
@@ -213,4 +237,4 @@ function Resolve-ReleaseTarget([string]$EventName, [string]$RefName, [string]$Re
   return [pscustomobject]@{ Ref = $RefInput; Tag = ''; DryRun = $true }
 }
 
-Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Resolve-CiRun, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Resolve-ReleaseTarget
+Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Resolve-ReleaseTarget

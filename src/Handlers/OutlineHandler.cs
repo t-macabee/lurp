@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -8,7 +7,7 @@ internal static class OutlineHandler
 {
     internal const int DefaultLimit = 100;
 
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         if (string.IsNullOrEmpty(documentArg))
@@ -44,7 +43,7 @@ internal static class OutlineHandler
             if (page == null)
                 HandlerBootstrap.Fail($"ERROR: Document '{documentArg}' not found in snapshot '{snapshotId}'.");
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var declarations = page.Items.Select(e => new
             {
@@ -72,22 +71,22 @@ internal static class OutlineHandler
             {
                 case OutputMode.Summary:
                     foreach (var d in declarations)
-                        Console.WriteLine($"{d.kind,-12} {d.symbol_id}  {d.fully_qualified_name}  [{d.start_line}:{d.end_line}]  partial={d.is_partial} gen={d.is_generated}");
-                    Console.WriteLine($"-- {declarations.Count}/{page.TotalCount} declaration(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                        output.WriteLine($"{d.kind,-12} {d.symbol_id}  {d.fully_qualified_name}  [{d.start_line}:{d.end_line}]  partial={d.is_partial} gen={d.is_generated}");
+                    output.WriteLine($"-- {declarations.Count}/{page.TotalCount} declaration(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var d in declarations)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "declaration", declaration = d }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "declaration", declaration = d }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new { snapshot_id = snapshotId, document = documentArg, declarations, declaration_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        });
+        }, output);
     }
 }

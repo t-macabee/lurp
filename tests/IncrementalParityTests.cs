@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 using System.Text.Json;
 
 namespace Lurp.Tests;
@@ -38,11 +37,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         Assert.NotEqual(snapshotA, snapshotB);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioB_DeleteSymbol_PrunesSymbolAndEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -74,11 +71,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                                             """));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioC_DeleteEntireFile_PrunesCrossDocumentEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -102,11 +97,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             () => DeleteFile("TestProject", "Service.cs"));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioD_RenameMethod_SwapsSymbolIdentity()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -148,11 +141,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             });
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioE_ChangeMethodSignature_UpdatesCallerAndParameterEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -194,11 +185,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             });
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioF_ChangeBaseType_UpdatesInheritsEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -229,11 +218,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                                        """));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioG_ChangeImplementedInterface_SwapsImplementsAndDispatchEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -266,11 +253,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                                          """));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioH_CrossProjectCallerEdit()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("Lib",
             new Dictionary<string, string>
             {
@@ -316,11 +301,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioI_PartialTypeSpanningFiles_EditOnePartKeepsOtherPartEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -353,11 +336,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                                       """));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioI2_PartialTypeGainsAnEarlierFile_KeepsStructuralEdgeLocations()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -394,11 +375,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                                               """));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioJ_AddFileWithNewInterfaceImplementation()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -437,11 +416,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             });
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Parity_GenericBaseWithMultipleConcreteImplementations_MergesDispatchTypeArguments()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // One generic base class implementing a constructed generic interface,
         // with three closed implementations in a second project: every
         // implementation emits a MayDispatchTo edge for the same
@@ -450,114 +427,38 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // triples into one edge whose type_arguments_json is a nested array with
         // one variant per implementation; the incremental write path must produce
         // the same merged encoding.
-        const string baseReadServiceV1 = """
-                                namespace Services;
-
-                                public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
-                                {
-                                    public virtual TResponse Find(TSearch search) => default!;
-                                }
-                                """;
-
-        CreateProject("Services",
-            new Dictionary<string, string>
-            {
-                ["IBaseReadService.cs"] = """
-                                          namespace Services;
-
-                                          public interface IBaseReadService<TResponse, TSearch>
-                                          {
-                                              TResponse Find(TSearch search);
-                                          }
-                                          """,
-                ["BaseReadService.cs"] = baseReadServiceV1
-            });
-
-        CreateProject("Implementations",
-            new Dictionary<string, string>
-            {
-                ["UserService.cs"] = """
-                                     using Services;
-
-                                     namespace Implementations;
-
-                                     public class User { }
-                                     public class UserDto { }
-                                     public class UserSearch { }
-
-                                     public class UserService : BaseReadService<User, UserDto, UserSearch>
-                                     {
-                                     }
-                                     """,
-                ["OrderService.cs"] = """
-                                      using Services;
-
-                                      namespace Implementations;
-
-                                      public class Order { }
-                                      public class OrderDto { }
-                                      public class OrderSearch { }
-
-                                      public class OrderService : BaseReadService<Order, OrderDto, OrderSearch>
-                                      {
-                                      }
-                                      """,
-                ["ProductService.cs"] = """
-                                        using Services;
-
-                                        namespace Implementations;
-
-                                        public class Product { }
-                                        public class ProductDto { }
-                                        public class ProductSearch { }
-
-                                        public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
-                                        {
-                                        }
-                                        """
-            },
-            projectReferences: ["Services"]);
+        var baseReadService = CreateCrossProjectGenericDispatchFixture();
 
         var snapshotA = await RunFullIndexAsync(DbPath);
 
-        WriteFile("Services", "BaseReadService.cs", baseReadServiceV1 + "\n// comment-only edit\n");
+        WriteFile("Services", "BaseReadService.cs", baseReadService + "\n// comment-only edit\n");
 
-        var snapshotB = await RunIncrementalIndexAsync();
-        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
-
-        Assert.NotEqual(snapshotA, snapshotB);
-
-        var incrementalEdge = Assert.Single(GetMayDispatchEdges(DbPath, snapshotB));
-        var rebuildEdge = Assert.Single(GetMayDispatchEdges(_cleanRebuildDbPath, snapshotC));
-
-        Assert.Equal(rebuildEdge.SourceSymbolId, incrementalEdge.SourceSymbolId);
-        Assert.Equal(rebuildEdge.TargetSymbolId, incrementalEdge.TargetSymbolId);
-
-        var rebuildVariants = EdgeMerge.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
-        var rebuildKeys = VariantKeys(rebuildVariants);
-        foreach (var expectedKey in new[]
-                 {
-                     "Implementations.OrderDto, Implementations.OrderSearch",
-                     "Implementations.ProductDto, Implementations.ProductSearch",
-                     "Implementations.UserDto, Implementations.UserSearch"
-                 })
-            Assert.True(rebuildKeys.Contains(expectedKey),
-                $"Fixture sanity check failed: clean rebuild is missing dispatch variant [{expectedKey}]. JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
-        AssertNestedVariantArray(rebuildEdge.TypeArgumentsJson, rebuildVariants.Count);
-
-        var incrementalVariants = EdgeMerge.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
-        Assert.True(incrementalVariants.Count == rebuildVariants.Count,
-            $"Incremental MayDispatchTo edge carries {incrementalVariants.Count} type-argument variant(s) but the clean rebuild carries {rebuildVariants.Count}. " +
-            $"Incremental JSON: {incrementalEdge.TypeArgumentsJson ?? "(null)"}; clean rebuild JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
-        Assert.Equal(VariantKeys(rebuildVariants), VariantKeys(incrementalVariants));
-        AssertNestedVariantArray(incrementalEdge.TypeArgumentsJson, incrementalVariants.Count);
+        await AssertIncrementalDispatchVariantsMatchCleanRebuildAsync(snapshotA);
     }
 
-    [SkippableFact]
+    [Fact]
+    public async Task Parity_GenericBaseWithMultipleConcreteImplementations_EditedImplementor_KeepsAllDispatchTypeArguments()
+    {
+        // R7 regression: the same aggregated MayDispatchTo edge as the test above,
+        // but the comment-only edit lands in ONE closed implementation's own
+        // document (UserService.cs), not in the base file. The reverse-edge closure
+        // reaches the dispatch target's document (BaseReadService.cs) through the
+        // implementor's edge, and the cross-document refresh must re-extract the
+        // changed implementor too; when step 7 excluded it from the refresh scope,
+        // its type-argument variant vanished from the aggregated edge even though a
+        // clean rebuild still had all three.
+        CreateSameProjectGenericDispatchFixture();
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Implementations", "UserService.cs", GenericDispatchUserServiceSource + "\n// comment-only edit\n");
+
+        await AssertIncrementalDispatchVariantsMatchCleanRebuildAsync(snapshotA);
+    }
+
+    [Fact]
     public async Task Parity_FrameworkDerivedEdge_SurvivesIncrementalWritePath()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // Guards that framework-derived provenance survives the incremental
         // write path. The explicit DI registration (Registers,
         // framework_derived) and the string-literal reflection site
@@ -694,6 +595,164 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             .OrderBy(f => f, StringComparer.Ordinal)];
     }
 
+    // Shared by both generic-dispatch fixtures: one generic base class implementing
+    // a constructed generic interface, with three closed implementations in a second
+    // project. Every implementation emits a MayDispatchTo edge for the same
+    // (interface member, implementing member, kind) triple carrying its own concrete
+    // interface type arguments, so the merged edge aggregates one type-argument
+    // variant per implementation. The two fixtures differ only in where the base
+    // class lives.
+    private const string GenericDispatchInterfaceSource = """
+                                                          namespace Services;
+
+                                                          public interface IBaseReadService<TResponse, TSearch>
+                                                          {
+                                                              TResponse Find(TSearch search);
+                                                          }
+                                                          """;
+
+    private const string GenericDispatchUserServiceSource = """
+                                                            using Services;
+
+                                                            namespace Implementations;
+
+                                                            public class User { }
+                                                            public class UserDto { }
+                                                            public class UserSearch { }
+
+                                                            public class UserService : BaseReadService<User, UserDto, UserSearch>
+                                                            {
+                                                            }
+                                                            """;
+
+    private static Dictionary<string, string> GenericDispatchImplementorFiles()
+    {
+        return new Dictionary<string, string>
+        {
+            ["UserService.cs"] = GenericDispatchUserServiceSource,
+            ["OrderService.cs"] = """
+                                  using Services;
+
+                                  namespace Implementations;
+
+                                  public class Order { }
+                                  public class OrderDto { }
+                                  public class OrderSearch { }
+
+                                  public class OrderService : BaseReadService<Order, OrderDto, OrderSearch>
+                                  {
+                                  }
+                                  """,
+            ["ProductService.cs"] = """
+                                    using Services;
+
+                                    namespace Implementations;
+
+                                    public class Product { }
+                                    public class ProductDto { }
+                                    public class ProductSearch { }
+
+                                    public class ProductService : BaseReadService<Product, ProductDto, ProductSearch>
+                                    {
+                                    }
+                                    """
+        };
+    }
+
+    /// <summary>
+    ///     Base class in the interface's project (Services), implementors in the dependent
+    ///     project: a base edit must reach the implementors across the project boundary.
+    ///     Returns the base file's source.
+    /// </summary>
+    private string CreateCrossProjectGenericDispatchFixture()
+    {
+        const string baseReadServiceV1 = """
+                                         namespace Services;
+
+                                         public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                         {
+                                             public virtual TResponse Find(TSearch search) => default!;
+                                         }
+                                         """;
+
+        CreateProject("Services",
+            new Dictionary<string, string>
+            {
+                ["IBaseReadService.cs"] = GenericDispatchInterfaceSource,
+                ["BaseReadService.cs"] = baseReadServiceV1
+            });
+
+        CreateProject("Implementations", GenericDispatchImplementorFiles(), projectReferences: ["Services"]);
+
+        return baseReadServiceV1;
+    }
+
+    /// <summary>
+    ///     Base class in the implementors' project so it can name the implementor types in
+    ///     ReferenceImplementors. Those member-signature References edges put the aggregated
+    ///     edge's anchor document (the base file) into the reverse-edge closure when an
+    ///     implementor's OWN file is the change; without that arc the closure for an
+    ///     implementor edit is empty and step 7 never rebuilds the edge. The base cannot
+    ///     stay in Services for this: Services would have to reference Implementations,
+    ///     which already references Services.
+    /// </summary>
+    private void CreateSameProjectGenericDispatchFixture()
+    {
+        CreateProject("Services",
+            new Dictionary<string, string> { ["IBaseReadService.cs"] = GenericDispatchInterfaceSource });
+
+        var implementationFiles = GenericDispatchImplementorFiles();
+        implementationFiles["BaseReadService.cs"] = """
+                                                    using Services;
+
+                                                    namespace Implementations;
+
+                                                    public class BaseReadService<TEntity, TResponse, TSearch> : IBaseReadService<TResponse, TSearch>
+                                                    {
+                                                        public virtual TResponse Find(TSearch search) => default!;
+
+                                                        public static void ReferenceImplementors(UserService user, OrderService order, ProductService product)
+                                                        {
+                                                            _ = (user, order, product);
+                                                        }
+                                                    }
+                                                    """;
+        CreateProject("Implementations", implementationFiles, projectReferences: ["Services"]);
+    }
+
+    private async Task AssertIncrementalDispatchVariantsMatchCleanRebuildAsync(string snapshotA)
+    {
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        var incrementalEdge = Assert.Single(GetMayDispatchEdges(DbPath, snapshotB));
+        var rebuildEdge = Assert.Single(GetMayDispatchEdges(_cleanRebuildDbPath, snapshotC));
+
+        Assert.Equal(rebuildEdge.SourceSymbolId, incrementalEdge.SourceSymbolId);
+        Assert.Equal(rebuildEdge.TargetSymbolId, incrementalEdge.TargetSymbolId);
+
+        var rebuildVariants = EdgeMerge.DeserializeTypeArguments(rebuildEdge.TypeArgumentsJson);
+        var rebuildKeys = VariantKeys(rebuildVariants);
+        foreach (var expectedKey in new[]
+                 {
+                     "Implementations.OrderDto, Implementations.OrderSearch",
+                     "Implementations.ProductDto, Implementations.ProductSearch",
+                     "Implementations.UserDto, Implementations.UserSearch"
+                 })
+            Assert.True(rebuildKeys.Contains(expectedKey),
+                $"Fixture sanity check failed: clean rebuild is missing dispatch variant [{expectedKey}]. JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
+        AssertNestedVariantArray(rebuildEdge.TypeArgumentsJson, rebuildVariants.Count);
+
+        var incrementalVariants = EdgeMerge.DeserializeTypeArguments(incrementalEdge.TypeArgumentsJson);
+        Assert.True(incrementalVariants.Count == rebuildVariants.Count,
+            $"Incremental MayDispatchTo edge carries {incrementalVariants.Count} type-argument variant(s) but the clean rebuild carries {rebuildVariants.Count}. " +
+            $"Incremental JSON: {incrementalEdge.TypeArgumentsJson ?? "(null)"}; clean rebuild JSON: {rebuildEdge.TypeArgumentsJson ?? "(null)"}");
+        Assert.Equal(VariantKeys(rebuildVariants), VariantKeys(incrementalVariants));
+        AssertNestedVariantArray(incrementalEdge.TypeArgumentsJson, incrementalVariants.Count);
+    }
+
     private static List<EdgeRecord> GetMayDispatchEdges(string dbPath, string snapshotId)
     {
         using var store = OpenStore(dbPath);
@@ -734,11 +793,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     overwrote the copied-forward count with a partial (zero) re-extraction
     ///     result.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioR6_BindingIncompleteness_IncrementalCarryForward()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // Helper.cs has no external references — will be edited to trigger
         // incremental re-extraction of the App project.
         // ExternalRef.cs references Newtonsoft.Json (external NuGet assembly)
@@ -810,11 +867,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     the R6 null-bucket guarantee from the predicate-level
     ///     <see cref="BindingIncompletenessScopingTests" /> pin to end-to-end.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioR6_NullPathExtractorFailure_CarriesForwardAcrossIncremental()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // Same fixture as the predicate-level R6 test: Helper.cs (edited below)
         // has no external references; ExternalRef.cs targets Newtonsoft.Json and
         // stays out of the incremental extraction scope.
@@ -909,11 +964,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // V1: only M(long) exists; c.M(42) binds to M(long) via implicit
         // conversion. V2 adds M(int) in a NEW file — the unedited caller now
         // binds to M(int) by overload resolution. The incremental
@@ -974,11 +1027,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     framework-derived edges (the existing Parity_FrameworkDerivedEdge test only
     ///     covers copy-forward).
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioK_DIRegistrationChange_UpdatesRegistersEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -1041,11 +1092,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     must extract new Registers edges that match a clean rebuild. Exercises
     ///     ResolveRegistrationTypeArgs's TypeOfExpressionSyntax fallback path.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioL_DIRegistrationAdd_ExtractsNewEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         await RunParityScenarioAsync("TestProject",
             new Dictionary<string, string>
             {
@@ -1112,11 +1161,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     re-extract a new one matching the updated template. Exercises the
     ///     delete+re-extract path for edges with synthetic source nodes.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioM_ControllerRouteChange_UpdatesRoutesToEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("App",
             new Dictionary<string, string>
             {
@@ -1170,11 +1217,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     must be reset for the re-extracted symbol, so the increment matches the
     ///     clean rebuild: M -> {net10.0}.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioTfm1_WrapMemberInIf_ResetsCopiedForwardTargetFrameworks()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
@@ -1221,11 +1266,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     guard so M() is declared for both TFMs again. The increment must recover
     ///     {net9.0, net10.0}, not keep only the copied-forward net10.0 row.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioTfm2_RemoveIf_RecoversBothTargetFrameworks()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
@@ -1273,11 +1316,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     ///     7.4 reset deletes, because the type's parts are re-extracted together:
     ///     the class keeps {net9.0, net10.0}.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ScenarioTfm3_PartialTypeAcrossFiles_KeepsAllTargetFrameworks()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {

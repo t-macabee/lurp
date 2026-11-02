@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 using System.Globalization;
 using System.Text;
 
@@ -14,11 +13,9 @@ namespace Lurp.Tests;
 [Trait("Category", "Slow")]
 public sealed class WideIncrementalInvalidationTests : IntegrationTestBase
 {
-    [SkippableFact]
+    [Fact]
     public async Task IncrementalRun_InvalidatingMoreSymbolsThanTheParameterLimit_CompletesWithFullSearchIndex()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         var files = new Dictionary<string, string>();
         var sb = new StringBuilder();
         for (var file = 0; file < 8; file++)

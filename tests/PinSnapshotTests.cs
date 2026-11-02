@@ -487,7 +487,7 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
         try
         {
-            var result = TestConsole.Capture(() => TimingsHandler.Run([$"--output-dir={dir}", "--json"]));
+            var result = CapturingOutputSink.Capture(sink => TimingsHandler.Run([$"--output-dir={dir}", "--json"], sink));
 
             Assert.Null(result.Failure);
             Assert.Contains(HandlerBootstrap.StalePinWarning(staleId, latestId), result.Stderr);
@@ -507,10 +507,10 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
         try
         {
-            var result = TestConsole.Capture(() => FindSymbolHandler.Run([
+            var result = CapturingOutputSink.Capture(sink => FindSymbolHandler.Run([
                 "--symbol=T:Missing.Type|assembly",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
 
             Assert.NotNull(result.Failure);
             Assert.Contains(
@@ -532,7 +532,7 @@ public sealed class PinSnapshotTests : IDisposable
         try
         {
             McpSessionContext? session = null;
-            var result = TestConsole.Capture(() => session = McpSessionContext.Create([$"--output-dir={dir}"]));
+            var result = CapturingOutputSink.Capture(sink => session = McpSessionContext.Create([$"--output-dir={dir}"], sink));
 
             Assert.Contains(HandlerBootstrap.StalePinWarning(staleId, latestId), result.Stderr);
             Assert.Equal(latestId, session!.PinnedSnapshotId);
@@ -551,13 +551,13 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out _);
         try
         {
-            var text = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}"]));
+            var text = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}"], sink));
             Assert.Null(text.Failure);
             Assert.Contains(
                 $"Pin: snapshot '{staleId}' is not complete and is ignored. Clear it with --mode=pin-snapshot --clear.",
                 text.Stdout);
 
-            var json = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
+            var json = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--json"], sink));
             Assert.Null(json.Failure);
             using (var doc = JsonDocument.Parse(json.Stdout))
                 Assert.Equal(staleId, doc.RootElement.GetProperty("stale_pinned_snapshot_id").GetString());
@@ -569,7 +569,7 @@ public sealed class PinSnapshotTests : IDisposable
                 store.ClearPinnedSnapshot();
             }
 
-            var noPin = await TestConsole.CaptureAsync(() => StatusHandler.Run([$"--output-dir={dir}", "--json"]));
+            var noPin = await CapturingOutputSink.CaptureAsync(sink => StatusHandler.Run([$"--output-dir={dir}", "--json"], sink));
             Assert.Null(noPin.Failure);
             using (var noPinDoc = JsonDocument.Parse(noPin.Stdout))
             {
@@ -590,12 +590,12 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
         try
         {
-            var result = TestConsole.Capture(() => AnnotationHandler.RunAnnotate([
+            var result = CapturingOutputSink.Capture(sink => AnnotationHandler.RunAnnotate([
                 "--symbol=T:Some.Type|asm",
                 "--annotation-kind=note",
                 "--value=v1",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
 
             Assert.Null(result.Failure);
             Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
@@ -630,10 +630,10 @@ public sealed class PinSnapshotTests : IDisposable
 
         try
         {
-            var result = TestConsole.Capture(() => AnnotationHandler.RunRetractAnnotation([
+            var result = CapturingOutputSink.Capture(sink => AnnotationHandler.RunRetractAnnotation([
                 $"--annotation-id={annotationId}",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
 
             Assert.Null(result.Failure);
             Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
@@ -661,10 +661,10 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
         try
         {
-            var result = TestConsole.Capture(() => PinSnapshotHandler.Run([
+            var result = CapturingOutputSink.Capture(sink => PinSnapshotHandler.Run([
                 $"--snapshot={latestId}",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
 
             Assert.Null(result.Failure);
             Assert.Contains(HandlerBootstrap.StalePinRemovedNotice(staleId), result.Stderr);
@@ -687,11 +687,11 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateTwoWorkspaceDir(out var completeSpaceId);
         try
         {
-            var result = TestConsole.Capture(() => PinSnapshotHandler.Run([
+            var result = CapturingOutputSink.Capture(sink => PinSnapshotHandler.Run([
                 $"--snapshot={completeSpaceId}",
                 "--json",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
 
             Assert.Null(result.Failure);
             using var doc = JsonDocument.Parse(result.Stdout);
@@ -717,11 +717,11 @@ public sealed class PinSnapshotTests : IDisposable
         {
             IntegrationTestBase.WriteSolution(solutionDir, PartialShapeFixture.ProjectName, PartialShapeFixture.Sources);
 
-            var result = await TestConsole.CaptureAsync(() => IndexHandler.Run([
+            var result = await CapturingOutputSink.CaptureAsync(sink => IndexHandler.Run([
                 $"--solution={Path.Combine(solutionDir, "Test.slnx")}",
                 $"--output-dir={dir}",
                 "--strategy=full"
-            ], CancellationToken.None));
+            ], sink, CancellationToken.None));
 
             Assert.Null(result.Failure);
             Assert.DoesNotContain("pinned snapshot", result.Stderr);
@@ -730,10 +730,10 @@ public sealed class PinSnapshotTests : IDisposable
 
             // Positive control: the same database still has a stale pin, and a read
             // command still warns about it.
-            var read = TestConsole.Capture(() => FindSymbolHandler.Run([
+            var read = CapturingOutputSink.Capture(sink => FindSymbolHandler.Run([
                 "--symbol=T:Missing.Type|assembly",
                 $"--output-dir={dir}"
-            ]));
+            ], sink));
             Assert.Contains($"WARNING: pinned snapshot '{staleId}' is not complete;", read.Stderr);
             Assert.Contains($"'{latestId}'", read.Failure!.Message);
         }

@@ -1,6 +1,5 @@
 using Lurp.Storage;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -20,7 +19,7 @@ public sealed class KnownCorrectnessSeamTests : InMemoryTestBase
 {
     static KnownCorrectnessSeamTests()
     {
-        IntegrationHarness.TryRegisterMSBuild();
+        IntegrationHarness.EnsureMSBuildRegistered();
     }
 
     [Fact]
@@ -54,11 +53,9 @@ public sealed class KnownCorrectnessSeamTests : InMemoryTestBase
         Assert.EndsWith("Generic.cs", edge.SourceDocumentPath);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task PreviouslyUnboundReference_IncrementalConvergesWithFullRebuild()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         using var test = new IntegrationHost();
 
         // V1: Calculator.Add is a typo'd member ("pubic") that does not

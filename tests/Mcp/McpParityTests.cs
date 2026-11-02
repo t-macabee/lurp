@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
@@ -75,11 +76,14 @@ public sealed class McpParityTests : IntegrationTestBase
         // Parity: direct store NavigateToLocation should produce same JSON shape
         using var directStore = OpenStore(DbPath);
         var direct = directStore.NavigateToLocation(docPath, 2, snapshotId, false);
-        var directJson = JsonSerializer.Serialize(direct);
-        var toolTargetJson = targetEl.ValueKind == JsonValueKind.Null ? "null" : targetEl.GetRawText();
 
-        // At least both null or both non-null
-        Assert.Equal(direct == null, targetEl.ValueKind == JsonValueKind.Null);
+        // Line 2 is inside class Foo, so both sides must resolve a target, and the
+        // tool's target must serialize to exactly what the store returned.
+        Assert.NotNull(direct);
+        Assert.NotEqual(JsonValueKind.Null, targetEl.ValueKind);
+        Assert.True(
+            JsonNode.DeepEquals(JsonSerializer.SerializeToNode(direct), JsonNode.Parse(targetEl.GetRawText())),
+            $"tool target differs from store result:\n{targetEl.GetRawText()}");
     }
 
     [Fact]
@@ -119,10 +123,9 @@ public sealed class McpParityTests : IntegrationTestBase
         var directResults = directStore.SearchSymbols("Foo", snapshotId, 20, false, null);
         // When limit is 20, counts should match (tool uses SearchSymbols for all-type symbol branch without pagination)
         // For type=symbol, tool uses SearchSymbolsPage which may have same count
-        Assert.True(toolResults >= 0);
-        Assert.True(directResults.Count >= 0);
-        // At least parity in count for this small fixture (both should find Foo)
-        Assert.Equal(directResults.Count > 0, toolResults > 0);
+        // The fixture declares Foo, so both paths must find it.
+        Assert.True(directResults.Count > 0, "direct store search found no 'Foo' symbol");
+        Assert.True(toolResults > 0, "lurp_search found no 'Foo' symbol");
     }
 
     [Fact]
@@ -243,23 +246,14 @@ public sealed class McpParityTests : IntegrationTestBase
         // `metrics` parity: run the CLI handler for the same snapshot (`--mode=timings --json`)
         // and require an equal metrics object in both outputs. Indexing a real fixture records
         // at least peak_working_set_mb (see SnapshotMetricsTests).
-        var stdout = new StringWriter();
-        var originalOut = Console.Out;
-        try
-        {
-            Console.SetOut(stdout);
-            TimingsHandler.Run([
-                "--mode=timings", "--json",
-                $"--output-dir={Path.GetDirectoryName(DbPath)!}",
-                $"--snapshot={snapshotId}"
-            ]);
-        }
-        finally
-        {
-            Console.SetOut(originalOut);
-        }
+        var sink = new CapturingOutputSink();
+        TimingsHandler.Run([
+            "--mode=timings", "--json",
+            $"--output-dir={Path.GetDirectoryName(DbPath)!}",
+            $"--snapshot={snapshotId}"
+        ], sink);
 
-        using var cliDoc = JsonDocument.Parse(stdout.ToString());
+        using var cliDoc = JsonDocument.Parse(sink.Stdout);
         var cliMetrics = cliDoc.RootElement.GetProperty("metrics");
         var toolMetrics = doc.RootElement.GetProperty("metrics");
         Assert.True(cliMetrics.EnumerateObject().Any(), "CLI metrics should contain at least one metric.");

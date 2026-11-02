@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -302,8 +301,8 @@ public sealed class McpOutlineTests : IntegrationTestBase
         Assert.Contains(partial, e => e.GetProperty("is_partial").GetBoolean() == true);
         // RegularClass should be false
         var regular = decls.FirstOrDefault(e => e.GetProperty("fully_qualified_name").GetString()!.Contains("RegularClass"));
-        if (regular.ValueKind != JsonValueKind.Undefined)
-            Assert.False(regular.GetProperty("is_partial").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Undefined, regular.ValueKind);
+        Assert.False(regular.GetProperty("is_partial").GetBoolean());
     }
 
     [Fact]

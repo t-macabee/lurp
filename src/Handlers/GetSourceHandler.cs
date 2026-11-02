@@ -1,8 +1,10 @@
+using Lurp.Workspace;
+
 namespace Lurp.Handlers;
 
 internal static class GetSourceHandler
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, IOutputSink output)
     {
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
         if (string.IsNullOrEmpty(documentArg)) HandlerBootstrap.Fail("ERROR: --document=<relative-path> is required for --mode=get-source.");
@@ -10,7 +12,7 @@ internal static class GetSourceHandler
         var startLineRaw = HandlerBootstrap.GetArgValue(args, "--start-line=");
         var endLineRaw = HandlerBootstrap.GetArgValue(args, "--end-line=");
 
-        int? startLine = null, endLine = null, contextLines = null;
+        int? startLine = null, endLine = null;
 
         if (!string.IsNullOrEmpty(startLineRaw))
         {
@@ -22,7 +24,7 @@ internal static class GetSourceHandler
             if (!int.TryParse(endLineRaw, out var v) || v < 1) HandlerBootstrap.Fail("ERROR: --end-line must be a positive integer (>=1).");
             endLine = v;
         }
-        contextLines = HandlerBootstrap.ParseNonNegativeIntArg(HandlerBootstrap.GetArgValue(args, "--context-lines="), "--context-lines=");
+        var contextLines = HandlerBootstrap.ParseNonNegativeIntArg(HandlerBootstrap.GetArgValue(args, "--context-lines="), "--context-lines=");
         if (contextLines.HasValue && startLine == null && endLine == null)
             HandlerBootstrap.Fail("ERROR: --context-lines requires --start-line or --end-line.");
         if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
@@ -32,7 +34,7 @@ internal static class GetSourceHandler
         {
             // Resolve freshness before writing any bytes so --require-fresh
             // exits 2 without emitting stale source, even when windowing.
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             Lurp.Storage.SourceSlice? slice;
             try
@@ -56,7 +58,7 @@ internal static class GetSourceHandler
             // travels on the channel that exists for it: the stderr line, plus the
             // exit code when --require-fresh rejects the read.
 
-            Console.Write(slice.Source);
-        });
+            output.Write(slice.Source);
+        }, output);
     }
 }

@@ -144,26 +144,26 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var baseline = ReadIndexedDocument(snapshotId);
 
-        var fresh = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, false)));
+        var fresh = CapturingOutputSink.Capture(sink => GetSourceHandler.Run(Args(false, false), sink));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
         Assert.Equal(baseline, fresh.Stdout);
 
         MutateWidget();
 
-        var stale = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, false)));
+        var stale = CapturingOutputSink.Capture(sink => GetSourceHandler.Run(Args(false, false), sink));
         Assert.Contains("freshness: state=stale", stale.Stderr);
         Assert.Equal(baseline, stale.Stdout); // the fix labels staleness; it does not re-serve
 
-        var quietStale = TestConsole.Capture(() => GetSourceHandler.Run(Args(true, false)));
+        var quietStale = CapturingOutputSink.Capture(sink => GetSourceHandler.Run(Args(true, false), sink));
         Assert.DoesNotContain("freshness:", quietStale.Stderr);
         Assert.Equal(baseline, quietStale.Stdout);
 
-        var rejected = TestConsole.Capture(() => GetSourceHandler.Run(Args(false, true)));
+        var rejected = CapturingOutputSink.Capture(sink => GetSourceHandler.Run(Args(false, true), sink));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout); // no stale bytes emitted
 
-        var quietRejected = TestConsole.Capture(() => GetSourceHandler.Run(Args(true, true)));
+        var quietRejected = CapturingOutputSink.Capture(sink => GetSourceHandler.Run(Args(true, true), sink));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -182,13 +182,13 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         var snapshotId = await RunFullIndexAsync(DbPath);
         var symbolId = ResolveSymbolId(snapshotId, SymbolFqn);
 
-        var freshMeta = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
+        var freshMeta = CapturingOutputSink.Capture(sink => GetSymbolHandler.Run(Args(false, false, "metadata"), sink));
         Assert.Contains("freshness: state=fresh", freshMeta.Stderr);
         Assert.Equal("fresh", FreshnessState(freshMeta.Stdout));
 
         MutateWidget();
 
-        var staleMeta = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "metadata")));
+        var staleMeta = CapturingOutputSink.Capture(sink => GetSymbolHandler.Run(Args(false, false, "metadata"), sink));
         Assert.Contains("freshness: state=stale", staleMeta.Stderr);
         Assert.Equal("stale", FreshnessState(staleMeta.Stdout));
         Assert.Equal(PayloadWithoutFreshness(freshMeta.Stdout), PayloadWithoutFreshness(staleMeta.Stdout));
@@ -196,16 +196,16 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         // The five raw-source views are byte-exact by contract: same indexed bytes,
         // staleness travels on stderr plus the exit code only.
         var baselineDeclaration = ReadIndexedDeclarationSource(symbolId, snapshotId);
-        var staleSource = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, false, "declaration")));
+        var staleSource = CapturingOutputSink.Capture(sink => GetSymbolHandler.Run(Args(false, false, "declaration"), sink));
         Assert.Contains("freshness: state=stale", staleSource.Stderr);
         Assert.Equal(baselineDeclaration, staleSource.Stdout);
 
-        var rejected = TestConsole.Capture(() => GetSymbolHandler.Run(Args(false, true, "metadata")));
+        var rejected = CapturingOutputSink.Capture(sink => GetSymbolHandler.Run(Args(false, true, "metadata"), sink));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout);
 
-        var quietRejected = TestConsole.Capture(() => GetSymbolHandler.Run(Args(true, true, "metadata")));
+        var quietRejected = CapturingOutputSink.Capture(sink => GetSymbolHandler.Run(Args(true, true, "metadata"), sink));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -223,23 +223,23 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         Seed();
         await RunFullIndexAsync(DbPath); // freshness is checked against the latest snapshot the handler resolves
 
-        var fresh = TestConsole.Capture(() => NavigateHandler.Run(Args(false, false)));
+        var fresh = CapturingOutputSink.Capture(sink => NavigateHandler.Run(Args(false, false), sink));
         Assert.Contains("freshness: state=fresh", fresh.Stderr);
         Assert.Equal("fresh", FreshnessState(fresh.Stdout));
 
         MutateWidget();
 
-        var stale = TestConsole.Capture(() => NavigateHandler.Run(Args(false, false)));
+        var stale = CapturingOutputSink.Capture(sink => NavigateHandler.Run(Args(false, false), sink));
         Assert.Contains("freshness: state=stale", stale.Stderr);
         Assert.Equal("stale", FreshnessState(stale.Stdout));
         Assert.Equal(PayloadWithoutFreshness(fresh.Stdout), PayloadWithoutFreshness(stale.Stdout));
 
-        var rejected = TestConsole.Capture(() => NavigateHandler.Run(Args(false, true)));
+        var rejected = CapturingOutputSink.Capture(sink => NavigateHandler.Run(Args(false, true), sink));
         Assert.NotNull(rejected.Failure);
         Assert.Equal(2, rejected.Failure!.ExitCode);
         Assert.Equal(string.Empty, rejected.Stdout);
 
-        var quietRejected = TestConsole.Capture(() => NavigateHandler.Run(Args(true, true)));
+        var quietRejected = CapturingOutputSink.Capture(sink => NavigateHandler.Run(Args(true, true), sink));
         Assert.NotNull(quietRejected.Failure);
         Assert.Equal(2, quietRejected.Failure!.ExitCode);
         Assert.DoesNotContain("freshness:", quietRejected.Stderr);
@@ -262,11 +262,11 @@ public sealed class ReadModeFreshnessTests : IntegrationTestBase
         WriteFile(Project, "Widget.cs", MutatedSource);
         File.SetLastWriteTimeUtc(Path.Combine(TestDir, "src", Project, "Widget.cs"), DateTime.UtcNow.AddYears(-1));
 
-        var auto = TestConsole.Capture(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=auto"], false, false)));
+        var auto = CapturingOutputSink.Capture(sink => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=auto"], false, false), sink));
         Assert.Contains("freshness: state=fresh", auto.Stderr);
         Assert.Equal("fresh", FreshnessState(auto.Stdout));
 
-        var hash = TestConsole.Capture(() => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=hash"], false, false)));
+        var hash = CapturingOutputSink.Capture(sink => NavigateHandler.Run(HandlerArgs("navigate", [$"--file={Document}", "--line=3", "--freshness=hash"], false, false), sink));
         Assert.Contains("freshness: state=stale", hash.Stderr);
         Assert.Equal("stale", FreshnessState(hash.Stdout));
         using var doc = JsonDocument.Parse(hash.Stdout);

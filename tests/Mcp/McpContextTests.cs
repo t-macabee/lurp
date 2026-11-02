@@ -2,7 +2,6 @@ using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using Lurp.Storage;
-using Lurp.Workspace;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -30,7 +29,6 @@ public sealed class McpContextTests : IntegrationTestBase
 
     private (McpSessionContext session, ContextTool tool) CreateSessionTool()
     {
-        var outputDir = Path.GetDirectoryName(SolutionPath)!;
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}" };
         var session = McpSessionContext.Create(args);
         var tool = new ContextTool(session);
@@ -103,7 +101,6 @@ public sealed class McpContextTests : IntegrationTestBase
         // Discover method and type symbolIds to test budget defaults (type should be 16000 via pipe/T: form)
         string methodSymbolId;
         string typeSymbolId;
-        string typeDocCommentId;
         using (var store = OpenStore(DbPath))
         {
             var ids = store.GetSymbolIdsInSnapshot(snapshotId);
@@ -138,7 +135,6 @@ public sealed class McpContextTests : IntegrationTestBase
             Assert.False(string.IsNullOrEmpty(typeFound));
             methodSymbolId = methodFound!;
             typeSymbolId = typeFound!;
-            typeDocCommentId = typeSymbolId.Split('|')[0];
         }
 
         var (session, tool) = CreateSessionTool();
@@ -182,7 +178,7 @@ public sealed class McpContextTests : IntegrationTestBase
     [Fact]
     public async Task MismatchedSnapshotId_ReturnsInvalidParams()
     {
-        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await IndexFixtureAndGetSnapshot();
         var (session, tool) = CreateSessionTool();
         await using (session)
         {
@@ -200,33 +196,26 @@ public sealed class McpContextTests : IntegrationTestBase
         var (session, tool) = CreateSessionTool();
         await using (session)
         {
-            // Use a type anchor whose tiers have items
-            var jsonFirst = tool.LurpContext(symbol: "CtxProj.Foo", tier: "direct_callers", tier_limit: 1);
+            // Foo.Bar is called by Foo.Caller and Tests.TestBar, so a one-item page always has a successor.
+            var jsonFirst = tool.LurpContext(symbol: "CtxProj.Foo.Bar", tier: "direct_callers", tier_limit: 1);
             using var docFirst = JsonDocument.Parse(jsonFirst);
             Assert.Equal(snapshotId, docFirst.RootElement.GetProperty("snapshot_id").GetString());
             var tierPage = docFirst.RootElement.GetProperty("tier_page");
             Assert.Equal("direct_callers", tierPage.GetProperty("tier").GetString());
-            var hasMore = tierPage.GetProperty("total_items").GetInt32() > 1;
+            Assert.Equal(2, tierPage.GetProperty("total_items").GetInt32());
             var nextCursor = tierPage.GetProperty("next_cursor").GetString();
 
-            if (hasMore)
-            {
-                Assert.False(string.IsNullOrEmpty(nextCursor));
-                var jsonSecond = tool.LurpContext(symbol: "CtxProj.Foo", tier: "direct_callers", tier_limit: 1, cursor: nextCursor);
-                using var docSecond = JsonDocument.Parse(jsonSecond);
-                Assert.Equal(1, docSecond.RootElement.GetProperty("tier_page").GetProperty("offset").GetInt32());
-            }
-            else
-            {
-                Assert.True(string.IsNullOrEmpty(nextCursor) || nextCursor == null);
-            }
+            Assert.False(string.IsNullOrEmpty(nextCursor));
+            var jsonSecond = tool.LurpContext(symbol: "CtxProj.Foo.Bar", tier: "direct_callers", tier_limit: 1, cursor: nextCursor);
+            using var docSecond = JsonDocument.Parse(jsonSecond);
+            Assert.Equal(1, docSecond.RootElement.GetProperty("tier_page").GetProperty("offset").GetInt32());
         }
     }
 
     [Fact]
     public async Task Tier_Unknown_ReturnsInvalidParams()
     {
-        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await IndexFixtureAndGetSnapshot();
         var (session, tool) = CreateSessionTool();
         await using (session)
         {
@@ -240,7 +229,7 @@ public sealed class McpContextTests : IntegrationTestBase
     [Fact]
     public async Task Cursor_Invalid_ReturnsInvalidParams()
     {
-        var snapshotId = await IndexFixtureAndGetSnapshot();
+        await IndexFixtureAndGetSnapshot();
         var (session, tool) = CreateSessionTool();
         await using (session)
         {

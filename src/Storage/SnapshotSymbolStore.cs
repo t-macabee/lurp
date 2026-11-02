@@ -7,40 +7,6 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
-    internal void SaveSnapshotSymbols(string snapshotId, IEnumerable<string> symbolIds)
-    {
-        using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            foreach (var symbolId in symbolIds)
-            {
-                command.CommandText = """
-                    INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
-                    SELECT @snapshotId, @symbolId, fqn, metadata_json
-                    FROM snapshot_symbols
-                    WHERE symbol_id = @symbolId
-                    LIMIT 1
-                    ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
-                        fqn = excluded.fqn,
-                        metadata_json = excluded.metadata_json;
-                    """;
-                command.Parameters.Clear();
-                command.Parameters.AddWithValue("@snapshotId", snapshotId);
-                command.Parameters.AddWithValue("@symbolId", symbolId);
-                command.ExecuteNonQuery();
-            }
-
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
-    }
-
     internal void CopySnapshotSymbols(string fromSnapshotId, string toSnapshotId)
     {
         using var command = _connection.CreateCommand();

@@ -186,7 +186,7 @@ public static class IndexRunner
         try
         {
             var totalDeclarations = 0;
-            var totalEdges = 0;
+            int totalEdges;
             var totalDiagnostics = 0;
             var allAnnotations = new List<AnnotationRecord>();
             var projectErrors = new List<Exception>();

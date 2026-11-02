@@ -1,20 +1,13 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text.Json;
-using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Shared;
 using Lurp.Storage;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using Xunit;
 
 namespace Lurp.Tests;
 
@@ -1049,8 +1042,7 @@ public sealed class OutputContractFixture : IAsyncLifetime
 
     public Task InitializeAsync()
     {
-        if (!IntegrationHarness.TryRegisterMSBuild())
-            throw new InvalidOperationException("MSBuildLocator could not register an SDK; ground-truth tests need one.");
+        IntegrationHarness.EnsureMSBuildRegistered();
 
         FixtureRoot = GroundTruthFixture.LocateFixtureRoot();
         TempDir = Path.Combine(Path.GetTempPath(), $"lurp-output-contract-{Guid.NewGuid():N}");
@@ -1186,16 +1178,7 @@ public sealed class OutputContractFixture : IAsyncLifetime
         CliFlagValidation.Validate(entry, args);
 
         // Index progress goes to stdout; not part of the contract. Ignore it.
-        var original = Console.Out;
-        try
-        {
-            Console.SetOut(TextWriter.Null);
-            entry.Handler(args).GetAwaiter().GetResult();
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
+        entry.Handler(args, new CapturingOutputSink()).GetAwaiter().GetResult();
 
         IndexModeRan = true;
     }

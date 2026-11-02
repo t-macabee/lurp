@@ -5,13 +5,13 @@ namespace Lurp.Handlers;
 
 internal static class IndexHandler
 {
-    public static async Task Run(string[] args, CancellationToken cancellationToken = default)
+    public static async Task Run(string[] args, IOutputSink output, CancellationToken cancellationToken = default)
     {
         var solutionPathArg = HandlerBootstrap.GetArgValue(args, "--solution=")
                               ?? Environment.GetEnvironmentVariable("LURP_SOLUTION_PATH");
         if (string.IsNullOrEmpty(solutionPathArg) || !File.Exists(solutionPathArg)) HandlerBootstrap.Fail("ERROR: --solution=path or LURP_SOLUTION_PATH is required and must point to an existing .sln or .slnx file.");
 
-        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args);
+        var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
 
         var outputDir = Path.GetFullPath(outputDirArg);
         var dbPath = Path.Combine(outputDir, "index.db");
@@ -37,8 +37,8 @@ internal static class IndexHandler
         {
             var knownNames = new HashSet<string>(AdapterRegistry.Names, StringComparer.OrdinalIgnoreCase);
             foreach (var name in skipAdapters.Where(name => !knownNames.Contains(name)))
-                Console.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
-            Console.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
+                output.WriteLine($"WARNING: Unknown adapter name '{name}'. Valid names: {string.Join(", ", knownNames)}");
+            output.WriteLine($"Skipping adapters: {string.Join(", ", skipAdapters)}");
         }
 
         var strategyArg = HandlerBootstrap.GetArgValue(args, "--strategy=");
@@ -52,11 +52,11 @@ internal static class IndexHandler
         var skipDiff = args.Contains("--skip-diff");
         var force = args.Contains("--force");
 
-        Console.WriteLine($"Solution: {solutionPathArg}");
-        Console.WriteLine($"Output DB: {dbPath}");
+        output.WriteLine($"Solution: {solutionPathArg}");
+        output.WriteLine($"Output DB: {dbPath}");
         if (jsonExportPath != null)
-            Console.WriteLine($"JSON export: {jsonExportPath}");
-        Console.WriteLine();
+            output.WriteLine($"JSON export: {jsonExportPath}");
+        output.WriteLine();
 
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         store.RunMigrations();

@@ -1,4 +1,3 @@
-using Microsoft.Build.Locator;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
@@ -49,11 +48,9 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         return result;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SameSource_IndexedTwiceInFreshDbs_ProducesIdenticalSymbolRows()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
@@ -74,11 +71,9 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         Assert.Equal(SnapshotAssertions.ReadSymbols(DbPath, snapshot1), SnapshotAssertions.ReadSymbols(_secondDbPath, snapshot2));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SolutionReload_NewWorkspace_NewDb_ProducesIdenticalSymbolRows()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
@@ -108,11 +103,9 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
         Assert.Equal(SnapshotAssertions.ReadSymbols(DbPath, snapshot1), SnapshotAssertions.ReadSymbols(_secondDbPath, snapshot2));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task UnchangedFile_KeepsSymbolIdsAcrossIncrementalEdit()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject",
             new Dictionary<string, string>
             {
@@ -159,11 +152,9 @@ public sealed class SymbolIdentityTests : IntegrationTestBase
             Assert.Equal(row, after[symbolId]);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SameFqnAcrossAssemblies_GetsDistinctSymbolIds()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("AppOne",
             new Dictionary<string, string>
             {

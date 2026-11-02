@@ -346,7 +346,7 @@ public sealed class IndexHandlerSchemaTests : IntegrationTestBase
         var handlerOut = Path.Combine(TestDir, "handler-out");
         Directory.CreateDirectory(handlerOut);
         var args = new[] { $"--solution={SolutionPath}", $"--output-dir={handlerOut}" };
-        var ex = await Record.ExceptionAsync(() => Lurp.Handlers.IndexHandler.Run(args, CancellationToken.None));
+        var ex = await Record.ExceptionAsync(() => Lurp.Handlers.IndexHandler.Run(args, new CapturingOutputSink(), CancellationToken.None));
         Assert.Null(ex);
         var dbPath = Path.Combine(handlerOut, "index.db");
         Assert.True(File.Exists(dbPath));

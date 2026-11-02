@@ -2,7 +2,6 @@ using System.Text.Json;
 using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -213,7 +212,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
         // Contract/acceptance: the CLI and MCP documents come from the same
         // ImpactPaging builder; the MCP envelope adds only pinned and limit.
-        var cliResult = TestConsole.Capture(() => ImpactHandler.Run([
+        var cliResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
             "--mode=impact",
             $"--symbol={callerId}",
             "--direction=downstream",
@@ -222,7 +221,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
             "--limit=50",
             $"--output-dir={TestDir}",
             "--output=json"
-        ]));
+        ], sink));
         Assert.Null(cliResult.Failure);
         using var cliDoc = JsonDocument.Parse(cliResult.Stdout);
 

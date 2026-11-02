@@ -1,5 +1,4 @@
 using Lurp.Storage;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -43,11 +42,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         };
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProvedDead_InternalHelper_NoLiveIncoming()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Util.cs"] = """
@@ -80,11 +77,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task NameOfReceiver_IsNotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Holder.cs"] = """
@@ -120,11 +115,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CorruptMetadataJson_ThrowsNamingSymbol()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Util.cs"] = """
@@ -168,11 +161,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task NullSpanColumns_NoLocationWithLineZero_KeepsDocumentPathAndMatchesDocumentFilter()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Util.cs"] = """
@@ -236,11 +227,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
     ///     below isolates exactly the synthesized entry-point method as the sole Method-kind
     ///     candidate declared there.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ProcessEntryPoint_TopLevelStatements_IsUncertainNotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("EntryPointProbe",
             new Dictionary<string, string>
             {
@@ -285,11 +274,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProvedLive_ViaCallsReadsWritesConstructs()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Counter.cs"] = """
@@ -339,11 +326,9 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProjectIdentity_RenamedAndMultiTargeted_SameAnswerAsPlainProject()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B18: Three projects with internal attribute-free properties, using different names
         CreateProject("PlainLib", new Dictionary<string, string>
         {
@@ -414,11 +399,9 @@ internal class MultiLibClass
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProjectIdentity_RenamedProject_ProjectLevelBindingRecordMarksCandidatesUnresolved()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B18: One renamed project with binding incompleteness record
         CreateProject("RenamedLib2", new Dictionary<string, string>
         {
@@ -458,11 +441,9 @@ internal class Helper
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TestProjectDetection_UsesReferences_NotNames()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // F14: Test project detection uses references, not names
         CreateProject("Foo.UnitTests", new Dictionary<string, string>
         {
@@ -526,11 +507,9 @@ internal static class Helper2
         AssertStoreSourceHasNoHardcodedProjectName();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ProcessEntryPoint_ExplicitMain_TypeIsUncertain()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // F13: New test for explicit Main method - type should be UncertainDead, not ProvedDead
         CreateProject("EntryPointProbe", new Dictionary<string, string>
         {
@@ -575,11 +554,9 @@ internal class Program
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task PropertyAndEventAccessors_InheritLivenessFromTheirSymbol()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B24: Test that property and event accessors inherit liveness from their symbol
         CreateProject("TestProject", new Dictionary<string, string>
         {
@@ -680,11 +657,9 @@ internal static class Entry { internal static void Go() => new Holder().Run(); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExtensionBlockProperty_ImplementationAccessorInheritsLiveness()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B24: the read of t.Len gives Reads to the block property; the implementation
         // accessor on the outer static class must inherit that liveness through
         // associated_symbol, so it is not a candidate.
@@ -728,11 +703,9 @@ internal static class Entry { internal static void Go() => new Holder().Run(); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TypeLiveness_InheritsFromMembersAndTypeUses()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B25: Test that type liveness inherits from members and type uses
         CreateProject("TestProject", new Dictionary<string, string>
         {
@@ -799,11 +772,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DelegateParameterType_HasStrongReferenceEdge_NotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B54: a type used only as a delegate's parameter type gets a strong References
         // edge from the delegate type, so it must not surface as a proved-dead candidate.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -834,11 +805,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task LocalFunctionParameterType_HasStrongReferenceEdge_NotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B58: a type used only in a local function's signature gets a strong References
         // edge from the enclosing member, so it must not surface as a proved-dead candidate.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -876,11 +845,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TypedLambdaParameterType_HasStrongReferenceEdge_NotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B63: a type named only as an explicitly typed lambda parameter gets a strong References
         // edge from the enclosing member, so it must not surface as a proved-dead candidate.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -918,11 +885,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExtensionBlockReceiverType_HasStrongReferenceEdge_NotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B58: a type used only as a C# 14 extension block receiver gets a strong References
         // edge from the block members, so it must not surface as a proved-dead candidate.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -959,11 +924,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TypeLiveness_DeadTypeWithSelfCallingMembersStaysDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B25: a call from inside the type does not lift the type — the dead type
         // whose members only call each other stays ProvedDead.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -992,11 +955,9 @@ public static class Api { public static void Go() => Host.Run(null!); }
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CompilerAndRuntimeCalledMembers_AreNotProvedDead()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B26: Test that compiler and runtime called members are not proved dead
         CreateProject("TestProject", new Dictionary<string, string>
         {
@@ -1063,11 +1024,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
     ///     first in the ladder and the target must be public to implicitly satisfy
     ///     an interface.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task PossibleDispatch_InheritedOnly_SurfacesAsPublicSurface()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Worker.cs"] = """
@@ -1110,11 +1069,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Convention_NameCandidate_RuntimeUnknown_Uncertain()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Targets.cs"] = """
@@ -1170,13 +1127,11 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData("internal")]
     [InlineData("public")]
     public async Task BindingIncompleteness_Overlap_Unresolved(string accessibility)
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Util.cs"] = $"namespace TestProject;\n\n{accessibility} static class Util\n{{\n    {accessibility} static void Helper() {{ }}\n}}"
@@ -1212,11 +1167,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task PublicSurface_ExcludedByDefault_FlaggedOnOptIn()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Api.cs"] = """
@@ -1255,11 +1208,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task IncludeGenerated_ToggleBehavior()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Gen.g.cs"] = """
@@ -1294,11 +1245,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task BatchedQuery_NoPerCandidateGetIncomingEdges()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // Architectural invariant (Q5, lurp-phases-report.md Phase 3): the
         // dead-candidate store must never call IEdgeStore.GetIncomingEdges per
         // candidate — incoming LIVE edges are fetched via one batched
@@ -1366,11 +1315,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
     ///     generated document's symbol must stay excluded by default and surface as
     ///     generated_excluded when includeGenerated is set.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task PartialAcrossTwoDocuments_OrderedLocations_AndGeneratedSymbol()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["ZPart.cs"] = """
@@ -1422,15 +1369,17 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             Assert.Equal("src/TestProject/APart.cs", widget.Locations[0].DocumentPath);
             Assert.Equal("src/TestProject/ZPart.cs", widget.Locations[1].DocumentPath);
             Assert.Equal("src/TestProject/APart.cs", widget.DocumentPath);
-            Assert.True(widget.Locations[0].StartLine > 0);
-            Assert.True(widget.Locations[1].StartLine > 0);
+            // start_line is the FullSpan start: the blank line before each `partial class Widget`
+            // counts as leading trivia (same contract as LineNumberBaseTests).
+            Assert.Equal(2, widget.Locations[0].StartLine);
+            Assert.Equal(2, widget.Locations[1].StartLine);
             Assert.False(widget.Locations[0].IsGenerated);
             Assert.False(widget.Locations[1].IsGenerated);
 
             var fromA = Assert.Single(page.Candidates, c => c.SymbolId == fromAId);
             Assert.Single(fromA.Locations);
             Assert.Equal("src/TestProject/APart.cs", fromA.Locations[0].DocumentPath);
-            Assert.True(fromA.Locations[0].StartLine > 0);
+            Assert.Equal(5, fromA.Locations[0].StartLine);
 
             // Generated symbols stay out by default and are flagged on opt-in.
             Assert.DoesNotContain(page.Candidates, c => c.SymbolId == generatedId);
@@ -1453,11 +1402,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
     ///     is_extension_block, then kept out of the candidate universe. Neither the
     ///     marker type nor a block method is a dead candidate.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ExtensionBlock_MarkerTypeAndBlockMethods_AreNotCandidates()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Text.cs"] = """
@@ -1511,11 +1458,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
     ///     not. The implementation on the outer class is the declared symbol (B3 step 2a);
     ///     Roslyn marks it implicit, so its metadata must not drop it from the universe.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task ExtensionBlockMembers_UnusedAreCandidates_UsedAreNot()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Text.cs"] = """
@@ -1576,11 +1521,9 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
             .ToArray();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ObjectCreation_CallsTheConstructor()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B28: a constructor called through new (plain, target-typed or in a field
         // initializer) and an attribute constructor must not be proved_dead.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -1649,11 +1592,9 @@ internal static class Entry
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EventUse_MakesTheEventLive()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B29: subscribing, unsubscribing and raising an event must give the event a
         // live edge; the custom accessors inherit that liveness.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -1709,11 +1650,9 @@ internal static class Entry
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConstantInDefaultValueOrAttribute_IsLive()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B33: constants read only from a parameter default, an attribute argument,
         // an enum member value and an indexer parameter default, plus a method used
         // only as a field-like event initializer, must not be proved_dead.
@@ -1796,11 +1735,9 @@ internal static class Entry
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SerializationConvention_RequiresOptInAttribute()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B31: the serialization convention applies only to a member carrying an
         // opt-in attribute, matched by exact name.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -1864,11 +1801,9 @@ internal static class Entry
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConventionVerdict_IsSharedByAccessorsAndType()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B34: a class that is never created still takes the serialization verdict
         // from its members, and its accessors and type share that verdict.
         CreateProject("TestProject", new Dictionary<string, string>
@@ -1925,11 +1860,9 @@ internal sealed class Serialized
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task TypeUsedOnlyInBodyOrSignature_IsLive()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         // B30: a type named only inside a body (is, catch, a method type argument)
         // or inside a signature (an array element, a generic argument) must not be
         // proved_dead.

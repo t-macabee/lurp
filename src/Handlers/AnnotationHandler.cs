@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using Lurp.Storage;
 using Lurp.Workspace;
 
 namespace Lurp.Handlers;
@@ -9,7 +8,7 @@ internal static class AnnotationHandler
 {
     internal const int DefaultLimit = 100;
 
-    public static void RunAnnotate(string[] args)
+    public static void RunAnnotate(string[] args, IOutputSink output)
     {
         var symbolArg = HandlerBootstrap.RequireArg(args, "--symbol=", "ERROR: --symbol=<symbolId> is required for --mode=annotate.");
         var kindArg = HandlerBootstrap.RequireArg(args, "--annotation-kind=", "ERROR: --annotation-kind=<kind> is required for --mode=annotate.");
@@ -31,7 +30,7 @@ internal static class AnnotationHandler
             // plus the snapshot_id scope makes MAX(annotation_id) unambiguous within this snapshot even when prior
             // snapshots hold their own copies (CopyAnnotationsToSnapshot allocates fresh ids).
             var inserted = store.GetAnnotations(snapshotId).LastOrDefault(a => a.SymbolId == resolvedSymbol && a.Kind == kindArg && a.Value == valueArg);
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 status = "ok",
                 snapshot_id = snapshotId,
@@ -40,10 +39,10 @@ internal static class AnnotationHandler
                 value = valueArg,
                 annotation_id = inserted?.AnnotationId ?? 0
             }, HandlerBootstrap.IndentedJson));
-        });
+        }, output);
     }
 
-    public static void RunRetractAnnotation(string[] args)
+    public static void RunRetractAnnotation(string[] args, IOutputSink output)
     {
         var rawId = HandlerBootstrap.RequireArg(args, "--annotation-id=", "ERROR: --annotation-id=<id> is required for --mode=retract-annotation.");
         if (!long.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var annotationId) || annotationId < 1)
@@ -65,17 +64,17 @@ internal static class AnnotationHandler
             if (!deleted)
                 HandlerBootstrap.Fail($"ERROR: annotation_id {annotationId} not found in snapshot '{snapshotId}'.");
 
-            Console.WriteLine(JsonSerializer.Serialize(new
+            output.WriteLine(JsonSerializer.Serialize(new
             {
                 status = "ok",
                 snapshot_id = snapshotId,
                 annotation_id = annotationId,
                 retracted = true
             }, HandlerBootstrap.IndentedJson));
-        });
+        }, output);
     }
 
-    public static void RunGetAnnotations(string[] args)
+    public static void RunGetAnnotations(string[] args, IOutputSink output)
     {
         var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
         var documentArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--document="));
@@ -129,7 +128,7 @@ internal static class AnnotationHandler
                 return;
             }
 
-            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId);
+            var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var annotations = page.Items.Select(a => new
             {
@@ -155,22 +154,22 @@ internal static class AnnotationHandler
             {
                 case OutputMode.Summary:
                     foreach (var a in annotations)
-                        Console.WriteLine($"{a.kind,-24} {a.symbol_id}  {a.value}  doc={a.document_path ?? "<null>"}");
-                    Console.WriteLine($"-- {annotations.Count}/{page.TotalCount} annotation(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
+                        output.WriteLine($"{a.kind,-24} {a.symbol_id}  {a.value}  doc={a.document_path ?? "<null>"}");
+                    output.WriteLine($"-- {annotations.Count}/{page.TotalCount} annotation(s){(page.NextCursor != null ? "; more available (--cursor)" : "")}");
                     break;
 
                 case OutputMode.Jsonl:
-                    Console.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
+                    output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
                     foreach (var a in annotations)
-                        Console.WriteLine(JsonSerializer.Serialize(new { type = "annotation", annotation = a }, HandlerBootstrap.CompactJson));
+                        output.WriteLine(JsonSerializer.Serialize(new { type = "annotation", annotation = a }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    Console.WriteLine(JsonSerializer.Serialize(
+                    output.WriteLine(JsonSerializer.Serialize(
                         new { snapshot_id = snapshotId, symbol_id = resolvedSymbol, document = normalizedDocument, kind = kindFilter, annotations, annotation_count = page.TotalCount, next_cursor = page.NextCursor, freshness = FreshnessJson.Cheap(freshness) },
                         HandlerBootstrap.IndentedJson));
                     break;
             }
-        });
+        }, output);
     }
 }

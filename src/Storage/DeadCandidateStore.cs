@@ -84,7 +84,7 @@ internal sealed class DeadCandidateStore
         var incompletenessByDocument = BuildUnobservableByDocument(bindingRecords);
         var incompletenessProjects = BuildUnobservableProjects(bindingRecords, projectFacts);
         // Pre-fetch declarations for all candidates in batches
-        var declInfo = FetchDeclarationInfo(snapshotId, allCandidates.Select(c => c.SymbolId).ToList(), includeGenerated);
+        var declInfo = FetchDeclarationInfo(snapshotId, allCandidates.Select(c => c.SymbolId).ToList());
 
         // Apply candidate-universe filters (kind, project, document, generated, tests) in-memory.
         // Metadata is parsed once per candidate row into CandidateFacts and reused by the filter
@@ -525,7 +525,7 @@ internal sealed class DeadCandidateStore
         return result;
     }
 
-    private Dictionary<string, DeclInfo> FetchDeclarationInfo(string snapshotId, List<string> symbolIds, bool includeGenerated)
+    private Dictionary<string, DeclInfo> FetchDeclarationInfo(string snapshotId, List<string> symbolIds)
     {
         var result = new Dictionary<string, DeclInfo>(StringComparer.Ordinal);
         if (symbolIds.Count == 0) return result;

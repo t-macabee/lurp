@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
-using Lurp.Storage;
 using ModelContextProtocol;
 
 namespace Lurp.Tests.Mcp;
@@ -61,7 +60,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_DefaultSeverityFilter_ExcludesHidden()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -75,23 +74,22 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
         using var docHidden = JsonDocument.Parse(jsonHidden);
         var hiddenCount = docHidden.RootElement.GetProperty("diagnostic_count").GetInt32();
 
-        // All diagnostics (no filter) = default + hidden
-        var jsonAll = tool.LurpDiagnostics(severity: "Info");
+        // severity=all returns every row, so it must be exactly default + hidden.
+        var jsonAll = tool.LurpDiagnostics(severity: "all");
         using var docAll = JsonDocument.Parse(jsonAll);
-        var infoCount = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
+        var allCount = docAll.RootElement.GetProperty("diagnostic_count").GetInt32();
 
-        // The default view should have fewer-or-equal diagnostics than the hidden-only view
-        // (since default excludes hidden, and hidden-only shows only hidden).
-        // We can't assert exact numbers without knowing Roslyn's output, but we can
-        // verify that requesting severity=Hidden doesn't throw and returns >= 0.
-        Assert.True(hiddenCount >= 0);
-        Assert.True(defaultCount >= 0);
+        // The fixture's five unused locals each produce a CS0219 warning.
+        Assert.True(defaultCount >= 5, $"expected at least 5 default diagnostics, got {defaultCount}");
+        Assert.Equal(defaultCount + hiddenCount, allCount);
+        foreach (var d in docDefault.RootElement.GetProperty("diagnostics").EnumerateArray())
+            Assert.NotEqual("Hidden", d.GetProperty("severity").GetString());
     }
 
     [Fact]
     public async Task Diagnostics_ExplicitSeverityHidden_IncludesHiddenRows()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -153,7 +151,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_PathNormalization_IsGitRelativeForwardSlashed()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -179,7 +177,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_LineNumbers_AreOneBased()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -206,7 +204,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_ProjectFilter_NarrowsToProject()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -222,7 +220,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_IdFilter_NarrowsToCode()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
 
         // Discover what diagnostic IDs exist
         string targetId;
@@ -249,7 +247,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_Pagination_WalkEqualsWhole()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -364,7 +362,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_LimitLessThanOne_ThrowsInvalidParams()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -375,7 +373,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_InSnapshot_ComputedCorrectly()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 
@@ -423,7 +421,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
                 }
                 """
         });
-        var snapshotId = await RunFullIndexAsync(DbPath);
+        await RunFullIndexAsync(DbPath);
 
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
@@ -541,7 +539,7 @@ public sealed class McpDiagnosticsTests : IntegrationTestBase
     [Fact]
     public async Task Diagnostics_CursorFingerprint_ChangesWithIncludeGenerated()
     {
-        var snapshotId = await IndexDiagnosticsFixtureAsync();
+        await IndexDiagnosticsFixtureAsync();
         await using var session = CreateSession();
         var tool = new DiagnosticsTool(session);
 

@@ -1,7 +1,6 @@
 using Lurp.Storage;
 using Lurp.Storage.Migrations;
 using Lurp.Workspace;
-using Microsoft.Build.Locator;
 
 namespace Lurp.Tests;
 
@@ -78,11 +77,9 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
         Assert.Empty(store.GetMetrics("snap-delete"));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FullAndIncrementalIndex_RecordPeakWorkingSetAndSolutionLoad()
     {
-        Skip.If(!MSBuildLocator.IsRegistered, "MSBuild is not available on this system.");
-
         CreateProject("MetricsProj", new Dictionary<string, string>
         {
             ["Models.cs"] = "namespace MetricsProj { public class Foo { public void Bar() {} } }"
