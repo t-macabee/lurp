@@ -130,7 +130,7 @@ which start a background (re-)index or a retraction through a separate writer co
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server---modeserve)).
 
 Read commands never migrate `index.db`. They refuse a database whose schema
-version differs from `VersionConstants.DatabaseSchemaVersion` and name the fix
+version differs from `MigrationRunner.LatestVersion` (the highest migration number) and name the fix
 (`--mode=index`, or a newer Lurp). The exception is `status`, which reports
 both versions and exits 0. Only `index`, `pin-snapshot` and `lurp_index`
 migrate.

@@ -49,7 +49,7 @@ attribute APIs. NuGet and GitHub Actions updates are watched by
 
 ## CLI/MCP contract versioning
 
-Lurp's DB schema is versioned via `MigrationRunner.GetCurrentSchemaVersion` (the
+Lurp's DB schema is versioned by its migrations: `MigrationRunner.LatestVersion` is the highest migration number (the
 migrations are tested by `SchemaMigrationRoundTripTests`). The equivalent for the CLI/MCP surface that
 other agents integrate against is `VersionConstants.CliMcpContractVersion`
 (`src/Workspace/VersionConstants.cs`), exposed in `status --json` as `contract_version`

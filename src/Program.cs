@@ -222,7 +222,7 @@ public static class Program
     {
         return
             $"lurp {VersionConstants.ToolVersion}\n" +
-            $"  schema v{VersionConstants.DatabaseSchemaVersion}  extractor v{VersionConstants.ExtractorVersion}  cli/mcp contract v{VersionConstants.CliMcpContractVersion}  output schema v{VersionConstants.OutputSchemaVersion}";
+            $"  schema v{MigrationRunner.LatestVersion}  extractor v{VersionConstants.ExtractorVersion}  cli/mcp contract v{VersionConstants.CliMcpContractVersion}  output schema v{VersionConstants.OutputSchemaVersion}";
     }
 
     public static async Task Main(string[] args)

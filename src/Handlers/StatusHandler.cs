@@ -48,7 +48,7 @@ internal static class StatusHandler
         try
         {
             var schemaVersion = store.GetCurrentSchemaVersion();
-            if (schemaVersion != VersionConstants.DatabaseSchemaVersion)
+            if (schemaVersion != MigrationRunner.LatestVersion)
             {
                 ReportSchemaMismatch(dbPath, schemaVersion, asJson, output);
                 return;
@@ -97,7 +97,7 @@ internal static class StatusHandler
 
     private static void ReportSchemaMismatch(string dbPath, int actualVersion, bool asJson, IOutputSink output)
     {
-        var expectedVersion = VersionConstants.DatabaseSchemaVersion;
+        var expectedVersion = MigrationRunner.LatestVersion;
         var explanation = actualVersion < expectedVersion
             ? $"Index database at {dbPath} uses schema v{actualVersion}; this Lurp needs v{expectedVersion}. Run 'lurp --mode=index' to update it."
             : $"Index database at {dbPath} uses schema v{actualVersion}, newer than this Lurp (v{expectedVersion}). Update Lurp.";

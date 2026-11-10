@@ -15,6 +15,12 @@ public class MigrationRunner
 
     public static IReadOnlyList<int> MigrationVersions => [.. GetMigrations().Select(static migration => migration.Version)];
 
+    /// <summary>
+    ///     The schema version this build creates and reads: the highest registered migration
+    ///     number. It is the one source of the schema version (D105); a new migration moves it.
+    /// </summary>
+    public static int LatestVersion { get; } = MigrationVersions.Max();
+
     public void RunMigrations()
     {
         // Foreign keys are off for the whole run: SQLite ignores the pragma inside a transaction,

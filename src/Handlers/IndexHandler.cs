@@ -60,7 +60,7 @@ internal static class IndexHandler
 
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         store.RunMigrations();
-        store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
+        store.ValidateSchema(MigrationRunner.LatestVersion);
 
         try
         {

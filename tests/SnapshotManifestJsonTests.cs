@@ -274,7 +274,7 @@ public sealed class SnapshotManifestJsonTests
             SdkVersion = "10.0.100",
             CompilerVersion = "4.12.0.0",
             CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
+            DatabaseSchemaVersion = MigrationRunner.LatestVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
             ExtractorVersion = VersionConstants.ExtractorVersion,
             ToolVersion = VersionConstants.ToolVersion,

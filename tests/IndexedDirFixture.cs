@@ -37,7 +37,7 @@ internal static class IndexedDirFixture
                     GitRoot = "gitroot",
                     SolutionPath = "solution.sln",
                     CreatedAtUtc = DateTime.UtcNow.AddMinutes(i),
-                    DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
+                    DatabaseSchemaVersion = MigrationRunner.LatestVersion,
                     OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
                     ExtractorVersion = VersionConstants.ExtractorVersion,
                     ToolVersion = VersionConstants.ToolVersion

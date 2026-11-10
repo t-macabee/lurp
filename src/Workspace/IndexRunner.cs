@@ -329,7 +329,7 @@ public static class IndexRunner
             if (fullWarning != null)
                 sink.WriteErrorLine(fullWarning);
             sink.WriteLine($"  diagnostics_extracted_this_run:      {totalDiagnostics}      diagnostics_in_snapshot: {diagnosticsInSnapshot}");
-            sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+            sink.WriteLine($"  Schema v{MigrationRunner.LatestVersion}");
 
             // Step: Build FTS search index
             // Preconditions: declarations, document/symbol snapshot membership,
@@ -474,6 +474,6 @@ public static class IndexRunner
         if (warning != null)
             sink.WriteErrorLine(warning);
         sink.WriteLine($"  diagnostics_extracted_this_run:      {result.DiagnosticsExtracted}      diagnostics_in_snapshot: {store.CountDiagnostics(result.NewSnapshotId)}");
-        sink.WriteLine($"  Schema v{VersionConstants.DatabaseSchemaVersion}");
+        sink.WriteLine($"  Schema v{MigrationRunner.LatestVersion}");
     }
 }

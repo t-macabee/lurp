@@ -49,7 +49,7 @@ public sealed class SchemaVersionGuardTests : IDisposable
 
     private string Message(int actualVersion)
     {
-        var expected = VersionConstants.DatabaseSchemaVersion;
+        var expected = MigrationRunner.LatestVersion;
         return actualVersion < expected
             ? $"ERROR: Index database at {_dbPath} uses schema v{actualVersion}; this Lurp needs v{expected}. Run 'lurp --mode=index' to update it."
             : $"ERROR: Index database at {_dbPath} uses schema v{actualVersion}, newer than this Lurp (v{expected}). Update Lurp.";
@@ -95,15 +95,15 @@ public sealed class SchemaVersionGuardTests : IDisposable
         using (var connection = TestDatabase.Open(_dbPath))
         {
             using var command = connection.CreateCommand();
-            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({VersionConstants.DatabaseSchemaVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({MigrationRunner.LatestVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
             command.ExecuteNonQuery();
         }
 
         var ex = Assert.Throws<CliExitException>(() =>
             GrepHandler.Run([$"--output-dir={_outputDir}", "--query=Foo"], new CapturingOutputSink()));
 
-        Assert.Equal(Message(VersionConstants.DatabaseSchemaVersion + 1), ex.Message);
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        Assert.Equal(Message(MigrationRunner.LatestVersion + 1), ex.Message);
+        Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
     }
 
     [Fact]
@@ -175,15 +175,15 @@ public sealed class SchemaVersionGuardTests : IDisposable
         using (var connection = TestDatabase.Open(_dbPath))
         {
             using var command = connection.CreateCommand();
-            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({VersionConstants.DatabaseSchemaVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({MigrationRunner.LatestVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
             command.ExecuteNonQuery();
         }
 
         var tool = new RefreshTool(session);
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpRefresh());
 
-        Assert.Equal(Message(VersionConstants.DatabaseSchemaVersion + 1), ex.Message);
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        Assert.Equal(Message(MigrationRunner.LatestVersion + 1), ex.Message);
+        Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
         Assert.Equal(snapshotId, session.PinnedSnapshotId);
     }
 

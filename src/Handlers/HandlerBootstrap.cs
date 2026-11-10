@@ -288,7 +288,7 @@ internal static class HandlerBootstrap
     public static void RequireCurrentSchemaVersion(string dbPath)
     {
         var actual = new SqliteIndexStore(dbPath).GetCurrentSchemaVersion();
-        var expected = VersionConstants.DatabaseSchemaVersion;
+        var expected = MigrationRunner.LatestVersion;
         if (actual == expected)
             return;
 

@@ -22,7 +22,7 @@ internal static class PinSnapshotHandler
         try
         {
             store.RunMigrations();
-            store.ValidateSchema(VersionConstants.DatabaseSchemaVersion);
+            store.ValidateSchema(MigrationRunner.LatestVersion);
 
             // Clear path: --clear or --snapshot=latest
             var isLatestLiteral = string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase);

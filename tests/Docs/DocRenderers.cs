@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Lurp.Mcp;
+using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol.Server;
 
@@ -14,7 +15,7 @@ internal static class DocRenderers
         [FlagCatalog.Output, FlagCatalog.Quiet, FlagCatalog.Freshness, FlagCatalog.RequireFresh];
 
     internal static string RenderVersionFacts() =>
-        $"tool {VersionConstants.ToolVersion}, schema v{VersionConstants.DatabaseSchemaVersion}, " +
+        $"tool {VersionConstants.ToolVersion}, schema v{MigrationRunner.LatestVersion}, " +
         $"extractor {VersionConstants.ExtractorVersion}, CLI/MCP contract v{VersionConstants.CliMcpContractVersion}, " +
         $"output schema v{VersionConstants.OutputSchemaVersion}";
 

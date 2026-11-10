@@ -19,7 +19,7 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
         var runner = new MigrationRunner(dbPath);
         runner.RunMigrations();
 
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
+        Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
         using (var connection = TestDatabase.Open(dbPath))
         {
@@ -39,7 +39,7 @@ public sealed class SnapshotMetricsTests : IntegrationTestBase
         }
 
         runner.RunMigrations();
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, runner.GetCurrentSchemaVersion());
+        Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lurp.Storage;
 using Lurp.Storage.Migrations;
 using Lurp.Workspace;
@@ -15,18 +16,29 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void MigrationList_IsExactlyOneToDatabaseSchemaVersion_AndTypeNamesMatch()
+    public void MigrationList_MatchesTheMigrationFiles_AndLatestVersionIsTheHighest()
     {
-        var versions = MigrationRunner.MigrationVersions.OrderBy(static v => v).ToList();
-        Assert.Equal(Enumerable.Range(1, VersionConstants.DatabaseSchemaVersion), versions);
+        // Oracle: the migration source files on disk (D105), one file Migration_NNN_<Name>.cs for
+        // each migration, numbered 1..N without a gap. The registered list, the migration types in
+        // the assembly and LatestVersion must all agree with the files.
+        var files = Directory.GetFiles(Path.Combine(TestRepoRoot.Find(), "src", "Storage", "Migrations"), "Migration_*.cs")
+            .Select(static path => Path.GetFileNameWithoutExtension(path))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        var fileVersions = files
+            .Select(static name => int.Parse(name.AsSpan("Migration_".Length, 3), CultureInfo.InvariantCulture))
+            .ToList();
 
-        var migrations = typeof(MigrationRunner).Assembly
+        Assert.Equal(Enumerable.Range(1, files.Count), fileVersions);
+        Assert.Equal(fileVersions, MigrationRunner.MigrationVersions.Order());
+        Assert.Equal(fileVersions[^1], MigrationRunner.LatestVersion);
+
+        var typeNames = typeof(MigrationRunner).Assembly
             .GetTypes()
             .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
-            .Select(static t => (Type: t, Migration: (IMigration)Activator.CreateInstance(t)!));
-
-        foreach (var (type, migration) in migrations)
-            Assert.StartsWith($"Migration_{migration.Version:D3}_", type.Name);
+            .Select(static t => t.Name)
+            .Order(StringComparer.Ordinal);
+        Assert.Equal(files, typeNames);
     }
 
     [Fact]
@@ -36,7 +48,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         runner.RunMigrations();
 
         var current = runner.GetCurrentSchemaVersion();
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion, current);
+        Assert.Equal(MigrationRunner.LatestVersion, current);
     }
 
     [Fact]
@@ -168,7 +180,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         store.Open();
         try
         {
-            var ex = Record.Exception(() => store.ValidateSchema(VersionConstants.DatabaseSchemaVersion));
+            var ex = Record.Exception(() => store.ValidateSchema(MigrationRunner.LatestVersion));
             Assert.Null(ex);
         }
         finally
@@ -216,7 +228,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             new MigrationRunner(dbPath).RunMigrations();
 
             var finalVersion = new MigrationRunner(dbPath).GetCurrentSchemaVersion();
-            Assert.Equal(VersionConstants.DatabaseSchemaVersion, finalVersion);
+            Assert.Equal(MigrationRunner.LatestVersion, finalVersion);
 
             using var store = new SqliteIndexStore(dbPath);
             store.Open();
@@ -285,7 +297,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             new MigrationRunner(dbPath).RunMigrations();
 
             var finalVersion = new MigrationRunner(dbPath).GetCurrentSchemaVersion();
-            Assert.Equal(VersionConstants.DatabaseSchemaVersion, finalVersion);
+            Assert.Equal(MigrationRunner.LatestVersion, finalVersion);
 
             using var verify = TestDatabase.OpenReadOnly(dbPath);
 
@@ -325,7 +337,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         var ex = Assert.Throws<InvalidOperationException>(() => new MigrationRunner(_dbPath).RunMigrations());
         Assert.Contains("snapshot_documents", ex.Message);
-        Assert.Equal(VersionConstants.DatabaseSchemaVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+        Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
         using var indexCommand = verify.CreateCommand();

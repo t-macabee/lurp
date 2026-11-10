@@ -35,7 +35,7 @@ public sealed class PinSnapshotTests : IDisposable
             SdkVersion = "10.0.100",
             CompilerVersion = "4.0",
             CreatedAtUtc = builtAt,
-            DatabaseSchemaVersion = Lurp.Workspace.VersionConstants.DatabaseSchemaVersion,
+            DatabaseSchemaVersion = Lurp.Storage.MigrationRunner.LatestVersion,
             OutputSchemaVersion = Lurp.Workspace.VersionConstants.OutputSchemaVersion,
             ExtractorVersion = Lurp.Workspace.VersionConstants.ExtractorVersion,
             ToolVersion = Lurp.Workspace.VersionConstants.ToolVersion,

@@ -87,7 +87,7 @@ public sealed partial class SnapshotManifest
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
-            DatabaseSchemaVersion = VersionConstants.DatabaseSchemaVersion,
+            DatabaseSchemaVersion = MigrationRunner.LatestVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
             ExtractorVersion = VersionConstants.ExtractorVersion,
             ToolVersion = VersionConstants.ToolVersion,

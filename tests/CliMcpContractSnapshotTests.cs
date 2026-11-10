@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Xml.Linq;
+using Lurp.Storage;
 using Lurp.Workspace;
 using ModelContextProtocol.Server;
 
@@ -20,15 +22,24 @@ public sealed class CliMcpContractSnapshotTests
     }
 
     [Fact]
-    public void ToolVersion_MatchesAssemblyPackageVersion()
+    public void OutputSchemaVersion_IsExpected()
     {
-        // The csproj <Version> is the published NuGet/dotnet-tool version and drives
-        // the Lurp assembly version; ToolVersion is what `lurp --version` prints and
-        // what snapshot manifests stamp. The two must never disagree again — bump
-        // both together (or this test fails).
-        var assemblyVersion = typeof(VersionConstants).Assembly.GetName().Version!;
-        Assert.Equal(VersionConstants.ToolVersion,
-            $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}");
+        // D102: the capsule document version. Source: RELEASE_NOTES_3.6.0.md "Versions" table
+        // (Output schema v6) and RELEASE_NOTES_3.0.0.md (5 -> 6). It moves only on a breaking
+        // change of the capsule document (VERSIONING.md).
+        Assert.Equal(6, VersionConstants.OutputSchemaVersion);
+    }
+
+    [Fact]
+    public void ToolVersion_IsTheCsprojVersion()
+    {
+        // Oracle: the one <Version> property of src/Lurp.csproj (D105). ToolVersion is derived from
+        // the assembly's informational version; this checks the derivation, including the "+<commit>"
+        // suffix that the SDK appends in a git checkout.
+        var csproj = XDocument.Load(Path.Combine(TestRepoRoot.Find(), "src", "Lurp.csproj"));
+        var version = Assert.Single(csproj.Root!.Elements("PropertyGroup").Elements("Version")).Value.Trim();
+
+        Assert.Equal(version, VersionConstants.ToolVersion);
     }
 
     [Fact]
@@ -39,7 +50,7 @@ public sealed class CliMcpContractSnapshotTests
         var lines = output.Split('\n');
         Assert.Equal(2, lines.Length);
         Assert.Equal($"lurp {VersionConstants.ToolVersion}", lines[0]);
-        Assert.Contains($"schema v{VersionConstants.DatabaseSchemaVersion}", lines[1]);
+        Assert.Contains($"schema v{MigrationRunner.LatestVersion}", lines[1]);
         Assert.Contains($"extractor v{VersionConstants.ExtractorVersion}", lines[1]);
         Assert.Contains($"cli/mcp contract v{VersionConstants.CliMcpContractVersion}", lines[1]);
         Assert.Contains($"output schema v{VersionConstants.OutputSchemaVersion}", lines[1]);
