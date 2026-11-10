@@ -660,6 +660,57 @@ function Get-FreeLoopbackPort {
   }
 }
 
+function Write-Csproj([string]$Directory, [string]$Body) {
+  $path = Join-Path $Directory 'Lurp.csproj'
+  Set-Content -LiteralPath $path -Value "<Project Sdk=`"Microsoft.NET.Sdk`">`n$Body`n</Project>" -Encoding utf8
+  return $path
+}
+
+Test-Case 'Get-LurpVersion reads the Version property and ignores a commented one' {
+  $dir = New-TempDirectory
+  try {
+    $path = Write-Csproj $dir "  <!-- <Version>9.9.9</Version> -->`n  <PropertyGroup>`n    <Version>3.6.1</Version>`n  </PropertyGroup>"
+    Assert-Equal '3.6.1' (Get-LurpVersion $path) 'version'
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-LurpVersion throws a named error when the project has no Version property' {
+  $dir = New-TempDirectory
+  try {
+    $path = Write-Csproj $dir "  <PropertyGroup>`n    <OutputType>Exe</OutputType>`n  </PropertyGroup>"
+    Assert-Throws { Get-LurpVersion $path } "Get-LurpVersion: '$path' must have exactly one <Version> property; found 0."
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-LurpVersion throws a named error when the project has two Version properties' {
+  $dir = New-TempDirectory
+  try {
+    $path = Write-Csproj $dir "  <PropertyGroup>`n    <Version>1.0.0</Version>`n  </PropertyGroup>`n  <PropertyGroup Condition=`"'`$(Configuration)' == 'Release'`">`n    <Version>2.0.0</Version>`n  </PropertyGroup>"
+    Assert-Throws { Get-LurpVersion $path } "Get-LurpVersion: '$path' must have exactly one <Version> property; found 2."
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-LurpVersion throws a named error when the Version property is empty' {
+  $dir = New-TempDirectory
+  try {
+    $path = Write-Csproj $dir "  <PropertyGroup>`n    <Version> </Version>`n  </PropertyGroup>"
+    Assert-Throws { Get-LurpVersion $path } "Get-LurpVersion: the <Version> property in '$path' is empty."
+  } finally {
+    Remove-Item -Recurse -Force $dir
+  }
+}
+
+Test-Case 'Get-LurpVersion throws a named error when the project file does not exist' {
+  $path = Join-Path ([IO.Path]::GetTempPath()) "$([guid]::NewGuid().ToString('N')).csproj"
+  Assert-Throws { Get-LurpVersion $path } "Get-LurpVersion: '$path' does not exist."
+}
+
 # One local HTTP server for the Invoke-NuGetRequest cases: /ok answers 200 with
 # a known body, every other path 404.
 $script:ServerPrefix = "http://localhost:$(Get-FreeLoopbackPort)/"

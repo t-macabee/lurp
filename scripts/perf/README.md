@@ -76,7 +76,7 @@ Build and install the packed tool exactly as CI does, then pass it through `--lu
 
 ```powershell
 dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
-$version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+Import-Module ./scripts/ci/LurpCi.psm1 -Force; $version = Get-LurpVersion
 dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
 dotnet run --project scripts/perf/harness -c Release -- --fixture=C:\perf\1x --work=C:\perf\work --out=C:\perf\results\1x-packed.json --runs=1 --warmup=0 --lurp-cmd="C:\repo\t\lurp.exe"
 ```

@@ -96,7 +96,7 @@ jobs:
           }
           git -C target merge-base --is-ancestor $sha origin/main
           if ($LASTEXITCODE -ne 0) { throw "$sha is not on main" }
-          $version = (Select-String -Path target/src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          $version = Get-LurpVersion -ProjectPath target/src/Lurp.csproj
           if ($t.Tag) {
             $tagVersion = $t.Tag -replace '^v', ''
             if ($version -ne $tagVersion) {

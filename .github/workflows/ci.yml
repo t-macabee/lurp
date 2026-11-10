@@ -131,7 +131,8 @@ jobs:
       - name: Install packed tool
         shell: pwsh
         run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $version = Get-LurpVersion
           dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
           $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
           & $lurp --version
@@ -139,7 +140,8 @@ jobs:
       - name: Packed-tool smoke (SDK)
         shell: pwsh
         run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $version = Get-LurpVersion
           $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
           ./scripts/smoke/packed-tool-smoke.ps1 -Lurp $lurp -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -WorkDir "$env:RUNNER_TEMP/lurp-smoke-work"
 
@@ -165,7 +167,8 @@ jobs:
       - name: Runtime-only smoke
         shell: pwsh
         run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $version = Get-LurpVersion
           $lurp = if ($IsWindows) { './t/lurp.exe' } else { './t/lurp' }
           ./scripts/smoke/runtime-only-smoke.ps1 -Lurp $lurp -ExpectedVersion $version -DbDir "$env:RUNNER_TEMP/lurp-smoke-db" -RuntimeDir "$env:RUNNER_TEMP/dotnet-runtime" -SolutionPath "$env:RUNNER_TEMP/lurp-smoke-work/src/Smoke.slnx"
 

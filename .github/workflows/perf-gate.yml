@@ -44,7 +44,8 @@ jobs:
       - name: Install packed tool
         shell: pwsh
         run: |
-          $version = (Select-String -Path src/Lurp.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          Import-Module ./scripts/ci/LurpCi.psm1 -Force
+          $version = Get-LurpVersion
           dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
 
       - name: Generate 4x fixture

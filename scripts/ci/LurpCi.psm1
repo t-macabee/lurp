@@ -237,4 +237,20 @@ function Resolve-ReleaseTarget([string]$EventName, [string]$RefName, [string]$Re
   return [pscustomobject]@{ Ref = $RefInput; Tag = ''; DryRun = $true }
 }
 
-Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Resolve-ReleaseTarget
+function Get-LurpVersion([string]$ProjectPath = 'src/Lurp.csproj') {
+  if (-not (Test-Path -LiteralPath $ProjectPath -PathType Leaf)) {
+    throw "Get-LurpVersion: '$ProjectPath' does not exist."
+  }
+  [xml]$project = Get-Content -LiteralPath $ProjectPath -Raw
+  $nodes = @($project.SelectNodes('/Project/PropertyGroup/Version'))
+  if ($nodes.Count -ne 1) {
+    throw "Get-LurpVersion: '$ProjectPath' must have exactly one <Version> property; found $($nodes.Count)."
+  }
+  $version = $nodes[0].InnerText.Trim()
+  if ($version.Length -eq 0) {
+    throw "Get-LurpVersion: the <Version> property in '$ProjectPath' is empty."
+  }
+  return $version
+}
+
+Export-ModuleMember -Function Test-CommitSha, Get-VulnerablePackageHits, Assert-NoVulnerablePackages, Assert-NupkgDigest, Resolve-CiRun, Select-SuccessfulRunId, Get-CiNupkg, Write-ParityStatus, Get-CatalogRepositoryCommit, Get-CatalogCommitDecision, Get-HttpRetryDecision, Invoke-NuGetRequest, Wait-CatalogCommit, Test-ParityPass, Select-ParityStatus, Get-ParityStatus, Test-VersionListed, Test-NuGetVersionListed, Get-NuspecCommit, Resolve-ReleaseTarget, Get-LurpVersion
