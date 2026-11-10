@@ -683,7 +683,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             "compiler_proved",
             "Calls",
             source);
-        Assert.Equal(source.Length / ContextAssembler.CharsPerToken, ContextAssembler.EstimateTokens(withSource));
+        // CLI_REFERENCE.md "estimated_tokens": characters / 3. The source is 36 characters: 36 / 3 = 12.
+        Assert.Equal(12, ContextAssembler.EstimateTokens(withSource));
 
         // The anchor pass keeps the string overload: a null anchor source stays 0
         // (the anchor carries no JSON framing).
