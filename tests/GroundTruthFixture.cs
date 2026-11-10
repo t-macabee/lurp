@@ -23,6 +23,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
     public string SolutionPath { get; private set; } = "";
     public List<ExtractedFact> Facts { get; } = [];
     public List<(string Project, Compilation Compilation)> Compilations { get; } = [];
+    public List<CompilationFactExtractor.ExtractionResult> Results { get; } = [];
     public Solution? Solution { get; private set; }
     public int DeclaredCount { get; private set; }
     public IReadOnlyList<string> DeclaredSample { get; private set; } = [];
@@ -59,6 +60,7 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
             var options = CompilationFactExtractor.CreateOptions();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, GroundTruthSnapshotId, project.Name, project, options);
             result.EnsureRequiredSuccess();
+            Results.Add(result);
             perProject.Add((compilation, result.Edges, result.Declarations));
 
             foreach (var declaration in result.Declarations)
@@ -193,8 +195,18 @@ public sealed class CrossProjectGroundTruthFixture : GroundTruthFixtureBase
     protected override string SolutionRelativePath => Path.Combine("CrossProject", "CrossProject.CSharp.slnx");
 }
 
+/// <summary>
+///     Fixture 3: the D103 extractor version gate corpus: one shape for each framework adapter and
+///     for each edge extractor that the other corpora do not reach.
+/// </summary>
+public sealed class ExtractorGateFixture : GroundTruthFixtureBase
+{
+    protected override string SolutionRelativePath => Path.Combine("ExtractorGate", "ExtractorGate.slnx");
+}
+
 public sealed record GoldenFact(string Id, string Source, string Kind, string Target, string Reason);
 
 [CollectionDefinition("GroundTruth", DisableParallelization = true)]
 public sealed class GroundTruthSuite
-    : ICollectionFixture<GroundTruthFixture>, ICollectionFixture<CrossProjectGroundTruthFixture>;
+    : ICollectionFixture<GroundTruthFixture>, ICollectionFixture<CrossProjectGroundTruthFixture>,
+      ICollectionFixture<ExtractorGateFixture>;

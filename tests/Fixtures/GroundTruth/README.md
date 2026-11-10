@@ -4,7 +4,7 @@ Committed, indexable source corpora for the B1 ground-truth work. Consumers:
 Phase 4 fixtures the packed tool, Phase 6 uses `CallShapes` for the
 tree-integrity check, Phase 7 runs the golden, Oracle A (exact set) and Oracle B
 (`SymbolFinder` caller recall) tests against `CallShapes` and the VB boundary test
-against `NonCSharp`, and Phase 10 runs the doc examples against them.
+against `NonCSharp`, the extractor version gate extracts `CallShapes`, `CrossProject` and `ExtractorGate`, and Phase 10 runs the doc examples against them.
 
 Restore a solution before an MSBuildWorkspace consumer loads it; no `obj/` assets
 are committed. Index output belongs outside the fixture tree.
@@ -31,6 +31,13 @@ are committed. Index output belongs outside the fixture tree.
 - `NonCSharp/NonCSharp.slnx` — one C# project plus the VB project. A full index
   skips the VB project and prints the `non_csharp_projects` boundary warning
   (audit B6/Q12b). `CrossProjectBoundaryTests` runs this through the CLI.
+- `ExtractorGate/` — Fixture 3: the corpus of the extractor version gate
+  (`ExtractorVersionGateTests`, D103). `ExtractorGate.App` holds one shape for
+  each framework adapter (controller, DI registration and Scrutor scan, MediatR
+  handler, EF Core `DbContext` with a query filter, `[JsonPropertyName]`) and for
+  the `Hides` and `Reflection` extractors; `ExtractorGate.Tests` is an xUnit
+  project for the test adapter. It references MediatR, EF Core, Scrutor and
+  xUnit, so a restore needs those packages.
 - `Directory.Build.props` — turns analyzers and warnings-as-errors off for these
   projects only: the fixtures deliberately use instance members a consumer
   pattern requires, public fields, and other shapes the repo rule set flags.
