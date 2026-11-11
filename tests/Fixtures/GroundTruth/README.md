@@ -76,6 +76,7 @@ are committed. Index output belongs outside the fixture tree.
 | Static constructor, finalizer, init accessor, accessor-bodied getter | `ShapeLifecycle` |
 | `ref struct`, unsafe pointer | `ShapeRefStruct`, `ShapeUnsafe` |
 | Records (including the `with` receiver) | `ShapeRecord` |
+| `using` and `await using` targets: interface, explicit implementation, ref struct, `IAsyncDisposable`, inherited implementation, nullable reference, interface constraint, `dynamic` | `ShapeUsingCallers` (resource types in `ShapeDisposables.cs`) |
 
 Source-generated code and Razor/Blazor stay permanent declared boundaries; their
 registry entries and existing provenance tests cover them, and neither can be

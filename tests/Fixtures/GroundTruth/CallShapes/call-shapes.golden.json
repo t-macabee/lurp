@@ -2455,6 +2455,102 @@
         "tracking": "S01-F37",
         "reason": "the extractors skip implicitly declared members"
       }
+    },
+    {
+      "id": "gt-298",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromInterfaceUsing(CallShapes.Core.IShapeDisposable)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.IShapeDisposable",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.IShapeDisposable. The using target is System.IDisposable.Dispose, which is outside the fixture."
+    },
+    {
+      "id": "gt-299",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromExplicitUsing(CallShapes.Core.ShapeExplicitResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeExplicitResource.System#IDisposable#Dispose",
+      "basis": "convention:D10",
+      "reason": "using: the explicit implementation of IDisposable.Dispose is the target."
+    },
+    {
+      "id": "gt-300",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromExplicitUsing(CallShapes.Core.ShapeExplicitResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeExplicitResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeExplicitResource."
+    },
+    {
+      "id": "gt-301",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromRefStructUsing",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeRefResource.Dispose",
+      "basis": "language-rule",
+      "reason": "using on a ref struct: the Dispose pattern method is the target."
+    },
+    {
+      "id": "gt-302",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromRefStructUsing",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeRefResource",
+      "basis": "symbolfinder",
+      "reason": "Object creation: constructs T:CallShapes.Core.ShapeRefResource."
+    },
+    {
+      "id": "gt-303",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromRefStructUsing",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeRefResource",
+      "basis": "symbolfinder",
+      "reason": "Local declaration: 'using var resource' has the inferred type T:CallShapes.Core.ShapeRefResource."
+    },
+    {
+      "id": "gt-304",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromAwaitUsing(CallShapes.Core.ShapeAsyncResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeAsyncResource.DisposeAsync",
+      "basis": "convention:D10",
+      "reason": "await using: the implementation of IAsyncDisposable.DisposeAsync is the target."
+    },
+    {
+      "id": "gt-305",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromAwaitUsing(CallShapes.Core.ShapeAsyncResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeAsyncResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeAsyncResource."
+    },
+    {
+      "id": "gt-306",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromInheritedUsing(CallShapes.Core.ShapeDerivedResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBaseResource.Dispose",
+      "basis": "convention:D10",
+      "reason": "using: the inherited implementation of IDisposable.Dispose (on the base class) is the target."
+    },
+    {
+      "id": "gt-307",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromInheritedUsing(CallShapes.Core.ShapeDerivedResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeDerivedResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeDerivedResource."
+    },
+    {
+      "id": "gt-308",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromNullableUsing(CallShapes.Core.ShapeResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeResource.Dispose",
+      "basis": "convention:D10",
+      "reason": "using on a nullable reference: the implementation of IDisposable.Dispose is the target."
+    },
+    {
+      "id": "gt-309",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromNullableUsing(CallShapes.Core.ShapeResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeResource."
     }
   ],
   "excluded": [
@@ -2507,6 +2603,10 @@
     {
       "id": "note-csharp14-extension-block",
       "reason": "A call to a C# 14 block method binds to a compiler-made nested symbol (M:CallShapes.Core.ShapeTextExtensions.<G>$0A9D361FAFE148655B241EBC2970963E.BlockWordCount). Roslyn's AssociatedExtensionImplementation maps it to M:CallShapes.Core.ShapeTextExtensions.BlockWordCount(CallShapes.Core.ShapeText), the fact target. A block property has no implementation symbol, so its reads and writes target the block property (P:...<G>$....BlockTag). Accessor bodies are owned by the implementation accessor."
+    },
+    {
+      "id": "note-using-shapes",
+      "reason": "ShapeUsingCallers holds one using for each target branch of mapping rule 9. FromInterfaceUsing and FromInterfaceConstrainedUsing target System.IDisposable.Dispose, and FromDynamicUsing has no static target, so these three members have no using fact."
     }
   ]
 }

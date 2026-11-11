@@ -58,7 +58,8 @@ public sealed class ExtractorVersionGateTests(
             var sameOutput = old.Hash == row.Hash;
             if (sameVersion && !sameOutput)
                 problems.Add($"{row.Name}: the output changed ({old.Rows} -> {row.Rows} rows) and the version {row.Version} did not. " +
-                             "Bump the version. When this version is not released yet, copy the row from the .actual file instead. Give the reason in the commit message.");
+                             "Bump the version. When this version is not released yet, or when only a corpus, the .NET SDK or a package changed, " +
+                             "copy the row from the .actual file instead. Give the reason in the commit message.");
             else if (!sameVersion && sameOutput)
                 problems.Add($"{row.Name}: the version moved {old.Version} -> {row.Version} and the output did not change. Revert the bump.");
             else if (!sameVersion)
