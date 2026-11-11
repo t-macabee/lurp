@@ -72,8 +72,9 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         // locations are pinned to the source file that declares the anchor.
         Assert.Contains(capsule.DirectCallees,
             item => item.FullyQualifiedName == "global::Lurp.Shared.PathNormalizer.ToForwardSlash");
+        // S01-F32: one EdgeLocationResolver for each project, built in ExtractAll.
         Assert.Contains(capsule.DirectCallers,
-            item => item.FullyQualifiedName == "global::Lurp.Workspace.ExtractionContextBase.ExtractionContextBase");
+            item => item.FullyQualifiedName == "global::Lurp.Workspace.CompilationFactExtractor.ExtractAll");
         Assert.Contains(capsule.Anchor.Locations,
             loc => loc.DocumentPath == "src/Shared/EdgeLocationResolver.cs");
 

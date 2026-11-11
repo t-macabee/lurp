@@ -7,23 +7,22 @@ using EdgeKind = Lurp.Storage.EdgeKind;
 namespace Lurp.Workspace;
 
 /// <summary>
-///     Extracts edges the syntax-switch member extractors do not cover: the
-///     executable roots they never enumerate (field/property initializers,
-///     constructor initializers, primary-constructor base arguments, top-level
-///     statements, operator/conversion/destructor bodies) and the compiler-lowered
-///     call shapes inside every root (method groups, event subscriptions,
-///     user-defined operators and conversions, and the implicit invocations behind
-///     await, foreach, using, deconstruction, collection initializers,
-///     interpolated-string handlers, and the C# pattern, index/range and
-///     collection-expression shapes). Event references are <c>Reads</c> or
-///     <c>Writes</c> to the event. Await, foreach and deconstruction read their
-///     bound members from Roslyn's binding APIs (<c>GetAwaitExpressionInfo</c>,
-///     <c>GetForEachStatementInfo</c> and <c>GetDeconstructionInfo</c>); the pattern
-///     shapes read <c>IRecursivePatternOperation</c>, <c>IListPatternOperation</c>,
-///     <c>ISlicePatternOperation</c>, <c>IImplicitIndexerReferenceOperation</c> and
-///     <c>ICollectionExpressionOperation</c>. It walks Roslyn operations; the
-///     existing extractors remain the source of the syntax-level facts, and
-///     EdgeMerge collapses the overlap by (source, target, kind).
+///     The one member-body pass (S01-F22): it walks the Roslyn operations of every
+///     executable root (method, accessor, operator, conversion and destructor bodies,
+///     field/property/event initializers, constructor initializers, primary-constructor
+///     base arguments, parameter defaults, attribute arguments and top-level statements)
+///     and writes <c>Calls</c>, <c>Constructs</c>, <c>Reads</c>, <c>Writes</c>,
+///     <c>MethodGroupRef</c>, <c>ExtensionReceiver</c> and body <c>References</c>, with
+///     receiver-type constraints on <c>Calls</c>. It covers the explicit call shapes and
+///     the compiler-lowered ones (method groups, event subscriptions, user-defined
+///     operators and conversions, and the implicit invocations behind await, foreach,
+///     using, deconstruction, collection initializers, interpolated-string handlers, and
+///     the C# pattern, index/range and collection-expression shapes). Event references
+///     are <c>Reads</c> or <c>Writes</c> to the event. Await, foreach and deconstruction
+///     read their bound members from Roslyn's binding APIs (<c>GetAwaitExpressionInfo</c>,
+///     <c>GetForEachStatementInfo</c> and <c>GetDeconstructionInfo</c>). An operation that
+///     does not bind (<c>IInvalidOperation</c>) or binds late (<c>dynamic</c>) is recorded
+///     as binding incompleteness.
 ///     B30 type uses (<c>is</c> and type patterns, explicit casts, <c>default(T)</c>,
 ///     <c>sizeof</c>, array creation, local declarations, <c>catch</c> types, method and
 ///     constructor type arguments) are <c>References</c> to the type and to the types
@@ -34,7 +33,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string Source, string Target, string Kind)>();
+        var seen = new Dictionary<(string Source, string Target, string Kind), int>();
 
         ExtractAttributeConstructions(edges, seen);
 
@@ -57,7 +56,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             var operation = model.GetOperation(node);
             if (operation != null)
             {
-                Walk(operation, ownerId, model, edges, seen);
+                Walk(operation, owner, ownerId, model, edges, seen);
                 continue;
             }
 
@@ -69,7 +68,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             {
                 var childOperation = model.GetOperation(child);
                 if (childOperation != null)
-                    Walk(childOperation, ownerId, model, edges, seen);
+                    Walk(childOperation, owner, ownerId, model, edges, seen);
             }
         }
 
@@ -220,10 +219,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
     private void Walk(
         IOperation root,
+        ISymbol owner,
         string ownerId,
         SemanticModel model,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         foreach (var operation in root.DescendantsAndSelf())
         {
@@ -235,10 +235,18 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     // AppendLiteral/AppendFormatted calls below are.
                     if (operation.Parent is IInterpolatedStringHandlerCreationOperation)
                         break;
-                    AddCall(ownerId, invocation.TargetMethod, operation.Syntax, edges, seen);
-                    AddStaticReceiverReference(ownerId, operation.Syntax, model, edges, seen);
-                    foreach (var typeArgument in invocation.TargetMethod.TypeArguments)
-                        AddTypeUses(ownerId, typeArgument, operation.Syntax, edges, seen);
+                    AddInvocation(owner, ownerId, invocation, model, edges, seen);
+                    break;
+
+                // A binding that failed (missing member, overload resolution failure)
+                // or that binds at run time (dynamic) has no target the graph can name.
+                // A nameof argument is a compile-time name, not a binding.
+                case IInvalidOperation when !NameOfReflectionExtractor.IsInsideNameOf(operation.Syntax):
+                case IDynamicInvocationOperation:
+                case IDynamicObjectCreationOperation:
+                case IDynamicIndexerAccessOperation:
+                case IDynamicMemberReferenceOperation when operation.Parent is not IDynamicInvocationOperation:
+                    context.RecordUnresolvedBinding(model.GetSymbolInfo(operation.Syntax), operation.Syntax, model);
                     break;
 
                 case IObjectCreationOperation creation:
@@ -425,7 +433,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         ITypeSymbol? type,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (type == null)
             return;
@@ -436,7 +444,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
     private void ExtractAttributeConstructions(
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         foreach (var typeSymbol in context.GetAllNamedTypes())
         {
@@ -454,7 +462,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     private void ExtractAttributeConstructions(
         ISymbol symbol,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (symbol.IsImplicitlyDeclared || !context.IsMemberInScope(symbol))
             return;
@@ -464,7 +472,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             return;
 
         var syntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(symbol);
-        ExtractAttributes(symbol.GetAttributes(), sourceId, syntax, edges, seen);
+        ExtractAttributes(symbol, symbol.GetAttributes(), sourceId, syntax, edges, seen);
 
         // B33: parameter and return-value attributes belong to the declaring
         // member (an indexer parameter to the indexer).
@@ -472,22 +480,23 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         {
             case IMethodSymbol method:
                 foreach (var parameter in method.Parameters)
-                    ExtractAttributes(parameter.GetAttributes(), sourceId, syntax, edges, seen);
-                ExtractAttributes(method.GetReturnTypeAttributes(), sourceId, syntax, edges, seen);
+                    ExtractAttributes(symbol, parameter.GetAttributes(), sourceId, syntax, edges, seen);
+                ExtractAttributes(symbol, method.GetReturnTypeAttributes(), sourceId, syntax, edges, seen);
                 break;
             case IPropertySymbol { IsIndexer: true } indexer:
                 foreach (var parameter in indexer.Parameters)
-                    ExtractAttributes(parameter.GetAttributes(), sourceId, syntax, edges, seen);
+                    ExtractAttributes(symbol, parameter.GetAttributes(), sourceId, syntax, edges, seen);
                 break;
         }
     }
 
     private void ExtractAttributes(
+        ISymbol owner,
         IEnumerable<AttributeData> attributes,
         string sourceId,
         SyntaxNode? syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         foreach (var attribute in attributes)
         {
@@ -514,7 +523,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 foreach (var argument in argumentList.Arguments)
                 {
                     if (model.GetOperation(argument.Expression) is { } argumentOperation)
-                        Walk(argumentOperation, sourceId, model, edges, seen);
+                        Walk(argumentOperation, owner, sourceId, model, edges, seen);
                 }
             }
         }
@@ -532,14 +541,95 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         SyntaxNode? syntax,
         bool skipSelf,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen,
+        string? receiverConstraintsJson = null)
     {
         context.RecordFilteredExternal(target, syntax);
         var targetId = context.MakeSymbolId(target);
         if (targetId == null || (skipSelf && targetId == ownerId))
             return;
 
-        Emit(edges, seen, ownerId, targetId, kind, syntax);
+        Emit(edges, seen, ownerId, targetId, kind, syntax, receiverConstraintsJson);
+    }
+
+    /// <summary>
+    ///     An explicit invocation: the call (with the receiver-type constraints of the call
+    ///     site), the <c>ExtensionReceiver</c> of a reduced extension call, the type named as a
+    ///     static receiver, and the method's type arguments.
+    /// </summary>
+    private void AddInvocation(
+        ISymbol owner,
+        string ownerId,
+        IInvocationOperation invocation,
+        SemanticModel model,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        var syntax = invocation.Syntax;
+        var method = invocation.TargetMethod;
+        AddCall(ownerId, method, syntax, edges, seen, GetReceiverTypeConstraints(invocation, owner, model));
+        AddExtensionReceiver(invocation, edges, seen);
+        AddStaticReceiverReference(ownerId, syntax, model, edges, seen);
+        foreach (var typeArgument in method.TypeArguments)
+            AddTypeUses(ownerId, typeArgument, syntax, edges, seen);
+    }
+
+    /// <summary>
+    ///     The static receiver type of a call site, as a constraint the dispatch tiers can
+    ///     replay: the receiver expression's type, the containing type for an implicit
+    ///     <c>this</c>, and none for a static call, a <c>base</c> call or a type-name receiver.
+    /// </summary>
+    private string? GetReceiverTypeConstraints(IInvocationOperation invocation, ISymbol owner, SemanticModel model)
+    {
+        if (invocation.Syntax is not InvocationExpressionSyntax syntax)
+            return null;
+        if (model.GetSymbolInfo(syntax).Symbol is not IMethodSymbol callee ||
+            callee is { IsStatic: true, ReducedFrom: null })
+            return null;
+
+        var receiverType = syntax.Expression switch
+        {
+            MemberAccessExpressionSyntax { Expression: BaseExpressionSyntax } => null,
+            MemberAccessExpressionSyntax memberAccess
+                when model.GetSymbolInfo(memberAccess.Expression).Symbol is INamedTypeSymbol => null,
+            MemberAccessExpressionSyntax memberAccess => model.GetTypeInfo(memberAccess.Expression).Type,
+            MemberBindingExpressionSyntax => syntax.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>() is { } conditional
+                ? model.GetTypeInfo(conditional.Expression).Type
+                : null,
+            IdentifierNameSyntax or GenericNameSyntax when !owner.IsStatic => owner.ContainingType,
+            _ => null
+        };
+
+        return ReceiverTypeConstraints.FromReceiverType(receiverType, context);
+    }
+
+    /// <summary>
+    ///     A reduced extension call (<c>x.M()</c>, or an extension <c>Add</c> of a collection
+    ///     initializer) binds its receiver type to the extension method. The receiver is the
+    ///     first argument, which the source does not write as an argument.
+    /// </summary>
+    private void AddExtensionReceiver(
+        IInvocationOperation invocation,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        if (!invocation.TargetMethod.IsExtensionMethod ||
+            invocation.Arguments.Length == 0 ||
+            invocation.Arguments[0].Syntax is ArgumentSyntax)
+            return;
+
+        var receiver = invocation.Arguments[0].Value;
+        while (receiver is IConversionOperation { IsImplicit: true } conversion)
+            receiver = conversion.Operand;
+        if (receiver.Type is not INamedTypeSymbol receiverType)
+            return;
+
+        var receiverTypeId = context.MakeSymbolId(receiverType);
+        var methodId = context.MakeSymbolId(invocation.TargetMethod);
+        if (receiverTypeId == null || methodId == null)
+            return;
+
+        Emit(edges, seen, receiverTypeId, methodId, nameof(EdgeKind.ExtensionReceiver), invocation.Syntax);
     }
 
     private void AddCall(
@@ -547,7 +637,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         IMethodSymbol? method,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen,
+        string? receiverConstraintsJson = null)
     {
         if (method == null)
             return;
@@ -561,7 +652,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (method is { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: true })
             return;
 
-        AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, skipSelf: true, edges, seen);
+        AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, skipSelf: true, edges, seen, receiverConstraintsJson);
     }
 
     private void AddMethodGroupRef(
@@ -569,7 +660,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         IMethodSymbol? method,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (method == null)
             return;
@@ -584,7 +675,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         ITypeSymbol type,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         AddEdge(ownerId, type, nameof(EdgeKind.Constructs), syntax, skipSelf: true, edges, seen);
     }
@@ -594,7 +685,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         IPropertySymbol? property,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (property == null)
             return;
@@ -607,7 +698,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         ISymbol member,
         IOperation operation,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         // A nameof argument is a compile-time name, not a read
         // (NameOfReflectionExtractor records it as ReflectionMemberRef).
@@ -649,7 +740,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         SyntaxNode syntax,
         SemanticModel model,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (syntax is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
             return;
@@ -668,7 +759,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         PrimaryConstructorBaseTypeSyntax primaryBase,
         SemanticModel model,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         // Roslyn exposes the bound base constructor for a primary-constructor base
         // clause directly. When the binding fails (error-state code), emit no edge
@@ -689,7 +780,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         bool isAsync,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         var resourceTypes = new List<ITypeSymbol>();
         switch (resources)
@@ -752,7 +843,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         AwaitExpressionSyntax syntax,
         SemanticModel model,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         var info = model.GetAwaitExpressionInfo(syntax);
         AddCall(ownerId, info.GetAwaiterMethod, syntax, edges, seen);
@@ -765,7 +856,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         CommonForEachStatementSyntax syntax,
         SemanticModel model,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         var info = model.GetForEachStatementInfo(syntax);
         AddCall(ownerId, info.GetEnumeratorMethod, syntax, edges, seen);
@@ -786,7 +877,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         DeconstructionInfo info,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         AddCall(ownerId, info.Method, syntax, edges, seen);
         foreach (var nested in info.Nested)
@@ -798,7 +889,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         ISymbol? member,
         SyntaxNode syntax,
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen)
+        Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         switch (member)
         {
@@ -811,20 +902,31 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         }
     }
 
+    /// <summary>
+    ///     Adds one edge for each (source, target, kind); the first site gives the location.
+    ///     A later site of the same <c>Calls</c> relation adds its receiver-type constraints.
+    /// </summary>
     private void Emit(
         List<EdgeRecord> edges,
-        HashSet<(string Source, string Target, string Kind)> seen,
+        Dictionary<(string Source, string Target, string Kind), int> seen,
         string sourceId,
         string targetId,
         string kind,
-        SyntaxNode? syntax)
+        SyntaxNode? syntax,
+        string? receiverConstraintsJson = null)
     {
-        if (!seen.Add((sourceId, targetId, kind)))
+        var key = (sourceId, targetId, kind);
+        if (seen.TryGetValue(key, out var position))
+        {
+            edges[position] = ReceiverTypeConstraints.WithMergedConstraints(edges[position], receiverConstraintsJson);
             return;
+        }
 
         var location = syntax != null
             ? context.GetLocationInfo(syntax.GetLocation())
             : ((string? path, int? sl, int? sc, int? el, int? ec)?)null;
-        edges.Add(context.MakeEdge(sourceId, targetId, kind, ExtractorConstants.OperationShapesExtractor, location));
+        var edge = context.MakeEdge(sourceId, targetId, kind, ExtractorConstants.OperationShapesExtractor, location);
+        seen.Add(key, edges.Count);
+        edges.Add(ReceiverTypeConstraints.WithMergedConstraints(edge, receiverConstraintsJson));
     }
 }

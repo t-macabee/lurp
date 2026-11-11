@@ -23,21 +23,6 @@ public sealed class EdgeLocationOwnerProofTests : IDisposable
     }
 
     [Theory]
-    [InlineData("Gen/Hint.g.cs")]
-    [InlineData("Some.Generator/Some.Generator.Gen/Hint.g.cs")]
-    public void UnrootedTreePath_ReflectionContextAndResolver_GiveTheSamePath(string treePath)
-    {
-        var tree = CSharpSyntaxTree.ParseText("class C { }", path: treePath);
-        var compilation = CSharpCompilation.Create("P", [tree]);
-        var location = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().Single().GetLocation();
-
-        var context = new ReflectionExtractionContext(compilation, "snap", _gitRoot);
-        var resolver = new EdgeLocationResolver([], [], _gitRoot);
-
-        Assert.Equal(resolver.Resolve(location).path, context.GetLocationInfo(location).path);
-    }
-
-    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void PrimaryDeclaration_PrefersTheHandWrittenPart(bool designerFirst)

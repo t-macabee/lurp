@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -78,6 +78,14 @@ WorkspaceLoader.LoadAsync
       → SemanticDiffStep (compare against previous snapshot)
       → SnapshotLifecycleStore.Commit
 ```
+
+Only the declaration stage of `CompilationFactExtractor.ExtractAll` is required.
+When it fails, or when the compilation is unreadable, the project is recorded as
+unreadable (`project_unreadable`). Every other stage (structural edges, member
+edges, polymorphism, reflection, each framework adapter) degrades: the facts of
+the stages that succeeded are saved, each document of the project gets an
+`extractor_failure` binding-incompleteness row, and the run prints a warning. The
+full, incremental and cross-document pipelines follow the same rule.
 
 Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts only
 changed documents and creates a new snapshot when content changes; it never
@@ -208,7 +216,7 @@ entry, not a new extractor.
 | **tier** | A category within a capsule; may be `budget_exhausted` |
 | **evidence / provenance** | The 7-level ladder (`compiler_proved` → `runtime_unknown`) |
 | **adapter** | Framework-mediated edge emitter (ASP.NET, DI, MediatR, …) |
-| **freshness** | Snapshot state (`fresh`/`stale`/`unknown`); `status --json` also reports a `completeness` block with `binding_incompleteness` / `binding_incompleteness_summary` / `binding_incompleteness_total` |
+| **freshness** | Snapshot state (`fresh`/`stale`/`unknown`); `status --json` also reports a `completeness` block with `binding_incompleteness` / `binding_incompleteness_summary` / `binding_incompleteness_total`; the `occurrence_count` of a row is the number of distinct binding sites (document, node span, reason) |
 
 ## 8. Non-Negotiable Design Rules
 

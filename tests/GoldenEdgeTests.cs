@@ -39,7 +39,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Calls", "global::N.Calculator.Compute", "global::N.Calculator.Add");
-        AssertEdgeContract(edge, "Calls", Provenance.CompilerProved, "calls-v2", Doc);
+        AssertEdgeContract(edge, "Calls", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("Calls", ("global::N.Calculator.Compute", "global::N.Calculator.Add"));
     }
 
@@ -56,7 +56,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Constructs", "global::N.Factory.Create", "global::N.Widget");
-        AssertEdgeContract(edge, "Constructs", Provenance.CompilerProved, "constructs-v1", Doc);
+        AssertEdgeContract(edge, "Constructs", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("Constructs", ("global::N.Factory.Create", "global::N.Widget"));
     }
 
@@ -129,7 +129,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Reads", "global::N.Counter.GetValue", "global::N.Counter._value");
-        AssertEdgeContract(edge, "Reads", Provenance.CompilerProved, "readswrites-v1", Doc);
+        AssertEdgeContract(edge, "Reads", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("Reads", ("global::N.Counter.GetValue", "global::N.Counter._value"));
     }
 
@@ -146,7 +146,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Writes", "global::N.Counter.SetValue", "global::N.Counter._value");
-        AssertEdgeContract(edge, "Writes", Provenance.CompilerProved, "readswrites-v1", Doc);
+        AssertEdgeContract(edge, "Writes", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("Writes", ("global::N.Counter.SetValue", "global::N.Counter._value"));
     }
 
@@ -288,10 +288,10 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         // B58: a local function is not a snapshot symbol, so its parameter and return
         // types are References edges from the enclosing member.
         var fromParameter = extraction.SingleEdge("References", "global::N.Host.M", "global::N.P");
-        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v2", Doc);
 
         var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
-        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("References", ("global::N.Host.M", "global::N.P"), ("global::N.Host.M", "global::N.R"));
 
         // A local function is neither a declared symbol nor a type, so it can be neither
@@ -370,10 +370,10 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         // B63: a lambda names its explicitly typed parameters and its explicit return type in the
         // source, so the enclosing member is the References source for each of them.
         var fromParameter = extraction.SingleEdge("References", "global::N.Host.M", "global::N.P");
-        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        AssertEdgeContract(fromParameter, "References", Provenance.CompilerProved, "operation-shapes-v2", Doc);
 
         var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
-        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("References", ("global::N.Host.M", "global::N.P"), ("global::N.Host.M", "global::N.R"));
     }
 
@@ -399,6 +399,54 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ExtensionReceiverEdge_CollectionInitializerExtensionAdd()
+    {
+        // C# collection initializer: each element calls the accessible Add of the target
+        // object; an extension Add binds with the collection as its receiver.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Bag : System.Collections.IEnumerable
+                                                {
+                                                    public System.Collections.IEnumerator GetEnumerator() => throw new System.NotSupportedException();
+                                                }
+                                                public static class BagExtensions
+                                                {
+                                                    public static void Add(this Bag bag, int item) { }
+                                                }
+                                                public class Filler
+                                                {
+                                                    public Bag Make() => new Bag { 1, 2 };
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("ExtensionReceiver", ("global::N.Bag", "global::N.BagExtensions.Add"));
+        extraction.AssertEdgeSet("Calls", ("global::N.Filler.Make", "global::N.BagExtensions.Add"));
+    }
+
+    [Fact]
+    public async Task CallsEdge_TwoReceiverTypes_KeepsTheConstraintOfEachSite()
+    {
+        // Guard for the S01-F22 move: the receiver-type constraints of all sites of one
+        // Calls relation are kept (union), as the syntax extractor kept them.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public interface IShape { void Draw(); }
+                                                public interface IRound : IShape { }
+                                                public interface ISquare : IShape { }
+                                                public class Painter
+                                                {
+                                                    public void Paint(IRound round, ISquare square) { round.Draw(); square.Draw(); }
+                                                }
+                                                """));
+
+        var edge = extraction.SingleEdge("Calls", "global::N.Painter.Paint", "global::N.IShape.Draw");
+        var expected = new[] { extraction.ResolveId("global::N.IRound"), extraction.ResolveId("global::N.ISquare") }
+            .Order(StringComparer.Ordinal)
+            .Select(static id => new[] { id });
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), edge.ReceiverTypeConstraintsJson);
+    }
+
+    [Fact]
     public async Task ExtensionReceiverEdge_ReceiverTypeBindsToExtensionMethod()
     {
         var extraction = await ExtractAsync(One("""
@@ -416,10 +464,10 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var receiver =
             extraction.SingleEdge("ExtensionReceiver", "global::N.Target", "global::N.TargetExtensions.Extend");
-        AssertEdgeContract(receiver, "ExtensionReceiver", Provenance.CompilerProved, "extension-receiver-v1", Doc);
+        AssertEdgeContract(receiver, "ExtensionReceiver", Provenance.CompilerProved, "operation-shapes-v2", Doc);
 
         var call = extraction.SingleEdge("Calls", "global::N.Consumer.Use", "global::N.TargetExtensions.Extend");
-        AssertEdgeContract(call, "Calls", Provenance.CompilerProved, "calls-v2", Doc);
+        AssertEdgeContract(call, "Calls", Provenance.CompilerProved, "operation-shapes-v2", Doc);
         extraction.AssertEdgeSet("ExtensionReceiver", ("global::N.Target", "global::N.TargetExtensions.Extend"));
         extraction.AssertEdgeSet("Calls", ("global::N.Consumer.Use", "global::N.TargetExtensions.Extend"));
     }

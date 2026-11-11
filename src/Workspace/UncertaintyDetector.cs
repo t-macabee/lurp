@@ -38,11 +38,15 @@ internal sealed class UncertaintyDetector
     {
         var neighborhood = BuildNeighborhood(capsule);
 
-        CollectReflectionUncertainties(capsule, neighborhood);
-        CollectDispatchUncertainties(capsule, neighborhood);
+        // One entry for each uncertain relation (S01-F18): the loops below visit the
+        // incoming and the outgoing edges of every neighborhood node, so an edge whose
+        // two ends are both in the neighborhood is seen twice.
+        var relations = new HashSet<(string Kind, string Source, string Target)>();
+        CollectReflectionUncertainties(capsule, neighborhood, relations);
+        CollectDispatchUncertainties(capsule, neighborhood, relations);
         CollectMissingReceiverConstraintUncertainties(capsule, neighborhood);
-        CollectFrameworkConventionUncertainties(capsule, neighborhood);
-        CollectRuntimeUnknownUncertainties(capsule, neighborhood);
+        CollectFrameworkConventionUncertainties(capsule, neighborhood, relations);
+        CollectRuntimeUnknownUncertainties(capsule, neighborhood, relations);
         CollectBindingIncompletenessUncertainties(capsule);
         CollectUnmodeledMediatRPatternUncertainties(capsule);
 
@@ -81,7 +85,15 @@ internal sealed class UncertaintyDetector
             neighborhood.Add(item.SymbolId);
     }
 
-    private void CollectReflectionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+    private static void AddRelationUncertainty(
+        ContextCapsule capsule, HashSet<(string Kind, string Source, string Target)> relations,
+        EdgeRecord edge, string description)
+    {
+        if (relations.Add((edge.Kind, edge.SourceSymbolId, edge.TargetSymbolId)))
+            capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, description));
+    }
+
+    private void CollectReflectionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood, HashSet<(string Kind, string Source, string Target)> relations)
     {
         foreach (var symbolId in neighborhood)
         {
@@ -91,14 +103,13 @@ internal sealed class UncertaintyDetector
 
             foreach (var edge in edges)
                 if (edge.Kind == nameof(EdgeKind.ReflectionNameCandidate))
-                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                        UncertaintyDescriptions.NameCandidate(edge.TargetSymbolId)));
+                    AddRelationUncertainty(capsule, relations, edge, UncertaintyDescriptions.NameCandidate(edge.TargetSymbolId));
                 else if (edge.Kind == nameof(EdgeKind.ReflectionTargetUnknown))
-                    capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind, UncertaintyDescriptions.UnknownReflectionTarget));
+                    AddRelationUncertainty(capsule, relations, edge, UncertaintyDescriptions.UnknownReflectionTarget);
         }
     }
 
-    private void CollectDispatchUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+    private void CollectDispatchUncertainties(ContextCapsule capsule, HashSet<string> neighborhood, HashSet<(string Kind, string Source, string Target)> relations)
     {
         foreach (var symbolId in neighborhood)
         {
@@ -111,8 +122,7 @@ internal sealed class UncertaintyDetector
                 if (edge.Provenance is Provenance.CompilerProved or Provenance.FrameworkDerived)
                     continue;
 
-                capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                    UncertaintyDescriptions.DispatchCandidate(edge.TargetSymbolId, edge.Provenance)));
+                AddRelationUncertainty(capsule, relations, edge, UncertaintyDescriptions.DispatchCandidate(edge.TargetSymbolId, edge.Provenance));
             }
         }
     }
@@ -147,7 +157,7 @@ internal sealed class UncertaintyDetector
         }
     }
 
-    private void CollectFrameworkConventionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+    private void CollectFrameworkConventionUncertainties(ContextCapsule capsule, HashSet<string> neighborhood, HashSet<(string Kind, string Source, string Target)> relations)
     {
         var frameworkKinds = new HashSet<string>
         {
@@ -169,13 +179,12 @@ internal sealed class UncertaintyDetector
                 if (edge.Provenance != Provenance.Convention)
                     continue;
 
-                capsule.Uncertainties.Add(new UncertaintyEntry([edge.SourceSymbolId, edge.TargetSymbolId], edge.Kind,
-                    UncertaintyDescriptions.FrameworkConvention(edge.Kind)));
+                AddRelationUncertainty(capsule, relations, edge, UncertaintyDescriptions.FrameworkConvention(edge.Kind));
             }
         }
     }
 
-    private void CollectRuntimeUnknownUncertainties(ContextCapsule capsule, HashSet<string> neighborhood)
+    private void CollectRuntimeUnknownUncertainties(ContextCapsule capsule, HashSet<string> neighborhood, HashSet<(string Kind, string Source, string Target)> relations)
     {
         foreach (var symbolId in neighborhood)
         {
@@ -190,10 +199,7 @@ internal sealed class UncertaintyDetector
                 if (edge.Provenance != Provenance.RuntimeUnknown)
                     continue;
 
-                capsule.Uncertainties.Add(new UncertaintyEntry(
-                    [edge.SourceSymbolId, edge.TargetSymbolId],
-                    edge.Kind,
-                    DeclaredBoundaries.UncertaintyDescription(edge.Kind)));
+                AddRelationUncertainty(capsule, relations, edge, DeclaredBoundaries.UncertaintyDescription(edge.Kind));
             }
         }
     }
@@ -469,7 +475,8 @@ internal sealed class UncertaintyDetector
             current = Path.GetDirectoryName(current)!;
         }
 
-        _owningProjectCache[current] = result;
+        // Keyed by the start directory, the key that the lookup above reads (S01-F18).
+        _owningProjectCache[directory] = result;
         return result;
     }
 

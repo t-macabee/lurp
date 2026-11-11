@@ -5,13 +5,12 @@ namespace Lurp.Workspace;
 
 internal sealed class ReflectionExtractionContext : ExtractionContextBase
 {
-    internal ReflectionExtractionContext(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null,
-        Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
-        : base(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths)
+    internal ReflectionExtractionContext(ProjectExtractionInputs inputs)
+        : base(inputs)
     {
         TypesByName = new Dictionary<string, List<ISymbol>>(StringComparer.OrdinalIgnoreCase);
         MembersByName = new Dictionary<string, List<ISymbol>>(StringComparer.OrdinalIgnoreCase);
-        CollectKnownNames(compilation.Assembly.GlobalNamespace, TypesByName, MembersByName);
+        CollectKnownNames(GetAllNamedTypes(), TypesByName, MembersByName);
     }
 
     internal Dictionary<string, List<ISymbol>> TypesByName { get; }
@@ -54,9 +53,9 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         return null;
     }
 
-    private static void CollectKnownNames(INamespaceSymbol ns, Dictionary<string, List<ISymbol>> typesByName, Dictionary<string, List<ISymbol>> membersByName)
+    private static void CollectKnownNames(IEnumerable<INamedTypeSymbol> types, Dictionary<string, List<ISymbol>> typesByName, Dictionary<string, List<ISymbol>> membersByName)
     {
-        foreach (var type in ExtractionUtils.GetAllNamedTypes(ns))
+        foreach (var type in types)
         {
             AddSymbol(typesByName, type.Name, type);
             foreach (var member in type.GetMembers())

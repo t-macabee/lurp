@@ -20,12 +20,8 @@ internal static class ExtractorRegistry
     [
         // -- Member-edge extractors (ExtractorConstants) --
         ("Declares", ExtractorConstants.DeclaresExtractor, "Type-declares-member containment edges"),
-        ("Calls", ExtractorConstants.CallsExtractor, "Direct method/function call edges"),
-        ("Constructs", ExtractorConstants.ConstructsExtractor, "Object-construction (new) edges"),
         ("Overrides", ExtractorConstants.OverridesExtractor, "Method override edges"),
         ("Hides", ExtractorConstants.HidesExtractor, "Member-hiding (new keyword) edges"),
-        ("ExtensionReceiver", ExtractorConstants.ExtensionReceiverExtractor, "Extension-method receiver binding edges"),
-        ("ReadsWrites", ExtractorConstants.ReadsWritesExtractor, "Field/property read and write edges"),
         ("Returns", ExtractorConstants.ReturnsExtractor, "Return-type reference edges"),
         ("Throws", ExtractorConstants.ThrowsExtractor, "Thrown-exception type edges"),
         ("ParameterDependencies", ExtractorConstants.ParameterDependenciesExtractor, "Parameter-type dependency edges"),
@@ -39,8 +35,8 @@ internal static class ExtractorRegistry
         // -- Polymorphism extractor --
         ("Polymorphism", ExtractorConstants.PolymorphismExtractor, "Polymorphic (virtual) dispatch edges"),
 
-        // -- Lowered-operation extractor (initializers, top-level statements, implicit + operator calls) --
-        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Initializer, top-level, method-group, operator, and implicit-invocation edges"),
+        // -- Member-body operation pass (S01-F22): every executable root, explicit and implicit shapes --
+        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Member-body edges: calls, constructions, reads, writes, method groups, extension receivers and body type uses"),
 
         // -- Structural type-relationship extractor (uses VersionConstants.ExtractorVersion) --
         ("Structural", VersionConstants.ExtractorVersion, "Structural type edges (inherits, implements, contains, references)")

@@ -43,7 +43,7 @@ cited below. Evidence cites git commits and named tests directly.
 | 10: Generated-code discovery | Done | All generated files under `obj/`, out of index scope |
 | 11: Generated-code provenance | Done | Used existing plumbing; end-to-end `.g.cs` proof live in `GeneratedCodeProvenanceTests` |
 | 12: Phase 9/10 gap audit | Done | Backlog in "Order 12 findings" below; four `SemanticDiffer` `SignatureFormat` characterization tests live |
-| 13: Phase 9/10 implementation | Done | `CallsEdgeExtractor` records resolved operators/casts as `Calls`; covered by `GoldenEdgeTests` + parity tests |
+| 13: Phase 9/10 implementation | Done | `OperationShapeExtractor` records resolved operators/casts as `Calls` (a syntax extractor did until P2-S03); covered by `GoldenEdgeTests` + parity tests |
 
 ## MCP Server Phase completion status
 
@@ -74,7 +74,7 @@ cited below. Evidence cites git commits and named tests directly.
 | 14 | Evidence-backed impact reachability (paths until 2.0.0) | ✅ Done | `ImpactReachability`, `ImpactHandler`, `semantic_causes`, live-verified §D & §H (see Phase 14) |
 | 15 | Context capsules with source and token budgets | ✅ Done | See below, live-verified §E (RelevantTestsTierBuilder fix) |
 | 16 | Rebase simulations and audits | ✅ Done → Removed in Aug 2026 cleanup |
-| 17 | Optimize incremental updates from measurements | ✅ Done | `CallsEdgeExtractor` 2051→1944 ms (Lurp) at time of record; member-edge coverage in `GoldenEdgeTests` |
+| 17 | Optimize incremental updates from measurements | ✅ Done | the syntax `Calls` extractor (retired in P2-S03) 2051→1944 ms (Lurp) at time of record; member-edge coverage in `GoldenEdgeTests` |
 
 ### Phase 13 verification: Reflection Evidence Ladder
 
@@ -126,7 +126,7 @@ Each item states the resulting current state. Citations name live tests or dated
 - **T1: Schema-version verification authoritative.** `MigrationRunner.LatestVersion` (the highest migration number) is the only reference; `SchemaMigrationRoundTripTests.MigrationList_MatchesTheMigrationFiles_AndLatestVersionIsTheHighest` ties it to the migration files.
 - **T2: Failed snapshot cleanup atomic.** `SnapshotPruner.DeleteSnapshotData` deletes inside a transaction; covered by `SnapshotReuseResolutionTests.IncompleteExistingRow_ResolvesRetry_AndIsDeleted`.
 - **T3: Orphan edges removed on both endpoints.** `EdgeOperationsStore.DeleteOrphanEdges` removes edges when either endpoint absent from `snapshot_symbols`; `OriginalDefinition` normalization keeps in-snapshot edges. Orphan drops bucketed: compiler-synthesized (`<` in id), external (out-of-scope assembly), other (actionable warning). eNoteV2 clean rebuild (402 docs, 3,656 decls, extractor 1.6.0): 0 residual `other` drops; 10,544 edges retained (90.2% `compiler_proved`, 8.9% `framework_derived`). `SymbolIdFactory.Make` normalizes to `OriginalDefinition` + un-reduces `ReducedFrom` (extractor 1.5.0); internal non-synthesized orphan drops fell 1,345→2.
-- **T4: Cross-project edge dedup + merge-on-write.** `EdgeOperationsStore.SaveEdges` pre-merges via `EdgeMerge.CollapseBatch` (provenance priority `compiler_proved` > `framework_derived` > `global_implementation_relation` > `possible` > `convention` > `name_candidate` > `runtime_unknown`), then bulk (`type_arguments_json` null, ~99.95%) vs split paths. `ux_edges_relation` unchanged; `EdgeDedup.Deduplicate` at `IndexRunner.cs:268` a redundant guard. Binding tests in `EdgeWritePathTests.cs`. Known narrow gap: equal-rank tie-break keeps persisted row (not observed on real code; `CleanRebuildEquivalenceTest` backstop). Freshness (`WorkspaceFreshness`) observes file content, compilation inputs, extractor version.
+- **T4: Cross-project edge dedup + merge-on-write.** `EdgeOperationsStore.SaveEdges` pre-merges via `EdgeMerge.CollapseBatch` (provenance priority `compiler_proved` > `framework_derived` > `global_implementation_relation` > `possible` > `convention` > `name_candidate` > `runtime_unknown`), then bulk (`type_arguments_json` null, ~99.95%) vs split paths. `ux_edges_relation` unchanged; `SaveEdges` is the one place that collapses edges (D6), and it returns the number of relations it wrote. Binding tests in `EdgeWritePathTests.cs`. Known narrow gap: equal-rank tie-break keeps persisted row (not observed on real code; `CleanRebuildEquivalenceTest` backstop). Freshness (`WorkspaceFreshness`) observes file content, compilation inputs, extractor version.
 - **T5–T8: Semantic-diff metadata producer/consumer contract.** `BuildMetadataJson` writes `base_type`, canonical `signature`, sorted `attributes`; `CompareMetadata` consumes all. Attributes stay in `metadata_json` (not the unimplemented `facts` table).
 - **T9: Generated-output absence declared.** `MSBuildWorkspace` does not expose source-generator output; completeness persists `generated_trees_included`, TFMs, skipped adapters, extractor version, surfaced via `status --json`.
 - **T10: Incremental-vs-full equivalence coverage.** Snapshot comparison covers FQNs, metadata JSON, declaration paths/spans/flags, FTS records; cases: signature, body-only, document-move, partial-class, base/interface, DI, new-overload-in-new-file. Covered by `IncrementalParityTests.cs`, `CleanRebuildEquivalenceTest.cs`, `MultiCycleConvergenceTests.cs`.
@@ -174,13 +174,13 @@ Remaining gaps, all closed: S8 interfaces key (`interfaces_changed`); S9 `isReco
 | G1 metadata producer/consumer | `BuildMetadataJson` persists sorted `interfaces`; `CompareMetadata` emits `interfaces_changed`, `record_changed`, `metadata_changed` (typeKind + modifiers) | Done 2026-07-27 |
 | G2 semantic cause in impact | `ISemanticDiffStore` + `ImpactHandler` → `semantic_causes` once per response (top level); `McpImpactTests.cs` | Done 2026-07-27 |
 | G3 `Hides` edge | `OverridesEdgeExtractor` emits distinct `Hides`; `GoldenEdgeTests.HidesEdge_MethodHidesBaseMember` | Done 2026-07-27 |
-| G5 indexer Reads/Writes | `CallsEdgeExtractor` resolves `ElementAccessExpressionSyntax` to indexer; `GoldenEdgeTests.ReadsEdge_*`/`WritesEdge_*` | Done 2026-07-27 |
-| G6 extension receiver | `AddCallEdge` emits `ExtensionReceiver` for instance-style call; `GoldenEdgeTests.ExtensionReceiverEdge_*` | Done 2026-07-27 |
+| G5 indexer Reads/Writes | `OperationShapeExtractor` reads an indexer access as `IPropertyReferenceOperation`; `GoldenEdgeTests.ReadsEdge_*`/`WritesEdge_*` | Done 2026-07-27 |
+| G6 extension receiver | `OperationShapeExtractor.AddExtensionReceiver` emits `ExtensionReceiver` for a reduced extension call (also the extension `Add` of a collection initializer); `GoldenEdgeTests.ExtensionReceiverEdge_*` | Done 2026-07-27 |
 | G7 generic dispatch type args | `InterfaceDispatchExtractor.GetTypeArgumentsJson` → `type_arguments_json`; merge covered by `IncrementalParityTests.Parity_GenericBaseWithMultipleConcreteImplementations_MergesDispatchTypeArguments` | Done 2026-07-28 |
 
 ### Order 13: approved dispatch/diff capability
 
-Narrow D3/D4: capture compiler-resolved overloaded operators and user-defined casts in `Calls` contract. `CallsEdgeExtractor` keeps built-in operators out, dedups by source/target/kind. Covered by `GoldenEdgeTests.CallsEdge_MethodCallsMethod` + parity tests.
+Narrow D3/D4: capture compiler-resolved overloaded operators and user-defined casts in `Calls` contract. `OperationShapeExtractor` keeps built-in operators out (a `Calls` needs a bound `OperatorMethod`) and keeps one edge for each source/target/kind. Covered by `GoldenEdgeTests.CallsEdge_MethodCallsMethod` + parity tests.
 
 ---
 

@@ -73,6 +73,23 @@ public sealed class EdgeWritePathTests : IDisposable
     }
 
     [Fact]
+    public void SaveEdges_ReturnsTheNumberOfRelationsAfterTheCollapse()
+    {
+        using var store = OpenStore();
+
+        // Hand count: (src, tgt, Calls) twice and (src, other, Calls) once are two relations.
+        var written = store.SaveEdges(SnapshotId,
+        [
+            MakeEdge("src", "tgt", "Calls"),
+            MakeEdge("src", "tgt", "Calls", "name_candidate"),
+            MakeEdge("src", "other", "Calls")
+        ]);
+
+        Assert.Equal(2, written);
+        Assert.Equal(2, store.GetEdges(SnapshotId).Count);
+    }
+
+    [Fact]
     public void SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank()
     {
         using var store = OpenStore();

@@ -13,7 +13,7 @@ internal sealed class ThrowsEdgeExtractor(MemberEdgeExtractionContext context) :
 
         foreach (var (methodSymbol, methodSyntax) in context.EnumerateMethodDeclarations())
         {
-            var bodySyntax = MemberEdgeExtractionContext.GetMethodBody(methodSyntax);
+            var bodySyntax = ExtractionUtils.GetMethodBody(methodSyntax);
             if (bodySyntax == null)
                 continue;
 

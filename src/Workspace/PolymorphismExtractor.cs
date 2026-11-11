@@ -29,17 +29,14 @@ public sealed class PolymorphismExtractor
 {
     private readonly PolymorphismExtractionContext _context;
 
-    internal PolymorphismExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
-        IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal PolymorphismExtractor(ProjectExtractionInputs inputs)
     {
-        ArgumentNullException.ThrowIfNull(compilation);
-        ArgumentNullException.ThrowIfNull(snapshotId);
-        _context = new PolymorphismExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths);
+        _context = new PolymorphismExtractionContext(inputs);
     }
 
     public List<EdgeRecord> ExtractAll()
     {
-        var allTypes = PolymorphismExtractionContext.GetAllNamedTypes(_context.Compilation.Assembly.GlobalNamespace);
+        var allTypes = _context.GetAllNamedTypes().ToList();
 
         // Filter to types declared in scope documents when the scope is set
         if (_context.ScopeDocuments != null)

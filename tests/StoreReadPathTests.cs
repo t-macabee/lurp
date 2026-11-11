@@ -79,7 +79,7 @@ public sealed class StoreReadPathTests : IntegrationTestBase
             var edge = Assert.Single(incoming);
             Assert.Equal(ResolveSymbolId(snapshotId, "global::TestProject.Service.Compute"), edge.SourceSymbolId);
             Assert.Equal(addId, edge.TargetSymbolId);
-            Assert.Equal("calls-v2", edge.ExtractorVersion);
+            Assert.Equal("operation-shapes-v2", edge.ExtractorVersion);
         }
         finally
         {

@@ -76,21 +76,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
                 if (!seen.Add(key))
                     continue;
 
-                edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = sourceId,
-                    TargetSymbolId = targetId,
-                    Kind = nameof(EdgeKind.ReflectionNameCandidate),
-                    Provenance = Provenance.NameCandidate,
-                    SnapshotId = context.SnapshotId,
-                    ExtractorVersion = ExtractorConstants.ReflectionExtractor,
-                    SourceDocumentPath = loc.path,
-                    SourceStartLine = loc.startLine,
-                    SourceStartColumn = loc.startColumn,
-                    SourceEndLine = loc.endLine,
-                    SourceEndColumn = loc.endColumn,
-                    IsCrossGenerated = context.IsGenerated(loc.path)
-                });
+                edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.ReflectionNameCandidate), ExtractorConstants.ReflectionExtractor, loc, Provenance.NameCandidate));
             }
         }
 

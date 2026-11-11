@@ -35,21 +35,7 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
                 continue;
 
             var loc = context.GetLocationInfo(typeOfExpr.GetLocation());
-            edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = targetId,
-                Kind = nameof(EdgeKind.ReflectionTypeRef),
-                Provenance = Provenance.CompilerProved,
-                SnapshotId = context.SnapshotId,
-                ExtractorVersion = ExtractorConstants.ReflectionExtractor,
-                SourceDocumentPath = loc.path,
-                SourceStartLine = loc.startLine,
-                SourceStartColumn = loc.startColumn,
-                SourceEndLine = loc.endLine,
-                SourceEndColumn = loc.endColumn,
-                IsCrossGenerated = context.IsGenerated(loc.path)
-            });
+            edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.ReflectionTypeRef), ExtractorConstants.ReflectionExtractor, loc));
         }
 
         return edges;

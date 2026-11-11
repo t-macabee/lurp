@@ -9,7 +9,8 @@ public sealed class CompilationFactExtractorRunStageTests
     {
         return new CompilationFactExtractor.StageContext(projectName,
             [],
-            new BindingIncompletenessCollector(projectName, "/repo"));
+            new BindingIncompletenessCollector(projectName, "/repo"),
+            ["/repo/src/A.cs", "/repo/src/B.cs"]);
     }
 
     [Fact]
@@ -30,8 +31,11 @@ public sealed class CompilationFactExtractorRunStageTests
         Assert.Equal("boom", failure.Message);
         Assert.Equal("Member edge extraction failed for project 'TestProject': boom", logged);
 
-        var incompleteness = Assert.Single(ctx.Incompleteness.ToRecords());
-        Assert.Equal(BindingIncompletenessReason.ExtractorFailure, incompleteness.Reason);
+        // D34: one extractor_failure row on each document of the project.
+        var rows = ctx.Incompleteness.ToRecords();
+        Assert.Equal(["src/A.cs", "src/B.cs"], rows.Select(static r => r.DocumentPath));
+        Assert.All(rows, static r => Assert.Equal(BindingIncompletenessReason.ExtractorFailure, r.Reason));
+        Assert.All(rows, static r => Assert.Equal(1, r.Count));
     }
 
     [Fact]
@@ -48,7 +52,7 @@ public sealed class CompilationFactExtractorRunStageTests
         var failure = Assert.Single(ctx.Failures);
         Assert.Equal("Polymorphism", failure.Stage);
         Assert.Equal("polymorphism boom", failure.Message);
-        Assert.Single(ctx.Incompleteness.ToRecords());
+        Assert.Equal(2, ctx.Incompleteness.ToRecords().Count);
     }
 
     [Fact]
@@ -70,16 +74,30 @@ public sealed class CompilationFactExtractorRunStageTests
         var ctx = NewContext();
 
         var result = CompilationFactExtractor.RunStage<List<string>>(
-            ctx, "SymbolDeclaration", null, null,
-            msg => $"Symbol extraction failed for project 'TestProject': {msg}",
-            () => throw new InvalidOperationException("symbol boom"),
+            ctx, "StructuralEdge", null, null,
+            msg => $"Edge extraction failed for project 'TestProject': {msg}",
+            () => throw new InvalidOperationException("structural boom"),
             []);
 
         Assert.Empty(result);
         var failure = Assert.Single(ctx.Failures);
-        Assert.Equal("SymbolDeclaration", failure.Stage);
-        Assert.Equal("symbol boom", failure.Message);
-        Assert.Single(ctx.Incompleteness.ToRecords());
+        Assert.Equal("StructuralEdge", failure.Stage);
+        Assert.Equal("structural boom", failure.Message);
+        Assert.Equal(2, ctx.Incompleteness.ToRecords().Count);
+    }
+
+    [Fact]
+    public void RunStage_ProjectWithNoDocument_RecordsOneProjectLevelRow()
+    {
+        var ctx = new CompilationFactExtractor.StageContext("TestProject", [],
+            new BindingIncompletenessCollector("TestProject", "/repo"), []);
+
+        CompilationFactExtractor.RunStage(ctx, "Reflection", null, null, msg => msg,
+            () => throw new InvalidOperationException("boom"));
+
+        var row = Assert.Single(ctx.Incompleteness.ToRecords());
+        Assert.Null(row.DocumentPath);
+        Assert.Equal(BindingIncompletenessReason.ExtractorFailure, row.Reason);
     }
 
     [Fact]

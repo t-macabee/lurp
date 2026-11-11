@@ -68,7 +68,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
                 // target : unless a framework edge participates anywhere in
                 // the path. The item is never a direct compiler-proved
                 // dependency of the anchor.
-                var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
+                var provenance = DispatchClaimProvenance.Compose(
                     reached.WitnessPath(neighborId).Select(static hop => hop.Provenance), dispatchProvenance);
                 var item = context.BuildCapsuleItem(neighborId, symbol.ParentHop.EdgeKind, provenance,
                     BuildDispatchReason(dispatchProvenance, symbol.ParentHop.Provenance),

@@ -402,7 +402,7 @@ public sealed class ImpactReachabilityTests
         }
 
         // Unused members — throw to catch accidental usage
-        public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
+        public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
         {
             throw new NotSupportedException();
         }
@@ -535,7 +535,7 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
-        public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
+        public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
         {
             throw new NotSupportedException();
         }

@@ -911,7 +911,8 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         var ctx = new CompilationFactExtractor.StageContext(
             "App",
             [],
-            new BindingIncompletenessCollector("App", TestDir));
+            new BindingIncompletenessCollector("App", TestDir),
+            []);
 
         CompilationFactExtractor.RunStage(
             ctx, "Polymorphism", null, null,

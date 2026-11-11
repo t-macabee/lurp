@@ -7,12 +7,15 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     private static readonly HashSet<string> MissingMetadataDiagnosticIds =
         ["CS0012", "CS0234", "CS0246", "CS1069", "CS1705", "CS7069"];
 
-    private readonly Dictionary<(string? documentPath, string reason), int> _counts = [];
+    // D16: occurrence_count is the number of distinct binding sites. A site is a node span
+    // in its document (or, for an extractor failure, the failed stage), so a site that
+    // several extractors see counts once.
+    private readonly Dictionary<(string? documentPath, string reason), HashSet<string>> _sites = [];
 
     internal void RecordUnresolved(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
     {
         var reason = Classify(symbolInfo, node, semanticModel);
-        Record(reason, node.SyntaxTree.FilePath);
+        Record(reason, node);
     }
 
     internal void RecordUnresolved(SyntaxNode node, SemanticModel semanticModel)
@@ -25,7 +28,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
             : diagnostics.Count > 0
                 ? BindingIncompletenessReason.CompilerError
                 : BindingIncompletenessReason.UnsupportedSyntax;
-        Record(reason, node.SyntaxTree.FilePath);
+        Record(reason, node);
     }
 
     /// <summary>
@@ -40,12 +43,24 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     {
         if (!ExtractionUtils.IsOutsideCompilation(resolvedTarget, compilation))
             return;
-        Record(BindingIncompletenessReason.FilteredExternal, node?.SyntaxTree?.FilePath);
+        Record(BindingIncompletenessReason.FilteredExternal, node);
     }
 
-    internal void RecordExtractorFailure()
+    /// <summary>
+    ///     Records a failed extraction stage on each document of the project (D34), so a
+    ///     capsule, a dead candidate and an incremental pass see it per document. A project
+    ///     with no document keeps one project-level row.
+    /// </summary>
+    internal void RecordExtractorFailure(string stage, IReadOnlyList<string> documentPaths)
     {
-        Record(BindingIncompletenessReason.ExtractorFailure, null);
+        if (documentPaths.Count == 0)
+        {
+            Record(BindingIncompletenessReason.ExtractorFailure, null, stage);
+            return;
+        }
+
+        foreach (var documentPath in documentPaths)
+            Record(BindingIncompletenessReason.ExtractorFailure, documentPath, stage);
     }
 
     /// <summary>
@@ -56,7 +71,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     /// </summary>
     internal void RecordConventionScan(SyntaxNode node)
     {
-        Record(BindingIncompletenessReason.ConventionScan, node.SyntaxTree.FilePath);
+        Record(BindingIncompletenessReason.ConventionScan, node);
     }
 
     /// <summary>
@@ -81,10 +96,10 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
 
     internal IReadOnlyList<BindingIncompletenessRecord> ToRecords()
     {
-        return [.. _counts
+        return [.. _sites
             .OrderBy(static pair => pair.Key.documentPath, StringComparer.Ordinal)
             .ThenBy(static pair => pair.Key.reason, StringComparer.Ordinal)
-            .Select(pair => new BindingIncompletenessRecord(projectName, pair.Key.documentPath, pair.Key.reason, pair.Value, VersionConstants.ExtractorVersion))];
+            .Select(pair => new BindingIncompletenessRecord(projectName, pair.Key.documentPath, pair.Key.reason, pair.Value.Count, VersionConstants.ExtractorVersion))];
     }
 
     private static string Classify(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
@@ -103,12 +118,20 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
         return BindingIncompletenessReason.UnsupportedSyntax;
     }
 
-    private void Record(string reason, string? filePath)
+    /// <summary>A node site: its document and its span. A node with no tree is one document-less site.</summary>
+    private void Record(string reason, SyntaxNode? node)
+    {
+        Record(reason, node?.SyntaxTree.FilePath, node == null ? "" : $"{node.Span.Start}:{node.Span.Length}");
+    }
+
+    private void Record(string reason, string? filePath, string site)
     {
         var documentPath = string.IsNullOrEmpty(filePath)
             ? null
             : PathNormalizer.ToGitRelative(filePath, gitRoot);
         var key = (documentPath, reason);
-        _counts[key] = _counts.GetValueOrDefault(key) + 1;
+        if (!_sites.TryGetValue(key, out var sites))
+            _sites[key] = sites = new HashSet<string>(StringComparer.Ordinal);
+        sites.Add(site);
     }
 }

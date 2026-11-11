@@ -204,7 +204,7 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
@@ -217,6 +217,7 @@ by design (see
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): product model, storage, pipeline, rules.
 - [CLI_REFERENCE.md](docs/CLI_REFERENCE.md): commands, options, output shapes, snapshot lifecycle, MCP.
+- [RELEASE_NOTES_4.0.0.md](docs/RELEASE_NOTES_4.0.0.md): draft of the 4.0.0 changes (not released).
 - [RELEASE_NOTES_3.6.1.md](docs/RELEASE_NOTES_3.6.1.md): the 3.6.1 changes (release workflow waits up to 60 minutes for nuget.org to index); no index run is needed.
 - [RELEASE_NOTES_3.6.0.md](docs/RELEASE_NOTES_3.6.0.md): the 3.6.0 changes (Linux support, Windows-built manifests read on Linux, lock files kept after a run, and a clear error for a manifest without `git_root`/`solution_path`); no index run is needed.
 - [RELEASE_NOTES_3.5.2.md](docs/RELEASE_NOTES_3.5.2.md): the 3.5.2 changes (the dead-candidate `generated_excluded` text, the `lurp_dead_candidates` description, MCP `lurp_index` failure reporting, and the MSBuild/SDK failure cause); no index run is needed.

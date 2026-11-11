@@ -7,12 +7,9 @@ public sealed class ReflectionExtractor
 {
     private readonly ReflectionExtractionContext _context;
 
-    internal ReflectionExtractor(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments, BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null,
-        IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
+    internal ReflectionExtractor(ProjectExtractionInputs inputs)
     {
-        ArgumentNullException.ThrowIfNull(compilation);
-        ArgumentNullException.ThrowIfNull(snapshotId);
-        _context = new ReflectionExtractionContext(compilation, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache, documentPaths, generatedDocumentPaths);
+        _context = new ReflectionExtractionContext(inputs);
     }
 
     public List<CompilationFactExtractor.ExtractionMeasurement> Measurements { get; } = [];
@@ -32,13 +29,8 @@ public sealed class ReflectionExtractor
 
         foreach (var syntaxTree in _context.Compilation.SyntaxTrees)
         {
-            // Skip syntax trees not in scope (when scoping is active)
-            if (_context.ScopeDocuments != null)
-            {
-                var filePath = syntaxTree.FilePath;
-                if (string.IsNullOrEmpty(filePath) || !_context.ScopeDocuments.Contains(PathNormalizer.ToForwardSlash(filePath)))
-                    continue;
-            }
+            if (!_context.IsInScope(syntaxTree))
+                continue;
 
             // Roots stay transient per tree instead of materializing every root
             // and semantic model for the whole compilation before extracting.

@@ -2,7 +2,9 @@
 
 public interface IEdgeStore
 {
-    void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);
+    /// <summary>Collapses the batch (<see cref="EdgeMerge.CollapseBatch" />) and merges it into the snapshot.</summary>
+    /// <returns>The number of relations in the collapsed batch.</returns>
+    int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges);
     void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics);
     void SaveAnnotations(string snapshotId, IEnumerable<AnnotationRecord> annotations);
 

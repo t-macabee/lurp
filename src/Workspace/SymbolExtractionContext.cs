@@ -3,27 +3,20 @@ using Microsoft.CodeAnalysis;
 namespace Lurp.Workspace;
 
 internal sealed class SymbolExtractionContext(
-    Compilation compilation,
+    ProjectExtractionInputs inputs,
     IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
     IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
     IReadOnlySet<DocumentId> generatedDocuments,
-    string snapshotId,
-    string targetFramework,
-    IReadOnlySet<string>? scopeDocuments = null,
-    BindingIncompletenessCollector? incompleteness = null)
+    string targetFramework)
+    : ExtractionContextBase(inputs)
 {
     private readonly Dictionary<string, DocumentId> _docIdByPath =
         BuildDocIdByPath(documentContents.Keys);
 
-    internal Compilation Compilation { get; } = compilation;
     internal IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> DocumentContents { get; } = documentContents;
     internal IReadOnlyDictionary<DocumentId, DocumentVersionId> DocumentVersions { get; } = documentVersions;
     internal IReadOnlySet<DocumentId> GeneratedDocuments { get; } = generatedDocuments;
-    internal string AssemblyIdentity { get; } = compilation.Assembly.Identity.GetDisplayName();
-    internal string SnapshotId { get; } = snapshotId;
     internal string TargetFramework { get; } = targetFramework;
-    internal IReadOnlySet<string>? ScopeDocuments { get; } = scopeDocuments;
-    internal BindingIncompletenessCollector? Incompleteness { get; } = incompleteness;
 
     private static Dictionary<string, DocumentId> BuildDocIdByPath(IEnumerable<DocumentId> documentIds)
     {
@@ -64,16 +57,6 @@ internal sealed class SymbolExtractionContext(
             lookup[kv.Key] = kv.Value;
 
         return lookup;
-    }
-
-    internal void RecordFilteredExternal(ISymbol resolvedTarget, SyntaxNode? node)
-    {
-        Incompleteness?.RecordFilteredExternal(resolvedTarget, node, Compilation);
-    }
-
-    internal bool IsInScope(SyntaxTree? syntaxTree)
-    {
-        return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
     }
 
     internal DocumentId? ResolveDocumentId(SyntaxTree syntaxTree)

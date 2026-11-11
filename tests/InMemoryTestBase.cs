@@ -49,7 +49,8 @@ public abstract class InMemoryTestBase : IDisposable
         IReadOnlyDictionary<string, string> files,
         string projectName = "TestProject",
         bool runAdapters = false,
-        string? snapshotId = null)
+        string? snapshotId = null,
+        Func<IReadOnlySet<string>?, Lurp.Adapters.IFrameworkAdapter[]>? adapterProvider = null)
     {
         using var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -90,7 +91,7 @@ public abstract class InMemoryTestBase : IDisposable
         var workspaceInfo = new WorkspaceInfo(workspace.CurrentSolution, _tempDir);
 
         var options = CompilationFactExtractor.CreateOptions(
-            runAdapters ? null : AllAdapterNames);
+            runAdapters ? null : AllAdapterNames) with { AdapterProvider = adapterProvider };
 
         var result = CompilationFactExtractor.ExtractAll(
             compilation, workspaceInfo, snapshotId ?? "test-snapshot", projectName, options);

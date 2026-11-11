@@ -559,10 +559,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
 
     // ── IEdgeStore ─────────────────────────────────────────────────────
 
-    public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
+    public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
         EnsureOpen();
-        _edgeOps!.SaveEdges(snapshotId, edges);
+        return _edgeOps!.SaveEdges(snapshotId, edges);
     }
 
     public void SaveDiagnostics(string snapshotId, IEnumerable<DiagnosticRecord> diagnostics)

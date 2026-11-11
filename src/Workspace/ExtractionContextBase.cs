@@ -2,48 +2,52 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Workspace;
 
-internal abstract class ExtractionContextBase
+/// <summary>
+///     The inputs that every extraction stage of one project shares: one semantic-model
+///     cache, one <see cref="EdgeLocationResolver" /> and one binding-incompleteness
+///     collector for each project (S01-F32).
+/// </summary>
+internal sealed record ProjectExtractionInputs(
+    Compilation Compilation,
+    string SnapshotId,
+    EdgeLocationResolver LocationResolver,
+    IReadOnlySet<string>? ScopeDocuments,
+    BindingIncompletenessCollector? Incompleteness,
+    Dictionary<SyntaxTree, SemanticModel> SemanticModelCache);
+
+/// <summary>The members that every workspace extraction context shares.</summary>
+internal abstract class ExtractionContextBase(ProjectExtractionInputs inputs)
 {
-    protected readonly string _gitRoot;
-    private readonly EdgeLocationResolver _locationResolver;
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache;
-
-    protected ExtractionContextBase(Compilation compilation, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments = null, BindingIncompletenessCollector? incompleteness = null,
-        Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null, IEnumerable<string>? documentPaths = null, IEnumerable<string>? generatedDocumentPaths = null)
-    {
-        Compilation = compilation;
-        SnapshotId = snapshotId;
-        _gitRoot = gitRoot ?? throw new ArgumentNullException(nameof(gitRoot));
-        AssemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        ScopeDocuments = scopeDocuments;
-        Incompleteness = incompleteness;
-        _semanticModelCache = semanticModelCache ?? [];
-        _locationResolver = new EdgeLocationResolver(documentPaths ?? [], generatedDocumentPaths ?? [], _gitRoot);
-    }
-
-    internal Compilation Compilation { get; }
-    internal string SnapshotId { get; }
-    internal string AssemblyIdentity { get; }
-    internal IReadOnlySet<string>? ScopeDocuments { get; }
-    internal BindingIncompletenessCollector? Incompleteness { get; }
+    internal Compilation Compilation { get; } = inputs.Compilation;
+    internal string SnapshotId { get; } = inputs.SnapshotId;
+    internal string AssemblyIdentity { get; } = inputs.Compilation.Assembly.Identity.GetDisplayName();
+    internal IReadOnlySet<string>? ScopeDocuments { get; } = inputs.ScopeDocuments;
+    internal BindingIncompletenessCollector? Incompleteness { get; } = inputs.Incompleteness;
+    internal EdgeLocationResolver LocationResolver { get; } = inputs.LocationResolver;
 
     /// <summary>
     ///     True when <paramref name="documentPath" /> is a generated document, per the
     ///     shared <see cref="EdgeLocationResolver" /> detection (pre-computed generated
-    ///     set + conventional-name heuristics). Emitters set an edge's
-    ///     <c>IsCrossGenerated</c> from this so polymorphism/reflection edges carry the
-    ///     same generated-source signal the member-edge lineage already records.
+    ///     set + conventional-name heuristics).
     /// </summary>
     internal bool IsGenerated(string? documentPath)
     {
-        return _locationResolver.IsGenerated(documentPath);
+        return LocationResolver.IsGenerated(documentPath);
     }
 
-    internal EdgeLocationResolver LocationResolver => _locationResolver;
+    internal bool IsInScope(SyntaxTree? syntaxTree)
+    {
+        return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+    }
+
+    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
+    {
+        return ExtractionUtils.GetAllNamedTypes(Compilation.Assembly.GlobalNamespace);
+    }
 
     internal (string? path, int? sl, int? sc, int? el, int? ec) Resolve(ISymbol symbol)
     {
-        return _locationResolver.Resolve(symbol);
+        return LocationResolver.Resolve(symbol);
     }
 
     internal void RecordUnresolvedBinding(SymbolInfo symbolInfo, SyntaxNode node, SemanticModel semanticModel)
@@ -63,11 +67,11 @@ internal abstract class ExtractionContextBase
 
     internal SemanticModel GetOrCreateSemanticModel(SyntaxTree syntaxTree)
     {
-        if (_semanticModelCache.TryGetValue(syntaxTree, out var model))
+        if (inputs.SemanticModelCache.TryGetValue(syntaxTree, out var model))
             return model;
 
         model = Compilation.GetSemanticModel(syntaxTree);
-        _semanticModelCache[syntaxTree] = model;
+        inputs.SemanticModelCache[syntaxTree] = model;
         return model;
     }
 
@@ -79,6 +83,35 @@ internal abstract class ExtractionContextBase
     internal (string? path, int? startLine, int? startColumn, int? endLine, int? endColumn)
         GetLocationInfo(Location location)
     {
-        return _locationResolver.Resolve(location);
+        return LocationResolver.Resolve(location);
+    }
+
+    /// <summary>The one edge maker of the workspace extractors (S01-F32).</summary>
+    internal EdgeRecord MakeEdge(
+        string sourceId,
+        string targetId,
+        string kind,
+        string extractorVersion,
+        (string? path, int? sl, int? sc, int? el, int? ec)? location,
+        string provenance = Provenance.CompilerProved,
+        string? typeArgumentsJson = null)
+    {
+        var sourceDocumentPath = location?.path;
+        return new EdgeRecord
+        {
+            SourceSymbolId = sourceId,
+            TargetSymbolId = targetId,
+            Kind = kind,
+            Provenance = provenance,
+            SnapshotId = SnapshotId,
+            ExtractorVersion = extractorVersion,
+            SourceDocumentPath = sourceDocumentPath,
+            SourceStartLine = location?.sl,
+            SourceStartColumn = location?.sc,
+            SourceEndLine = location?.el,
+            SourceEndColumn = location?.ec,
+            TypeArgumentsJson = typeArgumentsJson,
+            IsCrossGenerated = IsGenerated(sourceDocumentPath)
+        };
     }
 }

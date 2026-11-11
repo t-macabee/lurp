@@ -6,21 +6,9 @@ public sealed class SymbolExtractor
 {
     private readonly SymbolExtractionContext _context;
 
-    internal SymbolExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> documentContents,
-        IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions,
-        IReadOnlySet<DocumentId> generatedDocuments,
-        string snapshotId,
-        string targetFramework,
-        IReadOnlySet<string>? scopeDocuments,
-        BindingIncompletenessCollector? incompleteness)
+    internal SymbolExtractor(ProjectExtractionInputs inputs, WorkspaceInfo workspaceInfo, string targetFramework)
     {
-        ArgumentNullException.ThrowIfNull(compilation);
-        ArgumentNullException.ThrowIfNull(documentContents);
-        ArgumentNullException.ThrowIfNull(documentVersions);
-        ArgumentNullException.ThrowIfNull(generatedDocuments);
-        ArgumentNullException.ThrowIfNull(snapshotId);
-
-        _context = new SymbolExtractionContext(compilation, documentContents, documentVersions, generatedDocuments, snapshotId, targetFramework, scopeDocuments, incompleteness);
+        _context = new SymbolExtractionContext(inputs, workspaceInfo.DocumentContents, workspaceInfo.Documents, workspaceInfo.GeneratedDocuments, targetFramework);
     }
 
     public List<SymbolDeclaration> ExtractAll()

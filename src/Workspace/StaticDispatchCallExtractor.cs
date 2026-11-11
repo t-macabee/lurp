@@ -68,20 +68,6 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
             return;
 
         var loc = context.GetLocationInfo(invocation.GetLocation());
-        edges.Add(new EdgeRecord
-        {
-            SourceSymbolId = callerId,
-            TargetSymbolId = calleeId,
-            Kind = nameof(EdgeKind.StaticallyCalls),
-            Provenance = Provenance.CompilerProved,
-            SnapshotId = context.SnapshotId,
-            ExtractorVersion = ExtractorConstants.StaticallyCallsExtractor,
-            SourceDocumentPath = loc.path,
-            SourceStartLine = loc.startLine,
-            SourceStartColumn = loc.startColumn,
-            SourceEndLine = loc.endLine,
-            SourceEndColumn = loc.endColumn,
-            IsCrossGenerated = context.IsGenerated(loc.path)
-        });
+        edges.Add(context.MakeEdge(callerId, calleeId, nameof(EdgeKind.StaticallyCalls), ExtractorConstants.StaticallyCallsExtractor, loc));
     }
 }

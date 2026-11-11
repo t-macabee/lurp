@@ -47,21 +47,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (loc == null)
                     continue;
 
-                edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = typeId,
-                    TargetSymbolId = memberId,
-                    Kind = nameof(EdgeKind.Declares),
-                    Provenance = Provenance.CompilerProved,
-                    SnapshotId = context.SnapshotId,
-                    ExtractorVersion = ExtractorConstants.DeclaresExtractor,
-                    SourceDocumentPath = loc?.path,
-                    SourceStartLine = loc?.startLine,
-                    SourceStartColumn = loc?.startColumn,
-                    SourceEndLine = loc?.endLine,
-                    SourceEndColumn = loc?.endColumn,
-                    IsCrossGenerated = context.LocationResolver.IsGenerated(loc?.path)
-                });
+                edges.Add(context.MakeEdge(typeId, memberId, nameof(EdgeKind.Declares), ExtractorConstants.DeclaresExtractor, loc));
             }
         }
 

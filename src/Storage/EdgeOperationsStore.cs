@@ -12,7 +12,12 @@ internal sealed class EdgeOperationsStore
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    public void SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
+    /// <summary>
+    ///     The one place that collapses edges (D6): the batch is collapsed by
+    ///     (source, target, kind), then merged into the rows of the snapshot.
+    /// </summary>
+    /// <returns>The number of relations in the collapsed batch.</returns>
+    public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
     {
         var collapsed = EdgeMerge.CollapseBatch(edges);
         // Both TypeArgumentsJson and ReceiverTypeConstraintsJson need an app-side JSON
@@ -63,6 +68,8 @@ internal sealed class EdgeOperationsStore
             transaction.Rollback();
             throw;
         }
+
+        return collapsed.Count;
     }
 
     private void WriteBulkEdges(string snapshotId, List<EdgeRecord> edges, SqliteTransaction transaction)

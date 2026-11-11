@@ -22,7 +22,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         return edges;
     }
 
-    internal static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
+    private static bool IsNameOfInvocation(InvocationExpressionSyntax invocation)
     {
         return invocation.Expression is IdentifierNameSyntax identifier
                && identifier.Identifier.Text.Equals("nameof", StringComparison.Ordinal)
@@ -90,20 +90,6 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
             return;
 
         var loc = context.GetLocationInfo(invocation.GetLocation());
-        edges.Add(new EdgeRecord
-        {
-            SourceSymbolId = sourceId,
-            TargetSymbolId = targetId,
-            Kind = nameof(EdgeKind.ReflectionMemberRef),
-            Provenance = Provenance.CompilerProved,
-            SnapshotId = context.SnapshotId,
-            ExtractorVersion = ExtractorConstants.ReflectionExtractor,
-            SourceDocumentPath = loc.path,
-            SourceStartLine = loc.startLine,
-            SourceStartColumn = loc.startColumn,
-            SourceEndLine = loc.endLine,
-            SourceEndColumn = loc.endColumn,
-            IsCrossGenerated = context.IsGenerated(loc.path)
-        });
+        edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.ReflectionMemberRef), ExtractorConstants.ReflectionExtractor, loc));
     }
 }

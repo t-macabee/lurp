@@ -1,12 +1,7 @@
 namespace Lurp.Workspace;
 
-internal static class EdgeDedup
+internal static class DispatchClaimProvenance
 {
-    public static List<EdgeRecord> Deduplicate(IEnumerable<EdgeRecord> edges)
-    {
-        return EdgeMerge.CollapseBatch(edges);
-    }
-
     /// <summary>
     ///     Composes the effective claim provenance for a caller reached through an
     ///     interface/abstract dispatch path (one or more Calls hops plus a
@@ -19,7 +14,7 @@ internal static class EdgeDedup
     ///     participation: when a framework, registration, routing, or DI-derived
     ///     edge (framework_derived) takes part in the composed path.
     /// </summary>
-    internal static string ComposeDispatchClaimProvenance(IEnumerable<string> pathProvenances, string dispatchProvenance)
+    internal static string Compose(IEnumerable<string> pathProvenances, string dispatchProvenance)
     {
         if (dispatchProvenance == Provenance.FrameworkDerived
             || pathProvenances.Any(provenance => provenance == Provenance.FrameworkDerived))

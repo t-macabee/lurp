@@ -427,13 +427,27 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             }
 
             var options = CompilationFactExtractor.CreateOptions(skipAdapters, extractionScopeAbsolutePaths, _output);
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, project, options);
-            result.EnsureRequiredSuccess();
+            CompilationFactExtractor.ExtractionResult result;
+            try
+            {
+                result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotIdStr, projectName, project, options);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // D34: the declaration stage is required. Its failure makes the project
+                // unreadable for this pass, as in the full pipeline.
+                _output.WriteErrorLine($"FAILED: {ex.Message}");
+                _store.SaveBindingIncompleteness(
+                    newSnapshotIdStr,
+                    ScopeBindingIncompleteness(
+                        WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot),
+                        extractionScopeRelativePaths));
+                continue;
+            }
 
             _store.SaveDeclarations(newSnapshotIdStr, result.Declarations);
             totalDecl += result.Declarations.Count;
-            _store.SaveEdges(newSnapshotIdStr, result.Edges);
-            totalEdge += result.Edges.Count;
+            totalEdge += _store.SaveEdges(newSnapshotIdStr, result.Edges);
             _store.SaveDiagnostics(newSnapshotIdStr, result.Diagnostics);
             totalDiag += result.Diagnostics.Count;
 

@@ -282,8 +282,6 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
 
             var options = CompilationFactExtractor.CreateOptions(skipAdapters, scopeDocs, _output);
             cancellationToken.ThrowIfCancellationRequested();
-            var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, project, options);
-            result.EnsureRequiredSuccess();
 
             // Binding-incompleteness rows are persisted with paths relative
             // to the git root (see BindingIncompletenessCollector.Record),
@@ -293,10 +291,31 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
                 .Select(path => GetRelativePath(path, gitRoot))
                 .ToList();
 
+            CompilationFactExtractor.ExtractionResult result;
+            try
+            {
+                result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, newSnapshotId, project.Name, project, options);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // D34: the declaration stage is required. Its failure makes the project
+                // unreadable for this pass, as in the full pipeline.
+                _output.WriteErrorLine($"  [cross-doc {project.Name}] FAILED: {ex.Message}");
+                var unreadable = WorkspaceLoadGate.DescribeBlindProject(compilation, project.Name, gitRoot);
+                if (scopeRelativePaths != null)
+                {
+                    store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths, project.Name);
+                    unreadable = [.. IncrementalIndexer.ScopeBindingIncompleteness(unreadable, scopeRelativePaths.ToHashSet(StringComparer.Ordinal))];
+                }
+
+                store.SaveBindingIncompleteness(newSnapshotId, unreadable);
+                continue;
+            }
+
             if (scopeRelativePaths != null)
                 store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths, project.Name);
 
-            store.SaveEdges(newSnapshotId, result.Edges);
+            var savedEdges = store.SaveEdges(newSnapshotId, result.Edges);
             store.SaveDeclarations(newSnapshotId, result.Declarations);
 
             // ARCH-005: Step 6 (IncrementalIndexer.ExtractReplacementFacts) already
@@ -334,8 +353,8 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
 
             if (result.Annotations.Count > 0)
                 store.SaveAnnotations(newSnapshotId, result.Annotations);
-            totalEdges += result.Edges.Count;
-            _output.Write($"  [cross-doc {project.Name}] {result.Edges.Count} edges. ");
+            totalEdges += savedEdges;
+            _output.Write($"  [cross-doc {project.Name}] {savedEdges} edges. ");
         }
 
         return totalEdges;

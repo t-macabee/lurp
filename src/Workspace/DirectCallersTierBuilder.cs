@@ -81,7 +81,7 @@ internal sealed class DirectCallersTierBuilder(ContextTierContext context) : ICo
                 // proves the structural edges, not the runtime dispatch
                 // target : and the item is presented as an indirect
                 // dispatch candidate, never as a direct caller.
-                var provenance = EdgeDedup.ComposeDispatchClaimProvenance(
+                var provenance = DispatchClaimProvenance.Compose(
                     reached.WitnessPath(callerId).Select(static hop => hop.Provenance), dispatchProvenance);
                 var item = context.BuildCapsuleItem(callerId, symbol.ParentHop.EdgeKind, provenance,
                     BuildDispatchReason(dispatchProvenance, symbol.ParentHop.Provenance),

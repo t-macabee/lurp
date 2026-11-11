@@ -59,7 +59,10 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
 
             var options = CompilationFactExtractor.CreateOptions();
             var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, GroundTruthSnapshotId, project.Name, project, options);
-            result.EnsureRequiredSuccess();
+            if (result.StageFailures.Count > 0)
+                throw new InvalidOperationException(
+                    $"Extraction stages failed for '{project.Name}': " +
+                    string.Join("; ", result.StageFailures.Select(f => $"{f.Stage} {f.AdapterName}: {f.Message}")));
             Results.Add(result);
             perProject.Add((compilation, result.Edges, result.Declarations));
 

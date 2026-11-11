@@ -224,7 +224,6 @@ public static class IndexRunner
                 {
                     var options = CompilationFactExtractor.CreateOptions(skipAdapters, output: sink);
                     var result = CompilationFactExtractor.ExtractAll(compilation, workspaceInfo, snapshotIdStr, projectName, project, options);
-                    result.EnsureRequiredSuccess();
 
                     store.SaveDeclarations(snapshotIdStr, result.Declarations);
                     totalDeclarations += result.Declarations.Count;
@@ -269,9 +268,7 @@ public static class IndexRunner
                 }
             }
 
-            var dedupedEdges = EdgeDedup.Deduplicate(allEdges);
-            store.SaveEdges(snapshotIdStr, dedupedEdges);
-            totalEdges = dedupedEdges.Count;
+            totalEdges = store.SaveEdges(snapshotIdStr, allEdges);
             if (allAnnotations.Count > 0)
                 store.SaveAnnotations(snapshotIdStr, allAnnotations);
 

@@ -4,6 +4,11 @@ namespace Lurp.Storage;
 
 public static class EdgeMerge
 {
+    /// <summary>
+    ///     Collapses a batch to one edge for each (source, target, kind). The edge with the
+    ///     higher provenance rank wins (the first one on a tie); the type-argument and the
+    ///     receiver-constraint variants of every edge of the key are kept (<see cref="Merge" />).
+    /// </summary>
     public static List<EdgeRecord> CollapseBatch(IEnumerable<EdgeRecord> edges)
     {
         var best = new Dictionary<(string source, string target, string kind), EdgeRecord>();
@@ -12,45 +17,47 @@ public static class EdgeMerge
         {
             var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
             if (best.TryGetValue(key, out var existing))
-            {
-                if (ProvenanceRank(edge.Provenance) > ProvenanceRank(existing.Provenance))
-                    best[key] = WithMergedTypeArguments(edge, existing.TypeArgumentsJson);
-                else
-                    best[key] = WithMergedTypeArguments(existing, edge.TypeArgumentsJson);
-            }
+                best[key] = ProvenanceRank(edge.Provenance) > ProvenanceRank(existing.Provenance)
+                    ? Merge(edge, existing)
+                    : Merge(existing, edge);
             else
-            {
                 best[key] = edge;
-            }
         }
 
         return [.. best.Values];
     }
 
-    public static EdgeRecord WithMergedTypeArguments(EdgeRecord edge, string? additionalTypeArgumentsJson)
+    /// <summary>
+    ///     The row of <paramref name="winner" /> with the union of the type-argument variants and
+    ///     the union of the receiver-constraint variants of both edges (the same rule as the
+    ///     persisted-row merge in <c>EdgeOperationsStore.WriteSplitEdges</c>).
+    /// </summary>
+    public static EdgeRecord Merge(EdgeRecord winner, EdgeRecord other)
     {
-        var merged = MergeTypeArguments(edge.TypeArgumentsJson, additionalTypeArgumentsJson);
-        if (string.Equals(merged, edge.TypeArgumentsJson, StringComparison.Ordinal))
-            return edge;
+        var typeArguments = MergeTypeArguments(winner.TypeArgumentsJson, other.TypeArgumentsJson);
+        var constraints = MergeReceiverTypeConstraints(winner.ReceiverTypeConstraintsJson, other.ReceiverTypeConstraintsJson);
+        if (string.Equals(typeArguments, winner.TypeArgumentsJson, StringComparison.Ordinal) &&
+            string.Equals(constraints, winner.ReceiverTypeConstraintsJson, StringComparison.Ordinal))
+            return winner;
 
         return new EdgeRecord
         {
-            SourceSymbolId = edge.SourceSymbolId,
-            TargetSymbolId = edge.TargetSymbolId,
-            Kind = edge.Kind,
-            Provenance = edge.Provenance,
-            SnapshotId = edge.SnapshotId,
-            ExtractorVersion = edge.ExtractorVersion,
-            SourceDocumentPath = edge.SourceDocumentPath,
-            SourceStartLine = edge.SourceStartLine,
-            SourceStartColumn = edge.SourceStartColumn,
-            SourceEndLine = edge.SourceEndLine,
-            SourceEndColumn = edge.SourceEndColumn,
-            IsCrossGenerated = edge.IsCrossGenerated,
-            TypeArgumentsJson = merged,
-            ReceiverTypeConstraintsJson = edge.ReceiverTypeConstraintsJson,
-            SourceNodeKind = edge.SourceNodeKind,
-            TargetNodeKind = edge.TargetNodeKind
+            SourceSymbolId = winner.SourceSymbolId,
+            TargetSymbolId = winner.TargetSymbolId,
+            Kind = winner.Kind,
+            Provenance = winner.Provenance,
+            SnapshotId = winner.SnapshotId,
+            ExtractorVersion = winner.ExtractorVersion,
+            SourceDocumentPath = winner.SourceDocumentPath,
+            SourceStartLine = winner.SourceStartLine,
+            SourceStartColumn = winner.SourceStartColumn,
+            SourceEndLine = winner.SourceEndLine,
+            SourceEndColumn = winner.SourceEndColumn,
+            IsCrossGenerated = winner.IsCrossGenerated,
+            TypeArgumentsJson = typeArguments,
+            ReceiverTypeConstraintsJson = constraints,
+            SourceNodeKind = winner.SourceNodeKind,
+            TargetNodeKind = winner.TargetNodeKind
         };
     }
 

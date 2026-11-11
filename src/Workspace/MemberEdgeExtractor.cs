@@ -7,18 +7,14 @@ public sealed class MemberEdgeExtractor
 {
     private readonly List<IMemberEdgeExtractor> _extractors;
 
-    internal MemberEdgeExtractor(Compilation compilation, IReadOnlyDictionary<DocumentId, DocumentVersionId> documentVersions, IReadOnlySet<DocumentId> generatedDocuments, string snapshotId, string gitRoot, IReadOnlySet<string>? scopeDocuments,
-        BindingIncompletenessCollector? incompleteness, Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null)
+    internal MemberEdgeExtractor(ProjectExtractionInputs inputs)
     {
-        var context = new MemberEdgeExtractionContext(compilation, documentVersions, generatedDocuments, snapshotId, gitRoot, scopeDocuments, incompleteness, semanticModelCache);
+        var context = new MemberEdgeExtractionContext(inputs);
 
         _extractors =
         [
             new DeclaresEdgeExtractor(context),
-            new CallsEdgeExtractor(context),
-            new ConstructsEdgeExtractor(context),
             new OverridesEdgeExtractor(context),
-            new ReadsWritesEdgeExtractor(context),
             new ReturnsEdgeExtractor(context),
             new ParameterDependencyEdgeExtractor(context),
             new ThrowsEdgeExtractor(context),
@@ -44,6 +40,6 @@ public sealed class MemberEdgeExtractor
                 GC.GetAllocatedBytesForCurrentThread() - allocatedBefore));
         }
 
-        return EdgeDedup.Deduplicate(allEdges);
+        return allEdges;
     }
 }
