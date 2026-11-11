@@ -133,24 +133,6 @@ public abstract class GroundTruthFixtureBase : IAsyncLifetime
         throw new InvalidOperationException("Could not locate tests/Fixtures/GroundTruth from " + AppContext.BaseDirectory);
     }
 
-    public static IReadOnlyList<GoldenFact> LoadGolden()
-    {
-        var path = Path.Combine(LocateFixtureRoot(), "CallShapes", "call-shapes.golden.json");
-        using var document = JsonDocument.Parse(File.ReadAllText(path));
-        var facts = new List<GoldenFact>();
-        foreach (var element in document.RootElement.GetProperty("facts").EnumerateArray())
-        {
-            facts.Add(new GoldenFact(
-                element.GetProperty("id").GetString()!,
-                element.GetProperty("source").GetString()!,
-                element.GetProperty("kind").GetString()!,
-                element.GetProperty("target").GetString()!,
-                element.GetProperty("reason").GetString()!));
-        }
-
-        return facts;
-    }
-
     internal static void CopyTree(string sourceRoot, string destinationRoot)
     {
         Directory.CreateDirectory(destinationRoot);
@@ -204,7 +186,62 @@ public sealed class ExtractorGateFixture : GroundTruthFixtureBase
     protected override string SolutionRelativePath => Path.Combine("ExtractorGate", "ExtractorGate.slnx");
 }
 
-public sealed record GoldenFact(string Id, string Source, string Kind, string Target, string Reason);
+/// <summary>
+///     One golden file of a ground-truth corpus (Oracle C, D18): the compared kinds, the meaning of
+///     each basis value, and the complete fact list. A fact with <see cref="GoldenFact.Pending" /> is
+///     true, but the extractor does not write it yet.
+/// </summary>
+public sealed record GoldenFile(
+    IReadOnlyList<string> ComparedKinds,
+    IReadOnlyDictionary<string, string> BasisValues,
+    IReadOnlyList<GoldenFact> Facts)
+{
+    /// <summary>Loads a golden file by its path under tests/Fixtures/GroundTruth.</summary>
+    public static GoldenFile Load(string relativePath)
+    {
+        var path = Path.Combine(GroundTruthFixtureBase.LocateFixtureRoot(), relativePath);
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        var root = document.RootElement;
+        var kinds = root.GetProperty("compared_kinds").EnumerateArray().Select(kind => kind.GetString()!).ToList();
+        var basisValues = root.GetProperty("basis_values").EnumerateObject()
+            .ToDictionary(value => value.Name, value => value.Value.GetString()!, StringComparer.Ordinal);
+        var facts = root.GetProperty("facts").EnumerateArray().Select(ReadFact).ToList();
+        return new GoldenFile(kinds, basisValues, facts);
+    }
+
+    private static GoldenFact ReadFact(JsonElement element)
+    {
+        GoldenPending? pending = null;
+        if (element.TryGetProperty("pending", out var value))
+        {
+            pending = new GoldenPending(
+                value.GetProperty("stage").GetString()!,
+                value.GetProperty("tracking").GetString()!,
+                value.GetProperty("reason").GetString()!);
+        }
+
+        return new GoldenFact(
+            element.GetProperty("id").GetString()!,
+            element.GetProperty("source").GetString()!,
+            element.GetProperty("kind").GetString()!,
+            element.GetProperty("target").GetString()!,
+            element.GetProperty("basis").GetString()!,
+            element.GetProperty("reason").GetString()!,
+            pending);
+    }
+}
+
+public sealed record GoldenFact(
+    string Id,
+    string Source,
+    string Kind,
+    string Target,
+    string Basis,
+    string Reason,
+    GoldenPending? Pending);
+
+/// <summary>The stage that will make the extractor write a pending fact, and why it does not yet.</summary>
+public sealed record GoldenPending(string Stage, string Tracking, string Reason);
 
 [CollectionDefinition("GroundTruth", DisableParallelization = true)]
 public sealed class GroundTruthSuite

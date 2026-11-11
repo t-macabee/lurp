@@ -15,12 +15,18 @@ are committed. Index output belongs outside the fixture tree.
   target, `CallShapes.App` contains every call shape and the top-level
   statements), net10.0, ASP.NET Core shared framework referenced for the DI and
   minimal-API shapes.
-- `CallShapes/call-shapes.golden.json` — Oracle C: the reviewed ground truth for
-  Fixture 1. Each fact is `source` / `kind` / `target` in Roslyn
-  documentation-comment id form plus a one-line reason. `excluded` lists the
-  constructs that stay behind a `DeclaredBoundaries` id; `notes` records the
-  measured/undecided details. The expected kinds are `Calls`, `Constructs`,
-  `MethodGroupRef` (the B1 decision), `Reads`, `Writes`, `References`.
+- `CallShapes/call-shapes.golden.json` — Oracle C for Fixture 1. The list is
+  complete: it holds every fact of the kinds in `compared_kinds` (`Calls`,
+  `Constructs`, `MethodGroupRef`, `Reads`, `Writes`, `References`) whose source
+  and target are both declared in the fixture. `GroundTruthGoldenTests` compares
+  the extractor output in that scope with the list as an exact set. Each fact is
+  `source` / `kind` / `target` in Roslyn documentation-comment id form, with a
+  one-line reason and a `basis`: the evidence that makes the fact true without
+  the extractor. `basis_values` defines each basis. The golden is independent of
+  the extractor only through this field. A fact with `pending` is true, but the
+  extractor does not write it yet; the test requires it to be absent. `mapping`
+  states the rules; `excluded` lists the constructs that stay behind a
+  `DeclaredBoundaries` id; `notes` records details of single shapes.
 - `CrossProject/` — Fixture 2: `CrossProject.Lib` multi-targets
   `net9.0;net10.0` with `InternalsVisibleTo("CrossProject.App")`, a partial type
   across two files, generics across assemblies, `#if NET9_0` / `#if NET10_0`
