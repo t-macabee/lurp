@@ -1,0 +1,12 @@
+# Flags that a live doc cites and that are not flags of a Lurp mode (DocReferenceTests, D107).
+# Flags that the scripts and workflows use are accepted without a line (D122).
+# One line each: <doc path> | <flag> | <reason>
+README.md | --add-source | dotnet tool install option
+SECURITY.md | --global | dotnet tool install option
+docs/CLI_REFERENCE.md | --global | dotnet tool install option
+VERSIONING.md | --foo | placeholder flag name in the breaking-change rule
+VERSIONING.md | --bar | placeholder flag name in the breaking-change rule
+docs/CLI_REFERENCE.md | --name | placeholder for any value flag
+docs/CLI_REFERENCE.md | --outline | named as a flag that does not exist (the MCP parameter is the only form)
+docs/CLI_REFERENCE.md | --documents | named as a flag that does not exist (the MCP parameter is the only form)
+notes/TRUST_KERNEL.md | --enumerate-paths | removed in 2.0.0; the fix log names it as history

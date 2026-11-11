@@ -177,18 +177,10 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 
 ## Framework adapters
 
-Lurp models framework-mediated relationships through six adapters that emit
-ordinary typed facts into the shared model. Each fact retains its evidence level;
-see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ladder.
-
-| Adapter | Facts emitted |
-|---|---|
-| ASP.NET Core | `RoutesTo` (route → controller action) |
-| Dependency Injection | `Registers` (service → implementation) |
-| MediatR | request/notification → handler chains |
-| EF Core | entity, `DbSet`, and configuration relationships |
-| Serialization | DTO/property contract participation |
-| Test | `TestedBy` (production symbol → covering test) |
+Lurp models framework-mediated relationships through adapters that emit ordinary
+typed facts into the shared model. Each fact keeps its evidence level. The adapters
+and their facts are in [ARCHITECTURE.md §4.1](docs/ARCHITECTURE.md#41-framework-adapters);
+the evidence ladder is in [§4.2](docs/ARCHITECTURE.md#42-evidence-ladder).
 
 ## Limitations
 
@@ -212,11 +204,8 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`); the published version is
-3.6.1. This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. 3.0.0 moves the default database to
-`%LOCALAPPDATA%\lurp\`, registers the MCP write tools only with
-`--enable-write-tools`, and needs one `--mode=index` run on an index built by
-2.0.0: see [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md). 3.0.1 fixes an index run that failed after a re-pin: see [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md). 3.0.2 stores the edges of a partial type at its hand-written part and needs one `--mode=index` run: see [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md). 3.5.0 changes the CLI/MCP contract to version 6 and needs one `--mode=index` run: see [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md). `windows-latest`
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.11.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+[Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit
 that passed that gate, unless the release run is started with an `override_reason` (see [CONTRIBUTING.md](CONTRIBUTING.md#releasing)). Roadmap: surfacing the

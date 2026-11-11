@@ -17,6 +17,11 @@ dotnet run --project scripts/perf/gen -c Release -- --size=4 --out=C:\perf\4x
 dotnet restore C:\perf\4x\Perf.slnx
 ```
 
+```bash
+dotnet run --project scripts/perf/gen -c Release -- --size=4 --out=$HOME/perf/4x
+dotnet restore $HOME/perf/4x/Perf.slnx
+```
+
 The fixture root carries `.lurp-perf-gen` and `perf-manifest.json`. The manifest holds the size
 counts and an `anchors` object (see "Anchors" below). The harness refuses a `--fixture`
 without the `.lurp-perf-gen` marker, so edit operations can never touch an unmarked tree.
@@ -29,10 +34,18 @@ Fixture run (a generated tree; the edit operations run):
 dotnet run --project scripts/perf/harness -c Release -- --fixture=C:\perf\4x --work=C:\perf\work --out=C:\perf\results\4x.json --protocol=gate
 ```
 
+```bash
+dotnet run --project scripts/perf/harness -c Release -- --fixture=$HOME/perf/4x --work=$HOME/perf/work --out=$HOME/perf/results/4x.json --protocol=gate
+```
+
 Solution run (never edits the tree; anchors optional):
 
 ```powershell
 dotnet run --project scripts/perf/harness -c Release -- --solution=C:\src\My.sln --work=C:\perf\work --out=C:\perf\results\my.json --protocol=gate --anchors=C:\perf\anchors.json
+```
+
+```bash
+dotnet run --project scripts/perf/harness -c Release -- --solution=$HOME/src/My.sln --work=$HOME/perf/work --out=$HOME/perf/results/my.json --protocol=gate --anchors=$HOME/perf/anchors.json
 ```
 
 ```
@@ -63,7 +76,7 @@ The harness resolves the command in this order:
 
 1. `--lurp-cmd="<exe and leading args>"`.
 2. the `LURP_CMD` environment variable (same meaning as in `scripts/r1-verify-enote.sh`).
-3. `dotnet <repo>\src\bin\Release\net10.0\Lurp.dll`.
+3. `dotnet <repo>/src/bin/Release/net10.0/Lurp.dll` (`\` on Windows).
 
 The value is split on whitespace; double quotes group tokens, so a path with spaces is written
 `--lurp-cmd='"C:\my tools\lurp.exe"'` (PowerShell single-quoted outer). Note that
@@ -79,6 +92,13 @@ dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
 Import-Module ./scripts/ci/LurpCi.psm1 -Force; $version = Get-LurpVersion
 dotnet tool install --tool-path ./t --source ./artifacts lurp --version $version
 dotnet run --project scripts/perf/harness -c Release -- --fixture=C:\perf\1x --work=C:\perf\work --out=C:\perf\results\1x-packed.json --runs=1 --warmup=0 --lurp-cmd="C:\repo\t\lurp.exe"
+```
+
+```bash
+dotnet pack src/Lurp.csproj --no-build --configuration Release -o ./artifacts
+version=$(pwsh -NoProfile -Command 'Import-Module ./scripts/ci/LurpCi.psm1 -Force; Get-LurpVersion')
+dotnet tool install --tool-path ./t --source ./artifacts lurp --version "$version"
+dotnet run --project scripts/perf/harness -c Release -- --fixture=$HOME/perf/1x --work=$HOME/perf/work --out=$HOME/perf/results/1x-packed.json --runs=1 --warmup=0 --lurp-cmd="$PWD/t/lurp"
 ```
 
 ## Growth gate
@@ -113,6 +133,10 @@ Run the gate by hand:
 dotnet run --project scripts/perf/harness -c Release -- --evaluate=C:\perf\results\4x.json,C:\perf\results\16x.json --summary=C:\perf\results\gate-summary.md
 ```
 
+```bash
+dotnet run --project scripts/perf/harness -c Release -- --evaluate=$HOME/perf/results/4x.json,$HOME/perf/results/16x.json --summary=$HOME/perf/results/gate-summary.md
+```
+
 `--max-ratio=<n>` sets the limit (default 5). `--summary` writes the markdown report
 to a file. Without `--summary` the report goes to stdout only.
 
@@ -126,6 +150,10 @@ Run it by hand:
 
 ```powershell
 dotnet run --project scripts/perf/harness -c Release -- --baseline=perf\baselines\win25-vs2026.json --candidate=C:\perf\results\enotev2.json --summary=C:\perf\results\baseline-summary.md
+```
+
+```bash
+dotnet run --project scripts/perf/harness -c Release -- --baseline=perf/baselines/ubuntu24.json --candidate=$HOME/perf/results/enotev2.json --summary=$HOME/perf/results/baseline-summary.md
 ```
 
 The limits, all inclusive (a value exactly at the limit passes):

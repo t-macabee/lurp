@@ -46,7 +46,7 @@ are committed. Index output belongs outside the fixture tree.
 
 | Shape | Owning member |
 |---|---|
-| Top-level statement, DI registration, minimal-API handler | `App/Program.cs` (`M:Program.{Main}$(System.String[])`) |
+| Top-level statement, DI registration, minimal-API handler | `CallShapes/App/Program.cs` (`M:Program.{Main}$(System.String[])`) |
 | Field / property initializer | `ShapeCallers.FieldInitializerValue`, `PropertyInitializerValue` |
 | Expression-bodied property | `ShapeCallers.get_ExpressionBodiedProperty` |
 | Constructor initializer (`: this(...)`) | `ShapeCallers.#ctor` |

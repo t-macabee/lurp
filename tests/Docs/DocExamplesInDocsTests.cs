@@ -7,7 +7,7 @@ public sealed class DocExamplesInDocsTests
     [Fact]
     public void EveryExampleInTheDocs_ParsesAgainstTheRegistry()
     {
-        var root = DocCatalog.RepoRoot();
+        var root = TestRepoRoot.Find();
         var examples = DocExamples.ExtractAll(root);
 
         Assert.True(examples.Count >= 10,

@@ -26,6 +26,14 @@ dotnet test Lurp.slnx --settings tests/full.runsettings
 The first `dotnet test` skips tests tagged `[Trait("Category", "Slow")]`
 (`tests/Lurp.Tests.runsettings`). The second runs the full suite, as CI does.
 
+The tests in `tests/Docs/` check the prose of the docs. `DocReferenceTests` checks
+that each link and anchor resolves, and that each path, name and flag that a doc
+cites exists. `ReleaseNotesTests` checks the release notes (the rules are in
+`VERSIONING.md`, Process step 5). `ReadmeModeTableTests` checks that the README
+mode table names every mode. A name or a flag of another repository or tool goes into
+`tests/Docs/external-names.txt` or `tests/Docs/external-flags.txt`, one line with
+its reason.
+
 Tests run on xunit 2.9.3 today. Moving to xunit.v3 is planned, not scheduled: it
 swaps the `xunit` and runner packages in `tests/Lurp.Tests.csproj` and needs a v3
 replacement for the v2-only skip helper, plus an audit of v2-only assertion and
@@ -36,7 +44,7 @@ attribute APIs. NuGet and GitHub Actions updates are watched by
 
 - `src/`: the tool. `Lurp` Exe (Program.cs, Handlers/, Workspace/, Adapters/), and `Lurp.Storage` Lib (Storage/ with `PathNormalizer.cs`, Migrations/). `src/Mcp/` holds the MCP server and tools (`McpServeHandler.cs`, `Tools/`), `src/Shared/` the FQN/symbol-ID helpers (`FqnNormalizer.cs`, `SymbolIdFactory.cs`), `src/Queries/` the fast-travel queries (`FastTravelQueries.cs`) and `src/Helpers/` the compilation helper (`CompilationHelper.cs`).
 - `tests/`: the `Lurp.Tests` project (xunit).
-- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes ([RELEASE_NOTES_3.6.1.md](docs/RELEASE_NOTES_3.6.1.md), [RELEASE_NOTES_3.6.0.md](docs/RELEASE_NOTES_3.6.0.md), [RELEASE_NOTES_3.5.2.md](docs/RELEASE_NOTES_3.5.2.md), [RELEASE_NOTES_3.5.1.md](docs/RELEASE_NOTES_3.5.1.md), [RELEASE_NOTES_3.5.0.md](docs/RELEASE_NOTES_3.5.0.md), [RELEASE_NOTES_3.0.2.md](docs/RELEASE_NOTES_3.0.2.md), [RELEASE_NOTES_3.0.1.md](docs/RELEASE_NOTES_3.0.1.md), [RELEASE_NOTES_3.0.0.md](docs/RELEASE_NOTES_3.0.0.md), [RELEASE_NOTES_2.0.0.md](docs/RELEASE_NOTES_2.0.0.md)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
+- `docs/`: [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CLI_REFERENCE.md](docs/CLI_REFERENCE.md), the release notes `docs/RELEASE_NOTES_<version>.md` (listed in [README.md](README.md#documentation--license)) and the point-in-time demo page `MODEL_VIEW.html` (generated, see `scripts/model-view/`).
 - `notes/`: internal evidence log ([TRUST_KERNEL.md](notes/TRUST_KERNEL.md)).
 - `scripts/`: convergence verification scripts (`r1-*`), the `ci/` helper module (`LurpCi.psm1`, `LurpCi.Tests.ps1`), the `parity/` harness (`gate/`, `oracle-b/`, `shared/`), the `perf/` generator and harness (`gen/`, `harness/`), the `smoke/` scripts, and the `MODEL_VIEW.html` generator (`model-view/`).
 - Top level: `parity/targets.json`, `perf/baselines/`, and `.github/workflows/` (`ci`, `codeql`, `perf-gate`, `real-parity`, `release`).
@@ -72,35 +80,52 @@ the `.actual` file, copy it over `output-contract.txt`, and re-run. Bump
 `[Trait("Category", "Slow")]`, so `dotnet test` skips it; run it with
 `dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~OutputContractSnapshotTests" --settings tests/full.runsettings`.
 
-A change to a flag or an MCP tool also changes the generated docs, so regenerate them with
-`$env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~DocsInSyncTests"`
-and review the diff.
+A change to a flag or an MCP tool also changes the generated docs. Regenerate them, then
+review the diff of the docs.
+
+bash:
+
+```bash
+LURP_UPDATE_DOCS=1 dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~DocsInSyncTests"
+```
+
+PowerShell:
+
+```powershell
+$env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter "FullyQualifiedName~DocsInSyncTests"; Remove-Item Env:LURP_UPDATE_DOCS
+```
 
 ## Releasing
 
-1. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days.
-2. Run the parity gate on that SHA:
+1. Prepare the release commit. Set `<Version>` in `src/Lurp.csproj` (the only
+   literal of the tool version). Write `docs/RELEASE_NOTES_<version>.md` with its
+   "Versions" table. Link it in the README list and change the version of the README
+   install line. Regenerate the docs (see "CLI/MCP contract versioning" above).
+   `ReleaseNotesTests` fails until the notes, the table, the README link and the
+   install line agree with the constants.
+2. Push to `main`. `ci.yml` builds, tests and packs the tool, and keeps the nupkg for 90 days.
+3. Run the parity gate on that SHA:
 
 ```bash
 gh workflow run real-parity.yml -f sha=<sha>
 ```
 
-A pass needs both legs (Windows and Linux) and writes the `real-parity` status and an attestation. The first Linux run fails until `perf/baselines/ubuntu24.json` exists (use the `ImageOS` value that the run prints; see [the baseline gate](scripts/perf/README.md#baseline-gate)).
+A pass needs both legs (Windows and Linux) and writes the `real-parity` status and an attestation.
 
-3. Optional dry run. It checks every step and stops before the push:
+4. Optional dry run. It checks every step and stops before the push:
 
 ```bash
 gh workflow run release.yml -f ref=<sha or tag> -f dry_run=true
 ```
 
-4. Tag `vX.Y.Z` on that SHA and push the tag. The `nuget` environment asks for approval before the push.
-5. Override. Use this only when the parity gate cannot pass. It skips only the parity status and the attestation, and the reason goes into the release body:
+5. Tag `vX.Y.Z` on that SHA and push the tag. The `nuget` environment asks for approval before the push.
+6. Override. Use this only when the parity gate cannot pass. It skips only the parity status and the attestation, and the reason goes into the release body:
 
 ```bash
 gh workflow run release.yml -f ref=vX.Y.Z -f dry_run=false -f override_reason="<why>"
 ```
 
-6. The release body is `docs/RELEASE_NOTES_<Version>.md` at the tagged commit.
+7. The release body is `docs/RELEASE_NOTES_<Version>.md` at the tagged commit.
 
 ## Reporting issues
 

@@ -234,6 +234,9 @@ action is public, not static, not abstract and not generic. It is not
 9 methods also has a compiler-proved `Calls` or `MayDispatchTo` edge, so they
 stay live for `dead-candidates`.
 
+Correction (2026-11): the adapter emitted no `Returns` or `[FromServices]` edges,
+so the sentence about them above was false when it was written.
+
 The adapter version moves from `aspnetcore-v1` to `aspnetcore-v2`, so an index
 that holds ASP.NET Core edges rebuilds fully on the next run.
 

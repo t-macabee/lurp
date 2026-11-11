@@ -7,7 +7,7 @@ There is no live task queue in this repository.
 
 **Test-suite status:** the `tests/` tree was rebuilt after the Aug 2026
 cleanup (commit `f1254fc`). All citations below name live tests or dated
-historical figures.
+historical figures. `DocReferenceTests` checks every cited name.
 
 ---
 
@@ -60,7 +60,7 @@ cited below. Evidence cites git commits and named tests directly.
 |---|---|---|---|
 | 1 | Product constitution and schema/version rules | ✅ Done | `VersionConstants`, `MigrationRunner.LatestVersion` |
 | 2 | Workspace, snapshot, document, configuration identities | ✅ Done | Order 4 |
-| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, `MigrationRunner`; `SchemaMigrationRoundTripTests.cs` (`MigrationList_CountMatches_DatabaseSchemaVersion`, `MigrationList_HighestVersionMatches_DatabaseSchemaVersion`, `MigrationList_AllVersionsAreUnique`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
+| 3 | SQLite storage boundary and migrations | ✅ Done | `SqliteIndexStore`, `MigrationRunner`; `SchemaMigrationRoundTripTests.cs` (`MigrationList_MatchesTheMigrationFiles_AndLatestVersionIsTheHighest`, `RoundTrip_AllMigrations_ProducesCurrentSchema`, `ForwardMigration_FromV1Schema_PreservesSeededData`) |
 | 4 | Immutable document versions and source storage | ✅ Done | Order 4, T12 |
 | 5 | Stable type/member identities and declaration spans | ✅ Done | Order 5 |
 | 6 | Fast `get` and lexical `search` queries | ✅ Done | Order 6; live-verified (§C) `CourseService.CreateAsync` no longer throws `fts5: syntax error` (phrase-literal quoting), punctuation `"` `*` `:()` `<>` `.` all zero `SqliteException`, `Service` substring fallback 20, `Migrations` 17→21/35→46 with `include-generated` |
@@ -80,10 +80,10 @@ cited below. Evidence cites git commits and named tests directly.
 
 | Requirement | Edge Kind | Extractor | Tests |
 |---|---|---|---|
-| `typeof(T)` | `ReflectionTypeRef` | `TypeOfReflectionExtractor` | `TypeOf_EmitsReflectionTypeRefEdge` |
-| `nameof` | `ReflectionMemberRef` | `NameOfReflectionExtractor` | `NameOf_EmitsReflectionMemberRefEdge` |
+| `typeof(T)` | `ReflectionTypeRef` | `TypeOfReflectionExtractor` | `GoldenReflectionTests.ReflectionTypeRef_TypeofExpression` |
+| `nameof` | `ReflectionMemberRef` | `NameOfReflectionExtractor` | `GoldenReflectionTests.ReflectionMemberRef_NameofExpression` |
 | String literal naming a runtime binding target | `ReflectionNameCandidate` | `StringLiteralReflectionExtractor` + `ReflectionSinkPatterns` | `GoldenReflectionTests` (`TypeGetProperty_WithoutKnownType_EmitsAllMatchingMembersInSymbolIdOrder`, `PropertyChangedEventArgs_LimitsCandidateToContainingType`, `ForeignKeyAndInverseProperty_LimitCandidatesToContainingType`; rejections `BareStringLiteral_DoesNotEmitCandidate`, `JsonElementGetProperty_DoesNotEmitCandidate`) |
-| Runtime-unknown reflection | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | `TypeGetType_EmitsUnknownEdge`, `ActivatorCreateInstance_EmitsReflectionTargetUnknownEdge` |
+| Runtime-unknown reflection | `ReflectionTargetUnknown` | `UnknownPatternReflectionExtractor` | None. No test asserts a `ReflectionTargetUnknown` edge. |
 
 All in `src/Workspace/`, registered as `"reflection-v3"`, covered by `GoldenReflectionTests.cs`; integrated with `UncertaintyDetector`. Since 2.0.0 a name literal is recorded only as the name argument of a runtime name-binding API (`System.Type` lookup, `Type.GetType`/`Assembly.GetType`/`Activator.CreateInstance`, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically; other literals are rejected (`ReflectionSinkPatterns`).
 

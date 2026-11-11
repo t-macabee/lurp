@@ -34,7 +34,7 @@ public sealed class DocExampleExecutionTests : IntegrationTestBase
 
         var outputDir = Path.GetDirectoryName(DbPath)!;
         var substitutions = BuildSubstitutions(snapshotId, outputDir);
-        var root = DocCatalog.RepoRoot();
+        var root = TestRepoRoot.Find();
         var failures = new List<string>();
         var runs = 0;
 

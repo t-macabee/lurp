@@ -21,27 +21,6 @@ internal sealed record DocExample(
 /// </summary>
 internal static partial class DocExamples
 {
-    /// <summary>The files the extractor reads, relative to the repo root.</summary>
-    internal static readonly string[] Files =
-    [
-        "README.md",
-        "docs/CLI_REFERENCE.md",
-        "docs/ARCHITECTURE.md",
-        "CONTRIBUTING.md",
-        "VERSIONING.md",
-        "SECURITY.md",
-        "docs/RELEASE_NOTES_2.0.0.md",
-        "docs/RELEASE_NOTES_3.0.0.md",
-        "docs/RELEASE_NOTES_3.0.1.md",
-        "docs/RELEASE_NOTES_3.0.2.md",
-        "docs/RELEASE_NOTES_3.5.0.md",
-        "docs/RELEASE_NOTES_3.5.1.md",
-        "docs/RELEASE_NOTES_3.5.2.md",
-        "docs/RELEASE_NOTES_3.6.0.md",
-        "docs/RELEASE_NOTES_3.6.1.md",
-        "notes/TRUST_KERNEL.md",
-    ];
-
     private static readonly string[] CommandFences = ["", "bash", "sh", "shell", "powershell"];
 
     [GeneratedRegex(@"<!--\s*doc-test:\s*skip\s*,(?<reason>.*?)-->")]
@@ -50,11 +29,11 @@ internal static partial class DocExamples
     [GeneratedRegex("`(?<span>[^`\\n]+)`")]
     private static partial Regex InlineSpanPattern();
 
-    /// <summary>Reads every file in <see cref="Files" /> and extracts its examples, in file order.</summary>
+    /// <summary>Reads every doc (<see cref="DocFiles.Markdown" />) and extracts its examples, in file order.</summary>
     internal static IReadOnlyList<DocExample> ExtractAll(string repoRoot)
     {
         var examples = new List<DocExample>();
-        foreach (var file in Files)
+        foreach (var file in DocFiles.Markdown(repoRoot))
         {
             var path = Path.Combine(repoRoot, file.Replace('/', Path.DirectorySeparatorChar));
             examples.AddRange(Extract(File.ReadAllText(path), file));

@@ -17,3 +17,13 @@ contract and the output schema do not change.
 The step that verifies the published nuget.org catalog entry now waits up to
 60 minutes instead of 15, and the publish job limit is 90 minutes instead of
 30. nuget.org took about 16.5 minutes to index 3.6.0.
+
+## Versions
+
+| Component | 3.6.0 | 3.6.1 |
+|---|---|---|
+| Tool | 3.6.0 | 3.6.1 |
+| Database schema | v37 | v37 |
+| Extractor | 1.11.0 | 1.11.0 |
+| CLI/MCP contract | v6 | v6 |
+| Output schema | v6 | v6 |

@@ -7,7 +7,7 @@ public sealed class DocsInSyncTests
     [Fact]
     public void GeneratedSections_MatchTheCode()
     {
-        var root = DocCatalog.RepoRoot();
+        var root = TestRepoRoot.Find();
         var failures = new List<string>();
 
         foreach (var section in DocCatalog.Sections)
@@ -42,33 +42,24 @@ public sealed class DocsInSyncTests
 
         Assert.True(failures.Count == 0,
             string.Join(Environment.NewLine, failures) + Environment.NewLine +
-            "Regenerate: $env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter \"FullyQualifiedName~DocsInSyncTests\"; then review the diff of the docs.");
+            "Regenerate the docs, then review the diff of the docs." + Environment.NewLine +
+            "  bash:       LURP_UPDATE_DOCS=1 dotnet test tests/Lurp.Tests.csproj --filter \"FullyQualifiedName~DocsInSyncTests\"" + Environment.NewLine +
+            "  PowerShell: $env:LURP_UPDATE_DOCS = '1'; dotnet test tests/Lurp.Tests.csproj --filter \"FullyQualifiedName~DocsInSyncTests\"; Remove-Item Env:LURP_UPDATE_DOCS");
     }
 
     [Fact]
     public void EveryMarkerInTheDocs_HasARenderer()
     {
-        var root = DocCatalog.RepoRoot();
-        var files = new List<string>
-        {
-            Path.Combine(root, "README.md"),
-            Path.Combine(root, "VERSIONING.md"),
-            Path.Combine(root, "CONTRIBUTING.md"),
-            Path.Combine(root, "SECURITY.md"),
-        };
-        files.AddRange(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md"));
-        files.AddRange(Directory.EnumerateFiles(Path.Combine(root, "notes"), "*.md"));
-
+        var root = TestRepoRoot.Find();
         var known = DocCatalog.Sections
-            .Select(section => (File: Normalize(section.RelativePath), section.Key))
+            .Select(section => (File: section.RelativePath, section.Key))
             .ToHashSet();
 
         var failures = new List<string>();
         var markerCount = 0;
-        foreach (var file in files)
+        foreach (var relative in DocFiles.Markdown(root))
         {
-            var relative = Normalize(Path.GetRelativePath(root, file));
-            foreach (var key in DocSections.FindKeys(File.ReadAllText(file)))
+            foreach (var key in DocSections.FindKeys(File.ReadAllText(Path.Combine(root, relative))))
             {
                 markerCount++;
                 if (!known.Contains((relative, key)))
@@ -79,6 +70,4 @@ public sealed class DocsInSyncTests
         Assert.True(markerCount >= 3, $"Expected at least 3 generated markers, found {markerCount}.");
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
-
-    private static string Normalize(string path) => path.Replace('\\', '/');
 }

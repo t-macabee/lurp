@@ -6,7 +6,7 @@ an unrestored project. For a trial run, pass a scratch file to `--out`.
 
 Index a solution and render the page (one command):
 
-    python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe \
+    python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp \
         --solution <eNoteV2>/eNote/eNote.sln --work-dir <empty folder> --out docs/MODEL_VIEW.html
 
 Render again from an index you already have (no reindex):
@@ -16,11 +16,12 @@ Render again from an index you already have (no reindex):
 The page styles (fonts, colors, layout) come from the first <style> block of
 --template, which defaults to the current docs/MODEL_VIEW.html. Everything else
 is read from index.db and from the index run's output. Python standard library
-only.
+only. On Windows, the executable is Lurp.exe.
 """
 
 import argparse
 import html
+import os
 import re
 import sqlite3
 import subprocess
@@ -28,6 +29,9 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
+
+# The Release build of Lurp on the OS that renders the page (D114).
+LURP_BUILD = "src/bin/Release/net10.0/" + ("Lurp.exe" if os.name == "nt" else "Lurp")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAGE = REPO_ROOT / "docs" / "MODEL_VIEW.html"
@@ -711,7 +715,7 @@ def render(index, log, info, style, out_path, contract):
   <footer class="chart-footer">
     <p>Built by running Lurp {esc(index.tool)} from source against <code>{esc(where)}</code>{commit}:</p>
     <p><code>dotnet build src/Lurp.csproj -c Release</code><br>
-    <code>python scripts/model-view/generate.py --lurp src/bin/Release/net10.0/Lurp.exe --solution &lt;path&gt;/{esc(info['solution'])} --work-dir &lt;empty folder&gt; --out docs/MODEL_VIEW.html</code></p>
+    <code>python scripts/model-view/generate.py --lurp {LURP_BUILD} --solution &lt;path&gt;/{esc(info['solution'])} --work-dir &lt;empty folder&gt; --out docs/MODEL_VIEW.html</code></p>
     <p>{timing}Snapshot <code>{esc(sid)}</code>, schema v{esc(index.schema)}. Everything on this page comes from that one <code>index.db</code> and the index run's per-project counts: no re-parsing, no re-grepping. <code>scripts/model-view/</code> regenerates it.</p>
     <p class="credit">Lurp &middot; MIT &middot; github.com/t-macabee/lurp</p>
   </footer>

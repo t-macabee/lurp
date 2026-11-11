@@ -1,0 +1,18 @@
+# Names that a live doc cites and that are not in this repository (DocReferenceTests, D107).
+# One line each: <name exactly as the doc writes it, without "()"> | <reason>
+dotnet-install.sh | Microsoft's SDK install script; CONTRIBUTING tells the reader to download it
+tests/Snapshots/output-contract.actual.txt | written by OutputContractSnapshotTests on a mismatch; gitignored
+tests/Snapshots/extractor-versions.actual.txt | written by ExtractorVersionGateTests on a mismatch; gitignored
+LinePosition.Character | Roslyn API (Microsoft.CodeAnalysis.Text); Lurp reads it through FileLinePositionSpan
+eNote/eNote.Tests/Foo.cs | example path in the eNoteV2 layout (CLI_REFERENCE document-path base)
+eNote.Tests/Foo.cs | example path in the eNoteV2 layout (CLI_REFERENCE document-path base)
+InstrumentTypeService.LurpDiffTestMethod | eNoteV2 scratch method of a dated live verification
+ENoteContext.SaveChangesAsync | eNoteV2 symbol of a dated live verification
+IAuthenticatedUserAccessor.GetUserId | eNoteV2 symbol of a dated live verification
+IEntity.Id | eNoteV2 symbol of a dated live verification
+ICurrentUserService.UserId | eNoteV2 symbol of a dated live verification
+IStudentContext.GetCurrentStudentIdAsync | eNoteV2 symbol of a dated live verification
+ImpactTraverser | removed in 2.0.0; the trust kernel names it as history
+SearchStore | removed on 2026-08-05; the trust kernel names it as history
+GeneratorDriver | Roslyn API that Lurp does not use (source generators are not run)
+DefaultApplicationModelProvider.IsAction | ASP.NET Core API whose action rule the adapter copies

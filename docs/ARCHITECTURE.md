@@ -119,13 +119,12 @@ interfaces. They do not re-run Roslyn analysis, except `--mode=status
 --solution=` (CLI) and MCP `lurp_status` with `full:true`, which load the
 workspace through MSBuild to compare it against the stored snapshot.
 
-Seventeen handlers cover: index, search, grep, find-symbol, get-symbol, get-source,
-navigate, outline, diagnostics, diff, impact, context, status, timings,
-pin-snapshot, annotations (attach/retrieve/retract), and dead-candidates. MCP surface (`--mode=serve`): 16 read-only tools over stdio
-(`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`,
-`lurp_find_symbol`, `lurp_search`, `lurp_grep`, `lurp_impact`, `lurp_diff`,
-`lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_status`,
-`lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`); `--enable-write-tools` additionally registers `lurp_index` and `lurp_retract_annotation` (write),
+Each CLI mode has its handler in `src/Handlers`, except `serve` (`McpServeHandler` in
+`src/Mcp`). `Program.ModeRegistry` maps each mode to its handler, and
+[CLI_REFERENCE.md](CLI_REFERENCE.md#modes) lists the modes. MCP surface (`--mode=serve`):
+<!-- generated:mcp-tools:read -->16 read tools (`lurp_context`, `lurp_get_source`, `lurp_outline`, `lurp_navigate`, `lurp_find_symbol`, `lurp_search`, `lurp_impact`, `lurp_diff`, `lurp_get_symbol`, `lurp_get_annotations`, `lurp_diagnostics`, `lurp_grep`, `lurp_status`, `lurp_timings`, `lurp_refresh`, `lurp_dead_candidates`)<!-- /generated:mcp-tools:read --> over stdio;
+`--enable-write-tools` additionally registers
+<!-- generated:mcp-tools:write -->`lurp_index` and `lurp_retract_annotation`<!-- /generated:mcp-tools:write --> (write),
 which start a background (re-)index or a retraction through a separate writer connection (see
 [CLI_REFERENCE.md](CLI_REFERENCE.md#mcp-server---modeserve)).
 
@@ -217,7 +216,7 @@ entry, not a new extractor.
 2. **C#/.NET specialization**: remain Roslyn-native; do not weaken the semantic model for multiple languages.
 3. **Fact before interpretation**: record `implements MediatR.IRequest<T>`, not "query" as compiler-proved business intent.
 4. **Unknown is a valid result**: make each blind spot the strongest honest form available.
-5. **Schema stability**: every field is a contract; renaming/removing requires a major revision.
+5. **Schema stability**: every field is a contract. Renaming or removing a field of the CLI or MCP output requires a `CliMcpContractVersion` bump, and a capsule field also an `OutputSchemaVersion` bump ([VERSIONING.md](../VERSIONING.md)). A change of a stored shape requires a schema migration.
 6. **Roslyn boundary**: Roslyn analysis belongs in `src/Workspace/`, `src/Adapters/`, `src/Shared/` and `src/Helpers/`, plus the MSBuild workspace load in `status`. Never in `src/Storage/`.
 
 ## 9. What Not to Build

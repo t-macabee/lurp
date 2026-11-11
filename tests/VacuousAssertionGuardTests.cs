@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Lurp.Tests.Docs;
 
 namespace Lurp.Tests;
 
@@ -26,7 +25,7 @@ public sealed class VacuousAssertionGuardTests
     [Fact]
     public void TestSources_ContainNoAssertionThatCannotFail()
     {
-        var testsDir = Path.Combine(DocCatalog.RepoRoot(), "tests");
+        var testsDir = Path.Combine(TestRepoRoot.Find(), "tests");
         var offenders = new List<string>();
 
         foreach (var file in Directory.EnumerateFiles(testsDir, "*.cs", SearchOption.AllDirectories))
