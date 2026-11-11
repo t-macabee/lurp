@@ -261,7 +261,7 @@ public sealed class SymbolFinderOracleTests
         var result = await SymbolFinderOracle.CompareAsync(
             solution,
             [(callInterface, nameof(EdgeKind.Calls), isolutionM)],
-            OperationShapeOracle.NormalizedDocId,
+            SymbolDocIds.Normalized,
             new HashSet<string>(StringComparer.Ordinal) { isolutionM });
 
         var target = Assert.Single(result.Targets);
@@ -373,7 +373,7 @@ public sealed class SymbolFinderOracleTests
         var metadataI = compilationB.GetTypeByMetadataName("I")
                         ?? throw new InvalidOperationException("Metadata interface not found.");
         var metadataIM = metadataI.GetMembers("M").OfType<IMethodSymbol>().Single();
-        var metadataIMId = OperationShapeOracle.NormalizedDocId(metadataIM)
+        var metadataIMId = SymbolDocIds.Normalized(metadataIM)
                            ?? throw new InvalidOperationException("No doc id for metadata I.M.");
 
         var edges = new (string Source, string Kind, string Target)[]
@@ -385,7 +385,7 @@ public sealed class SymbolFinderOracleTests
         var result = await SymbolFinderOracle.CompareAsync(
             solution,
             edges,
-            OperationShapeOracle.NormalizedDocId,
+            SymbolDocIds.Normalized,
             new HashSet<string>(StringComparer.Ordinal) { cm });
 
         var target = Assert.Single(result.Targets);
@@ -496,7 +496,7 @@ public sealed class SymbolFinderOracleTests
         return await SymbolFinderOracle.CompareAsync(
             solution,
             edges,
-            OperationShapeOracle.NormalizedDocId,
+            SymbolDocIds.Normalized,
             new HashSet<string>(StringComparer.Ordinal) { targetId });
     }
 
@@ -523,7 +523,7 @@ public sealed class SymbolFinderOracleTests
         var result = await SymbolFinderOracle.CompareAsync(
             solution,
             edges,
-            OperationShapeOracle.NormalizedDocId,
+            SymbolDocIds.Normalized,
             new HashSet<string>(StringComparer.Ordinal) { targetId });
 
         var target = Assert.Single(result.Targets);
@@ -535,7 +535,7 @@ public sealed class SymbolFinderOracleTests
     {
         var type = compilation.Assembly.GlobalNamespace.GetTypeMembers(typeName).Single();
         var method = type.GetMembers(methodName).OfType<IMethodSymbol>().Single();
-        return OperationShapeOracle.NormalizedDocId(method)
+        return SymbolDocIds.Normalized(method)
                ?? throw new InvalidOperationException($"No doc id for {typeName}.{methodName}.");
     }
 

@@ -1,0 +1,160 @@
+{
+  "schema_version": 2,
+  "oracle": "C",
+  "description": "Ground truth for tests/Fixtures/GroundTruth/CrossProject (CrossProject.CSharp.slnx). The list is complete: it holds every fact of a compared kind whose source and target are both declared in the fixture, as the union over the net9.0 and net10.0 compilations of CrossProject.Lib. GroundTruthGoldenTests compares the extractor output in that scope with this list as an exact set, in both directions. The rules are the mapping of tests/Fixtures/GroundTruth/CallShapes/call-shapes.golden.json.",
+  "fixture_solution": "tests/Fixtures/GroundTruth/CrossProject/CrossProject.CSharp.slnx",
+  "projects": [
+    {
+      "assembly_name": "CrossProject.App",
+      "project": "App/CrossProject.App.csproj"
+    },
+    {
+      "assembly_name": "CrossProject.Lib",
+      "project": "Lib/CrossProject.Lib.csproj"
+    }
+  ],
+  "symbol_id_format": "Facts carry the Roslyn documentation-comment id only. Doc ids are unique across the two projects in this fixture.",
+  "compared_kinds": [
+    "Calls",
+    "Constructs",
+    "MethodGroupRef",
+    "Reads",
+    "Writes",
+    "References"
+  ],
+  "basis_values": {
+    "symbolfinder": "Roslyn SymbolFinder.FindReferencesAsync reports a reference to the target inside the source member (for Calls, also FindCallersAsync), and the syntax at that reference gives the kind."
+  },
+  "facts": [
+    {
+      "id": "cp-001",
+      "source": "M:CrossProject.App.Consumer.RunPublic",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PublicApi.SharedTarget",
+      "basis": "symbolfinder",
+      "reason": "Static invocation across projects: calls M:CrossProject.Lib.PublicApi.SharedTarget."
+    },
+    {
+      "id": "cp-002",
+      "source": "M:CrossProject.App.Consumer.RunPublic",
+      "kind": "References",
+      "target": "T:CrossProject.Lib.PublicApi",
+      "basis": "symbolfinder",
+      "reason": "Static invocation names T:CrossProject.Lib.PublicApi."
+    },
+    {
+      "id": "cp-003",
+      "source": "M:CrossProject.App.Consumer.RunConditional",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PublicApi.OnlyNet10",
+      "basis": "symbolfinder",
+      "reason": "Static invocation of a member that exists only in the net10.0 compilation (#if NET10_0)."
+    },
+    {
+      "id": "cp-004",
+      "source": "M:CrossProject.App.Consumer.RunConditional",
+      "kind": "References",
+      "target": "T:CrossProject.Lib.PublicApi",
+      "basis": "symbolfinder",
+      "reason": "Static invocation names T:CrossProject.Lib.PublicApi."
+    },
+    {
+      "id": "cp-005",
+      "source": "M:CrossProject.App.Consumer.RunInternal",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.InternalApi.InternalTarget",
+      "basis": "symbolfinder",
+      "reason": "Static invocation of an internal member through InternalsVisibleTo."
+    },
+    {
+      "id": "cp-006",
+      "source": "M:CrossProject.App.Consumer.RunInternal",
+      "kind": "References",
+      "target": "T:CrossProject.Lib.InternalApi",
+      "basis": "symbolfinder",
+      "reason": "Static invocation names T:CrossProject.Lib.InternalApi."
+    },
+    {
+      "id": "cp-007",
+      "source": "M:CrossProject.App.Consumer.RunGeneric",
+      "kind": "Constructs",
+      "target": "T:CrossProject.Lib.ShapeRepo`1",
+      "basis": "symbolfinder",
+      "reason": "Object creation of a constructed generic type: constructs the original definition (implicit constructor, so no Calls)."
+    },
+    {
+      "id": "cp-008",
+      "source": "M:CrossProject.App.Consumer.RunGeneric",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.ShapeRepo`1.Get(`0)",
+      "basis": "symbolfinder",
+      "reason": "Call on a constructed generic type: calls the original definition."
+    },
+    {
+      "id": "cp-009",
+      "source": "M:CrossProject.App.Consumer.RunNested",
+      "kind": "Constructs",
+      "target": "T:CrossProject.Lib.ShapeRepo`1.Nested`1",
+      "basis": "symbolfinder",
+      "reason": "Object creation of a nested generic type: constructs the original definition (implicit constructor, so no Calls)."
+    },
+    {
+      "id": "cp-010",
+      "source": "M:CrossProject.App.Consumer.RunNested",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.ShapeRepo`1.Nested`1.Echo(`1)",
+      "basis": "symbolfinder",
+      "reason": "Call on a nested generic type: calls the original definition."
+    },
+    {
+      "id": "cp-011",
+      "source": "M:CrossProject.App.Consumer.RunPartial",
+      "kind": "Constructs",
+      "target": "T:CrossProject.Lib.PartialShape",
+      "basis": "symbolfinder",
+      "reason": "Object creation: constructs T:CrossProject.Lib.PartialShape (implicit constructor, so no Calls)."
+    },
+    {
+      "id": "cp-012",
+      "source": "M:CrossProject.App.Consumer.RunPartial",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PartialShape.FromPartOne",
+      "basis": "symbolfinder",
+      "reason": "Call of a member declared in the first file of a partial type."
+    },
+    {
+      "id": "cp-013",
+      "source": "M:CrossProject.App.Consumer.RunPartial",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PartialShape.FromPartTwo",
+      "basis": "symbolfinder",
+      "reason": "Call of a member declared in the second file of a partial type."
+    },
+    {
+      "id": "cp-014",
+      "source": "M:CrossProject.Lib.PartialShape.FromPartOne",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PartialShape.PartTarget",
+      "basis": "symbolfinder",
+      "reason": "Call of a member declared in the other file of the partial type."
+    },
+    {
+      "id": "cp-015",
+      "source": "M:CrossProject.Lib.PartialShape.FromPartTwo",
+      "kind": "Calls",
+      "target": "M:CrossProject.Lib.PartialShape.PartTarget",
+      "basis": "symbolfinder",
+      "reason": "Call of a member declared in the same file of the partial type."
+    }
+  ],
+  "notes": [
+    {
+      "id": "note-target-frameworks",
+      "reason": "PublicApi.OnlyNet9 exists only in the net9.0 compilation and has no caller, so it has no fact. RunConditional calls OnlyNet10, which exists only in the net10.0 compilation; the union over both compilations holds that fact."
+    },
+    {
+      "id": "note-implicit-constructors",
+      "reason": "ShapeRepo<T>, ShapeRepo<T>.Nested<TOther> and PartialShape have only implicitly declared constructors, so an object creation gives Constructs and no Calls (CallShapes mapping rule 2)."
+    }
+  ]
+}

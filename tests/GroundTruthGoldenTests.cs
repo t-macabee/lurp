@@ -16,6 +16,7 @@ public sealed class GroundTruthGoldenTests(GroundTruthFixture callShapes, CrossP
 
     [Theory]
     [InlineData(CallShapesGolden)]
+    [InlineData(CrossProjectGolden)]
     public void ExtractedFacts_EqualTheGolden(string goldenPath)
     {
         GroundTruthFixtureBase fixture = goldenPath == CallShapesGolden ? callShapes : crossProject;
@@ -50,6 +51,7 @@ public sealed class GroundTruthGoldenTests(GroundTruthFixture callShapes, CrossP
 
     [Theory]
     [InlineData(CallShapesGolden)]
+    [InlineData(CrossProjectGolden)]
     public void EveryGoldenFact_IsUnique_AndHasAKnownKindAndBasis(string goldenPath)
     {
         var golden = GoldenFile.Load(goldenPath);

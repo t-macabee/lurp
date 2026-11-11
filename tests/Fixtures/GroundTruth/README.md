@@ -1,10 +1,13 @@
 # Ground-truth fixtures (audit Phase 5)
 
-Committed, indexable source corpora for the B1 ground-truth work. Consumers:
-Phase 4 fixtures the packed tool, Phase 6 uses `CallShapes` for the
-tree-integrity check, Phase 7 runs the golden, Oracle A (exact set) and Oracle B
-(`SymbolFinder` caller recall) tests against `CallShapes` and the VB boundary test
-against `NonCSharp`, the extractor version gate extracts `CallShapes`, `CrossProject` and `ExtractorGate`, and Phase 10 runs the doc examples against them.
+Committed, indexable source corpora for the ground-truth tests. Consumers:
+`TargetTreeIntegrityTests` checks that the CLI and MCP surface leave the
+`CallShapes` tree unchanged. `GroundTruthGoldenTests` (Oracle C) compares the
+extractor output on `CallShapes` and `CrossProject` with their complete goldens
+as exact sets. `GroundTruthOracleBTests` (Oracle B) checks `SymbolFinder` caller
+recall on the same two corpora. `CrossProjectBoundaryTests` runs the VB boundary
+test against `NonCSharp`. `ExtractorVersionGateTests` extracts `CallShapes`,
+`CrossProject` and `ExtractorGate`. The doc examples run against them.
 
 Restore a solution before an MSBuildWorkspace consumer loads it; no `obj/` assets
 are committed. Index output belongs outside the fixture tree.
@@ -34,6 +37,9 @@ are committed. Index output belongs outside the fixture tree.
   partial members; `VbLib` is a Visual Basic project.
 - `CrossProject/CrossProject.slnx` — the full Fixture 2 solution (C# + VB).
 - `CrossProject/CrossProject.CSharp.slnx` — C#-only copy of Fixture 2.
+- `CrossProject/cross-project.golden.json` — Oracle C for Fixture 2, in the
+  same form and with the same rules as the CallShapes golden. Its facts are the
+  union over the net9.0 and net10.0 compilations.
 - `NonCSharp/NonCSharp.slnx` — one C# project plus the VB project. A full index
   skips the VB project and prints the `non_csharp_projects` boundary warning
   (audit B6/Q12b). `CrossProjectBoundaryTests` runs this through the CLI.

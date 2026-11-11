@@ -39,7 +39,7 @@ public sealed class GroundTruthOracleBTests(GroundTruthFixture callShapes, Cross
             .Select(fact => (fact.Source, fact.Kind, fact.Target))
             .ToHashSet();
 
-        var result = await SymbolFinderOracle.CompareAsync(solution, edges, OperationShapeOracle.NormalizedDocId);
+        var result = await SymbolFinderOracle.CompareAsync(solution, edges, SymbolDocIds.Normalized);
         var targets = result.Targets;
         var summary = result.Summary;
         var extras = result.Extras;
