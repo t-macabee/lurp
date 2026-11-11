@@ -134,5 +134,26 @@ public abstract class InMemoryTestBase : IDisposable
             return Assert.Single(matches);
         }
 
+        /// <summary>
+        ///     Asserts the exact set of compiler-proved <paramref name="kind" /> edges whose source and
+        ///     target are both declared in the test source, as (source FQN, target FQN) pairs. An extra
+        ///     or a missing edge fails. Edges to symbols outside the test source are not in the set.
+        /// </summary>
+        public void AssertEdgeSet(string kind, params (string Source, string Target)[] expected)
+        {
+            var fqnById = Result.Declarations
+                .Where(declaration => declaration.SymbolId.FullyQualifiedName != null)
+                .GroupBy(declaration => declaration.SymbolId.Value, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().SymbolId.FullyQualifiedName!, StringComparer.Ordinal);
+            var actual = Result.Edges
+                .Where(e => e.Kind == kind && e.Provenance == Provenance.CompilerProved &&
+                            fqnById.ContainsKey(e.SourceSymbolId) && fqnById.ContainsKey(e.TargetSymbolId))
+                .Select(e => (Source: fqnById[e.SourceSymbolId], Target: fqnById[e.TargetSymbolId]))
+                .Distinct()
+                .Order()
+                .ToList();
+            Assert.Equal(expected.Order().ToList(), actual);
+        }
+
     }
 }

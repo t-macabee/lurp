@@ -17,13 +17,13 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     private static void AssertEdgeContract(EdgeRecord edge, string kind, string provenance, string extractorVersion,
-        string sourceFqnEndsWith)
+        string sourceDocumentPathEndsWith)
     {
         Assert.Equal(kind, edge.Kind);
         Assert.Equal(provenance, edge.Provenance);
         Assert.Equal(extractorVersion, edge.ExtractorVersion);
         Assert.NotNull(edge.SourceDocumentPath);
-        Assert.EndsWith(sourceFqnEndsWith, edge.SourceDocumentPath);
+        Assert.EndsWith(sourceDocumentPathEndsWith, edge.SourceDocumentPath);
     }
 
     [Fact]
@@ -40,6 +40,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Calls", "global::N.Calculator.Compute", "global::N.Calculator.Add");
         AssertEdgeContract(edge, "Calls", Provenance.CompilerProved, "calls-v2", Doc);
+        extraction.AssertEdgeSet("Calls", ("global::N.Calculator.Compute", "global::N.Calculator.Add"));
     }
 
     [Fact]
@@ -56,6 +57,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Constructs", "global::N.Factory.Create", "global::N.Widget");
         AssertEdgeContract(edge, "Constructs", Provenance.CompilerProved, "constructs-v1", Doc);
+        extraction.AssertEdgeSet("Constructs", ("global::N.Factory.Create", "global::N.Widget"));
     }
 
     [Fact]
@@ -69,6 +71,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Inherits", "global::N.Derived", "global::N.Base");
         AssertEdgeContract(edge, "Inherits", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
+        extraction.AssertEdgeSet("Inherits", ("global::N.Derived", "global::N.Base"));
     }
 
     [Fact]
@@ -82,6 +85,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Implements", "global::N.Service", "global::N.IService");
         AssertEdgeContract(edge, "Implements", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
+        extraction.AssertEdgeSet("Implements", ("global::N.Service", "global::N.IService"));
     }
 
     [Fact]
@@ -95,6 +99,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Overrides", "global::N.Derived.Do", "global::N.Base.Do");
         AssertEdgeContract(edge, "Overrides", Provenance.CompilerProved, "overrides-v1", Doc);
+        extraction.AssertEdgeSet("Overrides", ("global::N.Derived.Do", "global::N.Base.Do"));
     }
 
     [Fact]
@@ -108,6 +113,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Hides", "global::N.Derived.Do", "global::N.Base.Do");
         AssertEdgeContract(edge, "Hides", Provenance.CompilerProved, "hides-v1", Doc);
+        extraction.AssertEdgeSet("Hides", ("global::N.Derived.Do", "global::N.Base.Do"));
     }
 
     [Fact]
@@ -124,6 +130,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Reads", "global::N.Counter.GetValue", "global::N.Counter._value");
         AssertEdgeContract(edge, "Reads", Provenance.CompilerProved, "readswrites-v1", Doc);
+        extraction.AssertEdgeSet("Reads", ("global::N.Counter.GetValue", "global::N.Counter._value"));
     }
 
     [Fact]
@@ -140,6 +147,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Writes", "global::N.Counter.SetValue", "global::N.Counter._value");
         AssertEdgeContract(edge, "Writes", Provenance.CompilerProved, "readswrites-v1", Doc);
+        extraction.AssertEdgeSet("Writes", ("global::N.Counter.SetValue", "global::N.Counter._value"));
     }
 
     [Fact]
@@ -160,25 +168,12 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 }
                                                 """));
 
-        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.Target.P");
-        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.User._g");
-        extraction.SingleEdge("Writes", "global::N.User.Set", "global::N.Target.F");
-        extraction.SingleEdge("Writes", "global::N.User.SetConditional", "global::N.Target.P");
-
-        var set = extraction.ResolveId("global::N.User.Set");
-        var setConditional = extraction.ResolveId("global::N.User.SetConditional");
-        var writtenTargets = new[]
-        {
-            extraction.ResolveId("global::N.Target.P"),
-            extraction.ResolveId("global::N.User._g"),
-            extraction.ResolveId("global::N.Target.F")
-        };
-
-        var reads = extraction.EdgesOf("Reads")
-            .Where(e => (e.SourceSymbolId == set || e.SourceSymbolId == setConditional)
-                        && writtenTargets.Contains(e.TargetSymbolId))
-            .ToList();
-        Assert.Empty(reads);
+        extraction.AssertEdgeSet("Writes",
+            ("global::N.User.Set", "global::N.Target.P"),
+            ("global::N.User.Set", "global::N.User._g"),
+            ("global::N.User.Set", "global::N.Target.F"),
+            ("global::N.User.SetConditional", "global::N.Target.P"));
+        extraction.AssertEdgeSet("Reads");
     }
 
     [Fact]
@@ -195,6 +190,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Returns", "global::N.Producer.Produce", "global::N.Result");
         AssertEdgeContract(edge, "Returns", Provenance.CompilerProved, "returns-v1", Doc);
+        extraction.AssertEdgeSet("Returns", ("global::N.Producer.Produce", "global::N.Result"));
     }
 
     [Fact]
@@ -253,6 +249,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         // FQN is the containing type name twice: global::N.Service.Service.
         var edge = extraction.SingleEdge("References", "global::N.Service.Service", "global::N.Logger");
         AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+        extraction.AssertEdgeSet("References", ("global::N.Service.Service", "global::N.Logger"));
     }
 
     [Fact]
@@ -295,6 +292,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
         AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        extraction.AssertEdgeSet("References", ("global::N.Host.M", "global::N.P"), ("global::N.Host.M", "global::N.R"));
 
         // A local function is neither a declared symbol nor a type, so it can be neither
         // the source nor the target of a References edge.
@@ -331,6 +329,11 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
             var edge = extraction.SingleEdge("References", implementation, "global::N.P");
             AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
         }
+
+        extraction.AssertEdgeSet("References",
+            ("global::N.PExtensions.Size", "global::N.P"),
+            ("global::N.PExtensions.get_Length", "global::N.P"),
+            ("global::N.PExtensions.Make", "global::N.P"));
     }
 
     [Fact]
@@ -371,6 +374,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var fromReturn = extraction.SingleEdge("References", "global::N.Host.M", "global::N.R");
         AssertEdgeContract(fromReturn, "References", Provenance.CompilerProved, "operation-shapes-v1", Doc);
+        extraction.AssertEdgeSet("References", ("global::N.Host.M", "global::N.P"), ("global::N.Host.M", "global::N.R"));
     }
 
     [Fact]
@@ -416,6 +420,8 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var call = extraction.SingleEdge("Calls", "global::N.Consumer.Use", "global::N.TargetExtensions.Extend");
         AssertEdgeContract(call, "Calls", Provenance.CompilerProved, "calls-v2", Doc);
+        extraction.AssertEdgeSet("ExtensionReceiver", ("global::N.Target", "global::N.TargetExtensions.Extend"));
+        extraction.AssertEdgeSet("Calls", ("global::N.Consumer.Use", "global::N.TargetExtensions.Extend"));
     }
 
     [Fact]
@@ -429,6 +435,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("MayDispatchTo", "global::N.IService.Execute", "global::N.Service.Execute");
         AssertEdgeContract(edge, "MayDispatchTo", Provenance.CompilerProved, "polymorphism-v1", Doc);
+        extraction.AssertEdgeSet("MayDispatchTo", ("global::N.IService.Execute", "global::N.Service.Execute"));
     }
 
     [Fact]
@@ -447,10 +454,10 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         var edge = extraction.SingleEdge("StaticallyCalls", "global::N.Handler.Handle", "global::N.IRepo.Save");
         AssertEdgeContract(edge, "StaticallyCalls", Provenance.CompilerProved, "statically-calls-v1", Doc);
 
+        extraction.AssertEdgeSet("StaticallyCalls", ("global::N.Handler.Handle", "global::N.IRepo.Save"));
+
         // The same call site also carries a plain Calls edge to the interface method.
-        Assert.Single(extraction.EdgesOf("Calls"), e =>
-            e.SourceSymbolId == extraction.ResolveId("global::N.Handler.Handle") &&
-            e.TargetSymbolId == extraction.ResolveId("global::N.IRepo.Save"));
+        extraction.AssertEdgeSet("Calls", ("global::N.Handler.Handle", "global::N.IRepo.Save"));
     }
 
     [Fact]
@@ -466,6 +473,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
 
         var edge = extraction.SingleEdge("Contains", "global::N.Outer", "global::N.Outer.Inner");
         AssertEdgeContract(edge, "Contains", Provenance.CompilerProved, VersionConstants.ExtractorVersion, Doc);
+        extraction.AssertEdgeSet("Contains", ("global::N.Outer", "global::N.Outer.Inner"));
     }
 
     [Fact]
@@ -494,19 +502,19 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 }
                                                 """));
 
-        Assert.NotEmpty(extraction.EdgesOf("Implements"));
-        Assert.NotEmpty(extraction.EdgesOf("Declares"));
-        Assert.NotEmpty(extraction.EdgesOf("Reads"));
-        Assert.NotEmpty(extraction.EdgesOf("Writes"));
-        Assert.NotEmpty(extraction.EdgesOf("Constructs"));
-        Assert.NotEmpty(extraction.EdgesOf("Returns"));
-        Assert.NotEmpty(extraction.EdgesOf("Throws"));
-        Assert.NotEmpty(extraction.EdgesOf("Calls"));
+        extraction.AssertEdgeSet("Implements", ("global::N.Calculator", "global::N.ICalculator"));
+        extraction.AssertEdgeSet("Reads",
+            ("global::N.Calculator.Total.get", "global::N.Calculator._total"),
+            ("global::N.Calculator.Add", "global::N.Calculator._total"));
+        extraction.AssertEdgeSet("Writes", ("global::N.Calculator.Add", "global::N.Calculator._total"));
+        extraction.AssertEdgeSet("Constructs", ("global::N.Calculator.Create", "global::N.Calculator"));
+        extraction.AssertEdgeSet("Returns", ("global::N.Calculator.Create", "global::N.Calculator"));
+        extraction.AssertEdgeSet("Calls");
+        foreach (var member in new[] { "_total", "Total", "Total.get", "Add", "Create", "Validate" })
+            extraction.SingleEdge("Declares", "global::N.Calculator", "global::N.Calculator." + member);
+        extraction.SingleEdge("Declares", "global::N.ICalculator", "global::N.ICalculator.Add");
 
-        // Key source/target pairs for the comprehensive source.
-        extraction.SingleEdge("Implements", "global::N.Calculator", "global::N.ICalculator");
-        extraction.SingleEdge("Constructs", "global::N.Calculator.Create", "global::N.Calculator");
-        extraction.SingleEdge("Returns", "global::N.Calculator.Create", "global::N.Calculator");
+        // The only Calls edge targets the external ArgumentNullException constructor.
         var calls = Assert.Single(extraction.EdgesOf("Calls"));
         Assert.Equal(extraction.ResolveId("global::N.Calculator.Validate"), calls.SourceSymbolId);
         Assert.StartsWith("M:System.ArgumentNullException.#ctor", calls.TargetSymbolId);
@@ -778,5 +786,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
             .Select(r => $"{r.DocumentPath}|{r.Reason}|{r.Count}"));
         Assert.True(extraction.Result.BindingIncompleteness.All(r => r.Reason != "unsupported_syntax"),
             $"unsupported_syntax row for the controller document: {rows}");
+        extraction.AssertEdgeSet("Calls", ("global::N.C.Get", "global::N.IService.Name"));
+        extraction.AssertEdgeSet("ReflectionMemberRef", ("global::N.C.Route", "global::N.C.GetContent"));
     }
 }
