@@ -51,4 +51,33 @@ public sealed class BindingSiteCountTests : InMemoryTestBase
 
         Assert.Equal(1, FilteredExternal(extraction));
     }
+
+    [Fact]
+    public async Task DynamicObjectCreation_ConstructsTheTypeAndIsOneLateBoundSite()
+    {
+        // C#: in 'new Late(d)' with a dynamic argument the created type is fixed at compile time;
+        // only the constructor overload binds at run time. So Late gets a Constructs fact, no
+        // constructor gets a Calls fact, and the late binding is one unsupported_syntax site.
+        var extraction = await ExtractAsync(new Dictionary<string, string>
+        {
+            [Doc] = """
+                    namespace N;
+                    public class Late
+                    {
+                        public Late(int value) { }
+                        public Late(string value) { }
+                    }
+                    public class Maker
+                    {
+                        public Late Make(dynamic seed) => new Late(seed);
+                    }
+                    """
+        });
+
+        extraction.AssertEdgeSet("Constructs", ("global::N.Maker.Make", "global::N.Late"));
+        extraction.AssertEdgeSet("Calls");
+        Assert.Equal(1, extraction.Result.BindingIncompleteness
+            .Where(static r => r.Reason == BindingIncompletenessReason.UnsupportedSyntax && r.DocumentPath?.EndsWith(Doc, StringComparison.Ordinal) == true)
+            .Sum(static r => r.Count));
+    }
 }

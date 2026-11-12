@@ -82,6 +82,35 @@ public sealed class ShapePair
     }
 }
 
+// S01-F9: user-defined conditional logical operators (C# 12.15.3).
+public sealed class ShapeTriState
+{
+    public static bool operator true(ShapeTriState value) => true;
+
+    public static bool operator false(ShapeTriState value) => false;
+
+    public static ShapeTriState operator &(ShapeTriState left, ShapeTriState right) => left;
+
+    public static ShapeTriState operator |(ShapeTriState left, ShapeTriState right) => right;
+}
+
+// D12 (S01-F27): a lambda depends on its parameter and return types, written or inferred.
+public sealed class ShapeLambdaArg
+{
+    public int Value { get; init; }
+}
+
+public sealed class ShapeLambdaResult
+{
+}
+
+public static class ShapeLambdaHost
+{
+    public static int Run(Func<ShapeLambdaArg, int> body) => body(new ShapeLambdaArg());
+
+    public static ShapeLambdaResult Make(Func<ShapeLambdaResult> factory) => factory();
+}
+
 public sealed class ShapePattern
 {
     public int Number { get; init; }

@@ -24,7 +24,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
             context.ThrowIfCancellationRequested();
             foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
             {
-                if (!allowedKinds.Contains(edge.Kind))
+                // D13: a recursive call is a self edge; the anchor is not its own callee.
+                if (!allowedKinds.Contains(edge.Kind) || edge.TargetSymbolId == edge.SourceSymbolId)
                     continue;
 
                 // Direct callees are registered first so a dispatch projection

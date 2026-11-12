@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
@@ -52,6 +53,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
                     ExtractionUtils.IsOutsideCompilation(iface, context.Compilation) ? GraphNodeKind.ExternalType : null));
         }
 
+        AddWrittenSignatureReferences(sourceId, typeSymbol, sourceSyntax, edges);
+
         foreach (var nested in typeSymbol.GetTypeMembers())
         {
             CollectTypeEdges(nested, edges);
@@ -98,11 +101,14 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             _ => null
         };
 
-        if (referencedType is null)
-            return;
-
         var memberId = SymbolIdFactory.Make(sourceSymbol, context.AssemblyIdentity);
         if (memberId is null)
+            return;
+
+        if (member is IMethodSymbol { MethodKind: not MethodKind.DelegateInvoke })
+            AddWrittenSignatureReferences(memberId, member, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member), edges);
+
+        if (referencedType is null)
             return;
 
         // The member is the source of every member-signature References edge, as in
@@ -112,6 +118,52 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             context.RecordFilteredExternal(used, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(sourceSymbol));
             var usedId = MakeSymbolId(used);
             if (usedId != null) edges.Add(MakeEdge(memberId, usedId, nameof(EdgeKind.References), sourceSymbol));
+        }
+    }
+
+    /// <summary>
+    ///     D14: each type argument in the base list and each constraint type that the declaration
+    ///     of <paramref name="symbol" /> writes is a References fact from it (an exception to
+    ///     mapping rule 6). Only written types count: a record's compiler-made
+    ///     <c>IEquatable&lt;R&gt;</c> and the inherited constraints of an override are not written.
+    /// </summary>
+    private void AddWrittenSignatureReferences(string sourceId, ISymbol symbol, SyntaxNode? sourceSyntax, List<EdgeRecord> edges)
+    {
+        var added = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+        {
+            if (!context.IsInScope(syntaxRef.SyntaxTree))
+                continue;
+
+            var declaration = syntaxRef.GetSyntax();
+            var model = context.GetOrCreateSemanticModel(syntaxRef.SyntaxTree);
+            var used = new List<INamedTypeSymbol>();
+            if (declaration is BaseTypeDeclarationSyntax { BaseList: { } baseList })
+            {
+                foreach (var baseType in baseList.Types)
+                    if (model.GetTypeInfo(baseType.Type).Type is { } bound)
+                        used.AddRange(ExtractionUtils.NestedTypeUses(bound));
+            }
+
+            var constraintClauses = declaration switch
+            {
+                TypeDeclarationSyntax type => type.ConstraintClauses,
+                DelegateDeclarationSyntax @delegate => @delegate.ConstraintClauses,
+                MethodDeclarationSyntax method => method.ConstraintClauses,
+                _ => default
+            };
+            foreach (var clause in constraintClauses)
+            foreach (var constraint in clause.Constraints.OfType<TypeConstraintSyntax>())
+                if (model.GetTypeInfo(constraint.Type).Type is { } bound)
+                    used.AddRange(ExtractionUtils.TypeUses(bound));
+
+            foreach (var type in used)
+            {
+                context.RecordFilteredExternal(type, sourceSyntax);
+                var targetId = MakeSymbolId(type);
+                if (targetId != null && added.Add(targetId))
+                    edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.References), symbol));
+            }
         }
     }
 

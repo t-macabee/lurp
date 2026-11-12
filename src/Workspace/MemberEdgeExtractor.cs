@@ -17,7 +17,6 @@ public sealed class MemberEdgeExtractor
             new OverridesEdgeExtractor(context),
             new ReturnsEdgeExtractor(context),
             new ParameterDependencyEdgeExtractor(context),
-            new ThrowsEdgeExtractor(context),
             new OperationShapeExtractor(context)
         ];
     }

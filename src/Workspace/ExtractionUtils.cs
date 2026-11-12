@@ -64,10 +64,14 @@ internal static class ExtractionUtils
                 foreach (var nested in TypeUses(array.ElementType))
                     yield return nested;
                 break;
+            // A nested type of a constructed generic type also carries the type arguments of
+            // each containing type: Outer<Arg>.Inner names Arg. The containing type itself is
+            // not a fact (D135).
             case INamedTypeSymbol named:
-                foreach (var argument in named.TypeArguments)
-                    foreach (var nested in TypeUses(argument))
-                        yield return nested;
+                for (var current = named; current != null; current = current.ContainingType)
+                    foreach (var argument in current.TypeArguments)
+                        foreach (var nested in TypeUses(argument))
+                            yield return nested;
                 break;
             // B58: a pointer and a function pointer name the types they point at or
             // carry in their signature.
@@ -130,7 +134,7 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
-    ///     Every method-like declaration (methods, constructors, accessors, operators,
+    ///     Every method-like declaration (methods, constructors, property and event accessors, operators,
     ///     conversion operators, destructors) owned by the given types, paired with its
     ///     syntax node. When <paramref name="inScope" /> is provided, declarations whose
     ///     declaring syntax tree is out of scope are skipped; a null predicate leaves
@@ -175,24 +179,8 @@ internal static class ExtractionUtils
 
                         break;
                     case IPropertySymbol property:
-                        foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
-                        {
-                            if (accessor == null)
-                                continue;
-
-                            foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
-                            {
-                                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
-                                    continue;
-                                var accessorSyntax = syntaxRef.GetSyntax();
-                                switch (accessorSyntax)
-                                {
-                                    case AccessorDeclarationSyntax accessorDeclaration:
-                                        yield return (accessor, accessorDeclaration);
-                                        break;
-                                }
-                            }
-                        }
+                        foreach (var accessor in AccessorDeclarations([property.GetMethod, property.SetMethod], inScope))
+                            yield return accessor;
 
                         // The getter's declaring syntax for an expression-bodied property
                         // or indexer is the ArrowExpressionClause, which is not a method
@@ -217,8 +205,36 @@ internal static class ExtractionUtils
                         }
 
                         break;
+                    case IEventSymbol eventSymbol:
+                        foreach (var accessor in AccessorDeclarations([eventSymbol.AddMethod, eventSymbol.RemoveMethod], inScope))
+                            yield return accessor;
+
+                        break;
                 }
             }
+    }
+
+    /// <summary>
+    ///     The accessors among <paramref name="accessors" /> that have an accessor declaration in
+    ///     scope. The accessors of a field-like event have none.
+    /// </summary>
+    private static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> AccessorDeclarations(
+        IEnumerable<IMethodSymbol?> accessors,
+        Func<SyntaxTree, bool>? inScope)
+    {
+        foreach (var accessor in accessors)
+        {
+            if (accessor == null)
+                continue;
+
+            foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
+            {
+                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                    continue;
+                if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorDeclaration)
+                    yield return (accessor, accessorDeclaration);
+            }
+        }
     }
 
     private static IEnumerable<IMethodSymbol> MethodParts(IMethodSymbol method)

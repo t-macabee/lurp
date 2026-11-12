@@ -23,7 +23,6 @@ internal static class ExtractorRegistry
         ("Overrides", ExtractorConstants.OverridesExtractor, "Method override edges"),
         ("Hides", ExtractorConstants.HidesExtractor, "Member-hiding (new keyword) edges"),
         ("Returns", ExtractorConstants.ReturnsExtractor, "Return-type reference edges"),
-        ("Throws", ExtractorConstants.ThrowsExtractor, "Thrown-exception type edges"),
         ("ParameterDependencies", ExtractorConstants.ParameterDependenciesExtractor, "Parameter-type dependency edges"),
 
         // -- Reflection extractors --
@@ -36,7 +35,7 @@ internal static class ExtractorRegistry
         ("Polymorphism", ExtractorConstants.PolymorphismExtractor, "Polymorphic (virtual) dispatch edges"),
 
         // -- Member-body operation pass (S01-F22): every executable root, explicit and implicit shapes --
-        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Member-body edges: calls, constructions, reads, writes, method groups, extension receivers and body type uses"),
+        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Member-body edges: calls, constructions, reads, writes, method groups, extension receivers, thrown types and body type uses"),
 
         // -- Structural type-relationship extractor (uses VersionConstants.ExtractorVersion) --
         ("Structural", VersionConstants.ExtractorVersion, "Structural type edges (inherits, implements, contains, references)")

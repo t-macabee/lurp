@@ -444,6 +444,13 @@ public static class SymbolFinderOracle
                 if (property.SetMethod != null && resolveNodeId(property.SetMethod) is { Length: > 0 } setterId)
                     yield return setterId;
                 break;
+            // D8: an event accessor body is owned by the accessor (S01-F12).
+            case IEventSymbol eventSymbol:
+                if (eventSymbol.AddMethod != null && resolveNodeId(eventSymbol.AddMethod) is { Length: > 0 } adderId)
+                    yield return adderId;
+                if (eventSymbol.RemoveMethod != null && resolveNodeId(eventSymbol.RemoveMethod) is { Length: > 0 } removerId)
+                    yield return removerId;
+                break;
             case IMethodSymbol { MethodKind: MethodKind.LocalFunction, ContainingSymbol: { } container }:
                 if (resolveNodeId(container) is { Length: > 0 } containerId)
                     yield return containerId;

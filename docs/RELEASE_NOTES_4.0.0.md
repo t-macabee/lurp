@@ -28,6 +28,52 @@ index after the upgrade. Old snapshots stay until they are pruned.
   extractors see counts once. Before, a call that did not resolve was also counted
   for its member name, and a call to an external method was counted once for each
   extractor and once more for each external type argument.
+- Reads and writes follow one rule. A compound assignment (`+=`), `??=`, `++`,
+  a `ref` argument and a writable `ref` alias (a `ref` local or a `ref` return)
+  read and write the member. The members of a tuple target (`(a, b) = ...`) are
+  written, not read. Before, `+=` and `??=` gave only a write, a `ref` argument
+  only a write, a `ref` local only a read, and a tuple target only a read.
+- The bodies of event `add` and `remove` accessors are extracted. Their calls,
+  reads, writes and type uses are facts of the accessor. Before, a method called
+  only from an event accessor had no caller.
+- The operation pass also writes `Throws`, so a `throw` in a field or property
+  initializer, an event accessor or a top-level statement is a fact of the member
+  that runs it. The `Throws` label is `operation-shapes-v2`; the label `throws-v1`
+  is gone.
+- A recursive call is a `Calls` fact from the member to itself (and a
+  `StaticallyCalls` fact for a virtual member). No extractor drops an edge from a
+  member to itself. The readers ignore such an edge: a member whose only incoming
+  edges come from itself stays a dead-code candidate, and a capsule does not list
+  the anchor as its own callee. The `StaticallyCalls` label is
+  `statically-calls-v2`.
+- Every static member access names its receiver type as a `References` fact:
+  a method group, a field, a property, an event and a constant, not only an
+  invocation (`Color.Red` references `Color`). An unqualified access names no
+  type. A nested type of a constructed generic type also references the type
+  arguments of its containing types (`Outer<Arg>.Inner` references `Arg`). The
+  `ParameterDependencies` label is `parameter-deps-v2`.
+- A type argument in a base list and each written constraint type are
+  `References` facts from the declaring type, or from the method for a method
+  constraint (`class D : B<A>` and `where T : A` reference `A`).
+- The `using` target is the member that implements `IDisposable.Dispose` on the
+  static type of the resource. Before, a public `Dispose()` that hides the base
+  method or sits next to an explicit implementation was taken instead, and a
+  resource of a type-parameter type gave no call.
+- A user-defined `&&` or `||` also calls `operator false` or `operator true`
+  (C# 12.15.3).
+- A collection expression of a type with `Add` calls `Add` for each element, and
+  a spread element (`[.. items]`) calls `GetEnumerator`, `MoveNext` and reads
+  `Current`, like `foreach`. The capsule boundary
+  `collection_expression_implicit_calls` is gone.
+- An interpolated-string handler creation is a `Constructs` fact to the handler
+  type and a `Calls` fact to its constructor. A `with` expression is a `Calls`
+  fact to the record clone method.
+- A dynamic object creation (`new T(d)` with a `dynamic` argument) is a
+  `Constructs` fact to the created type. The constructor binds at run time, so
+  there is no `Calls` fact and the site stays one `unsupported_syntax` row.
+- A lambda or anonymous method references the type of each parameter and its
+  return type, written or inferred: `Run(q => 1)` references the type of `q`
+  like `Run((Q q) => 1)`. Before, only written types counted.
 
 ## Versions
 

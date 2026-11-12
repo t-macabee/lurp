@@ -18,8 +18,8 @@ namespace Lurp.Tests;
 /// </summary>
 /// <remarks>
 ///     Caller identity is normalized to the extraction owner: an auto-property
-///     backing field maps to its property, a property maps to its accessors, and
-///     a local function maps to its containing method. Static-abstract dispatch
+///     backing field maps to its property, a property or an event maps to its
+///     accessors, and a local function maps to its containing method. Static-abstract dispatch
 ///     (a generic method constrained to a static abstract interface member) is a
 ///     dispatch relation, not a direct call, and is reported as a skipped target.
 /// </remarks>

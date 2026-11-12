@@ -138,6 +138,19 @@ public sealed class ShapeAddOnly : System.Collections.IEnumerable
     public System.Collections.IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
 }
 
+// S01-F10: a spread element enumerates its operand like foreach.
+public sealed class ShapeSpreadSource
+{
+    public ShapeSpreadEnumerator GetEnumerator() => new();
+}
+
+public sealed class ShapeSpreadEnumerator
+{
+    public int Current => 1;
+
+    public bool MoveNext() => false;
+}
+
 // D3 proof (B20): targets used only from nested types in CallShapes.App.
 public sealed class ShapeNestedTarget
 {

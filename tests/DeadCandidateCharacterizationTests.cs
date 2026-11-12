@@ -43,6 +43,46 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ProvedDead_MemberWhoseOnlyIncomingEdgesComeFromItself()
+    {
+        // D13: a self edge is a fact, but it never makes a member live. Recursive calls itself
+        // (a self Calls edge); Looped takes itself as a method group (a self MethodGroupRef).
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Util.cs"] = """
+                          namespace TestProject;
+
+                          internal static class Util
+                          {
+                              internal static int Recursive(int n) => n <= 0 ? 0 : Recursive(n - 1);
+
+                              internal static void Looped() { System.Action again = Looped; }
+                          }
+                          """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var recursiveId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Recursive");
+        var loopedId = ResolveSymbolId(snapshotId, "global::TestProject.Util.Looped");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            foreach (var id in new[] { recursiveId, loopedId })
+            {
+                var entry = Assert.Single(page.Candidates, c => c.SymbolId == id);
+                Assert.Equal(DeadCandidateStatus.ProvedDead, entry.Status);
+                Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, entry.Reason);
+            }
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
     public async Task ProvedDead_InternalHelper_NoLiveIncoming()
     {
         CreateProject("TestProject", new Dictionary<string, string>

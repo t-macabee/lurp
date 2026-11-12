@@ -719,9 +719,11 @@ internal sealed class DeadCandidateStore
         Dictionary<string, List<EdgeRecord>> typeUseByTarget,
         Dictionary<string, TypeSubtree> subtreeByType)
     {
+        // D13: an edge from the candidate to itself (a recursive call, a method group of itself)
+        // is a fact, but it never makes the candidate live.
         var effective = new List<EdgeRecord>();
         if (incomingByTarget.TryGetValue(cand.SymbolId, out var own))
-            effective.AddRange(own);
+            effective.AddRange(own.Where(edge => edge.SourceSymbolId != cand.SymbolId));
 
         // B24: an accessor inherits its property's or event's edges by role.
         if (cand.AccessorKind != null && cand.AssociatedSymbolId != null)
@@ -729,7 +731,7 @@ internal sealed class DeadCandidateStore
             if (incomingByTarget.TryGetValue(cand.AssociatedSymbolId, out var associated))
             {
                 foreach (var edge in associated)
-                    if (InheritsForAccessor(cand.AccessorKind, edge.Kind))
+                    if (edge.SourceSymbolId != cand.SymbolId && InheritsForAccessor(cand.AccessorKind, edge.Kind))
                         effective.Add(edge);
             }
         }

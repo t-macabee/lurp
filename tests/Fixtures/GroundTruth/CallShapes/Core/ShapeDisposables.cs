@@ -34,3 +34,23 @@ public class ShapeBaseResource : IDisposable
 public sealed class ShapeDerivedResource : ShapeBaseResource
 {
 }
+
+// S01-F11: a new Dispose() that hides the base Dispose does not implement IDisposable.Dispose.
+public sealed class ShapeHidingResource : ShapeBaseResource
+{
+    public new void Dispose()
+    {
+    }
+}
+
+// S01-F11: a public Dispose() next to the explicit IDisposable.Dispose is not the target.
+public sealed class ShapeDualResource : IDisposable
+{
+    public void Dispose()
+    {
+    }
+
+    void IDisposable.Dispose()
+    {
+    }
+}

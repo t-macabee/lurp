@@ -155,4 +155,12 @@ public sealed partial class ShapeCallers
     public static int FromDefaultInterface(IShapeDefault value) => value.DefaultValue();
 
     public static ShapeFactory FromStaticAbstract() => ShapeFactoryUser.CreateShape<ShapeFactory>();
+
+    public static ShapeTriState FromConditionalAnd(ShapeTriState left, ShapeTriState right) => left && right;
+
+    public static ShapeTriState FromConditionalOr(ShapeTriState left, ShapeTriState right) => left || right;
+
+    public static int FromInferredLambdaParameter() => ShapeLambdaHost.Run(arg => arg.Value);
+
+    public static int FromInferredLambdaReturn() => ShapeLambdaHost.Make(() => new ShapeLambdaResult()) is null ? 0 : 1;
 }

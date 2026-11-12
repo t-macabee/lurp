@@ -12,7 +12,7 @@ namespace Lurp.Workspace;
 ///     field/property/event initializers, constructor initializers, primary-constructor
 ///     base arguments, parameter defaults, attribute arguments and top-level statements)
 ///     and writes <c>Calls</c>, <c>Constructs</c>, <c>Reads</c>, <c>Writes</c>,
-///     <c>MethodGroupRef</c>, <c>ExtensionReceiver</c> and body <c>References</c>, with
+///     <c>MethodGroupRef</c>, <c>ExtensionReceiver</c>, <c>Throws</c> and body <c>References</c>, with
 ///     receiver-type constraints on <c>Calls</c>. It covers the explicit call shapes and
 ///     the compiler-lowered ones (method groups, event subscriptions, user-defined
 ///     operators and conversions, and the implicit invocations behind await, foreach,
@@ -230,11 +230,6 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             switch (operation)
             {
                 case IInvocationOperation invocation:
-                    // The interpolated-string-handler skeleton construction is
-                    // compiler-lowered and not part of the mapped fact set; the
-                    // AppendLiteral/AppendFormatted calls below are.
-                    if (operation.Parent is IInterpolatedStringHandlerCreationOperation)
-                        break;
                     AddInvocation(owner, ownerId, invocation, model, edges, seen);
                     break;
 
@@ -243,15 +238,26 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 // A nameof argument is a compile-time name, not a binding.
                 case IInvalidOperation when !NameOfReflectionExtractor.IsInsideNameOf(operation.Syntax):
                 case IDynamicInvocationOperation:
-                case IDynamicObjectCreationOperation:
                 case IDynamicIndexerAccessOperation:
                 case IDynamicMemberReferenceOperation when operation.Parent is not IDynamicInvocationOperation:
                     context.RecordUnresolvedBinding(model.GetSymbolInfo(operation.Syntax), operation.Syntax, model);
                     break;
 
+                // C#: a dynamic object creation fixes the created type at compile time; only the
+                // constructor binds at run time, so the call is recorded as binding incompleteness.
+                case IDynamicObjectCreationOperation dynamicCreation:
+                    if (dynamicCreation.Type is { } dynamicType)
+                    {
+                        AddConstructs(ownerId, dynamicType, operation.Syntax, edges, seen);
+                        foreach (var nestedType in ExtractionUtils.NestedTypeUses(dynamicType))
+                            AddTypeUses(ownerId, nestedType, operation.Syntax, edges, seen);
+                    }
+
+                    context.RecordUnresolvedBinding(model.GetSymbolInfo(operation.Syntax), operation.Syntax, model);
+                    break;
+
+                // D35: an interpolated-string handler creation is an object creation like any other.
                 case IObjectCreationOperation creation:
-                    if (operation.Parent is IInterpolatedStringHandlerCreationOperation)
-                        break;
                     if (creation.Type is { } createdType)
                     {
                         AddConstructs(ownerId, createdType, operation.Syntax, edges, seen);
@@ -263,8 +269,18 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                         AddCall(ownerId, constructor, operation.Syntax, edges, seen);
                     break;
 
+                case IThrowOperation { Exception: { } thrown }:
+                    AddThrows(ownerId, thrown, operation.Syntax, edges, seen);
+                    break;
+
+                // D125: a 'with' expression calls the record clone method.
+                case IWithOperation { CloneMethod: { } cloneMethod }:
+                    AddCall(ownerId, cloneMethod, operation.Syntax, edges, seen);
+                    break;
+
                 case IMethodReferenceOperation methodReference:
                     AddMethodGroupRef(ownerId, methodReference.Method, operation.Syntax, edges, seen);
+                    AddStaticReceiverReference(ownerId, operation, methodReference.Method, model, edges, seen);
                     break;
 
                 case IInterpolatedStringAppendOperation append when append.AppendCall is IInvocationOperation appendCall:
@@ -279,6 +295,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 case IForEachLoopOperation
                     when operation.Syntax is CommonForEachStatementSyntax loopSyntax:
                     AddForeachPattern(ownerId, loopSyntax, model, edges, seen);
+                    break;
+
+                case ISpreadOperation when operation.Syntax is SpreadElementSyntax spreadSyntax:
+                    if (SpeculativePatterns.ForEach(model, spreadSyntax.Expression) is { } spreadInfo)
+                        AddEnumerationPattern(ownerId, spreadInfo, operation.Syntax, edges, seen);
                     break;
 
                 case IUsingDeclarationOperation usingDeclaration:
@@ -298,15 +319,18 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     break;
 
                 case IPropertyReferenceOperation propertyReference:
-                    AddMemberAccess(ownerId, propertyReference.Property, propertyReference, edges, seen);
+                    AddMemberAccess(owner, ownerId, propertyReference.Property, propertyReference, edges, seen);
+                    AddStaticReceiverReference(ownerId, operation, propertyReference.Property, model, edges, seen);
                     break;
 
                 case IFieldReferenceOperation fieldReference:
-                    AddMemberAccess(ownerId, fieldReference.Field, fieldReference, edges, seen);
+                    AddMemberAccess(owner, ownerId, fieldReference.Field, fieldReference, edges, seen);
+                    AddStaticReceiverReference(ownerId, operation, fieldReference.Field, model, edges, seen);
                     break;
 
                 case IEventReferenceOperation eventReference:
-                    AddMemberAccess(ownerId, eventReference.Event, operation, edges, seen);
+                    AddMemberAccess(owner, ownerId, eventReference.Event, operation, edges, seen);
+                    AddStaticReceiverReference(ownerId, operation, eventReference.Event, model, edges, seen);
                     break;
 
                 case IUnaryOperation unary when unary.OperatorMethod != null:
@@ -315,6 +339,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
                 case IBinaryOperation binary when binary.OperatorMethod != null:
                     AddCall(ownerId, binary.OperatorMethod, operation.Syntax, edges, seen);
+                    AddCall(ownerId, ShortCircuitOperator(binary), operation.Syntax, edges, seen);
                     break;
 
                 case ICompoundAssignmentOperation compound when compound.OperatorMethod != null:
@@ -352,17 +377,18 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                 case IImplicitIndexerReferenceOperation implicitIndexer:
                     AddMemberBySymbolKind(ownerId, implicitIndexer.LengthSymbol, operation.Syntax, edges, seen);
                     if (implicitIndexer.IndexerSymbol is IPropertySymbol indexerProperty)
-                        AddMemberAccess(ownerId, indexerProperty, implicitIndexer, edges, seen);
+                        AddMemberAccess(owner, ownerId, indexerProperty, implicitIndexer, edges, seen);
                     else
                         AddCall(ownerId, implicitIndexer.IndexerSymbol as IMethodSymbol, operation.Syntax, edges, seen);
                     break;
 
-                case ICollectionExpressionOperation { ConstructMethod: { } constructMethod }:
+                case ICollectionExpressionOperation { ConstructMethod: { } constructMethod } collection:
                     if (constructMethod.MethodKind == MethodKind.Constructor)
                     {
                         AddConstructs(ownerId, constructMethod.ContainingType, operation.Syntax, edges, seen);
                         if (!constructMethod.IsImplicitlyDeclared)
                             AddCall(ownerId, constructMethod, operation.Syntax, edges, seen);
+                        AddCollectionAdds(ownerId, collection, model, edges, seen);
                     }
                     else
                     {
@@ -413,16 +439,12 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     AddTypeUses(ownerId, localFunction.Symbol.ReturnType, operation.Syntax, edges, seen);
                     break;
 
-                // B63: a lambda or anonymous method names its explicitly typed parameters and its explicit
-                // return type in the source. An implicitly typed parameter names no type, so it adds no edge.
+                // D12, D136: a lambda or anonymous method depends on the type of each parameter and on
+                // its return type, written or inferred, so a syntax-only rewrite changes no fact.
                 case IAnonymousFunctionOperation anonymousFunction:
                     foreach (var parameter in anonymousFunction.Symbol.Parameters)
-                    {
-                        if (parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is ParameterSyntax { Type: not null })
-                            AddTypeUses(ownerId, parameter.Type, operation.Syntax, edges, seen);
-                    }
-                    if (anonymousFunction.Syntax is ParenthesizedLambdaExpressionSyntax { ReturnType: not null })
-                        AddTypeUses(ownerId, anonymousFunction.Symbol.ReturnType, operation.Syntax, edges, seen);
+                        AddTypeUses(ownerId, parameter.Type, operation.Syntax, edges, seen);
+                    AddTypeUses(ownerId, anonymousFunction.Symbol.ReturnType, operation.Syntax, edges, seen);
                     break;
             }
         }
@@ -439,7 +461,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             return;
 
         foreach (var used in ExtractionUtils.TypeUses(type))
-            AddEdge(ownerId, used, nameof(EdgeKind.References), syntax, skipSelf: true, edges, seen);
+            AddEdge(ownerId, used, nameof(EdgeKind.References), syntax, edges, seen);
     }
 
     private void ExtractAttributeConstructions(
@@ -513,7 +535,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             // B28: an attribute application calls its constructor when the
             // constructor is declared in source.
             if (attribute.AttributeConstructor is { IsImplicitlyDeclared: false } attributeConstructor)
-                AddEdge(sourceId, attributeConstructor, nameof(EdgeKind.Calls), syntax, skipSelf: true, edges, seen);
+                AddEdge(sourceId, attributeConstructor, nameof(EdgeKind.Calls), syntax, edges, seen);
 
             // B33: an attribute argument is a root; walk its expression.
             if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax { ArgumentList: { } argumentList } &&
@@ -531,22 +553,21 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
     /// <summary>
     ///     Records one edge from <paramref name="ownerId" /> to <paramref name="target" />. A target
-    ///     with no snapshot id is recorded as filtered external. <paramref name="skipSelf" /> drops
-    ///     an edge whose target is the owner itself.
+    ///     with no snapshot id is recorded as filtered external. An edge from a member to itself is
+    ///     a fact (D13, D134); the readers ignore it.
     /// </summary>
     private void AddEdge(
         string ownerId,
         ISymbol target,
         string kind,
         SyntaxNode? syntax,
-        bool skipSelf,
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen,
         string? receiverConstraintsJson = null)
     {
         context.RecordFilteredExternal(target, syntax);
         var targetId = context.MakeSymbolId(target);
-        if (targetId == null || (skipSelf && targetId == ownerId))
+        if (targetId == null)
             return;
 
         Emit(edges, seen, ownerId, targetId, kind, syntax, receiverConstraintsJson);
@@ -569,7 +590,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         var method = invocation.TargetMethod;
         AddCall(ownerId, method, syntax, edges, seen, GetReceiverTypeConstraints(invocation, owner, model));
         AddExtensionReceiver(invocation, edges, seen);
-        AddStaticReceiverReference(ownerId, syntax, model, edges, seen);
+        AddStaticReceiverReference(ownerId, invocation, method, model, edges, seen);
         foreach (var typeArgument in method.TypeArguments)
             AddTypeUses(ownerId, typeArgument, syntax, edges, seen);
     }
@@ -652,7 +673,51 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (method is { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: true })
             return;
 
-        AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, skipSelf: true, edges, seen, receiverConstraintsJson);
+        AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, edges, seen, receiverConstraintsJson);
+    }
+
+    /// <summary>
+    ///     The thrown type of a <c>throw</c>: the static type of the thrown expression before the
+    ///     implicit conversion to <see cref="Exception" />. The filtered-external site is the
+    ///     thrown expression, the edge location is the <c>throw</c>.
+    /// </summary>
+    private void AddThrows(
+        string ownerId,
+        IOperation thrown,
+        SyntaxNode throwSyntax,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        while (thrown is IConversionOperation { IsImplicit: true } conversion)
+            thrown = conversion.Operand;
+        if (thrown.Type is not INamedTypeSymbol { TypeKind: not TypeKind.Error } exceptionType)
+            return;
+
+        context.RecordFilteredExternal(exceptionType, thrown.Syntax);
+        var targetId = context.MakeSymbolId(exceptionType);
+        if (targetId != null)
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Throws), throwSyntax);
+    }
+
+    /// <summary>
+    ///     C# 12.15.3: a user-defined <c>x &amp;&amp; y</c> runs <c>T.false(x)</c>, a user-defined
+    ///     <c>x || y</c> runs <c>T.true(x)</c>, where T declares the selected <c>&amp;</c> or <c>|</c>
+    ///     operator and both <c>true</c> and <c>false</c>. Roslyn keeps this operator internal.
+    /// </summary>
+    private static IMethodSymbol? ShortCircuitOperator(IBinaryOperation binary)
+    {
+        var name = binary.OperatorKind switch
+        {
+            BinaryOperatorKind.ConditionalAnd => WellKnownMemberNames.FalseOperatorName,
+            BinaryOperatorKind.ConditionalOr => WellKnownMemberNames.TrueOperatorName,
+            _ => null
+        };
+        if (name == null || binary.OperatorMethod is not { } selected)
+            return null;
+
+        return selected.ContainingType.GetMembers(name).OfType<IMethodSymbol>()
+            .FirstOrDefault(method => method.Parameters.Length == 1 &&
+                                      SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, selected.ReturnType));
     }
 
     private void AddMethodGroupRef(
@@ -667,7 +732,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (method.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction)
             return;
 
-        AddEdge(ownerId, method, nameof(EdgeKind.MethodGroupRef), syntax, skipSelf: false, edges, seen);
+        AddEdge(ownerId, method, nameof(EdgeKind.MethodGroupRef), syntax, edges, seen);
     }
 
     private void AddConstructs(
@@ -677,7 +742,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
-        AddEdge(ownerId, type, nameof(EdgeKind.Constructs), syntax, skipSelf: true, edges, seen);
+        AddEdge(ownerId, type, nameof(EdgeKind.Constructs), syntax, edges, seen);
     }
 
     private void AddMemberRead(
@@ -690,10 +755,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (property == null)
             return;
 
-        AddEdge(ownerId, property, nameof(EdgeKind.Reads), syntax, skipSelf: false, edges, seen);
+        AddEdge(ownerId, property, nameof(EdgeKind.Reads), syntax, edges, seen);
     }
 
     private void AddMemberAccess(
+        ISymbol owner,
         string ownerId,
         ISymbol member,
         IOperation operation,
@@ -710,48 +776,124 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (targetId == null)
             return;
 
-        var (reads, writes) = ClassifyAccess(operation);
+        var (reads, writes) = ClassifyAccess(operation, owner);
         if (reads)
             Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Reads), operation.Syntax);
         if (writes)
             Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Writes), operation.Syntax);
     }
 
-    private static (bool Reads, bool Writes) ClassifyAccess(IOperation operation)
+    /// <summary>
+    ///     D11: '=', an out argument and a tuple target of a deconstruction write. A compound
+    ///     assignment, '??=', '++', '--', a ref argument and a writable ref alias (a ref local,
+    ///     a ref return, a ref reassignment) read and write. A ref readonly alias, an in
+    ///     argument and every other use read. An event: '+=' and '-=' write.
+    /// </summary>
+    private static (bool Reads, bool Writes) ClassifyAccess(IOperation operation, ISymbol owner)
     {
         switch (operation.Parent)
         {
             case IEventAssignmentOperation eventAssignment when ReferenceEquals(eventAssignment.EventReference, operation):
                 return (false, true);
-            case IAssignmentOperation assignment when ReferenceEquals(assignment.Target, operation):
-                return (false, true);
             case ICompoundAssignmentOperation compound when ReferenceEquals(compound.Target, operation):
+            case ICoalesceAssignmentOperation coalesce when ReferenceEquals(coalesce.Target, operation):
             case IIncrementOrDecrementOperation increment when ReferenceEquals(increment.Target, operation):
                 return (true, true);
-            case IArgumentOperation argument when argument.Parameter is { RefKind: RefKind.Ref or RefKind.Out }:
+            case ISimpleAssignmentOperation assignment when ReferenceEquals(assignment.Target, operation):
                 return (false, true);
+            case ISimpleAssignmentOperation { IsRef: true } refAssignment:
+                return Alias(RefKindOf(refAssignment.Target));
+            case IVariableInitializerOperation { Parent: IVariableDeclaratorOperation declarator }:
+                return Alias(declarator.Symbol.RefKind);
+            case IReturnOperation returnOperation:
+                return Alias(ReturnRefKind(returnOperation, owner));
+            case IConditionalOperation { IsRef: true } conditional when !ReferenceEquals(conditional.Condition, operation):
+                return ClassifyAccess(conditional, owner);
+            case ITupleOperation tuple:
+                return IsDeconstructionTarget(tuple) ? (false, true) : (true, false);
+            case IArgumentOperation argument:
+                return argument.Parameter?.RefKind switch
+                {
+                    RefKind.Out => (false, true),
+                    RefKind.Ref => (true, true),
+                    _ => (true, false)
+                };
             default:
                 return (true, false);
         }
+
+        static (bool Reads, bool Writes) Alias(RefKind refKind) => (true, refKind == RefKind.Ref);
     }
 
+    private static RefKind RefKindOf(IOperation target)
+    {
+        return target switch
+        {
+            ILocalReferenceOperation local => local.Local.RefKind,
+            IParameterReferenceOperation parameter => parameter.Parameter.RefKind,
+            IFieldReferenceOperation field => field.Field.RefKind,
+            _ => RefKind.None
+        };
+    }
+
+    /// <summary>The ref kind that the function around <paramref name="returnOperation" /> returns.</summary>
+    private static RefKind ReturnRefKind(IReturnOperation returnOperation, ISymbol owner)
+    {
+        for (var current = returnOperation.Parent; current != null; current = current.Parent)
+        {
+            switch (current)
+            {
+                case IAnonymousFunctionOperation anonymousFunction:
+                    return anonymousFunction.Symbol.RefKind;
+                case ILocalFunctionOperation localFunction:
+                    return localFunction.Symbol.RefKind;
+            }
+        }
+
+        return owner is IMethodSymbol method ? method.RefKind : RefKind.None;
+    }
+
+    /// <summary>True when <paramref name="tuple" /> is (inside) the target of a deconstruction.</summary>
+    private static bool IsDeconstructionTarget(ITupleOperation tuple)
+    {
+        IOperation outer = tuple;
+        while (outer.Parent is ITupleOperation parentTuple)
+            outer = parentTuple;
+        return outer.Parent is IDeconstructionAssignmentOperation deconstruction &&
+               ReferenceEquals(deconstruction.Target, outer);
+    }
+
+    /// <summary>
+    ///     D124: a static member access names its receiver type (an invocation, a method group, a
+    ///     field, a property, an event or a constant), with the type's arguments. An unqualified
+    ///     access and a <c>nameof</c> argument name no receiver.
+    /// </summary>
     private void AddStaticReceiverReference(
         string ownerId,
-        SyntaxNode syntax,
+        IOperation operation,
+        ISymbol member,
         SemanticModel model,
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
-        if (syntax is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax memberAccess })
-            return;
-        if (model.GetSymbolInfo(memberAccess.Expression).Symbol is not INamedTypeSymbol containingType)
+        if (!member.IsStatic)
             return;
 
-        var targetId = context.MakeSymbolId(containingType);
-        if (targetId == null || targetId == ownerId)
+        var accessSyntax = operation.Syntax is InvocationExpressionSyntax invocation ? invocation.Expression : operation.Syntax;
+        if (accessSyntax is not MemberAccessExpressionSyntax memberAccess ||
+            NameOfReflectionExtractor.IsInsideNameOf(memberAccess))
+            return;
+        if (model.GetSymbolInfo(memberAccess.Expression).Symbol is not INamedTypeSymbol receiverType)
             return;
 
-        Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.References), memberAccess.Expression);
+        // The edge sits on the receiver name. The filtered-external site is the access itself,
+        // so one access stays one site (D16).
+        foreach (var used in ExtractionUtils.TypeUses(receiverType))
+        {
+            context.RecordFilteredExternal(used, operation.Syntax);
+            if (context.MakeSymbolId(used) is { } targetId)
+                Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.References), memberAccess.Expression);
+        }
     }
 
     private void AddPrimaryBaseConstructor(
@@ -785,17 +927,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         var resourceTypes = new List<ITypeSymbol>();
         switch (resources)
         {
+            // D10: the static type of the resource is the type of each declared local.
             case IVariableDeclarationGroupOperation group:
                 foreach (var declaration in group.Declarations)
-                {
-                    if (declaration.Type is { } declaredType)
-                        resourceTypes.Add(declaredType);
-                    foreach (var declarator in declaration.Declarators)
-                    {
-                        if (declarator.Initializer?.Value.Type is { } initializerType)
-                            resourceTypes.Add(initializerType);
-                    }
-                }
+                foreach (var declarator in declaration.Declarators)
+                    resourceTypes.Add(declarator.Symbol.Type);
 
                 break;
             default:
@@ -812,30 +948,67 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         }
     }
 
+    /// <summary>
+    ///     D10: the member that implements <c>IDisposable.Dispose</c> (<c>IAsyncDisposable.DisposeAsync</c>)
+    ///     on the static type of the resource; a ref struct uses its own Dispose pattern method. A type
+    ///     parameter resolves through its effective base class, else to the interface method. A nullable
+    ///     value type disposes its underlying type. <c>dynamic</c> has no target.
+    /// </summary>
     private IMethodSymbol? ResolveDisposeMethod(ITypeSymbol type, bool isAsync)
     {
-        if (type is not INamedTypeSymbol namedType)
-            return null;
-
         var methodName = isAsync ? "DisposeAsync" : "Dispose";
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+            type = nullable.TypeArguments[0];
 
-        var direct = namedType.GetMembers(methodName).OfType<IMethodSymbol>()
-            .FirstOrDefault(method => method is { IsStatic: false, Parameters.Length: 0 });
-        if (direct != null)
-            return direct;
+        if (type is INamedTypeSymbol { IsRefLikeType: true } refStruct)
+            return refStruct.GetMembers(methodName).OfType<IMethodSymbol>()
+                .FirstOrDefault(method => method is { IsStatic: false, Parameters.Length: 0 });
 
-        var specialType = isAsync
+        var disposableType = isAsync
             ? context.Compilation.GetTypeByMetadataName("System.IAsyncDisposable")
             : context.Compilation.GetSpecialType(SpecialType.System_IDisposable);
-        if (specialType is null || specialType.TypeKind == TypeKind.Error)
+        if (disposableType is null || disposableType.TypeKind == TypeKind.Error)
             return null;
-
-        var interfaceMethod = specialType.GetMembers(methodName).OfType<IMethodSymbol>()
+        var interfaceMethod = disposableType.GetMembers(methodName).OfType<IMethodSymbol>()
             .FirstOrDefault(method => method.Parameters.Length == 0);
         if (interfaceMethod == null)
             return null;
 
-        return namedType.FindImplementationForInterfaceMember(interfaceMethod) as IMethodSymbol ?? interfaceMethod;
+        var implementingType = type switch
+        {
+            ITypeParameterSymbol typeParameter => EffectiveBaseClass(typeParameter),
+            INamedTypeSymbol named => named,
+            _ => null
+        };
+        if (implementingType == null)
+            return type is ITypeParameterSymbol ? interfaceMethod : null;
+
+        return implementingType.FindImplementationForInterfaceMember(interfaceMethod) as IMethodSymbol ?? interfaceMethod;
+    }
+
+    /// <summary>The class constraint of <paramref name="typeParameter" />, also through another type parameter.</summary>
+    private static INamedTypeSymbol? EffectiveBaseClass(ITypeParameterSymbol typeParameter)
+    {
+        var visited = new HashSet<ITypeParameterSymbol>(SymbolEqualityComparer.Default);
+        var pending = new Stack<ITypeParameterSymbol>([typeParameter]);
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current))
+                continue;
+            foreach (var constraint in current.ConstraintTypes)
+            {
+                switch (constraint)
+                {
+                    case INamedTypeSymbol { TypeKind: TypeKind.Class } classType:
+                        return classType;
+                    case ITypeParameterSymbol other:
+                        pending.Push(other);
+                        break;
+                }
+            }
+        }
+
+        return null;
     }
 
     private void AddAwaitPattern(
@@ -858,11 +1031,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
-        var info = model.GetForEachStatementInfo(syntax);
-        AddCall(ownerId, info.GetEnumeratorMethod, syntax, edges, seen);
-        AddCall(ownerId, info.MoveNextMethod, syntax, edges, seen);
-        AddMemberRead(ownerId, info.CurrentProperty, syntax, edges, seen);
-        AddCall(ownerId, info.DisposeMethod, syntax, edges, seen);
+        AddEnumerationPattern(ownerId, model.GetForEachStatementInfo(syntax), syntax, edges, seen);
 
         // A foreach deconstruction ('foreach (var (a, b) in pairs)') has its own
         // Deconstruct calls, reached through the same Nested recursion as an
@@ -870,6 +1039,45 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (syntax is ForEachVariableStatementSyntax variableSyntax)
             AddDeconstructionCalls(ownerId, model.GetDeconstructionInfo(variableSyntax), variableSyntax,
                 edges, seen);
+    }
+
+    /// <summary>The implicit members of a foreach enumeration (also of a spread element).</summary>
+    private void AddEnumerationPattern(
+        string ownerId,
+        ForEachStatementInfo info,
+        SyntaxNode syntax,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        AddCall(ownerId, info.GetEnumeratorMethod, syntax, edges, seen);
+        AddCall(ownerId, info.MoveNextMethod, syntax, edges, seen);
+        AddMemberRead(ownerId, info.CurrentProperty, syntax, edges, seen);
+        AddCall(ownerId, info.DisposeMethod, syntax, edges, seen);
+    }
+
+    /// <summary>
+    ///     C#: a collection expression of a type with an applicable <c>Add</c> calls <c>Add</c> for
+    ///     each expression element and for each item of a spread element.
+    /// </summary>
+    private void AddCollectionAdds(
+        string ownerId,
+        ICollectionExpressionOperation collection,
+        SemanticModel model,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        if (collection.Type is not { } collectionType)
+            return;
+
+        foreach (var element in collection.Elements)
+        {
+            var argument = element is ISpreadOperation spread
+                ? SpeculativePatterns.ItemOf(spread.ElementType)
+                : element.Syntax as ExpressionSyntax;
+            if (argument != null)
+                AddCall(ownerId, SpeculativePatterns.AddMethod(model, collection.Syntax.SpanStart, collectionType, argument),
+                    collection.Syntax, edges, seen);
+        }
     }
 
     private void AddDeconstructionCalls(

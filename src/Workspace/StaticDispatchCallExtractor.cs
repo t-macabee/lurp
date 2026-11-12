@@ -60,7 +60,7 @@ internal sealed class StaticDispatchCallExtractor(PolymorphismExtractionContext 
         context.RecordFilteredExternal(callee, invocation);
 
         var calleeId = context.MakeSymbolId(callee);
-        if (calleeId == null || calleeId == callerId)
+        if (calleeId == null)
             return;
 
         var key = (callerId, calleeId, nameof(EdgeKind.StaticallyCalls));

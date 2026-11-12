@@ -2,6 +2,10 @@ namespace CallShapes.App;
 
 public static class ShapeImplicitCallers
 {
+    public static readonly int[] SpreadField = [.. new ShapeSpreadSource()];
+
+    public static int[] FromSpread(ShapeSpreadSource source) => [.. source];
+
     public static async Task<int> FromExtensionAwait() => await new ShapeExtAwaitable();
 
     public static int FromExtensionForeach()

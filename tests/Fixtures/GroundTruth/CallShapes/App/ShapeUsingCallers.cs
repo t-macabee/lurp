@@ -57,4 +57,25 @@ public static class ShapeUsingCallers
         {
         }
     }
+
+    public static void FromConstrainedUsing<T>(T resource) where T : ShapeBaseResource
+    {
+        using (resource)
+        {
+        }
+    }
+
+    public static void FromHidingUsing(ShapeHidingResource resource)
+    {
+        using (resource)
+        {
+        }
+    }
+
+    public static void FromDualUsing(ShapeDualResource resource)
+    {
+        using (resource)
+        {
+        }
+    }
 }

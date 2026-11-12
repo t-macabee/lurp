@@ -204,7 +204,6 @@ entry, not a new extractor.
 | `non_csharp_projects` | F# and VB projects are out of scope: MSBuildWorkspace skips non-C# languages and the skip is reported as a warning, so symbols and relationships declared in those projects are absent from the graph. |
 | `intermediate_redirect_not_applied` | A project's build files set the intermediate output path after Lurp's redirect (or assign CustomBeforeMicrosoftCommonTargets in the project file), so its design-time build files are written under its own obj/ directory in the target tree. The project's own build hooks do take effect; the indexed compilation is not affected. |
 | `static_abstract_dispatch` | Static-abstract interface dispatch is not modeled as a direct edge to the implementation: a generic method constrained to an interface with a static abstract member is extracted as a Calls edge to the interface member, but the implementing type selected at dispatch time is not emitted as a relation. |
-| `collection_expression_implicit_calls` | A collection expression whose target type has Add lowers to the constructor plus one Add call per element, and a spread element is enumerated; Roslyn exposes the construct method only, so Add calls and spread GetEnumerator produce no edge. |
 <!-- /generated:declared-boundaries -->
 
 ## 7. Glossary

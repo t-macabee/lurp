@@ -82,7 +82,14 @@ are committed. Index output belongs outside the fixture tree.
 | Static constructor, finalizer, init accessor, accessor-bodied getter | `ShapeLifecycle` |
 | `ref struct`, unsafe pointer | `ShapeRefStruct`, `ShapeUnsafe` |
 | Records (including the `with` receiver) | `ShapeRecord` |
-| `using` and `await using` targets: interface, explicit implementation, ref struct, `IAsyncDisposable`, inherited implementation, nullable reference, interface constraint, `dynamic` | `ShapeUsingCallers` (resource types in `ShapeDisposables.cs`) |
+| `using` and `await using` targets: interface, explicit implementation, ref struct, `IAsyncDisposable`, inherited implementation, nullable reference, interface constraint, class constraint, a hiding `new Dispose()`, a public `Dispose()` next to an explicit implementation, `dynamic` | `ShapeUsingCallers` (resource types in `ShapeDisposables.cs`) |
+| Access shapes: compound assignment, `??=`, tuple target, `ref` argument, `ref` local | `ShapeAccessCallers` (fields in `ShapeAccess.cs`) |
+| Event accessor bodies | `ShapeEventHost` (`ShapeEventAccessors.cs`) |
+| Recursive call (static and virtual) | `ShapeRecursion` |
+| Nested type of a constructed generic type | `ShapeTypeUses.FromNestedGeneric` |
+| User-defined `&&` and `\|\|` | `ShapeCallers.FromConditionalAnd`, `FromConditionalOr`, `ShapeTriState` |
+| Spread element, collection expression of a type with `Add` | `ShapeImplicitCallers.FromSpread`, `SpreadField`, `FromCollectionAdd` |
+| Inferred lambda parameter and return types | `ShapeCallers.FromInferredLambdaParameter`, `FromInferredLambdaReturn` |
 
 Source-generated code and Razor/Blazor stay permanent declared boundaries; their
 registry entries and existing provenance tests cover them, and neither can be

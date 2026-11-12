@@ -29,18 +29,20 @@
     "convention:D9": "C# 14 extension block rule (mapping rule 8).",
     "convention:D10": "using target rule (mapping rule 9). SymbolFinder reports a using as a reference to every Dispose implementation, so it is no evidence for the target.",
     "convention:D38": "A compiler-made member that Lurp stores gets the signature facts of a written member (mapping rule 6). Roslyn reports no location because the member has no syntax.",
-    "convention:D126": "A compiler-made member's return type is a signature References fact, like the return type of a written member (mapping rule 6)."
+    "convention:D126": "A compiler-made member's return type is a signature References fact, like the return type of a written member (mapping rule 6).",
+    "convention:D12": "D12 rule: a member depends on the inferred type of a local or of an implicitly typed lambda parameter like on a written type (mapping rule 7). Roslyn reports no location because the source names no type.",
+    "convention:D136": "D136 rule: a lambda or anonymous method depends on its return type, written or inferred (mapping rule 7). Roslyn reports no location because the source names no type."
   },
   "mapping": [
-    "1. Calls: an invocation in a body is a Calls fact to the bound method. This includes the implicit calls of the C# rules: foreach (GetEnumerator, MoveNext; Current is a read), using (rule 9), await (GetAwaiter, GetResult; IsCompleted is a read), deconstruction and positional patterns (Deconstruct), a collection initializer (Add), a collection builder (the builder method), list patterns and implicit index and range (Count or Length is a read, the int indexer is a read, Slice is a call), user-defined operators and conversions, an interpolated-string handler (its constructor and the Append calls) and 'with' (the record clone method). A recursive call is a Calls fact from the member to itself.",
+    "1. Calls: an invocation in a body is a Calls fact to the bound method. This includes the implicit calls of the C# rules: foreach (GetEnumerator, MoveNext; Current is a read), using (rule 9), await (GetAwaiter, GetResult; IsCompleted is a read), deconstruction and positional patterns (Deconstruct), a collection initializer (Add), a collection expression of a type with Add (Add for each element), a spread element (GetEnumerator, MoveNext; Current is a read), a collection builder (the builder method), list patterns and implicit index and range (Count or Length is a read, the int indexer is a read, Slice is a call), user-defined operators and conversions, an interpolated-string handler (its constructor and the Append calls) and 'with' (the record clone method). A recursive call is a Calls fact from the member to itself.",
     "2. Constructs: an object creation (also target-typed new()), an attribute application and an interpolated-string handler creation are Constructs facts to the created type. Each is also a Calls fact to the bound constructor when that constructor is declared in source; an implicitly declared constructor gets no Calls fact. A constructor initializer (this(...) or base(...)) and the arguments of a primary-constructor base list are Calls facts to the constructor.",
     "3. MethodGroupRef: a method group that converts to a delegate is a MethodGroupRef fact. The handler of an event += and of an event -= is such a conversion.",
     "4. Reads and Writes: '=', an out argument and a deconstruction or tuple target are writes. A compound assignment, ??=, ++, --, a ref argument and a ref local or ref return alias are a read and a write. Every other use (also an in argument) is a read. An event: += and -= are writes; every other use (for example a raise) is a read. An indexer access reads or writes the indexer property.",
     "5. Owner (the source of a fact): the member that runs the code. An accessor body (also an expression-bodied property or indexer) is owned by the accessor method. A field or property initializer is owned by the field or property. The arguments of a primary-constructor base list are owned by the primary constructor. A local function, a lambda and a query clause are owned by the member that contains them. A parameter default value is owned by the method (an indexer parameter: the indexer property; a delegate parameter: the delegate type). An enum member value is owned by the enum member. A field-like event initializer is owned by the event. An attribute argument is owned by the attributed member (a type attribute: the type; a parameter or return-value attribute: its method).",
     "6. References from signatures: each source type named in a member signature (the return type, the parameter types, the type of a property, field or event, with their type arguments, array elements and function-pointer types) is a References fact from that member. A delegate type owns its own signature. An accessor and an enum member add no signature fact of their own. A compiler-made member that Lurp stores gets the same signature facts as a written member. A type argument in a base list and each type in a generic constraint are References facts from the declaring type (a method constraint: from the method).",
-    "7. References from bodies: each source type named in a body is a References fact from the owner. This includes the receiver type of a static member access (an invocation, a method group, a field, a property, an event or a constant), a local declaration (written or inferred type, also an implicitly typed lambda parameter), is and type patterns, casts, default(T), sizeof, array creation, catch types and method type arguments. An object creation gives a Constructs fact, not a References fact. typeof gives ReflectionTypeRef, which this list does not compare.",
+    "7. References from bodies: each source type named in a body is a References fact from the owner. This includes the receiver type of a static member access (an invocation, a method group, a field, a property, an event or a constant), a local declaration (written or inferred type, also an implicitly typed lambda parameter), the return type of a lambda or anonymous method (written or inferred), is and type patterns, casts, default(T), sizeof, array creation, catch types and method type arguments. An object creation gives a Constructs fact, not a References fact. typeof gives ReflectionTypeRef, which this list does not compare.",
     "8. C# 14 extension blocks: a call to a block method targets the implementation method on the outer static class. A read or write of a block property targets the block property. The receiver type of the block is a References fact from each implementation member.",
-    "9. using and await using: the target is the member that implements IDisposable.Dispose (IAsyncDisposable.DisposeAsync) on the static type of the resource. A ref struct uses its own Dispose pattern method. For a type parameter, its effective base class decides. When the target is an interface method outside the fixture, or the resource is dynamic, there is no fact."
+    "9. using and await using: the target is the member that implements IDisposable.Dispose (IAsyncDisposable.DisposeAsync) on the static type of the resource. A ref struct uses its own Dispose pattern method. For a type parameter, its effective base class decides. A nullable value type uses its underlying type. When the target is an interface method outside the fixture, or the resource is dynamic, there is no fact."
   ],
   "facts": [
     {
@@ -2241,12 +2243,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.CoreApi",
       "basis": "symbolfinder",
-      "reason": "The method group 'CoreApi.MethodGroupTarget' names T:CallShapes.Core.CoreApi as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "The method group 'CoreApi.MethodGroupTarget' names T:CallShapes.Core.CoreApi as a static receiver."
     },
     {
       "id": "gt-282",
@@ -2254,12 +2251,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.CoreApi",
       "basis": "symbolfinder",
-      "reason": "The method group 'CoreApi.EventHandlerTarget' names T:CallShapes.Core.CoreApi as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "The method group 'CoreApi.EventHandlerTarget' names T:CallShapes.Core.CoreApi as a static receiver."
     },
     {
       "id": "gt-283",
@@ -2267,12 +2259,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.CoreApi",
       "basis": "symbolfinder",
-      "reason": "The method group 'CoreApi.EventHandlerTarget' names T:CallShapes.Core.CoreApi as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "The method group 'CoreApi.EventHandlerTarget' names T:CallShapes.Core.CoreApi as a static receiver."
     },
     {
       "id": "gt-284",
@@ -2280,12 +2267,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeSeeded",
       "basis": "symbolfinder",
-      "reason": "The enum member access 'ShapeSeeded.First' names T:CallShapes.Core.ShapeSeeded as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "The enum member access 'ShapeSeeded.First' names T:CallShapes.Core.ShapeSeeded as a static receiver."
     },
     {
       "id": "gt-285",
@@ -2293,12 +2275,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRoots",
       "basis": "symbolfinder",
-      "reason": "Indexer parameter default 'ShapeRoots.DefaultSeed' names T:CallShapes.Core.ShapeRoots as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "Indexer parameter default 'ShapeRoots.DefaultSeed' names T:CallShapes.Core.ShapeRoots as a static receiver."
     },
     {
       "id": "gt-286",
@@ -2306,12 +2283,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRoots",
       "basis": "symbolfinder",
-      "reason": "Enum member value 'ShapeRoots.EnumSeed' names T:CallShapes.Core.ShapeRoots as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "Enum member value 'ShapeRoots.EnumSeed' names T:CallShapes.Core.ShapeRoots as a static receiver."
     },
     {
       "id": "gt-287",
@@ -2319,12 +2291,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRoots",
       "basis": "convention:D8",
-      "reason": "Delegate parameter default 'ShapeRoots.DelegateSeed' names T:CallShapes.Core.ShapeRoots as a static receiver.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "the extractor writes a static-receiver References only for an invocation"
-      }
+      "reason": "Delegate parameter default 'ShapeRoots.DelegateSeed' names T:CallShapes.Core.ShapeRoots as a static receiver."
     },
     {
       "id": "gt-288",
@@ -2332,12 +2299,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.IShapeFactory`1",
       "basis": "symbolfinder",
-      "reason": "Type constraint 'where TSelf : IShapeFactory<TSelf>' names T:CallShapes.Core.IShapeFactory`1.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "no extractor reads base-list type arguments or constraints"
-      }
+      "reason": "Type constraint 'where TSelf : IShapeFactory<TSelf>' names T:CallShapes.Core.IShapeFactory`1."
     },
     {
       "id": "gt-289",
@@ -2345,12 +2307,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeFactory",
       "basis": "symbolfinder",
-      "reason": "Base-list type argument 'IShapeFactory<ShapeFactory>' names T:CallShapes.Core.ShapeFactory.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "no extractor reads base-list type arguments or constraints"
-      }
+      "reason": "Base-list type argument 'IShapeFactory<ShapeFactory>' names T:CallShapes.Core.ShapeFactory."
     },
     {
       "id": "gt-290",
@@ -2358,12 +2315,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.IShapeFactory`1",
       "basis": "symbolfinder",
-      "reason": "Method type constraint 'where T : IShapeFactory<T>' names T:CallShapes.Core.IShapeFactory`1.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F13",
-        "reason": "no extractor reads base-list type arguments or constraints"
-      }
+      "reason": "Method type constraint 'where T : IShapeFactory<T>' names T:CallShapes.Core.IShapeFactory`1."
     },
     {
       "id": "gt-291",
@@ -2371,12 +2323,7 @@
       "kind": "Constructs",
       "target": "T:CallShapes.Core.ShapeLogHandler",
       "basis": "language-rule",
-      "reason": "Interpolated-string handler: the compiler creates the handler with new ShapeLogHandler(literalLength, formattedCount).",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F28",
-        "reason": "the extractor skips the handler creation"
-      }
+      "reason": "Interpolated-string handler: the compiler creates the handler with new ShapeLogHandler(literalLength, formattedCount)."
     },
     {
       "id": "gt-292",
@@ -2384,12 +2331,7 @@
       "kind": "Calls",
       "target": "M:CallShapes.Core.ShapeLogHandler.#ctor(System.Int32,System.Int32)",
       "basis": "language-rule",
-      "reason": "Interpolated-string handler: the handler creation calls M:CallShapes.Core.ShapeLogHandler.#ctor(System.Int32,System.Int32).",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "S01-F28",
-        "reason": "the extractor skips the handler creation"
-      }
+      "reason": "Interpolated-string handler: the handler creation calls M:CallShapes.Core.ShapeLogHandler.#ctor(System.Int32,System.Int32)."
     },
     {
       "id": "gt-293",
@@ -2397,12 +2339,7 @@
       "kind": "Calls",
       "target": "M:CallShapes.Core.ShapeRecord.{Clone}$",
       "basis": "language-rule",
-      "reason": "'with' expression: the compiler calls the record clone method before the init setters.",
-      "pending": {
-        "stage": "P2-S04",
-        "tracking": "D125",
-        "reason": "the extractor does not read IWithOperation.CloneMethod"
-      }
+      "reason": "'with' expression: the compiler calls the record clone method before the init setters."
     },
     {
       "id": "gt-294",
@@ -2551,6 +2488,534 @@
       "target": "T:CallShapes.Core.ShapeResource",
       "basis": "symbolfinder",
       "reason": "Parameter type: T:CallShapes.Core.ShapeResource."
+    },
+    {
+      "id": "gt-310",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCompoundAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeCounter.Compound",
+      "basis": "symbolfinder",
+      "reason": "Compound assignment '+=' reads and writes F:CallShapes.Core.ShapeCounter.Compound (mapping rule 4)."
+    },
+    {
+      "id": "gt-311",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCompoundAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.Compound",
+      "basis": "symbolfinder",
+      "reason": "Compound assignment '+=' reads and writes F:CallShapes.Core.ShapeCounter.Compound (mapping rule 4)."
+    },
+    {
+      "id": "gt-312",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCompoundAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCounter",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeCounter."
+    },
+    {
+      "id": "gt-313",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCoalesceAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeCounter.Coalesced",
+      "basis": "symbolfinder",
+      "reason": "'??=' reads and writes F:CallShapes.Core.ShapeCounter.Coalesced (mapping rule 4)."
+    },
+    {
+      "id": "gt-314",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCoalesceAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.Coalesced",
+      "basis": "symbolfinder",
+      "reason": "'??=' reads and writes F:CallShapes.Core.ShapeCounter.Coalesced (mapping rule 4)."
+    },
+    {
+      "id": "gt-315",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromCoalesceAssignment(CallShapes.Core.ShapeCounter)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCounter",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeCounter."
+    },
+    {
+      "id": "gt-316",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefArgument(CallShapes.Core.ShapeCounter)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeCounter.ByRef",
+      "basis": "symbolfinder",
+      "reason": "A ref argument reads and writes F:CallShapes.Core.ShapeCounter.ByRef (mapping rule 4)."
+    },
+    {
+      "id": "gt-317",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefArgument(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.ByRef",
+      "basis": "symbolfinder",
+      "reason": "A ref argument reads and writes F:CallShapes.Core.ShapeCounter.ByRef (mapping rule 4)."
+    },
+    {
+      "id": "gt-318",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefArgument(CallShapes.Core.ShapeCounter)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCounter",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeCounter."
+    },
+    {
+      "id": "gt-319",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefLocal(CallShapes.Core.ShapeCounter)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeCounter.Aliased",
+      "basis": "symbolfinder",
+      "reason": "A ref local ('ref var alias = ref ...') is a writable alias, so it reads and writes F:CallShapes.Core.ShapeCounter.Aliased (mapping rule 4)."
+    },
+    {
+      "id": "gt-320",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefLocal(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.Aliased",
+      "basis": "symbolfinder",
+      "reason": "A ref local ('ref var alias = ref ...') is a writable alias, so it reads and writes F:CallShapes.Core.ShapeCounter.Aliased (mapping rule 4)."
+    },
+    {
+      "id": "gt-321",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefLocal(CallShapes.Core.ShapeCounter)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCounter",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeCounter."
+    },
+    {
+      "id": "gt-322",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromTupleTarget(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.TupleLeft",
+      "basis": "symbolfinder",
+      "reason": "A tuple target of a deconstruction writes F:CallShapes.Core.ShapeCounter.TupleLeft and does not read it (mapping rule 4)."
+    },
+    {
+      "id": "gt-323",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromTupleTarget(CallShapes.Core.ShapeCounter)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeCounter.TupleRight",
+      "basis": "symbolfinder",
+      "reason": "A tuple target of a deconstruction writes F:CallShapes.Core.ShapeCounter.TupleRight and does not read it (mapping rule 4)."
+    },
+    {
+      "id": "gt-324",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromTupleTarget(CallShapes.Core.ShapeCounter)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeCounter",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeCounter."
+    },
+    {
+      "id": "gt-325",
+      "source": "M:CallShapes.App.ShapeAccessCallers.FromRefArgument(CallShapes.Core.ShapeCounter)",
+      "kind": "Calls",
+      "target": "M:CallShapes.App.ShapeAccessCallers.Bump(System.Int32@)",
+      "basis": "symbolfinder",
+      "reason": "Invocation: calls M:CallShapes.App.ShapeAccessCallers.Bump(System.Int32@)."
+    },
+    {
+      "id": "gt-326",
+      "source": "M:CallShapes.Core.ShapeEventHost.add_Tracked(System.Action)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeEventHost._handlers",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): '_handlers += value' reads F:CallShapes.Core.ShapeEventHost._handlers."
+    },
+    {
+      "id": "gt-327",
+      "source": "M:CallShapes.Core.ShapeEventHost.add_Tracked(System.Action)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeEventHost._handlers",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): '_handlers += value' writes F:CallShapes.Core.ShapeEventHost._handlers."
+    },
+    {
+      "id": "gt-328",
+      "source": "M:CallShapes.Core.ShapeEventHost.add_Tracked(System.Action)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeEventLog.OnAdd",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): calls M:CallShapes.Core.ShapeEventLog.OnAdd."
+    },
+    {
+      "id": "gt-329",
+      "source": "M:CallShapes.Core.ShapeEventHost.add_Tracked(System.Action)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeEventLog",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body: the static receiver 'ShapeEventLog' names T:CallShapes.Core.ShapeEventLog."
+    },
+    {
+      "id": "gt-330",
+      "source": "M:CallShapes.Core.ShapeEventHost.remove_Tracked(System.Action)",
+      "kind": "Reads",
+      "target": "F:CallShapes.Core.ShapeEventHost._handlers",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): '_handlers -= value' reads F:CallShapes.Core.ShapeEventHost._handlers."
+    },
+    {
+      "id": "gt-331",
+      "source": "M:CallShapes.Core.ShapeEventHost.remove_Tracked(System.Action)",
+      "kind": "Writes",
+      "target": "F:CallShapes.Core.ShapeEventHost._handlers",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): '_handlers -= value' writes F:CallShapes.Core.ShapeEventHost._handlers."
+    },
+    {
+      "id": "gt-332",
+      "source": "M:CallShapes.Core.ShapeEventHost.remove_Tracked(System.Action)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeEventLog.OnRemove",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body (owned by the accessor): calls M:CallShapes.Core.ShapeEventLog.OnRemove."
+    },
+    {
+      "id": "gt-333",
+      "source": "M:CallShapes.Core.ShapeEventHost.remove_Tracked(System.Action)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeEventLog",
+      "basis": "symbolfinder",
+      "reason": "Event accessor body: the static receiver 'ShapeEventLog' names T:CallShapes.Core.ShapeEventLog."
+    },
+    {
+      "id": "gt-334",
+      "source": "M:CallShapes.Core.ShapeRecursion.Countdown(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeRecursion.Countdown(System.Int32)",
+      "basis": "symbolfinder",
+      "reason": "Recursive call: a Calls fact from the member to itself (mapping rule 1, D13)."
+    },
+    {
+      "id": "gt-335",
+      "source": "M:CallShapes.Core.ShapeRecursion.Depth(System.Int32)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeRecursion.Depth(System.Int32)",
+      "basis": "symbolfinder",
+      "reason": "Recursive virtual call: a Calls fact from the member to itself (mapping rule 1, D13)."
+    },
+    {
+      "id": "gt-336",
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromNestedGeneric(CallShapes.Core.ShapeOuter{CallShapes.Core.ShapeOuterArg}.Inner)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOuter`1.Inner",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeOuter`1.Inner."
+    },
+    {
+      "id": "gt-337",
+      "source": "M:CallShapes.Core.ShapeTypeUses.FromNestedGeneric(CallShapes.Core.ShapeOuter{CallShapes.Core.ShapeOuterArg}.Inner)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeOuterArg",
+      "basis": "symbolfinder",
+      "reason": "Parameter type 'ShapeOuter<ShapeOuterArg>.Inner' names the containing type's argument T:CallShapes.Core.ShapeOuterArg (mapping rule 6)."
+    },
+    {
+      "id": "gt-338",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromConstrainedUsing``1(``0)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBaseResource.Dispose",
+      "basis": "convention:D10",
+      "reason": "using on a type parameter: its effective base class T:CallShapes.Core.ShapeBaseResource implements IDisposable.Dispose (mapping rule 9)."
+    },
+    {
+      "id": "gt-339",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromConstrainedUsing``1(``0)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeBaseResource",
+      "basis": "symbolfinder",
+      "reason": "Method type constraint 'where T : ShapeBaseResource' names T:CallShapes.Core.ShapeBaseResource (mapping rule 6)."
+    },
+    {
+      "id": "gt-340",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromHidingUsing(CallShapes.Core.ShapeHidingResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeBaseResource.Dispose",
+      "basis": "convention:D10",
+      "reason": "using: the 'new' Dispose() hides but does not implement IDisposable.Dispose; the inherited implementation on the base class is the target (mapping rule 9)."
+    },
+    {
+      "id": "gt-341",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromHidingUsing(CallShapes.Core.ShapeHidingResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeHidingResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeHidingResource."
+    },
+    {
+      "id": "gt-342",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromDualUsing(CallShapes.Core.ShapeDualResource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeDualResource.System#IDisposable#Dispose",
+      "basis": "convention:D10",
+      "reason": "using: the explicit implementation of IDisposable.Dispose is the target, not the public Dispose() (mapping rule 9)."
+    },
+    {
+      "id": "gt-343",
+      "source": "M:CallShapes.App.ShapeUsingCallers.FromDualUsing(CallShapes.Core.ShapeDualResource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeDualResource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeDualResource."
+    },
+    {
+      "id": "gt-344",
+      "source": "M:CallShapes.Core.ShapeTriState.op_True(CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-345",
+      "source": "M:CallShapes.Core.ShapeTriState.op_False(CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-346",
+      "source": "M:CallShapes.Core.ShapeTriState.op_BitwiseAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter and return type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-347",
+      "source": "M:CallShapes.Core.ShapeTriState.op_BitwiseOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter and return type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-348",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTriState.op_False(CallShapes.Core.ShapeTriState)",
+      "basis": "language-rule",
+      "reason": "User-defined '&&' (C# 12.15.3): x && y is evaluated as T.false(x) ? x : T.&(x, y), so it calls M:CallShapes.Core.ShapeTriState.op_False(CallShapes.Core.ShapeTriState)."
+    },
+    {
+      "id": "gt-349",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTriState.op_BitwiseAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "basis": "language-rule",
+      "reason": "User-defined '&&' (C# 12.15.3): calls the selected operator M:CallShapes.Core.ShapeTriState.op_BitwiseAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)."
+    },
+    {
+      "id": "gt-350",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalAnd(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter and return type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-351",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTriState.op_True(CallShapes.Core.ShapeTriState)",
+      "basis": "language-rule",
+      "reason": "User-defined '||' (C# 12.15.3): x || y is evaluated as T.true(x) ? x : T.|(x, y), so it calls M:CallShapes.Core.ShapeTriState.op_True(CallShapes.Core.ShapeTriState)."
+    },
+    {
+      "id": "gt-352",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeTriState.op_BitwiseOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "basis": "language-rule",
+      "reason": "User-defined '||' (C# 12.15.3): calls the selected operator M:CallShapes.Core.ShapeTriState.op_BitwiseOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)."
+    },
+    {
+      "id": "gt-353",
+      "source": "M:CallShapes.App.ShapeCallers.FromConditionalOr(CallShapes.Core.ShapeTriState,CallShapes.Core.ShapeTriState)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeTriState",
+      "basis": "symbolfinder",
+      "reason": "Parameter and return type: T:CallShapes.Core.ShapeTriState."
+    },
+    {
+      "id": "gt-354",
+      "source": "M:CallShapes.Core.ShapeSpreadSource.GetEnumerator",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeSpreadEnumerator",
+      "basis": "symbolfinder",
+      "reason": "Member-signature return type: references T:CallShapes.Core.ShapeSpreadEnumerator."
+    },
+    {
+      "id": "gt-355",
+      "source": "M:CallShapes.Core.ShapeSpreadSource.GetEnumerator",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeSpreadEnumerator",
+      "basis": "symbolfinder",
+      "reason": "Target-typed new(): constructs T:CallShapes.Core.ShapeSpreadEnumerator."
+    },
+    {
+      "id": "gt-356",
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromSpread(CallShapes.Core.ShapeSpreadSource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeSpreadSource.GetEnumerator",
+      "basis": "language-rule",
+      "reason": "Spread element (C# collection expressions): the operand is enumerated like foreach, so it calls M:CallShapes.Core.ShapeSpreadSource.GetEnumerator."
+    },
+    {
+      "id": "gt-357",
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromSpread(CallShapes.Core.ShapeSpreadSource)",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeSpreadEnumerator.MoveNext",
+      "basis": "language-rule",
+      "reason": "Spread element: the enumeration calls M:CallShapes.Core.ShapeSpreadEnumerator.MoveNext."
+    },
+    {
+      "id": "gt-358",
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromSpread(CallShapes.Core.ShapeSpreadSource)",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeSpreadEnumerator.Current",
+      "basis": "language-rule",
+      "reason": "Spread element: the enumeration reads P:CallShapes.Core.ShapeSpreadEnumerator.Current."
+    },
+    {
+      "id": "gt-359",
+      "source": "F:CallShapes.App.ShapeImplicitCallers.SpreadField",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeSpreadSource.GetEnumerator",
+      "basis": "language-rule",
+      "reason": "Spread element (C# collection expressions): the operand is enumerated like foreach, so it calls M:CallShapes.Core.ShapeSpreadSource.GetEnumerator."
+    },
+    {
+      "id": "gt-360",
+      "source": "F:CallShapes.App.ShapeImplicitCallers.SpreadField",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeSpreadEnumerator.MoveNext",
+      "basis": "language-rule",
+      "reason": "Spread element: the enumeration calls M:CallShapes.Core.ShapeSpreadEnumerator.MoveNext."
+    },
+    {
+      "id": "gt-361",
+      "source": "F:CallShapes.App.ShapeImplicitCallers.SpreadField",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeSpreadEnumerator.Current",
+      "basis": "language-rule",
+      "reason": "Spread element: the enumeration reads P:CallShapes.Core.ShapeSpreadEnumerator.Current."
+    },
+    {
+      "id": "gt-362",
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromSpread(CallShapes.Core.ShapeSpreadSource)",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeSpreadSource",
+      "basis": "symbolfinder",
+      "reason": "Parameter type: T:CallShapes.Core.ShapeSpreadSource."
+    },
+    {
+      "id": "gt-363",
+      "source": "F:CallShapes.App.ShapeImplicitCallers.SpreadField",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeSpreadSource",
+      "basis": "symbolfinder",
+      "reason": "Object creation in a field initializer: constructs T:CallShapes.Core.ShapeSpreadSource."
+    },
+    {
+      "id": "gt-364",
+      "source": "M:CallShapes.App.ShapeImplicitCallers.FromCollectionAdd",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeAddOnly.Add(System.Int32)",
+      "basis": "language-rule",
+      "reason": "Collection expression of a type with Add (C# collection expressions): the compiler calls the constructor, then M:CallShapes.Core.ShapeAddOnly.Add(System.Int32) for each element."
+    },
+    {
+      "id": "gt-365",
+      "source": "M:CallShapes.Core.ShapeLambdaHost.Run(System.Func{CallShapes.Core.ShapeLambdaArg,System.Int32})",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaArg",
+      "basis": "symbolfinder",
+      "reason": "Parameter type argument: T:CallShapes.Core.ShapeLambdaArg."
+    },
+    {
+      "id": "gt-366",
+      "source": "M:CallShapes.Core.ShapeLambdaHost.Run(System.Func{CallShapes.Core.ShapeLambdaArg,System.Int32})",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeLambdaArg",
+      "basis": "symbolfinder",
+      "reason": "Object creation: constructs T:CallShapes.Core.ShapeLambdaArg."
+    },
+    {
+      "id": "gt-367",
+      "source": "M:CallShapes.Core.ShapeLambdaHost.Make(System.Func{CallShapes.Core.ShapeLambdaResult})",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaResult",
+      "basis": "symbolfinder",
+      "reason": "Parameter type argument and return type: T:CallShapes.Core.ShapeLambdaResult."
+    },
+    {
+      "id": "gt-368",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaParameter",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeLambdaHost.Run(System.Func{CallShapes.Core.ShapeLambdaArg,System.Int32})",
+      "basis": "symbolfinder",
+      "reason": "Invocation: calls M:CallShapes.Core.ShapeLambdaHost.Run."
+    },
+    {
+      "id": "gt-369",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaParameter",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaHost",
+      "basis": "symbolfinder",
+      "reason": "Static receiver 'ShapeLambdaHost' names T:CallShapes.Core.ShapeLambdaHost."
+    },
+    {
+      "id": "gt-370",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaParameter",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaArg",
+      "basis": "convention:D12",
+      "reason": "The implicitly typed lambda parameter 'arg' has the inferred type T:CallShapes.Core.ShapeLambdaArg (mapping rule 7)."
+    },
+    {
+      "id": "gt-371",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaParameter",
+      "kind": "Reads",
+      "target": "P:CallShapes.Core.ShapeLambdaArg.Value",
+      "basis": "symbolfinder",
+      "reason": "Lambda body (owned by the enclosing member): reads P:CallShapes.Core.ShapeLambdaArg.Value."
+    },
+    {
+      "id": "gt-372",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaReturn",
+      "kind": "Calls",
+      "target": "M:CallShapes.Core.ShapeLambdaHost.Make(System.Func{CallShapes.Core.ShapeLambdaResult})",
+      "basis": "symbolfinder",
+      "reason": "Invocation: calls M:CallShapes.Core.ShapeLambdaHost.Make."
+    },
+    {
+      "id": "gt-373",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaReturn",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaHost",
+      "basis": "symbolfinder",
+      "reason": "Static receiver 'ShapeLambdaHost' names T:CallShapes.Core.ShapeLambdaHost."
+    },
+    {
+      "id": "gt-374",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaReturn",
+      "kind": "References",
+      "target": "T:CallShapes.Core.ShapeLambdaResult",
+      "basis": "convention:D136",
+      "reason": "The lambda '() => new ShapeLambdaResult()' has the inferred return type T:CallShapes.Core.ShapeLambdaResult (mapping rule 7)."
+    },
+    {
+      "id": "gt-375",
+      "source": "M:CallShapes.App.ShapeCallers.FromInferredLambdaReturn",
+      "kind": "Constructs",
+      "target": "T:CallShapes.Core.ShapeLambdaResult",
+      "basis": "symbolfinder",
+      "reason": "Object creation in the lambda body: constructs T:CallShapes.Core.ShapeLambdaResult."
     }
   ],
   "excluded": [
@@ -2568,11 +3033,6 @@
       "id": "excluded-options-binding",
       "boundary": "di_options",
       "reason": "AddOptions<ShapeOptions>().Configure(...) resolves the options type (Registers edge, runtime_unknown provenance) but configuration-binding semantics are not captured."
-    },
-    {
-      "id": "excluded-collection-expression-implicit-calls",
-      "boundary": "collection_expression_implicit_calls",
-      "reason": "FromCollectionAdd: a collection expression whose target type has Add lowers to the constructor plus one Add call per element. Roslyn exposes the constructor (ICollectionExpressionOperation.ConstructMethod) but not the Add calls, and not the GetEnumerator of a spread element. ShapeAddOnly.Add has no incoming edge by design."
     }
   ],
   "notes": [

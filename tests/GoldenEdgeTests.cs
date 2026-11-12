@@ -44,6 +44,123 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task CallsEdge_RecursiveCall_IsAnEdgeFromTheMemberToItself()
+    {
+        // D13: the call exists in the source, so a recursive call is a Calls fact from the member
+        // to itself; a recursive call of a virtual member is also a StaticallyCalls fact.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class R
+                                                {
+                                                    public static int Fact(int k) => k <= 1 ? 1 : k * Fact(k - 1);
+                                                    public virtual int Depth(int n) => n <= 0 ? 0 : Depth(n - 1);
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("Calls", ("global::N.R.Fact", "global::N.R.Fact"), ("global::N.R.Depth", "global::N.R.Depth"));
+        extraction.AssertEdgeSet("StaticallyCalls", ("global::N.R.Depth", "global::N.R.Depth"));
+    }
+
+    [Fact]
+    public async Task ReferencesEdge_StaticReceiverOfEveryMemberKind()
+    {
+        // D124: a static member access names its receiver type, whatever the member kind, with
+        // the receiver's type arguments. An unqualified access and a nameof argument name none.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Arg { }
+                                                public static class S
+                                                {
+                                                    public static int Field;
+                                                    public static int Prop { get; set; }
+                                                    public static event System.Action? Ev;
+                                                    public static void M() { }
+                                                    public const int K = 1;
+                                                }
+                                                public static class G<T> { public static int Value; }
+                                                public class Use
+                                                {
+                                                    public int ReadField() => S.Field;
+                                                    public int ReadProp() => S.Prop;
+                                                    public void Subscribe() => S.Ev += Handler;
+                                                    public System.Action Group() => S.M;
+                                                    public int Constant() => S.K;
+                                                    public int Generic() => G<Arg>.Value;
+                                                    public string Name() => nameof(S.Field);
+                                                    private static void Handler() { }
+                                                }
+                                                public static class Own
+                                                {
+                                                    public static int Value;
+                                                    public static int Unqualified() => Value;
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("References",
+            ("global::N.Use.ReadField", "global::N.S"),
+            ("global::N.Use.ReadProp", "global::N.S"),
+            ("global::N.Use.Subscribe", "global::N.S"),
+            ("global::N.Use.Group", "global::N.S"),
+            ("global::N.Use.Constant", "global::N.S"),
+            ("global::N.Use.Generic", "global::N.G<T>"),
+            ("global::N.Use.Generic", "global::N.Arg"));
+    }
+
+    [Fact]
+    public async Task ReferencesEdge_BaseListTypeArgumentsAndWrittenConstraints()
+    {
+        // D14: a type argument in a base list and each written constraint type are References
+        // from the declaring type (a method constraint: from the method). A record's compiler-made
+        // IEquatable<R> and the inherited constraint of an override are not written.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class A { }
+                                                public class B<T> { }
+                                                public interface I<T> { }
+                                                public class X { }
+                                                public class Y { }
+                                                public class Z { }
+                                                public class D : B<A>, I<X> { }
+                                                public class Con<T> where T : Y { }
+                                                public class Methods { public virtual void M<T>() where T : Z { } }
+                                                public class Derived : Methods { public override void M<T>() { } }
+                                                public record Rec(int V);
+                                                public delegate void Del<T>() where T : A;
+                                                """));
+
+        extraction.AssertEdgeSet("References",
+            ("global::N.D", "global::N.A"),
+            ("global::N.D", "global::N.X"),
+            ("global::N.Con<T>", "global::N.Y"),
+            ("global::N.Methods.M<T>", "global::N.Z"),
+            ("global::N.Del<T>", "global::N.A"));
+    }
+
+    [Fact]
+    public async Task CallsEdge_CollectionExpressionAddsEachElementAndEnumeratesASpread()
+    {
+        // C# collection expressions: a type with Add is built by its constructor and one Add call
+        // per element; a spread element is enumerated like foreach (S01-F10).
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Bag { public Enumer GetEnumerator() => new(); }
+                                                public class Enumer { public int Current => 1; public bool MoveNext() => false; }
+                                                public class Box : System.Collections.IEnumerable
+                                                {
+                                                    public void Add(int v) { }
+                                                    public System.Collections.IEnumerator GetEnumerator() => null!;
+                                                }
+                                                public static class U { public static Box Fill(Bag bag) => [0, .. bag]; }
+                                                """));
+
+        extraction.AssertEdgeSet("Calls",
+            ("global::N.U.Fill", "global::N.Box.Add"),
+            ("global::N.U.Fill", "global::N.Bag.GetEnumerator"),
+            ("global::N.U.Fill", "global::N.Enumer.MoveNext"));
+        extraction.AssertEdgeSet("Reads", ("global::N.U.Fill", "global::N.Enumer.Current"));
+    }
+
+    [Fact]
     public async Task ConstructsEdge_MethodConstructsType()
     {
         var extraction = await ExtractAsync(One("""
@@ -177,6 +294,63 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ReadsWrites_EachAccessShape_FollowsD11()
+    {
+        // D11: '=', an out argument and a tuple target of a deconstruction write. A compound
+        // assignment, ??=, ++, a ref argument and a writable ref alias (a ref local, a ref
+        // return) read and write. An in argument and a ref readonly alias only read.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class C
+                                                {
+                                                    public int Compound; public string? Coalesced; public int Incremented;
+                                                    public int TupleLeft; public int TupleRight; public int ByRef; public int ByOut;
+                                                    public int ByIn; public int Aliased; public int ReadOnlyAliased; public int Returned;
+                                                    public int Total { get; set; }
+                                                }
+                                                public static class U
+                                                {
+                                                    public static void Compound(C c) => c.Compound += 1;
+                                                    public static void CompoundProperty(C c) => c.Total += 2;
+                                                    public static void Coalesce(C c) => c.Coalesced ??= "x";
+                                                    public static void Increment(C c) => c.Incremented++;
+                                                    public static void Tuple(C c) => (c.TupleLeft, c.TupleRight) = (1, 2);
+                                                    public static void RefArgument(C c) => Bump(ref c.ByRef);
+                                                    public static void OutArgument(C c) => Set(out c.ByOut);
+                                                    public static int InArgument(C c) => Peek(in c.ByIn);
+                                                    public static void RefLocal(C c) { ref int alias = ref c.Aliased; alias = 5; }
+                                                    public static int RefReadOnlyLocal(C c) { ref readonly int alias = ref c.ReadOnlyAliased; return alias; }
+                                                    public static ref int RefReturn(C c) => ref c.Returned;
+                                                    private static void Bump(ref int value) => value++;
+                                                    private static void Set(out int value) => value = 1;
+                                                    private static int Peek(in int value) => value;
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("Reads",
+            ("global::N.U.Compound", "global::N.C.Compound"),
+            ("global::N.U.CompoundProperty", "global::N.C.Total"),
+            ("global::N.U.Coalesce", "global::N.C.Coalesced"),
+            ("global::N.U.Increment", "global::N.C.Incremented"),
+            ("global::N.U.RefArgument", "global::N.C.ByRef"),
+            ("global::N.U.InArgument", "global::N.C.ByIn"),
+            ("global::N.U.RefLocal", "global::N.C.Aliased"),
+            ("global::N.U.RefReadOnlyLocal", "global::N.C.ReadOnlyAliased"),
+            ("global::N.U.RefReturn", "global::N.C.Returned"));
+        extraction.AssertEdgeSet("Writes",
+            ("global::N.U.Compound", "global::N.C.Compound"),
+            ("global::N.U.CompoundProperty", "global::N.C.Total"),
+            ("global::N.U.Coalesce", "global::N.C.Coalesced"),
+            ("global::N.U.Increment", "global::N.C.Incremented"),
+            ("global::N.U.Tuple", "global::N.C.TupleLeft"),
+            ("global::N.U.Tuple", "global::N.C.TupleRight"),
+            ("global::N.U.RefArgument", "global::N.C.ByRef"),
+            ("global::N.U.OutArgument", "global::N.C.ByOut"),
+            ("global::N.U.RefLocal", "global::N.C.Aliased"),
+            ("global::N.U.RefReturn", "global::N.C.Returned"));
+    }
+
+    [Fact]
     public async Task ReturnsEdge_MethodReturnsType()
     {
         var extraction = await ExtractAsync(One("""
@@ -211,7 +385,42 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         var edge = Assert.Single(throws);
         Assert.Equal(extraction.ResolveId("global::N.Guard.Validate"), edge.SourceSymbolId);
         Assert.StartsWith("T:System.ArgumentNullException|", edge.TargetSymbolId);
-        AssertEdgeContract(edge, "Throws", Provenance.CompilerProved, "throws-v1", Doc);
+        AssertEdgeContract(edge, "Throws", Provenance.CompilerProved, "operation-shapes-v2", Doc);
+    }
+
+    [Fact]
+    public async Task ThrowsEdge_EveryRoot_ThrowsFromTheMemberThatRunsIt()
+    {
+        // S01-F23: a throw in a field or property initializer, an event accessor, a lambda or a
+        // local function is a Throws fact of the member that runs the code (golden mapping
+        // rule 5). A rethrow ('throw;') names no type.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class E1 : System.Exception { }
+                                                public class E2 : System.Exception { }
+                                                public class E3 : System.Exception { }
+                                                public class E4 : System.Exception { }
+                                                public class E5 : System.Exception { }
+                                                public class Host
+                                                {
+                                                    public object? Field = (object?)null ?? throw new E1();
+                                                    public object Prop { get; } = (object?)null ?? throw new E2();
+                                                    public event System.Action? Ev { add { throw new E3(); } remove { } }
+                                                    public void M()
+                                                    {
+                                                        System.Action a = () => throw new E4();
+                                                        try { Local(); } catch (E5) { throw; }
+                                                        static void Local() => throw new E5();
+                                                    }
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("Throws",
+            ("global::N.Host.Field", "global::N.E1"),
+            ("global::N.Host.Prop", "global::N.E2"),
+            ("global::N.Host.Ev.add", "global::N.E3"),
+            ("global::N.Host.M", "global::N.E4"),
+            ("global::N.Host.M", "global::N.E5"));
     }
 
     [Fact]
@@ -248,7 +457,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         // Explicitly-declared constructors surface as method declarations whose
         // FQN is the containing type name twice: global::N.Service.Service.
         var edge = extraction.SingleEdge("References", "global::N.Service.Service", "global::N.Logger");
-        AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+        AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v2", Doc);
         extraction.AssertEdgeSet("References", ("global::N.Service.Service", "global::N.Logger"));
     }
 
@@ -265,7 +474,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         // The delegate type owns its signature: a delegate's implicit Invoke names its
         // parameter types in the delegate declaration, so the edge source is Handler.
         var edge = extraction.SingleEdge("References", "global::N.Handler", "global::N.Payload");
-        AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+        AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v2", Doc);
 
         var invokeId = extraction.ResolveId("global::N.Handler.Invoke");
         Assert.DoesNotContain(extraction.Result.Edges,
@@ -327,7 +536,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         foreach (var implementation in new[] { "global::N.PExtensions.Size", "global::N.PExtensions.get_Length", "global::N.PExtensions.Make" })
         {
             var edge = extraction.SingleEdge("References", implementation, "global::N.P");
-            AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v1", Doc);
+            AssertEdgeContract(edge, "References", Provenance.CompilerProved, "parameter-deps-v2", Doc);
         }
 
         extraction.AssertEdgeSet("References",
@@ -378,24 +587,29 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     }
 
     [Fact]
-    public async Task OperationShapesEdge_ImplicitlyTypedLambdaParameterAddsNoReference()
+    public async Task OperationShapesEdge_InferredLambdaTypesReferenceTypesFromEnclosingMember()
     {
+        // D12: facts do not change under a syntax-only rewrite, so an implicitly typed lambda
+        // parameter ('q => 1' for '(Q q) => 1') references its type from the enclosing member.
+        // D136: the same holds for an inferred lambda return type ('() => new R()').
         var extraction = await ExtractAsync(One("""
                                                 namespace N;
                                                 public class Q { }
+                                                public class R { }
                                                 public static class Host
                                                 {
                                                     public static void Run(System.Func<Q, int> f) { }
+                                                    public static void Make(System.Func<R> f) { }
                                                     public static void M() { Run(q => 1); }
+                                                    public static void N() { Make(() => new R()); }
                                                 }
                                                 """));
 
-        // B63 (D2): an implicitly typed parameter is not named in the source, so M gets no edge to Q.
-        // Run's own signature names Q, but that edge starts at Run, not at M.
-        var mId = extraction.ResolveId("global::N.Host.M");
-        var qId = extraction.ResolveId("global::N.Q");
-        Assert.DoesNotContain(extraction.Result.Edges,
-            e => e.Kind == "References" && e.SourceSymbolId == mId && e.TargetSymbolId == qId);
+        extraction.AssertEdgeSet("References",
+            ("global::N.Host.Run", "global::N.Q"),
+            ("global::N.Host.Make", "global::N.R"),
+            ("global::N.Host.M", "global::N.Q"),
+            ("global::N.Host.N", "global::N.R"));
     }
 
     [Fact]
@@ -500,7 +714,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("StaticallyCalls", "global::N.Handler.Handle", "global::N.IRepo.Save");
-        AssertEdgeContract(edge, "StaticallyCalls", Provenance.CompilerProved, "statically-calls-v1", Doc);
+        AssertEdgeContract(edge, "StaticallyCalls", Provenance.CompilerProved, "statically-calls-v2", Doc);
 
         extraction.AssertEdgeSet("StaticallyCalls", ("global::N.Handler.Handle", "global::N.IRepo.Save"));
 
