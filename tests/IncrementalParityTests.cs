@@ -463,21 +463,10 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         // write path. The explicit DI registration (Registers,
         // framework_derived) and the string-literal reflection site
         // (ReflectionNameCandidate, name_candidate) land on the SAME target
-        // type as two separate edges of different kinds — the near-miss the
-        // original provenance-collision spec imagined, made explicit.
-        //
-        // This does NOT reproduce a provenance-loss collision, because none is
-        // constructible at the fixture level: adapter kinds and reflection
-        // kinds never overlap (adapter kinds are {Handles, MapsTo, References,
-        // Registers, RoutesTo, TestedBy}; reflection kinds are {ReflectionTypeRef,
-        // ReflectionMemberRef, ReflectionNameCandidate, ReflectionTargetUnknown}),
-        // so the two edges never share a (source, target, kind) dedup key and
-        // neither can clobber the other. The store-level provenance-rank
-        // guarantee is exercised by
-        // SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank (Phase C),
-        // which seeds two EdgeRecords with the same triple and different
-        // provenance directly — the only construction that actually hits the
-        // dedup collision.
+        // type as two separate edges of different kinds. One relation with two
+        // provenances (a scan and an explicit registration of the same pair) is
+        // covered by DependencyInjectionScanTests and by the store-level rank
+        // test SaveEdges_SameTripleDifferentProvenance_KeepsHigherRank (D6, D27).
         CreateProject("TestProject",
             new Dictionary<string, string>
             {

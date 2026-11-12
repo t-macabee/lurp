@@ -149,6 +149,23 @@ index after the upgrade. Old snapshots stay until they are pruned.
 
 ## Dependency injection
 
+- The DI adapter reads every MS.DI registration form: `Add*`, `TryAdd*`, keyed
+  registrations, `ServiceDescriptor` values and `Replace`. The service and the
+  implementation come from the bound type and value arguments, so named
+  arguments and `?.` calls work. A factory, an instance whose type is an
+  interface or an abstract class, and a `Type` value that is not a `typeof`
+  give the runtime-unknown node, not a claimed implementation. A registration
+  without an implementation registers the service type itself.
+- The owner of a registration is the member that runs it: a constructor, a
+  field initializer, or the method or entry point around a lambda.
+- A method is a registration API only when its declaring type is the framework
+  type. A user method named `Configure` or `Scan` gives no edge. An external
+  method that takes an `IServiceCollection` gives the runtime-unknown node.
+- A Scrutor scan `FromAssemblyOf<T>()` (or `FromAssembliesOf(typeof(...))`),
+  `AddClasses()` or `AddClasses(publicOnly)`, `AsImplementedInterfaces()` and
+  any lifetime gives the interface → class pairs that Scrutor registers. Any
+  other scan gives one `convention:assembly_scan:<assembly>` placeholder for
+  each assembly that it names, or the runtime-unknown node.
 - When a scan and an explicit registration give the same pair, the pair keeps
   `framework_derived`. The extractor label is `di-v2`.
 

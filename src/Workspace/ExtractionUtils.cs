@@ -190,6 +190,20 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
+    ///     The full metadata name of <paramref name="type" />, as the runtime names it: the namespace,
+    ///     then the containing types joined by <c>+</c>, each with its arity suffix
+    ///     (<c>N.Outer`1+Inner</c>).
+    /// </summary>
+    internal static string FullMetadataName(INamedTypeSymbol type)
+    {
+        if (type.ContainingType is { } containingType)
+            return FullMetadataName(containingType) + "+" + type.MetadataName;
+        return type.ContainingNamespace is { IsGlobalNamespace: false } ns
+            ? ns.ToDisplayString() + "." + type.MetadataName
+            : type.MetadataName;
+    }
+
+    /// <summary>
     ///     True when <paramref name="symbol" /> is declared in an assembly other than the
     ///     compilation's own. A symbol with no containing assembly is not outside it.
     /// </summary>

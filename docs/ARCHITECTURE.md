@@ -102,7 +102,7 @@ declaration records while `symbols_in_snapshot` counts symbols.
 | Adapter | Facts emitted |
 |---|---|
 | ASP.NET Core | `RoutesTo` (route → controller action) |
-| Dependency Injection | `Registers` (service → implementation), `RuntimeUnknown` for non-conventional forms |
+| Dependency Injection | `Registers` for every MS.DI registration form (`Add*`, `TryAdd*`, keyed, `ServiceDescriptor`): service → implementation and registering member → implementation. A factory, an instance of an interface or abstract type and a `Type` value that is not a `typeof` give the runtime-unknown node. Hosted services, options and an external `IServiceCollection` method give the runtime-unknown node and the named type with `runtime_unknown`. A Scrutor scan `FromAssemblyOf<T>()` → `AddClasses()` → `AsImplementedInterfaces()` gives interface → class with `convention`; any other scan gives a `convention:assembly_scan:<assembly>` placeholder. |
 | MediatR | `Handles` (request/notification → handler) |
 | EF Core | `MapsTo` (entity, `DbSet`, configuration) |
 | Serialization | DTO/property contract participation |
@@ -159,7 +159,7 @@ is the executable form of these rules for the kinds that the golden compares.
 | `MayDispatchTo` | A call on a virtual, abstract or interface member can run this implementation at run time. Every member of an override chain points to every override below it. | dispatch member → implementation | `compiler_proved`; `possible` when only a derived type maps the member to an inherited implementation |
 | `StaticallyCalls` | An access whose target can dispatch at run time. It sits next to the `Calls`, `Reads` or `Writes` edge of the same access. A `base.` access and a method group get none. | owner → dispatch member | `compiler_proved` |
 | `RoutesTo` | An ASP.NET Core route reaches a controller action. | route node → action method | `framework_derived` |
-| `Registers` | A dependency-injection registration binds a service to an implementation. | registering member or service type → implementation type, or the runtime-unknown node | `framework_derived`; `convention` for a convention scan; `runtime_unknown` for a registration that Lurp cannot read |
+| `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or an assembly-scan placeholder | `framework_derived`; `convention` for a Scrutor scan; `runtime_unknown` for a registration that Lurp cannot read |
 | `Handles` | A MediatR handler handles a request or a notification. | request type → handler method | `framework_derived` |
 | `MapsTo` | EF Core maps an entity type (a `DbSet`, a configuration, a model builder call). | context, property or configuration → entity type | `framework_derived` |
 | `TestedBy` | A test method covers a production symbol. | production symbol → test method | `framework_derived` |

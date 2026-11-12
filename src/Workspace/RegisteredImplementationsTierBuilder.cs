@@ -41,7 +41,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
             foreach (var edge in incomingEdges)
             {
-                if (!incomingKinds.Contains(edge.Kind))
+                // D134: a self edge (a type registered as its own implementation) is no neighbour.
+                if (!incomingKinds.Contains(edge.Kind) || edge.SourceSymbolId == symbolId)
                     continue;
 
                 var sourceId = edge.SourceSymbolId;
@@ -56,7 +57,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
             var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
             foreach (var edge in outgoingEdges)
             {
-                if (!outgoingKinds.Contains(edge.Kind))
+                if (!outgoingKinds.Contains(edge.Kind) || edge.TargetSymbolId == symbolId)
                     continue;
 
                 var targetId = edge.TargetSymbolId;

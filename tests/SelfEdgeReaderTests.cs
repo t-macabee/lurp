@@ -45,4 +45,45 @@ public sealed class SelfEdgeReaderTests : IntegrationTestBase
             store.Close();
         }
     }
+
+    /// <summary>
+    ///     D134, D26: a registration without an implementation registers the service type itself, so
+    ///     the type has a self Registers edge. The capsule lists the registering member and never the
+    ///     anchor as its own registration.
+    /// </summary>
+    [Fact]
+    public async Task Capsule_SelfRegisteredType_IsNotItsOwnRegistration()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Setup.cs"] = """
+                           using Microsoft.Extensions.DependencyInjection;
+
+                           namespace TestProject;
+
+                           public class Self { }
+
+                           public static class Setup
+                           {
+                               public static void Register(IServiceCollection services) => services.AddSingleton<Self>();
+                           }
+                           """
+        }, frameworkReferences: ["Microsoft.AspNetCore.App"]);
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var anchorId = ResolveSymbolId(snapshotId, "global::TestProject.Self");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 2);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            Assert.Equal(["global::TestProject.Setup.Register"], capsule.RegisteredImplementations.Select(item => item.FullyQualifiedName));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
 }

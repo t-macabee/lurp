@@ -1,254 +1,206 @@
-// Purpose: detect Scrutor-style convention-based DI registrations.
-// Owns: the convention-method syntax walk and convention:assembly_scan provenance.
-// Must not contain: explicit/helper registration detection or edge persistence.
+// Purpose: read a Scrutor Scan call (D28).
+// Owns: the modeled chain, the Scrutor selection rules and the convention:assembly_scan placeholder.
+// Must not contain: other registration forms (DependencyInjectionAdapter).
 
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Lurp.Workspace;
-using EdgeKind = Lurp.Storage.EdgeKind;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Lurp.Adapters;
 
 internal static class DependencyInjectionConventionMatcher
 {
-    internal static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiEmitContext ctx)
+    private const string ScrutorAssembly = "Scrutor";
+    private const string AssemblySelectorType = "Scrutor.IAssemblySelector";
+    private const string ImplementationTypeSelectorType = "Scrutor.IImplementationTypeSelector";
+    private const string ServiceTypeSelectorType = "Scrutor.IServiceTypeSelector";
+    private const string LifetimeSelectorType = "Scrutor.ILifetimeSelector";
+
+    /// <summary>
+    ///     D28: the chain <c>FromAssemblyOf&lt;T&gt;()</c> or <c>FromAssembliesOf(typeof(T), ...)</c>,
+    ///     then <c>AddClasses()</c> or <c>AddClasses(bool)</c>, then <c>AsImplementedInterfaces()</c>,
+    ///     then at most one lifetime call, gives the interface → class pairs that Scrutor registers.
+    ///     Every other scan gives the <c>convention:assembly_scan:&lt;assembly&gt;</c> placeholder for
+    ///     each assembly it names statically, and the runtime-unknown node when it scans an assembly
+    ///     that is not known statically.
+    /// </summary>
+    internal static void ReadScan(IInvocationOperation scan, Location location, DependencyInjectionAdapter.RegistrationCall call)
     {
-        var sourceId = DependencyInjectionAdapter.ResolveSourceId(invocation, semanticModel, ctx.Adapter.AssemblyIdentity);
-        if (sourceId == null)
+        var action = Argument(scan, "action");
+        if (ModeledChain(action) is { } chain)
+        {
+            foreach (var assembly in chain.Assemblies)
+                AddScannedPairs(assembly, chain.PublicOnly, location, call);
+
+            // The pairs of a scan of this project change when a type of any document changes, and no
+            // persisted edge leads the incremental refresh to the scan site (convention_scan).
+            if (chain.Assemblies.Contains(call.Context.Compilation.Assembly, SymbolEqualityComparer.Default))
+                call.Context.Incompleteness?.RecordConventionScan(scan.Syntax);
             return;
+        }
 
-        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, ctx.Adapter.AssemblyIdentity);
+        var unknown = false;
+        var assemblies = new List<IAssemblySymbol>();
+        foreach (var from in FromCalls(action))
+        {
+            if (StaticAssemblies(from) is { } known)
+                assemblies.AddRange(known);
+            else
+                unknown = true;
+        }
 
-        var targetId = $"{GraphNodeIds.AssemblyScanConventionPrefix}{assemblyName}";
+        foreach (var assembly in assemblies.Distinct<IAssemblySymbol>(SymbolEqualityComparer.Default))
+            call.Add(call.OwnerId, $"{GraphNodeIds.AssemblyScanConventionPrefix}{assembly.Identity.GetDisplayName()}", Provenance.Convention,
+                location, GraphNodeKind.Convention);
 
-        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, targetId, nameof(EdgeKind.Registers), Provenance.Convention, ctx.ExtractorVersion,
-            ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation()), targetNodeKind: GraphNodeKind.Convention));
+        if (unknown || assemblies.Count == 0)
+            call.Unknown(call.OwnerId, location);
+    }
 
-        if (methodSymbol.Name == "Scan") EmitScanConventionRegistrationEdges(invocation, semanticModel, compilation, ctx);
+    /// <summary>The assemblies and the <c>publicOnly</c> value of a modeled chain; null for any other scan.</summary>
+    private static (List<IAssemblySymbol> Assemblies, bool PublicOnly)? ModeledChain(IOperation? action)
+    {
+        if (action is not IDelegateCreationOperation { Target: IAnonymousFunctionOperation lambda } ||
+            lambda.Symbol.Parameters is not [var selector])
+            return null;
+
+        var statements = lambda.Body.Operations
+            .Where(operation => operation is not IReturnOperation { IsImplicit: true, ReturnedValue: null })
+            .ToList();
+        if (statements is not [IExpressionStatementOperation { Operation: IInvocationOperation outer }])
+            return null;
+
+        var call = outer;
+        if (IsScrutor(call, LifetimeSelectorType) &&
+            call.TargetMethod.Name is "WithScopedLifetime" or "WithSingletonLifetime" or "WithTransientLifetime" or "WithLifetime")
+            call = Receiver(call);
+
+        if (call == null || !IsScrutor(call, ServiceTypeSelectorType) || call.TargetMethod.Name != "AsImplementedInterfaces" || call.Arguments.Length != 0)
+            return null;
+
+        call = Receiver(call);
+        if (call == null || !IsScrutor(call, ImplementationTypeSelectorType) || call.TargetMethod.Name != "AddClasses")
+            return null;
+
+        bool publicOnly;
+        switch (call.Arguments)
+        {
+            case []:
+                publicOnly = true;
+                break;
+            case [{ Parameter.Name: "publicOnly", Value.ConstantValue: { HasValue: true, Value: bool value } }]:
+                publicOnly = value;
+                break;
+            default:
+                return null;
+        }
+
+        call = Receiver(call);
+        if (call == null || !IsScrutor(call, AssemblySelectorType) || StaticAssemblies(call) is not { } assemblies)
+            return null;
+
+        if (WithoutImplicitConversions(call.Instance) is not IParameterReferenceOperation reference ||
+            !SymbolEqualityComparer.Default.Equals(reference.Parameter, selector))
+            return null;
+
+        return (assemblies, publicOnly);
     }
 
     /// <summary>
-    ///     Emits interface → concrete class edges for the statically recognizable
-    ///     Scrutor fluent chain:
-    ///     <c>Scan(scan =&gt; scan.FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime())</c>.
-    ///     For unsupported, incomplete, or dynamic Scan calls this emits nothing;
-    ///     the convention placeholder edge from <see cref="ProcessConventionCandidate" />
-    ///     is preserved in all cases.
+    ///     Scrutor 4.2.2 (P2-S07 oracle run): <c>AddClasses</c> selects the classes and delegates that
+    ///     are not abstract and not static, with <c>publicOnly</c> only the ones whose own declared
+    ///     accessibility is public; <c>AsImplementedInterfaces</c> registers every interface of the
+    ///     class, and for a generic class only an interface with the same number of type arguments
+    ///     (the containing types counted).
     /// </summary>
-    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiEmitContext ctx)
+    private static void AddScannedPairs(IAssemblySymbol assembly, bool publicOnly, Location location, DependencyInjectionAdapter.RegistrationCall call)
     {
-        var assemblyType = ResolveScannedAssemblyType(scanInvocation, semanticModel);
-        if (assemblyType?.ContainingAssembly == null)
-            return;
-
-        if (!HasRecognizedConventionChain(scanInvocation))
-            return;
-
-        // The match set is open: any type added to the scanned assembly may newly
-        // match this convention, and no persisted edge witnesses the new match, so
-        // the reverse-edge closure cannot see it. Record an unobservable-completeness
-        // row so FindAffectedDocPaths seeds this registration document on any change.
-        // Only when the scanned assembly is the current compilation's assembly: an
-        // external scanned assembly yields no in-snapshot type edges at all, so its
-        // relation set is provably closed.
-        if (SymbolEqualityComparer.Default.Equals(assemblyType.ContainingAssembly, compilation.Assembly))
-            ctx.Adapter.Incompleteness?.RecordConventionScan(scanInvocation);
-
-        var location = ctx.Adapter.LocationResolver.Resolve(scanInvocation.GetLocation());
-
-        var assembly = assemblyType.ContainingAssembly;
-
         foreach (var type in ExtractionUtils.GetAllNamedTypes(assembly.GlobalNamespace))
         {
-            if (type.TypeKind != TypeKind.Class)
+            if (type.TypeKind is not (TypeKind.Class or TypeKind.Delegate) || type.IsAbstract || type.IsStatic)
                 continue;
-            if (type.IsAbstract)
-                continue;
-            if (type.SpecialType == SpecialType.System_Object)
-                continue;
-            if (!SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, assembly))
+            if (publicOnly && type.DeclaredAccessibility != Accessibility.Public)
                 continue;
 
-            var implTypeId = SymbolIdFactory.Make(type, ctx.Adapter.AssemblyIdentity);
-            if (implTypeId == null)
+            var typeId = call.Context.MakeSymbolId(type);
+            if (typeId == null)
                 continue;
 
+            var arity = Arity(type);
             foreach (var iface in type.AllInterfaces)
             {
-                if (iface.TypeKind == TypeKind.Error)
+                if (iface.TypeKind == TypeKind.Error || (arity > 0 && Arity(iface) != arity))
                     continue;
 
-                var ifaceTypeId = SymbolIdFactory.Make(iface, ctx.Adapter.AssemblyIdentity);
-                if (ifaceTypeId == null)
-                    continue;
-
-                ctx.Edges.Add(ctx.Adapter.MakeEdge(ifaceTypeId, implTypeId, nameof(EdgeKind.Registers), Provenance.Convention, ctx.ExtractorVersion, location));
+                if (call.Context.MakeSymbolId(iface) is { } ifaceId)
+                    call.Add(ifaceId, typeId, Provenance.Convention, location);
             }
         }
     }
 
-    /// <summary>
-    ///     Resolves the statically known type whose assembly is scanned by a
-    ///     <c>Scan</c> call, from <c>FromAssemblyOf&lt;T&gt;()</c> or
-    ///     <c>FromAssembliesOf(typeof(T))</c>. Returns null for dynamic or
-    ///     unresolved assembly selection.
-    /// </summary>
-    private static ITypeSymbol? ResolveScannedAssemblyType(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel)
+    /// <summary>The <c>From*</c> calls of Scrutor's assembly selector inside the scan action.</summary>
+    private static IEnumerable<IInvocationOperation> FromCalls(IOperation? action)
     {
-        foreach (var arg in scanInvocation.ArgumentList.Arguments)
-        {
-            if (arg.Expression is not LambdaExpressionSyntax lambda)
-                continue;
-
-            foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
-            {
-                if (nested.Expression is not MemberAccessExpressionSyntax access)
-                    continue;
-
-                if (access.Name.Identifier.Text is not ("FromAssemblyOf" or "FromAssembliesOf"))
-                    continue;
-
-                if (access.Name is GenericNameSyntax generic)
-                    foreach (var typeArg in generic.TypeArgumentList.Arguments)
-                    {
-                        var typeInfo = semanticModel.GetTypeInfo(typeArg);
-                        if (typeInfo.Type is { TypeKind: not TypeKind.Error } resolved)
-                            return resolved;
-                    }
-
-                foreach (var nestedArg in nested.ArgumentList.Arguments)
-                    if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
-                    {
-                        var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                        if (typeInfo.Type is { TypeKind: not TypeKind.Error } resolved)
-                            return resolved;
-                    }
-            }
-        }
-
-        return null;
+        return action == null
+            ? []
+            : action.DescendantsAndSelf().OfType<IInvocationOperation>()
+                .Where(invocation => IsScrutor(invocation, AssemblySelectorType) && invocation.TargetMethod.Name.StartsWith("From", StringComparison.Ordinal));
     }
 
     /// <summary>
-    ///     Recognizes the full fluent chain
-    ///     <c>FromAssembliesOf(...).AddClasses().AsImplementedInterfaces().WithScopedLifetime()</c>
-    ///     inside the Scan lambda. Rejects chains with a predicate filter on
-    ///     <c>AddClasses</c> since arbitrary lambda predicates are not evaluated.
+    ///     The assemblies of <c>FromAssemblyOf&lt;T&gt;()</c> and of <c>FromAssembliesOf(params Type[])</c>
+    ///     when every type is a <c>typeof</c>; null for any other selection.
     /// </summary>
-    private static bool HasRecognizedConventionChain(InvocationExpressionSyntax scanInvocation)
+    private static List<IAssemblySymbol>? StaticAssemblies(IInvocationOperation from)
     {
-        var chainNames = new HashSet<string>(StringComparer.Ordinal);
-        var hasPredicateFilter = false;
-
-        foreach (var arg in scanInvocation.ArgumentList.Arguments)
+        switch (from.TargetMethod.Name)
         {
-            if (arg.Expression is not LambdaExpressionSyntax lambda)
-                continue;
-
-            foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
-            {
-                if (nested.Expression is not MemberAccessExpressionSyntax access)
-                    continue;
-
-                switch (access.Name.Identifier.Text)
+            case "FromAssemblyOf" when from.TargetMethod.TypeArguments is [{ TypeKind: not TypeKind.Error, ContainingAssembly: { } assembly }]:
+                return [assembly];
+            case "FromAssembliesOf" when Argument(from, "types") is IArrayCreationOperation { Initializer: { } initializer }:
+                var assemblies = new List<IAssemblySymbol>();
+                foreach (var element in initializer.ElementValues)
                 {
-                    case "FromAssemblyOf":
-                    case "FromAssembliesOf":
-                        chainNames.Add("FromAssembliesOf");
-                        break;
-                    case "AddClasses":
-                        chainNames.Add("AddClasses");
-                        if (nested.ArgumentList.Arguments.Any(a => a.Expression is LambdaExpressionSyntax))
-                            hasPredicateFilter = true;
-                        break;
-                    case "AsImplementedInterfaces":
-                        chainNames.Add("AsImplementedInterfaces");
-                        break;
-                    case "WithScopedLifetime":
-                        chainNames.Add("WithScopedLifetime");
-                        break;
+                    if (WithoutImplicitConversions(element) is not ITypeOfOperation { TypeOperand: { TypeKind: not TypeKind.Error, ContainingAssembly: { } elementAssembly } })
+                        return null;
+                    if (!assemblies.Contains(elementAssembly, SymbolEqualityComparer.Default))
+                        assemblies.Add(elementAssembly);
                 }
-            }
+
+                return assemblies.Count == 0 ? null : assemblies;
+            default:
+                return null;
         }
-
-        return !hasPredicateFilter
-               && chainNames.Contains("FromAssembliesOf")
-               && chainNames.Contains("AddClasses")
-               && chainNames.Contains("AsImplementedInterfaces")
-               && chainNames.Contains("WithScopedLifetime");
     }
 
-    private static string ExtractConventionAssemblyName(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, string fallback)
+    private static bool IsScrutor(IInvocationOperation invocation, string typeName)
     {
-        var directAssembly = ResolveAssemblyFromGenericTypeArgs(invocation, semanticModel);
-        if (directAssembly != null)
-            return directAssembly;
-
-        if (methodSymbol.Name != "Scan")
-            return fallback;
-
-        var scannedAssembly = ResolveAssemblyFromScanLambda(invocation, semanticModel);
-        return scannedAssembly ?? fallback;
+        return FrameworkTypes.Is(FrameworkTypes.DeclaringType(invocation.TargetMethod), typeName, ScrutorAssembly);
     }
 
-    private static string? ResolveAssemblyFromGenericTypeArgs(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    private static IInvocationOperation? Receiver(IInvocationOperation invocation)
     {
-        if (invocation.Expression is not MemberAccessExpressionSyntax { Name: GenericNameSyntax genericName } _)
-            return null;
-
-        foreach (var typeArg in genericName.TypeArgumentList.Arguments)
-        {
-            var typeInfo = semanticModel.GetTypeInfo(typeArg);
-            if (typeInfo.Type?.ContainingAssembly != null)
-                return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
-        }
-
-        return null;
+        return WithoutImplicitConversions(invocation.Instance) as IInvocationOperation;
     }
 
-    private static string? ResolveAssemblyFromScanLambda(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    private static IOperation? Argument(IInvocationOperation invocation, string parameterName)
     {
-        foreach (var arg in invocation.ArgumentList.Arguments)
-        {
-            if (arg.Expression is not LambdaExpressionSyntax lambda)
-                continue;
-
-            foreach (var nested in lambda.DescendantNodes().OfType<InvocationExpressionSyntax>())
-            {
-                var assembly = ResolveAssemblyFromAssemblyScanCall(nested, semanticModel);
-                if (assembly != null)
-                    return assembly;
-            }
-        }
-
-        return null;
+        return invocation.Arguments.FirstOrDefault(argument => argument.Parameter?.Name == parameterName)?.Value;
     }
 
-    private static string? ResolveAssemblyFromAssemblyScanCall(InvocationExpressionSyntax nested, SemanticModel semanticModel)
+    private static IOperation? WithoutImplicitConversions(IOperation? value)
     {
-        if (nested.Expression is not MemberAccessExpressionSyntax { Name: SimpleNameSyntax nestedName } nestedAccess)
-            return null;
+        while (value is IConversionOperation { IsImplicit: true } conversion)
+            value = conversion.Operand;
+        return value;
+    }
 
-        if (nestedName.Identifier.Text != "FromAssemblyOf" && nestedName.Identifier.Text != "FromAssembliesOf")
-            return null;
-
-        if (nestedAccess.Name is GenericNameSyntax nestedGeneric)
-            foreach (var typeArg in nestedGeneric.TypeArgumentList.Arguments)
-            {
-                var typeInfo = semanticModel.GetTypeInfo(typeArg);
-                if (typeInfo.Type?.ContainingAssembly != null)
-                    return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
-            }
-
-        foreach (var nestedArg in nested.ArgumentList.Arguments)
-            if (nestedArg.Expression is TypeOfExpressionSyntax typeofExpr)
-            {
-                var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                if (typeInfo.Type?.ContainingAssembly != null)
-                    return typeInfo.Type.ContainingAssembly.Identity.GetDisplayName();
-            }
-
-        return null;
+    /// <summary>The number of type arguments of <paramref name="type" /> and of its containing types (the run-time arity).</summary>
+    private static int Arity(INamedTypeSymbol type)
+    {
+        var arity = 0;
+        for (var current = type; current != null; current = current.ContainingType)
+            arity += current.Arity;
+        return arity;
     }
 }

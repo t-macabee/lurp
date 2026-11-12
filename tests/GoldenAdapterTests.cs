@@ -185,22 +185,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     /// <summary>
-    ///     Regression test for a bug where <c>ResolveSourceId</c> only walked up to a
-    ///     <c>MethodDeclarationSyntax</c>/<c>TypeDeclarationSyntax</c> ancestor, so any
-    ///     registration call sitting directly in top-level statements (the .NET 6+
-    ///     default <c>Program.cs</c> template) had neither ancestor and the edge was
-    ///     silently dropped. The source symbol here is the compiler-synthesized
-    ///     top-level-statements entry point — contrary to an earlier version of this
-    ///     comment, it IS a declared snapshot symbol (confirmed 2026-08-21: its
-    ///     docCommentId and DeclaringSyntaxReferences are both non-empty, so
-    ///     SymbolDeclarationExtractor declares it like any ordinary method; it surfaces
-    ///     as FQN <c>global::Program.&lt;top-level-statements-entry-point&gt;</c>, and is
-    ///     the reason DeadCandidateStore now special-cases entry points — see
-    ///     ProcessEntryPoint_TopLevelStatements_IsUncertainNotProvedDead in
-    ///     DeadCandidateCharacterizationTests.cs). This test still asserts by document/line
-    ///     rather than via ResolveSymbolId because the exact FQN rendering is Roslyn/SDK-
-    ///     version-dependent (observed to differ from the form above when the surrounding
-    ///     source has unrelated syntax errors), so hardcoding it here would be fragile.
+    ///     D8, S02-F8: top-level statements are owned by the compiler-made entry point, which Roslyn
+    ///     displays as <c>&lt;top-level-statements-entry-point&gt;</c> of the type <c>Program</c>; a
+    ///     lambda in a top-level statement is owned by the same entry point.
     /// </summary>
     [Fact]
     public async Task DependencyInjectionAdapter_TopLevelStatementAddScopedProducesRegisters()
@@ -213,13 +200,18 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
                                  public interface IService { }
                                  public class Service : IService { }
+                                 public interface IK { }
+                                 public class K : IK { }
                                  """,
                 ["Program.cs"] = """
+                                 using System;
                                  using Microsoft.Extensions.DependencyInjection;
                                  using App;
 
                                  IServiceCollection services = null!;
                                  services.AddScoped<IService, Service>();
+                                 Action<IServiceCollection> configure = s => s.AddScoped<IK, K>();
+                                 configure(services);
                                  """
             },
             frameworkReferences: [AspNetCoreFramework],
@@ -227,30 +219,29 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         var snapshotId = await RunFullIndexAsync(DbPath);
 
-        var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
-        Assert.Equal(2, registers.Count);
-
+        var entryPointId = ResolveSymbolId(snapshotId, "global::Program.<top-level-statements-entry-point>");
         var serviceId = ResolveSymbolId(snapshotId, "global::App.Service");
-        var interfaceId = ResolveSymbolId(snapshotId, "global::App.IService");
+        var kId = ResolveSymbolId(snapshotId, "global::App.K");
+        var expected = new[]
+        {
+            (entryPointId, serviceId),
+            (ResolveSymbolId(snapshotId, "global::App.IService"), serviceId),
+            (entryPointId, kId),
+            (ResolveSymbolId(snapshotId, "global::App.IK"), kId)
+        }.Order().ToList();
 
-        // Registration site anchors to the synthesized top-level-statements entry
-        // point instead of being dropped for lack of a MethodDeclarationSyntax.
-        Assert.Contains(registers, e =>
-            e.TargetSymbolId == serviceId &&
-            e.SourceSymbolId != interfaceId &&
-            e.SourceDocumentPath == "src/App/Program.cs");
-
-        // The interface-to-implementation relation is still emitted as before.
-        Assert.Contains(registers, e =>
-            e.SourceSymbolId == interfaceId &&
-            e.TargetSymbolId == serviceId);
-
-        foreach (var edge in registers)
-            Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
+        var registers = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
+        Assert.Equal(expected, registers.Select(e => (e.SourceSymbolId, e.TargetSymbolId)).Order().ToList());
+        Assert.All(registers, edge => Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion));
     }
 
+    /// <summary>
+    ///     D28: a scan outside the modeled chain (here <c>AsSelf</c>) gives one placeholder for the
+    ///     scanned assembly, from the Scan call. The placeholder is a Convention graph node. The
+    ///     project App has the SDK default identity (version 1.0.0.0, neutral culture, no key).
+    /// </summary>
     [Fact]
-    public async Task DIConventionMatcher_ScanCallProducesConventionRegistersEdge()
+    public async Task DIConventionMatcher_UnmodeledScanProducesConventionPlaceholder()
     {
         CreateProject("App",
             new Dictionary<string, string>
@@ -270,9 +261,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
                                           public static void Configure(IServiceCollection services)
                                           {
                                               services.Scan(scan => scan
-                                                  .FromAssembliesOf<App>()
+                                                  .FromAssemblyOf<App>()
                                                   .AddClasses()
-                                                  .AsImplementedInterfaces()
+                                                  .AsSelf()
                                                   .WithScopedLifetime());
                                           }
                                       }
@@ -286,7 +277,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         var registers = QueryEdges(snapshotId, "Registers", Provenance.Convention);
         var edge = Assert.Single(registers);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Registration.Configure"), edge.SourceSymbolId);
-        Assert.StartsWith("convention:assembly_scan:", edge.TargetSymbolId);
+        Assert.Equal("convention:assembly_scan:App, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null", edge.TargetSymbolId);
         Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
 
         // Node kinds are not round-tripped through the edges read path; the
@@ -549,54 +540,6 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     // ── R5 characterization tests ──────────────────────────────────────
-
-    /// <summary>
-    ///     Characterization (R5): a non-conventional DI registration
-    ///     (<c>AddHostedService&lt;T&gt;</c>) produces <see cref="Provenance.RuntimeUnknown" />
-    ///     edges, NOT <see cref="Provenance.FrameworkDerived" />. The adapter detects the
-    ///     registration but declares the runtime semantics unmodeled.
-    /// </summary>
-    [Fact]
-    public async Task DIAdapter_AddHostedService_ProducesRuntimeUnknown()
-    {
-        CreateProject("App",
-            new Dictionary<string, string>
-            {
-                ["Registration.cs"] = """
-                                      using Microsoft.Extensions.DependencyInjection;
-                                      using Microsoft.Extensions.Hosting;
-
-                                      namespace App;
-
-                                      public class MyHostedService : IHostedService
-                                      {
-                                          public System.Threading.Tasks.Task StartAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
-                                          public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
-                                      }
-
-                                      public static class Registration
-                                      {
-                                          public static void Configure(IServiceCollection services)
-                                          {
-                                              services.AddHostedService<MyHostedService>();
-                                          }
-                                      }
-                                      """
-            },
-            frameworkReferences: [AspNetCoreFramework]);
-
-        var snapshotId = await RunFullIndexAsync(DbPath);
-
-        // Non-conventional → RuntimeUnknown, never FrameworkDerived.
-        var runtimeUnknown = QueryEdges(snapshotId, "Registers", Provenance.RuntimeUnknown);
-        Assert.NotEmpty(runtimeUnknown);
-
-        var frameworkDerived = QueryEdges(snapshotId, "Registers", Provenance.FrameworkDerived);
-        Assert.Empty(frameworkDerived);
-
-        // One of the RuntimeUnknown edges must target the runtime:unknown sentinel.
-        Assert.Contains(runtimeUnknown, e => e.TargetSymbolId == GraphNodeIds.RuntimeUnknown);
-    }
 
     /// <summary>
     ///     Characterization (R5): MediatR adapter only recognizes

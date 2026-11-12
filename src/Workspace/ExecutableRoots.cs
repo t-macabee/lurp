@@ -138,6 +138,26 @@ internal static class ExecutableRoots
     }
 
     /// <summary>
+    ///     The operation trees of a root: the operation of the root node, or, when Roslyn gives that
+    ///     node none (a primary-constructor base list), the operation of each outermost descendant
+    ///     that has one. The trees do not overlap.
+    /// </summary>
+    internal static IEnumerable<IOperation> Operations(SyntaxNode root, SemanticModel model)
+    {
+        if (model.GetOperation(root) is { } operation)
+        {
+            yield return operation;
+            yield break;
+        }
+
+        foreach (var child in root.ChildNodes())
+        {
+            foreach (var childOperation in Operations(child, model))
+                yield return childOperation;
+        }
+    }
+
+    /// <summary>
     ///     The attribute applications of every written member in scope, each with its owner: the
     ///     attributes of each type, then of each of its members; a method also owns the attributes
     ///     of its parameters and of its return value, an indexer those of its parameters (B33).

@@ -207,7 +207,7 @@ Update 2026-08-07 (Gap #9): `IsCrossGenerated` now reaches polymorphism and refl
 | 08-11 | R6: binding-incompleteness carry-forward parity | Scope save to deletion-set; null-path EXCLUDE-AND-CARRY-FORWARD | `BindingIncompletenessScopingTests`, `ScenarioR6_*`; post-fix R1 PASS |
 | 08-11 | R3: overload-resolution BFS gap | Widen BFS seed + extraction scope on added-file events | `ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller`; `5923efe` |
 | 08-12 | R4: cross-compiler symbol-identity stability | Characterized; full-rebuild gate on `CompilerChanged` is the mitigation | historical |
-| 08-12 | R5: non-conventional DI/MediatR coverage | Pinned: `AddHostedService`→`RuntimeUnknown`; stream handlers silently skipped | `GoldenAdapterTests` R5 suite |
+| 08-12 | R5: non-conventional DI/MediatR coverage | Pinned: `AddHostedService`→`RuntimeUnknown`; stream handlers silently skipped | `DependencyInjectionRegistrationTests.OtherCalls_GiveOnlyTheirDeclaredBoundaryEdges`, `GoldenAdapterTests` R5 suite |
 | 08-13 | R7: cross-doc dispatch type-arg aggregation lockstep | `UnionWith` changed docs into step-7 refresh scope | `ScenarioG_ChangeImplementedInterface_*`, post-fix R1 PASS |
 | 08-13 | T1: read-mode freshness signal | `get-source`/`get-symbol`/`navigate` wired to freshness; `--require-fresh` exit 2 | `ReadModeFreshnessTests.cs` |
 | 08-13 | T4: 1-based line numbers on emit | `LineNumbers.ToOneBased` single choke point; storage stays 0-based | `LineNumberBaseTests.cs` |

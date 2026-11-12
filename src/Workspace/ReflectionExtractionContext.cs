@@ -11,7 +11,7 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         foreach (var type in GetAllNamedTypes())
         {
             Add(_typesBySimpleName, type.MetadataName, type);
-            Add(_typesByFullName, FullMetadataName(type), type);
+            Add(_typesByFullName, ExtractionUtils.FullMetadataName(type), type);
             foreach (var member in type.GetMembers())
                 Add(_membersByName, member.MetadataName, member);
         }
@@ -59,15 +59,6 @@ internal sealed class ReflectionExtractionContext : ExtractionContextBase
         var typeName = text[..end];
         var bracket = typeName.IndexOf('[', StringComparison.Ordinal);
         return (bracket < 0 ? typeName : typeName[..bracket]).Trim();
-    }
-
-    private static string FullMetadataName(INamedTypeSymbol type)
-    {
-        if (type.ContainingType is { } containingType)
-            return FullMetadataName(containingType) + "+" + type.MetadataName;
-        return type.ContainingNamespace is { IsGlobalNamespace: false } ns
-            ? ns.ToDisplayString() + "." + type.MetadataName
-            : type.MetadataName;
     }
 
     private static IEnumerable<T> Lookup<T>(Dictionary<string, List<T>> index, string name, bool ignoreCase)
