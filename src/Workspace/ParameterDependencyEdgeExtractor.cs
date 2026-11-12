@@ -14,18 +14,12 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
         foreach (var typeSymbol in context.GetAllNamedTypes())
             foreach (var member in typeSymbol.GetMembers())
             {
-                if (member is not IMethodSymbol method)
+                if (member is not IMethodSymbol method || !ExtractionUtils.HasStructuralFacts(method))
                     continue;
 
-                var isDelegateInvoke = method.MethodKind == MethodKind.DelegateInvoke;
-                if (member.IsImplicitlyDeclared && !isDelegateInvoke)
-                    continue;
-
-                // A delegate's implicit Invoke names its parameter types in the delegate
-                // declaration, so the delegate type is the source.
-                var sourceSymbol = isDelegateInvoke ? (ISymbol)method.ContainingType! : method;
-
-                if (!context.IsMemberInScope(sourceSymbol))
+                // D8, D23: the delegate declaration names the parameter types of its Invoke,
+                // so the delegate type is the source.
+                if (ExtractionUtils.SignatureOwner(method) is not { } sourceSymbol || !context.IsMemberInScope(sourceSymbol))
                     continue;
 
                 var sourceId = context.MakeSymbolId(sourceSymbol);

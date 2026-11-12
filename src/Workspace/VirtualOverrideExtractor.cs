@@ -1,81 +1,43 @@
 using Microsoft.CodeAnalysis;
-using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Workspace;
 
 /// <summary>
-///     For every override, walk to the root virtual declaration and emit a
-///     may_dispatch_to edge from the root to the override.  Because the
-///     override chain is fully resolved at compile time within a single
-///     compilation, all such edges are "compiler_proved".
+///     D15: for every override, emit a may_dispatch_to edge from each ancestor in its
+///     override chain (the member it overrides, that member's overridden member, and so
+///     on up to the root) to the override. A call that names any ancestor can run the
+///     override. Because the override chain is fully resolved at compile time within a
+///     single compilation, all such edges are "compiler_proved". D38: a compiler-made
+///     override that Lurp stores (a record's synthesized overrides) has the same edges.
 /// </summary>
 internal sealed class VirtualOverrideExtractor(PolymorphismExtractionContext context)
 {
     internal List<EdgeRecord> Extract(List<INamedTypeSymbol> allTypes)
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var type in allTypes)
             foreach (var member in type.GetMembers())
             {
-                if (member.IsImplicitlyDeclared)
+                if (!ExtractionUtils.HasStructuralFacts(member))
                     continue;
 
-                switch (member)
-                {
-                    case IMethodSymbol { IsOverride: true, OverriddenMethod: not null } method:
-                        EmitOverrideEdge(WalkToRootOverride(method), method, edges, seen);
-                        break;
-                    case IPropertySymbol { IsOverride: true, OverriddenProperty: not null } prop:
-                        EmitOverrideEdge(WalkToRootOverride(prop), prop, edges, seen);
-                        break;
-                    case IEventSymbol { IsOverride: true, OverriddenEvent: not null } evt:
-                        EmitOverrideEdge(WalkToRootOverride(evt), evt, edges, seen);
-                        break;
-                }
+                for (var ancestor = ExtractionUtils.OverriddenMember(member); ancestor != null;
+                     ancestor = ExtractionUtils.OverriddenMember(ancestor))
+                    EmitDispatchEdge(ancestor, member, edges);
             }
 
         return edges;
     }
 
-    private void EmitOverrideEdge(ISymbol root, ISymbol overrideMember, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitDispatchEdge(ISymbol ancestor, ISymbol overrideMember, List<EdgeRecord> edges)
     {
-        var rootId = context.MakeSymbolId(root);
+        var ancestorId = context.MakeSymbolId(ancestor);
         var overrideId = context.MakeSymbolId(overrideMember);
-        if (rootId == null || overrideId == null || rootId == overrideId)
+        if (ancestorId == null || overrideId == null)
             return;
 
-        context.RecordFilteredExternal(root, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(overrideMember));
-
-        var key = (rootId, overrideId, nameof(EdgeKind.MayDispatchTo));
-        if (!seen.Add(key))
-            return;
-
-        edges.Add(context.MakeMayDispatchEdge(rootId, overrideId, overrideMember, Provenance.CompilerProved));
-    }
-
-    private static IMethodSymbol WalkToRootOverride(IMethodSymbol method)
-    {
-        var current = method;
-        while (current.IsOverride && current.OverriddenMethod != null)
-            current = current.OverriddenMethod;
-        return current;
-    }
-
-    private static IPropertySymbol WalkToRootOverride(IPropertySymbol prop)
-    {
-        var current = prop;
-        while (current.IsOverride && current.OverriddenProperty != null)
-            current = current.OverriddenProperty;
-        return current;
-    }
-
-    private static IEventSymbol WalkToRootOverride(IEventSymbol evt)
-    {
-        var current = evt;
-        while (current.IsOverride && current.OverriddenEvent != null)
-            current = current.OverriddenEvent;
-        return current;
+        context.RecordFilteredExternal(ancestor, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(overrideMember));
+        edges.Add(context.MakeMayDispatchEdge(ancestorId, overrideId, overrideMember, Provenance.CompilerProved));
     }
 }

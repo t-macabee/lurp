@@ -156,5 +156,24 @@ public abstract class InMemoryTestBase : IDisposable
             Assert.Equal(expected.Order().ToList(), actual);
         }
 
+        /// <summary>
+        ///     <see cref="AssertEdgeSet" /> with Roslyn documentation-comment ids in place of FQNs, for
+        ///     overloads that share one FQN (a record's two <c>Equals</c>).
+        /// </summary>
+        public void AssertDocIdEdgeSet(string kind, params (string Source, string Target)[] expected)
+        {
+            var declared = Result.Declarations.Select(declaration => declaration.SymbolId.Value).ToHashSet(StringComparer.Ordinal);
+            var actual = Result.Edges
+                .Where(e => e.Kind == kind && e.Provenance == Provenance.CompilerProved &&
+                            declared.Contains(e.SourceSymbolId) && declared.Contains(e.TargetSymbolId))
+                .Select(e => (Source: DocId(e.SourceSymbolId), Target: DocId(e.TargetSymbolId)))
+                .Distinct()
+                .Order()
+                .ToList();
+            Assert.Equal(expected.Order().ToList(), actual);
+
+            static string DocId(string symbolId) => symbolId[..symbolId.IndexOf('|', StringComparison.Ordinal)];
+        }
+
     }
 }

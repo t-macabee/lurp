@@ -149,10 +149,9 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // type whose declaring syntax appears in a changed document. The type-part
         // expansion is required because two extraction guards are type-level
         // (SymbolStructuralEdgeExtractor.IsTypeInScope, PolymorphismExtractionContext
-        // .IsTypeInScope) and StaticDispatchCallExtractor has no per-tree guard at
-        // all, so a purely file-granular scope would leave partial types half in and
-        // half out of scope while whole-symbol properties such as is_partial stay
-        // computed across all parts.
+        // .IsTypeInScope), so a purely file-granular scope would leave partial types
+        // half in and half out of scope while whole-symbol properties such as
+        // is_partial stay computed across all parts.
         //
         // The reverse-edge closure (closurePaths) is intentionally excluded from the
         // extraction-scope seed: documents reached only through the closure did not

@@ -20,22 +20,19 @@ internal static class ExtractorRegistry
     [
         // -- Member-edge extractors (ExtractorConstants) --
         ("Declares", ExtractorConstants.DeclaresExtractor, "Type-declares-member containment edges"),
-        ("Overrides", ExtractorConstants.OverridesExtractor, "Method override edges"),
-        ("Hides", ExtractorConstants.HidesExtractor, "Member-hiding (new keyword) edges"),
+        ("Overrides", ExtractorConstants.OverridesExtractor, "Override edges of methods, properties and events"),
+        ("Hides", ExtractorConstants.HidesExtractor, "Member-hiding edges (C# hiding through inheritance)"),
         ("Returns", ExtractorConstants.ReturnsExtractor, "Return-type reference edges"),
         ("ParameterDependencies", ExtractorConstants.ParameterDependenciesExtractor, "Parameter-type dependency edges"),
 
         // -- Reflection extractors --
         ("Reflection", ExtractorConstants.ReflectionExtractor, "Reflection-based dependency edges (nameof/typeof/string-literal)"),
 
-        // -- Static-dispatch extractor --
-        ("StaticDispatch", ExtractorConstants.StaticallyCallsExtractor, "Static (non-virtual) dispatch call edges"),
-
         // -- Polymorphism extractor --
-        ("Polymorphism", ExtractorConstants.PolymorphismExtractor, "Polymorphic (virtual) dispatch edges"),
+        ("Polymorphism", ExtractorConstants.PolymorphismExtractor, "MayDispatchTo edges from interface members and overridden members to their implementations and overrides"),
 
         // -- Member-body operation pass (S01-F22): every executable root, explicit and implicit shapes --
-        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Member-body edges: calls, constructions, reads, writes, method groups, extension receivers, thrown types and body type uses"),
+        ("OperationShapes", ExtractorConstants.OperationShapesExtractor, "Member-body edges: calls, constructions, reads, writes, method groups, extension receivers, thrown types, body type uses and StaticallyCalls markers of accesses that can dispatch"),
 
         // -- Structural type-relationship extractor (uses VersionConstants.ExtractorVersion) --
         ("Structural", VersionConstants.ExtractorVersion, "Structural type edges (inherits, implements, contains, references)")

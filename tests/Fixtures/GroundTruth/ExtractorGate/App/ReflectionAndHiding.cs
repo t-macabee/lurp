@@ -18,3 +18,11 @@ public static class ReflectionShapes
 
     public static Type? ByName() => Type.GetType("ExtractorGate.App.Calculator");
 }
+
+// S01-F17: a member hides a member that its type inherits through a base type that does not declare it.
+public class PassThroughShape : BaseShape { }
+
+public class DeepHidingShape : PassThroughShape
+{
+    public new void Run() { }
+}

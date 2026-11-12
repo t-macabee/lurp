@@ -76,13 +76,13 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Contains(declares, e =>
             e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController") &&
             e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController.Get") &&
-            e.ExtractorVersion == "declares-v1");
+            e.ExtractorVersion == "declares-v2");
 
         var returns = QueryEdges(snapshotId, "Returns", Provenance.CompilerProved);
         Assert.Contains(returns, e =>
             e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController.Get") &&
             e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.Item") &&
-            e.ExtractorVersion == "returns-v1");
+            e.ExtractorVersion == "returns-v2");
     }
 
     // Regression: a class-level [Route] used to give every ordinary method a RoutesTo

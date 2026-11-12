@@ -13,7 +13,8 @@ namespace Lurp.Workspace;
 ///     base arguments, parameter defaults, attribute arguments and top-level statements)
 ///     and writes <c>Calls</c>, <c>Constructs</c>, <c>Reads</c>, <c>Writes</c>,
 ///     <c>MethodGroupRef</c>, <c>ExtensionReceiver</c>, <c>Throws</c> and body <c>References</c>, with
-///     receiver-type constraints on <c>Calls</c>. It covers the explicit call shapes and
+///     receiver-type constraints on <c>Calls</c>. D22: an access whose target can dispatch at run
+///     time also gets the <c>StaticallyCalls</c> marker. It covers the explicit call shapes and
 ///     the compiler-lowered ones (method groups, event subscriptions, user-defined
 ///     operators and conversions, and the implicit invocations behind await, foreach,
 ///     using, deconstruction, collection initializers, interpolated-string handlers, and
@@ -588,7 +589,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
     {
         var syntax = invocation.Syntax;
         var method = invocation.TargetMethod;
-        AddCall(ownerId, method, syntax, edges, seen, GetReceiverTypeConstraints(invocation, owner, model));
+        AddCall(ownerId, method, syntax, edges, seen, GetReceiverTypeConstraints(invocation, owner, model),
+            IsBaseAccess(invocation.Instance));
         AddExtensionReceiver(invocation, edges, seen);
         AddStaticReceiverReference(ownerId, invocation, method, model, edges, seen);
         foreach (var typeArgument in method.TypeArguments)
@@ -659,7 +661,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         SyntaxNode syntax,
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen,
-        string? receiverConstraintsJson = null)
+        string? receiverConstraintsJson = null,
+        bool throughBase = false)
     {
         if (method == null)
             return;
@@ -674,6 +677,48 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             return;
 
         AddEdge(ownerId, method, nameof(EdgeKind.Calls), syntax, edges, seen, receiverConstraintsJson);
+        if (!throughBase)
+            AddDispatchMarker(ownerId, method, syntax, edges, seen);
+    }
+
+    /// <summary>
+    ///     D22: an access whose target can dispatch at run time (<see cref="ExtractionUtils.IsDispatchPoint" />)
+    ///     is also a <c>StaticallyCalls</c> fact, so a reader finds every dispatch point from one edge kind.
+    ///     The caller leaves out a <c>base.</c> access, which never dispatches.
+    /// </summary>
+    private void AddDispatchMarker(
+        string ownerId,
+        ISymbol target,
+        SyntaxNode syntax,
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
+        if (ExtractionUtils.IsDispatchPoint(target) && context.MakeSymbolId(target) is { } targetId)
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.StaticallyCalls), syntax);
+    }
+
+    /// <summary>True when <paramref name="instance" /> is <c>base</c>: the access calls the base member without dispatch.</summary>
+    private static bool IsBaseAccess(IOperation? instance)
+    {
+        return instance?.Syntax is BaseExpressionSyntax;
+    }
+
+    /// <summary>
+    ///     D22: the accesses that run an accessor of the member, so they dispatch like a call: a
+    ///     property or indexer access (also an implicit index or range access) and an event
+    ///     <c>+=</c> or <c>-=</c>. Another use of an event (a raise of a field-like event) reads its
+    ///     field and runs no accessor. A <c>base.</c> access does not dispatch.
+    /// </summary>
+    private static bool RunsAccessor(IOperation operation)
+    {
+        return operation switch
+        {
+            IPropertyReferenceOperation property => !IsBaseAccess(property.Instance),
+            IImplicitIndexerReferenceOperation implicitIndexer => !IsBaseAccess(implicitIndexer.Instance),
+            IEventReferenceOperation eventReference =>
+                eventReference.Parent is IEventAssignmentOperation && !IsBaseAccess(eventReference.Instance),
+            _ => false
+        };
     }
 
     /// <summary>
@@ -756,6 +801,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             return;
 
         AddEdge(ownerId, property, nameof(EdgeKind.Reads), syntax, edges, seen);
+        AddDispatchMarker(ownerId, property, syntax, edges, seen);
     }
 
     private void AddMemberAccess(
@@ -781,6 +827,8 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
             Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Reads), operation.Syntax);
         if (writes)
             Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Writes), operation.Syntax);
+        if (RunsAccessor(operation))
+            AddDispatchMarker(ownerId, member, operation.Syntax, edges, seen);
     }
 
     /// <summary>

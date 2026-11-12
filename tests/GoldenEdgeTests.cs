@@ -111,7 +111,9 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
     {
         // D14: a type argument in a base list and each written constraint type are References
         // from the declaring type (a method constraint: from the method). A record's compiler-made
-        // IEquatable<R> and the inherited constraint of an override are not written.
+        // IEquatable<R> and the inherited constraint of an override are not written, so Rec has no
+        // References to itself. D38, D126: the signatures of the record's compiler-made members
+        // (Equals(Rec), == and !=, the clone method) name Rec.
         var extraction = await ExtractAsync(One("""
                                                 namespace N;
                                                 public class A { }
@@ -133,7 +135,11 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
             ("global::N.D", "global::N.X"),
             ("global::N.Con<T>", "global::N.Y"),
             ("global::N.Methods.M<T>", "global::N.Z"),
-            ("global::N.Del<T>", "global::N.A"));
+            ("global::N.Del<T>", "global::N.A"),
+            ("global::N.Rec.<Clone>$", "global::N.Rec"),
+            ("global::N.Rec.Equals", "global::N.Rec"),
+            ("global::N.Rec.operator ==", "global::N.Rec"),
+            ("global::N.Rec.operator !=", "global::N.Rec"));
     }
 
     [Fact]
@@ -215,7 +221,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Overrides", "global::N.Derived.Do", "global::N.Base.Do");
-        AssertEdgeContract(edge, "Overrides", Provenance.CompilerProved, "overrides-v1", Doc);
+        AssertEdgeContract(edge, "Overrides", Provenance.CompilerProved, "overrides-v2", Doc);
         extraction.AssertEdgeSet("Overrides", ("global::N.Derived.Do", "global::N.Base.Do"));
     }
 
@@ -229,8 +235,81 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Hides", "global::N.Derived.Do", "global::N.Base.Do");
-        AssertEdgeContract(edge, "Hides", Provenance.CompilerProved, "hides-v1", Doc);
+        AssertEdgeContract(edge, "Hides", Provenance.CompilerProved, "hides-v2", Doc);
         extraction.AssertEdgeSet("Hides", ("global::N.Derived.Do", "global::N.Base.Do"));
+    }
+
+    [Fact]
+    public async Task OverridesEdge_EventOverridesTheInheritedVirtualEvent()
+    {
+        // S01-F17: C# 15.8.5, an override event overrides the inherited virtual event, also when
+        // the direct base type does not declare it.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class A { public virtual event System.Action? Ev; }
+                                                public class B : A { }
+                                                public class C : B { public override event System.Action? Ev; }
+                                                """));
+
+        var edge = extraction.SingleEdge("Overrides", "global::N.C.Ev", "global::N.A.Ev");
+        AssertEdgeContract(edge, "Overrides", Provenance.CompilerProved, "overrides-v2", Doc);
+        extraction.AssertEdgeSet("Overrides", ("global::N.C.Ev", "global::N.A.Ev"));
+    }
+
+    [Fact]
+    public async Task HidesEdge_FollowsTheCSharpHidingRules()
+    {
+        // S01-F17, C# 7.7.2.3 (hiding through inheritance) and 7.6 (signatures): a member hides the
+        // inherited members with its name, also through a base type that does not declare them. A
+        // method hides a base method with the same signature (number of type parameters, parameter
+        // types and by-value or by-reference passing; method type parameters match by position)
+        // and every base member that is not a method. A field, an event and a nested type hide every
+        // base member with their name. A private base member is not inherited. B hides A.Gen, so C
+        // inherits B.Gen and hides it, not A.Gen.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class A
+                                                {
+                                                    public void Do() { }
+                                                    public void Sig(int x) { }
+                                                    public void Sig(ref int x) { }
+                                                    public void Gen() { }
+                                                    public void Gen<T>() { }
+                                                    public void G<T>(T x) { }
+                                                    public int F;
+                                                    public event System.Action? E;
+                                                    public class Nested { }
+                                                    public int Shared() => 0;
+                                                    public int Prop { get; set; }
+                                                    private void Own() { }
+                                                }
+                                                public class B : A { public new void Gen() { } }
+                                                public class C : B
+                                                {
+                                                    public new void Do() { }
+                                                    public new void Sig(int x) { }
+                                                    public new void Gen() { }
+                                                    public new void G<U>(U x) { }
+                                                    public new int F;
+                                                    public new event System.Action? E;
+                                                    public new class Nested { }
+                                                    public new int Shared;
+                                                    public new void Prop() { }
+                                                    public void Own() { }
+                                                }
+                                                """));
+
+        extraction.AssertDocIdEdgeSet("Hides",
+            ("M:N.C.Do", "M:N.A.Do"),
+            ("M:N.C.Sig(System.Int32)", "M:N.A.Sig(System.Int32)"),
+            ("M:N.B.Gen", "M:N.A.Gen"),
+            ("M:N.C.Gen", "M:N.B.Gen"),
+            ("M:N.C.G``1(``0)", "M:N.A.G``1(``0)"),
+            ("F:N.C.F", "F:N.A.F"),
+            ("E:N.C.E", "E:N.A.E"),
+            ("T:N.C.Nested", "T:N.A.Nested"),
+            ("F:N.C.Shared", "M:N.A.Shared"),
+            ("M:N.C.Prop", "P:N.A.Prop"));
     }
 
     [Fact]
@@ -363,7 +442,7 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("Returns", "global::N.Producer.Produce", "global::N.Result");
-        AssertEdgeContract(edge, "Returns", Provenance.CompilerProved, "returns-v1", Doc);
+        AssertEdgeContract(edge, "Returns", Provenance.CompilerProved, "returns-v2", Doc);
         extraction.AssertEdgeSet("Returns", ("global::N.Producer.Produce", "global::N.Result"));
     }
 
@@ -436,10 +515,15 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var method = extraction.SingleEdge("Declares", "global::N.Container", "global::N.Container.Method");
-        AssertEdgeContract(method, "Declares", Provenance.CompilerProved, "declares-v1", Doc);
+        AssertEdgeContract(method, "Declares", Provenance.CompilerProved, "declares-v2", Doc);
 
         var field = extraction.SingleEdge("Declares", "global::N.Container", "global::N.Container._field");
-        AssertEdgeContract(field, "Declares", Provenance.CompilerProved, "declares-v1", Doc);
+        AssertEdgeContract(field, "Declares", Provenance.CompilerProved, "declares-v2", Doc);
+
+        // D38: the implicit constructor has no declaring syntax, so Lurp does not store it.
+        extraction.AssertEdgeSet("Declares",
+            ("global::N.Container", "global::N.Container.Method"),
+            ("global::N.Container", "global::N.Container._field"));
     }
 
     [Fact]
@@ -479,6 +563,102 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         var invokeId = extraction.ResolveId("global::N.Handler.Invoke");
         Assert.DoesNotContain(extraction.Result.Edges,
             e => e.Kind == "References" && e.SourceSymbolId == invokeId);
+    }
+
+    [Fact]
+    public async Task CompilerMadeRecordMembers_HaveTheStructuralFactsOfWrittenMembers()
+    {
+        // D38, D126: a compiler-made member that Lurp stores has the structural facts of a written
+        // member. The C# rules for records synthesize Equals(R), Equals(object), GetHashCode,
+        // ToString, PrintMembers, the == and != operators, the clone method and Deconstruct, and the
+        // accessors of each positional property; in a derived record, Equals(Base), Equals(object),
+        // GetHashCode, ToString, PrintMembers and the clone method override the base record's members,
+        // and the clone method returns the derived record type. EqualityContract and the copy
+        // constructor have no declaring syntax, so Lurp does not store them and they have no fact.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public record RBase(int A);
+                                                public record RDer(int A, int B) : RBase(A);
+                                                """));
+
+        extraction.AssertDocIdEdgeSet("Declares",
+            ("T:N.RBase", "M:N.RBase.#ctor(System.Int32)"),
+            ("T:N.RBase", "P:N.RBase.A"),
+            ("T:N.RBase", "M:N.RBase.get_A"),
+            ("T:N.RBase", "M:N.RBase.set_A(System.Int32)"),
+            ("T:N.RBase", "M:N.RBase.{Clone}$"),
+            ("T:N.RBase", "M:N.RBase.Deconstruct(System.Int32@)"),
+            ("T:N.RBase", "M:N.RBase.Equals(System.Object)"),
+            ("T:N.RBase", "M:N.RBase.Equals(N.RBase)"),
+            ("T:N.RBase", "M:N.RBase.GetHashCode"),
+            ("T:N.RBase", "M:N.RBase.ToString"),
+            ("T:N.RBase", "M:N.RBase.PrintMembers(System.Text.StringBuilder)"),
+            ("T:N.RBase", "M:N.RBase.op_Equality(N.RBase,N.RBase)"),
+            ("T:N.RBase", "M:N.RBase.op_Inequality(N.RBase,N.RBase)"),
+            ("T:N.RDer", "M:N.RDer.#ctor(System.Int32,System.Int32)"),
+            ("T:N.RDer", "P:N.RDer.B"),
+            ("T:N.RDer", "M:N.RDer.get_B"),
+            ("T:N.RDer", "M:N.RDer.set_B(System.Int32)"),
+            ("T:N.RDer", "M:N.RDer.{Clone}$"),
+            ("T:N.RDer", "M:N.RDer.Deconstruct(System.Int32@,System.Int32@)"),
+            ("T:N.RDer", "M:N.RDer.Equals(System.Object)"),
+            ("T:N.RDer", "M:N.RDer.Equals(N.RBase)"),
+            ("T:N.RDer", "M:N.RDer.Equals(N.RDer)"),
+            ("T:N.RDer", "M:N.RDer.GetHashCode"),
+            ("T:N.RDer", "M:N.RDer.ToString"),
+            ("T:N.RDer", "M:N.RDer.PrintMembers(System.Text.StringBuilder)"),
+            ("T:N.RDer", "M:N.RDer.op_Equality(N.RDer,N.RDer)"),
+            ("T:N.RDer", "M:N.RDer.op_Inequality(N.RDer,N.RDer)"));
+        extraction.AssertDocIdEdgeSet("Overrides",
+            ("M:N.RDer.Equals(N.RBase)", "M:N.RBase.Equals(N.RBase)"),
+            ("M:N.RDer.Equals(System.Object)", "M:N.RBase.Equals(System.Object)"),
+            ("M:N.RDer.GetHashCode", "M:N.RBase.GetHashCode"),
+            ("M:N.RDer.ToString", "M:N.RBase.ToString"),
+            ("M:N.RDer.PrintMembers(System.Text.StringBuilder)", "M:N.RBase.PrintMembers(System.Text.StringBuilder)"),
+            ("M:N.RDer.{Clone}$", "M:N.RBase.{Clone}$"));
+        extraction.AssertDocIdEdgeSet("Returns",
+            ("M:N.RBase.{Clone}$", "T:N.RBase"),
+            ("M:N.RDer.{Clone}$", "T:N.RDer"));
+        extraction.AssertDocIdEdgeSet("References",
+            ("M:N.RBase.{Clone}$", "T:N.RBase"),
+            ("M:N.RBase.Equals(N.RBase)", "T:N.RBase"),
+            ("M:N.RBase.op_Equality(N.RBase,N.RBase)", "T:N.RBase"),
+            ("M:N.RBase.op_Inequality(N.RBase,N.RBase)", "T:N.RBase"),
+            ("M:N.RDer.{Clone}$", "T:N.RDer"),
+            ("M:N.RDer.Equals(N.RBase)", "T:N.RBase"),
+            ("M:N.RDer.Equals(N.RDer)", "T:N.RDer"),
+            ("M:N.RDer.op_Equality(N.RDer,N.RDer)", "T:N.RDer"),
+            ("M:N.RDer.op_Inequality(N.RDer,N.RDer)", "T:N.RDer"));
+
+        // D38: the location of a member without syntax of its own is the declaration of its type.
+        var clone = extraction.Result.Edges.Single(e => e.Kind == "Overrides" && e.SourceSymbolId.StartsWith("M:N.RDer.{Clone}$|", StringComparison.Ordinal));
+        AssertEdgeContract(clone, "Overrides", Provenance.CompilerProved, "overrides-v2", Doc);
+        Assert.Equal((2, 0), (clone.SourceStartLine, clone.SourceStartColumn));
+    }
+
+    [Fact]
+    public async Task DelegateType_OwnsItsSignatureAndDeclaresItsMembers()
+    {
+        // D23, D38: the delegate type owns the signature of its Invoke (Returns and References), and
+        // declares its four members (C# delegates: a constructor, Invoke, BeginInvoke and EndInvoke).
+        // The other members own no signature fact: their source types are the Invoke types.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class Payload { }
+                                                public class Result { }
+                                                public delegate Result Handler(Payload p);
+                                                """));
+
+        extraction.AssertDocIdEdgeSet("Declares",
+            ("T:N.Handler", "M:N.Handler.#ctor(System.Object,System.IntPtr)"),
+            ("T:N.Handler", "M:N.Handler.Invoke(N.Payload)"),
+            ("T:N.Handler", "M:N.Handler.BeginInvoke(N.Payload,System.AsyncCallback,System.Object)"),
+            ("T:N.Handler", "M:N.Handler.EndInvoke(System.IAsyncResult)"));
+        extraction.AssertDocIdEdgeSet("Returns", ("T:N.Handler", "T:N.Result"));
+        extraction.AssertDocIdEdgeSet("References", ("T:N.Handler", "T:N.Payload"), ("T:N.Handler", "T:N.Result"));
+
+        var returns = extraction.SingleEdge("Returns", "global::N.Handler", "global::N.Result");
+        AssertEdgeContract(returns, "Returns", Provenance.CompilerProved, "returns-v2", Doc);
     }
 
     [Fact]
@@ -696,8 +876,86 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("MayDispatchTo", "global::N.IService.Execute", "global::N.Service.Execute");
-        AssertEdgeContract(edge, "MayDispatchTo", Provenance.CompilerProved, "polymorphism-v1", Doc);
+        AssertEdgeContract(edge, "MayDispatchTo", Provenance.CompilerProved, "polymorphism-v2", Doc);
         extraction.AssertEdgeSet("MayDispatchTo", ("global::N.IService.Execute", "global::N.Service.Execute"));
+    }
+
+    [Fact]
+    public async Task MayDispatchToEdge_EveryAncestorReachesEveryDescendantOverride()
+    {
+        // D15: a call on the static type V1 can run V2.Do and V3.Do, so MayDispatchTo goes from
+        // every ancestor in an override chain to every descendant override (the sealed V3.Do is a
+        // descendant too). C#: the accessors of an overriding property override the base accessors;
+        // a field-like event's accessors have no syntax, so Lurp does not store them.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public class V0 { public virtual void Do() { } public virtual int P => 0; public virtual event System.Action? Ev; }
+                                                public class V1 : V0 { public override void Do() { } public override int P => 1; }
+                                                public class V2 : V1 { public override void Do() { } public override int P => 2; public override event System.Action? Ev; }
+                                                public sealed class V3 : V2 { public override void Do() { } }
+                                                """));
+
+        extraction.AssertEdgeSet("MayDispatchTo",
+            ("global::N.V0.Do", "global::N.V1.Do"),
+            ("global::N.V0.Do", "global::N.V2.Do"),
+            ("global::N.V0.Do", "global::N.V3.Do"),
+            ("global::N.V1.Do", "global::N.V2.Do"),
+            ("global::N.V1.Do", "global::N.V3.Do"),
+            ("global::N.V2.Do", "global::N.V3.Do"),
+            ("global::N.V0.P", "global::N.V1.P"),
+            ("global::N.V0.P", "global::N.V2.P"),
+            ("global::N.V1.P", "global::N.V2.P"),
+            ("global::N.V0.P.get", "global::N.V1.P.get"),
+            ("global::N.V0.P.get", "global::N.V2.P.get"),
+            ("global::N.V1.P.get", "global::N.V2.P.get"),
+            ("global::N.V0.Ev", "global::N.V2.Ev"));
+    }
+
+    [Fact]
+    public async Task MayDispatchToEdge_BaseRecordMembersReachTheDerivedRecordOverrides()
+    {
+        // D38, D15: in a derived record, Equals(Base), Equals(object), GetHashCode, ToString,
+        // PrintMembers and the clone method override the base record's members (C# records), so a
+        // call on the base record can run them.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public record RBase(int A);
+                                                public record RDer(int A, int B) : RBase(A);
+                                                """));
+
+        extraction.AssertDocIdEdgeSet("MayDispatchTo",
+            ("M:N.RBase.Equals(N.RBase)", "M:N.RDer.Equals(N.RBase)"),
+            ("M:N.RBase.Equals(System.Object)", "M:N.RDer.Equals(System.Object)"),
+            ("M:N.RBase.GetHashCode", "M:N.RDer.GetHashCode"),
+            ("M:N.RBase.ToString", "M:N.RDer.ToString"),
+            ("M:N.RBase.PrintMembers(System.Text.StringBuilder)", "M:N.RDer.PrintMembers(System.Text.StringBuilder)"),
+            ("M:N.RBase.{Clone}$", "M:N.RDer.{Clone}$"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MayDispatchToEdge_ProvenanceDoesNotDependOnTypeOrder(bool derivedFirst)
+    {
+        // S01-F15: Base declares Run and implements IFoo with it, so (IFoo.Run, Base.Run) is
+        // compiler_proved; the derived type that inherits it does not weaken the pair. Plain.Run
+        // implements IFoo only through Late, a derived type, so (IFoo.Run, Plain.Run) is possible
+        // (class comment of InterfaceDispatchExtractor, slice 1 claim S01-C8).
+        const string derived = "public class Derived : Base { }";
+        const string @base = "public class Base : IFoo { public void Run() { } }";
+        var extraction = await ExtractAsync(One($$"""
+                                                  namespace N;
+                                                  public interface IFoo { void Run(); }
+                                                  {{(derivedFirst ? derived : @base)}}
+                                                  {{(derivedFirst ? @base : derived)}}
+                                                  public class Plain { public void Run() { } }
+                                                  public class Late : Plain, IFoo { }
+                                                  """));
+
+        extraction.AssertEdgeSet("MayDispatchTo", ("global::N.IFoo.Run", "global::N.Base.Run"));
+        var possible = Assert.Single(extraction.EdgesOf("MayDispatchTo", Provenance.Possible));
+        Assert.Equal(extraction.ResolveId("global::N.IFoo.Run"), possible.SourceSymbolId);
+        Assert.Equal(extraction.ResolveId("global::N.Plain.Run"), possible.TargetSymbolId);
     }
 
     [Fact]
@@ -714,12 +972,70 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 """));
 
         var edge = extraction.SingleEdge("StaticallyCalls", "global::N.Handler.Handle", "global::N.IRepo.Save");
-        AssertEdgeContract(edge, "StaticallyCalls", Provenance.CompilerProved, "statically-calls-v2", Doc);
+        AssertEdgeContract(edge, "StaticallyCalls", Provenance.CompilerProved, "operation-shapes-v2", Doc);
 
         extraction.AssertEdgeSet("StaticallyCalls", ("global::N.Handler.Handle", "global::N.IRepo.Save"));
 
         // The same call site also carries a plain Calls edge to the interface method.
         extraction.AssertEdgeSet("Calls", ("global::N.Handler.Handle", "global::N.IRepo.Save"));
+    }
+
+    [Fact]
+    public async Task StaticallyCallsEdge_EveryAccessThatCanDispatch()
+    {
+        // D22, D15: an access whose target can dispatch at run time is a StaticallyCalls fact: a
+        // virtual, abstract or overriding member (an interface member included) that is not sealed and
+        // whose type is not sealed. That covers invocations, property and indexer accesses, an event
+        // += or -=, and the implicit calls and reads of foreach. A base. access calls the base member
+        // without dispatch (C# 12.8.15). A raise of a field-like event inside its class reads the
+        // event's field and runs no accessor. A member of a sealed class (S.Do) and a delegate's Invoke
+        // cannot dispatch. A method group is not a call. A static abstract interface member called
+        // through a type parameter dispatches on the type argument.
+        var extraction = await ExtractAsync(One("""
+                                                namespace N;
+                                                public interface IRepo { void Save(); int Count { get; } }
+                                                public interface IFactory<T> where T : IFactory<T> { static abstract int Make(); }
+                                                public class V0
+                                                {
+                                                    public virtual void Do() { }
+                                                    public virtual int P { get; set; }
+                                                    public virtual int this[int i] => i;
+                                                    public virtual event System.Action? Ev;
+                                                    public void Plain() { }
+                                                    public void Raise() => Ev?.Invoke();
+                                                }
+                                                public class V1 : V0
+                                                {
+                                                    public override void Do() { base.Do(); }
+                                                    public override int P { get => base.P; set { } }
+                                                }
+                                                public sealed class S : V1 { public override void Do() { } }
+                                                public delegate void Del();
+                                                public class Seq { public virtual Cursor GetEnumerator() => new(); }
+                                                public class Cursor { public virtual bool MoveNext() => false; public virtual int Current => 0; }
+                                                public class Use
+                                                {
+                                                    public void Invoke(V1 v, S s, IRepo r, Del d) { v.Do(); s.Do(); r.Save(); v.Plain(); d(); }
+                                                    public int Access(V0 v, IRepo r) { v.P = 1; return v.P + v[0] + r.Count; }
+                                                    public void Subscribe(V0 v) { v.Ev += Handler; }
+                                                    public System.Action Group(V0 v) => v.Do;
+                                                    public void Loop(Seq seq) { foreach (var x in seq) { } }
+                                                    public int Generic<T>() where T : IFactory<T> => T.Make();
+                                                    private void Handler() { }
+                                                }
+                                                """));
+
+        extraction.AssertEdgeSet("StaticallyCalls",
+            ("global::N.Use.Invoke", "global::N.V1.Do"),
+            ("global::N.Use.Invoke", "global::N.IRepo.Save"),
+            ("global::N.Use.Access", "global::N.V0.P"),
+            ("global::N.Use.Access", "global::N.V0.this"),
+            ("global::N.Use.Access", "global::N.IRepo.Count"),
+            ("global::N.Use.Subscribe", "global::N.V0.Ev"),
+            ("global::N.Use.Loop", "global::N.Seq.GetEnumerator"),
+            ("global::N.Use.Loop", "global::N.Cursor.MoveNext"),
+            ("global::N.Use.Loop", "global::N.Cursor.Current"),
+            ("global::N.Use.Generic<T>", "global::N.IFactory<T>.Make"));
     }
 
     [Fact]
@@ -772,9 +1088,14 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         extraction.AssertEdgeSet("Constructs", ("global::N.Calculator.Create", "global::N.Calculator"));
         extraction.AssertEdgeSet("Returns", ("global::N.Calculator.Create", "global::N.Calculator"));
         extraction.AssertEdgeSet("Calls");
-        foreach (var member in new[] { "_total", "Total", "Total.get", "Add", "Create", "Validate" })
-            extraction.SingleEdge("Declares", "global::N.Calculator", "global::N.Calculator." + member);
-        extraction.SingleEdge("Declares", "global::N.ICalculator", "global::N.ICalculator.Add");
+        extraction.AssertEdgeSet("Declares",
+            ("global::N.Calculator", "global::N.Calculator._total"),
+            ("global::N.Calculator", "global::N.Calculator.Total"),
+            ("global::N.Calculator", "global::N.Calculator.Total.get"),
+            ("global::N.Calculator", "global::N.Calculator.Add"),
+            ("global::N.Calculator", "global::N.Calculator.Create"),
+            ("global::N.Calculator", "global::N.Calculator.Validate"),
+            ("global::N.ICalculator", "global::N.ICalculator.Add"));
 
         // The only Calls edge targets the external ArgumentNullException constructor.
         var calls = Assert.Single(extraction.EdgesOf("Calls"));

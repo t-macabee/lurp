@@ -73,24 +73,18 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
 
     private void CollectMemberReferenceEdges(ISymbol member, List<EdgeRecord> edges)
     {
-        // A member that does not name its type in source adds no edge. Compiler-synthesized
-        // backing fields (auto-properties, record positional properties) share their declaring
-        // syntax location with the property that owns them : counting both produces exact-duplicate
-        // edges at the same source location for one logical fact, and an accessor or an enum
-        // constant names no type in source either : the property or event, and the enum type,
-        // carry their types. Exception, checked first : a delegate's Invoke is implicit, but the
-        // delegate declaration names the return type, so the delegate type owns its own signature.
-        var sourceSymbol = member;
-        if (member is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke })
-        {
-            sourceSymbol = member.ContainingType;
-        }
-        else if (member.IsImplicitlyDeclared
+        // D38: a compiler-made member that Lurp stores has the signature facts of a written
+        // member (ExtractionUtils.HasStructuralFacts). An accessor and an enum constant add no
+        // edge: the property or event, and the enum type, carry their types. A delegate type
+        // owns the signature of its Invoke (ExtractionUtils.SignatureOwner).
+        if (!ExtractionUtils.HasStructuralFacts(member)
             || member is IMethodSymbol { AssociatedSymbol: not null }
             || member is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
-        {
             return;
-        }
+
+        var sourceSymbol = member is IMethodSymbol signatureMethod ? ExtractionUtils.SignatureOwner(signatureMethod) : member;
+        if (sourceSymbol is null)
+            return;
 
         var referencedType = member switch
         {
@@ -105,7 +99,8 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         if (memberId is null)
             return;
 
-        if (member is IMethodSymbol { MethodKind: not MethodKind.DelegateInvoke })
+        // D14 reads written constraint syntax; a compiler-made member writes none.
+        if (member is IMethodSymbol { IsImplicitlyDeclared: false })
             AddWrittenSignatureReferences(memberId, member, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(member), edges);
 
         if (referencedType is null)

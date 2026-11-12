@@ -11,8 +11,9 @@ namespace Lurp.Workspace;
 ///     For each concrete type, iterate over AllInterfaces and their members.
 ///     Use Roslyn's FindImplementationForInterfaceMember to resolve the
 ///     effective implementation (which may be inherited from a base type).
-///     Then classify provenance: "compiler_proved" if the implementing member
-///     is declared directly on the type itself, "possible" if inherited.
+///     Then classify provenance: "compiler_proved" if the type that declares the
+///     implementing member maps the interface member to it itself, "possible" if
+///     only a derived type maps it to an inherited member (S01-F15).
 ///     When the interface is a constructed generic (e.g. IRepository&lt;Customer&gt;),
 ///     the concrete type arguments are captured as JSON in the edge's
 ///     TypeArgumentsJson field so consumers can distinguish dispatch targets
@@ -67,15 +68,17 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
         if (!seen.Add(key))
             return;
 
-        // If the implementing member is declared on *this* type directly
-        // (rather than inherited from a base), the implementation candidate is
-        // compiler-established via FindImplementationForInterfaceMember:
-        // Roslyn proves this member implements the interface member. Inherited
-        // implementations are merely possible. Either way the edge is a
-        // structural fact about the graph, not a per-call-site claim about
-        // which implementation a call selects at runtime : composition into a
-        // call-site claim is graded separately by the capsule tier builders.
-        var isDirect = SymbolEqualityComparer.Default.Equals(implMember.ContainingType, type);
+        // S01-F15: the provenance belongs to the pair (interface member, implementation), not
+        // to the type that this loop visits, so it does not depend on the order of the types or
+        // on the extraction scope. The pair is compiler-established when the type that declares
+        // the implementing member maps the interface member to it: Roslyn proves that this member
+        // implements the interface member. When only a derived type maps the member to an
+        // inherited implementation, the pair is merely possible. Either way the edge is a
+        // structural fact about the graph, not a per-call-site claim about which implementation
+        // a call selects at runtime : composition into a call-site claim is graded separately by
+        // the capsule tier builders.
+        var isDirect = SymbolEqualityComparer.Default.Equals(
+            implMember.ContainingType.FindImplementationForInterfaceMember(member), implMember);
         var provenance = isDirect ? Provenance.CompilerProved : Provenance.Possible;
 
         edges.Add(context.MakeMayDispatchEdge(ifaceMemberId, implMemberId, implMember, provenance, typeArgumentsJson));

@@ -13,32 +13,29 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
         foreach (var typeSymbol in context.GetAllNamedTypes())
             foreach (var member in typeSymbol.GetMembers())
             {
-                if (member is not IMethodSymbol method)
+                if (member is not IMethodSymbol method || !ExtractionUtils.HasStructuralFacts(method))
                     continue;
 
-                if (member.IsImplicitlyDeclared)
-                    continue;
-
-                if (!context.IsMemberInScope(method))
+                // D23: a delegate type returns the return type of its Invoke.
+                if (ExtractionUtils.SignatureOwner(method) is not { } owner || !context.IsMemberInScope(owner))
                     continue;
 
                 if (method.ReturnsVoid || method.ReturnType == null)
                     continue;
 
-                var methodId = context.MakeSymbolId(method);
+                var ownerId = context.MakeSymbolId(owner);
                 var returnTypeId = context.MakeSymbolId(method.ReturnType);
-                if (methodId == null || returnTypeId == null)
+                if (ownerId == null || returnTypeId == null)
                     continue;
 
-                var methodSyntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(method);
-                context.RecordFilteredExternal(method.ReturnType, methodSyntax);
+                context.RecordFilteredExternal(method.ReturnType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(owner));
 
-                var key = (methodId, returnTypeId, nameof(EdgeKind.Returns));
+                var key = (ownerId, returnTypeId, nameof(EdgeKind.Returns));
                 if (!seen.Add(key))
                     continue;
 
-                var loc = context.GetMemberSourceLocation(method);
-                edges.Add(context.MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns),
+                var loc = context.GetMemberSourceLocation(owner);
+                edges.Add(context.MakeEdge(ownerId, returnTypeId, nameof(EdgeKind.Returns),
                     ExtractorConstants.ReturnsExtractor, loc));
             }
 

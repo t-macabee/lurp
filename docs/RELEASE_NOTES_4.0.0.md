@@ -44,8 +44,7 @@ index after the upgrade. Old snapshots stay until they are pruned.
   `StaticallyCalls` fact for a virtual member). No extractor drops an edge from a
   member to itself. The readers ignore such an edge: a member whose only incoming
   edges come from itself stays a dead-code candidate, and a capsule does not list
-  the anchor as its own callee. The `StaticallyCalls` label is
-  `statically-calls-v2`.
+  the anchor as its own callee.
 - Every static member access names its receiver type as a `References` fact:
   a method group, a field, a property, an event and a constant, not only an
   invocation (`Color.Red` references `Color`). An unqualified access names no
@@ -74,6 +73,41 @@ index after the upgrade. Old snapshots stay until they are pruned.
 - A lambda or anonymous method references the type of each parameter and its
   return type, written or inferred: `Run(q => 1)` references the type of `q`
   like `Run((Q q) => 1)`. Before, only written types counted.
+- A compiler-made member that Lurp stores (a synthesized member of a record, an
+  accessor of a positional record property, a member of a delegate) has the
+  structural facts of a written member: `Declares`, `Overrides`, `Returns` and
+  the `References` of its signature. A delegate type has a `Returns` fact to its
+  return type. A compiler-made member that Lurp does not store (an implicit
+  constructor, a backing field) has no fact. The labels are `declares-v2`,
+  `overrides-v2` and `returns-v2`.
+- The provenance of an interface `MayDispatchTo` fact no longer depends on the
+  order of the types or on the scope of an incremental run. It is
+  `compiler_proved` when the type that declares the implementing member
+  implements the interface member with it, and `possible` when only a derived
+  type maps the member to an inherited implementation. The `Polymorphism` label
+  is `polymorphism-v2`.
+- `MayDispatchTo` goes from every member of an override chain to every override
+  below it, not only from the root. A call on `V1.Do` can reach `V2.Do`, which
+  overrides `V1.Do`. A call on a base record reaches the synthesized overrides of
+  a derived record (`Equals`, `ToString`, `PrintMembers`, the clone method).
+- An override event has an `Overrides` fact to the event it overrides. `Hides`
+  follows the C# rules of hiding through inheritance: a member hides an
+  inherited member also when the direct base type does not declare it; a method
+  hides only a base method with the same signature (the number of type
+  parameters and the type and the by-value or by-reference passing of each
+  parameter) and every base member that is not a method; a field, an event and a
+  nested type hide every base member with their name. The `Hides` label is
+  `hides-v2`.
+- The operation pass also writes `StaticallyCalls`, the marker of an access
+  whose target can dispatch at run time: a virtual, abstract or overriding member
+  (an interface member included) that is not sealed and whose type is not
+  sealed. The marker covers invocations, property and indexer accesses, an event
+  `+=` or `-=`, and the implicit calls and reads (for example `foreach`), in
+  every member body and initializer. Before, only an explicit invocation in a
+  method body was marked, a call on an override was not marked, and a `base.`
+  call and a delegate invocation were marked although they cannot dispatch. The
+  `StaticallyCalls` label is `operation-shapes-v2`; the label
+  `statically-calls-v2` and the extractor row `StaticDispatch` are gone.
 
 ## Versions
 

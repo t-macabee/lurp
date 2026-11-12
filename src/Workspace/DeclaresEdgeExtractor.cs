@@ -22,7 +22,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (member is INamedTypeSymbol)
                     continue;
 
-                if (member.IsImplicitlyDeclared)
+                if (!ExtractionUtils.HasStructuralFacts(member))
                     continue;
 
                 if (!context.IsMemberInScope(member))
@@ -40,10 +40,9 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
 
                 var loc = context.GetMemberSourceLocation(member);
 
-                // An edge without a resolvable document path (e.g. a
-                // compiler-synthesized member whose syntax reference has no
-                // path) is useless for incremental scoping and forces the
-                // CrossDocumentEdgeRefresher's expensive fallback.
+                // An edge without a resolvable document path (a declaration in a
+                // tree with no path) is useless for incremental scoping and forces
+                // the CrossDocumentEdgeRefresher's expensive fallback.
                 if (loc == null)
                     continue;
 

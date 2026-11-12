@@ -53,6 +53,24 @@ public sealed class BindingSiteCountTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task CompilerMadeRecordMembers_AddNoSite()
+    {
+        // D38: the facts of compiler-made members must not raise filtered_external. Two sites:
+        // the record declaration (its compiler-made interface IEquatable<R>, and every member that
+        // Roslyn declares there) and the positional parameter 'int A' (the type of property A and
+        // of its accessors).
+        var extraction = await ExtractAsync(new Dictionary<string, string>
+        {
+            [Doc] = """
+                    namespace N;
+                    public sealed record R(int A);
+                    """
+        });
+
+        Assert.Equal(2, FilteredExternal(extraction));
+    }
+
+    [Fact]
     public async Task DynamicObjectCreation_ConstructsTheTypeAndIsOneLateBoundSite()
     {
         // C#: in 'new Late(d)' with a dynamic argument the created type is fixed at compile time;

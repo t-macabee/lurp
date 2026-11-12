@@ -103,6 +103,72 @@ internal static class ExtractionUtils
     }
 
     /// <summary>
+    ///     D38: true when the structural extractors write the facts of <paramref name="member" />.
+    ///     A written member has them. A compiler-made member has them when Lurp stores it, that is,
+    ///     when Roslyn gives it declaring syntax: the synthesized members of a record, the accessors
+    ///     of a positional record property and the members of a delegate. A compiler-made member
+    ///     without syntax (an implicit constructor, a record copy constructor and EqualityContract,
+    ///     a backing field, the accessors of a field-like event) is not stored and has no fact. The
+    ///     implementation of a C# 14 extension block member has no fact of its own: its block member
+    ///     writes the facts under the same symbol id (SymbolIdFactory).
+    /// </summary>
+    internal static bool HasStructuralFacts(ISymbol member)
+    {
+        return !member.IsImplicitlyDeclared ||
+               (!member.DeclaringSyntaxReferences.IsEmpty && !IsExtensionImplementation(member));
+    }
+
+    /// <summary>
+    ///     The member that <paramref name="member" /> overrides (a method, a property or an event),
+    ///     or null when it overrides none.
+    /// </summary>
+    internal static ISymbol? OverriddenMember(ISymbol member)
+    {
+        return member switch
+        {
+            IMethodSymbol { IsOverride: true } method => method.OverriddenMethod,
+            IPropertySymbol { IsOverride: true } property => property.OverriddenProperty,
+            IEventSymbol { IsOverride: true } eventSymbol => eventSymbol.OverriddenEvent,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    ///     D15, D22: a dispatch point, that is, a member whose run-time target depends on the
+    ///     run-time type: a virtual, abstract or overriding member (an interface member included)
+    ///     that is not sealed and whose type is not sealed. A struct, a delegate and a sealed class
+    ///     have no derived type, so their members do not dispatch.
+    /// </summary>
+    internal static bool IsDispatchPoint(ISymbol member)
+    {
+        return (member.IsVirtual || member.IsAbstract || member.IsOverride) &&
+               !member.IsSealed &&
+               member.ContainingType is { IsSealed: false };
+    }
+
+    private static bool IsExtensionImplementation(ISymbol member)
+    {
+        return member is IMethodSymbol { IsStatic: true, ContainingType: { } outer } method &&
+               outer.GetTypeMembers().Any(block => block.IsExtension &&
+                   block.GetMembers().OfType<IMethodSymbol>().Any(blockMember =>
+                       SymbolEqualityComparer.Default.Equals(blockMember.AssociatedExtensionImplementation, method)));
+    }
+
+    /// <summary>
+    ///     D8, D23: the symbol that owns the signature facts (<c>Returns</c> and the parameter and
+    ///     return-type <c>References</c>) of <paramref name="method" />: the method, or the delegate
+    ///     type for the <c>Invoke</c> of a delegate. The other members of a delegate (constructor,
+    ///     <c>BeginInvoke</c>, <c>EndInvoke</c>) own no signature fact: the source types of their
+    ///     signatures are the <c>Invoke</c> types, which the delegate type owns.
+    /// </summary>
+    internal static ISymbol? SignatureOwner(IMethodSymbol method)
+    {
+        if (method.ContainingType is not { TypeKind: TypeKind.Delegate } delegateType)
+            return method;
+        return method.MethodKind == MethodKind.DelegateInvoke ? delegateType : null;
+    }
+
+    /// <summary>
     ///     True when <paramref name="syntaxTree" /> falls inside the extraction scope.
     ///     A null <paramref name="scopeDocuments" /> means "whole compilation"; a tree
     ///     with no file path has no document to scope by and stays in scope.
@@ -136,14 +202,13 @@ internal static class ExtractionUtils
     /// <summary>
     ///     Every method-like declaration (methods, constructors, property and event accessors, operators,
     ///     conversion operators, destructors) owned by the given types, paired with its
-    ///     syntax node. When <paramref name="inScope" /> is provided, declarations whose
-    ///     declaring syntax tree is out of scope are skipped; a null predicate leaves
-    ///     every declaration in. A partial method is yielded for both its definition and
-    ///     its implementation part.
+    ///     syntax node. Declarations whose declaring syntax tree is out of scope
+    ///     (<paramref name="inScope" />) are skipped. A partial method is yielded for both
+    ///     its definition and its implementation part.
     /// </summary>
     internal static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> EnumerateMethodDeclarations(
         IEnumerable<INamedTypeSymbol> types,
-        Func<SyntaxTree, bool>? inScope = null)
+        Func<SyntaxTree, bool> inScope)
     {
         foreach (var typeSymbol in types)
             foreach (var member in typeSymbol.GetMembers())
@@ -154,7 +219,7 @@ internal static class ExtractionUtils
                         foreach (var part in MethodParts(method))
                         foreach (var syntaxRef in part.DeclaringSyntaxReferences)
                         {
-                            if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                            if (!inScope(syntaxRef.SyntaxTree))
                                 continue;
                             var syntax = syntaxRef.GetSyntax();
                             switch (syntax)
@@ -190,7 +255,7 @@ internal static class ExtractionUtils
                         {
                             foreach (var syntaxRef in property.DeclaringSyntaxReferences)
                             {
-                                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                                if (!inScope(syntaxRef.SyntaxTree))
                                     continue;
                                 switch (syntaxRef.GetSyntax())
                                 {
@@ -220,7 +285,7 @@ internal static class ExtractionUtils
     /// </summary>
     private static IEnumerable<(IMethodSymbol method, CSharpSyntaxNode syntax)> AccessorDeclarations(
         IEnumerable<IMethodSymbol?> accessors,
-        Func<SyntaxTree, bool>? inScope)
+        Func<SyntaxTree, bool> inScope)
     {
         foreach (var accessor in accessors)
         {
@@ -229,7 +294,7 @@ internal static class ExtractionUtils
 
             foreach (var syntaxRef in accessor.DeclaringSyntaxReferences)
             {
-                if (inScope != null && !inScope(syntaxRef.SyntaxTree))
+                if (!inScope(syntaxRef.SyntaxTree))
                     continue;
                 if (syntaxRef.GetSyntax() is AccessorDeclarationSyntax accessorDeclaration)
                     yield return (accessor, accessorDeclaration);
@@ -243,21 +308,5 @@ internal static class ExtractionUtils
         if (method.PartialImplementationPart is { } implementation &&
             !SymbolEqualityComparer.Default.Equals(implementation, method))
             yield return implementation;
-    }
-
-    internal static SyntaxNode? GetMethodBody(CSharpSyntaxNode node)
-    {
-        return node switch
-        {
-            MethodDeclarationSyntax m => m.Body ?? (SyntaxNode?)m.ExpressionBody,
-            ConstructorDeclarationSyntax c => c.Body ?? (SyntaxNode?)c.ExpressionBody,
-            AccessorDeclarationSyntax a => a.Body ?? (SyntaxNode?)a.ExpressionBody,
-            OperatorDeclarationSyntax o => o.Body ?? (SyntaxNode?)o.ExpressionBody,
-            ConversionOperatorDeclarationSyntax co => co.Body ?? (SyntaxNode?)co.ExpressionBody,
-            DestructorDeclarationSyntax d => d.Body ?? (SyntaxNode?)d.ExpressionBody,
-            PropertyDeclarationSyntax p => p.ExpressionBody,
-            IndexerDeclarationSyntax i => i.ExpressionBody,
-            _ => null
-        };
     }
 }

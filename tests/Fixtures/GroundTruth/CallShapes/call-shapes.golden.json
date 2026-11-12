@@ -39,10 +39,11 @@
     "3. MethodGroupRef: a method group that converts to a delegate is a MethodGroupRef fact. The handler of an event += and of an event -= is such a conversion.",
     "4. Reads and Writes: '=', an out argument and a deconstruction or tuple target are writes. A compound assignment, ??=, ++, --, a ref argument and a ref local or ref return alias are a read and a write. Every other use (also an in argument) is a read. An event: += and -= are writes; every other use (for example a raise) is a read. An indexer access reads or writes the indexer property.",
     "5. Owner (the source of a fact): the member that runs the code. An accessor body (also an expression-bodied property or indexer) is owned by the accessor method. A field or property initializer is owned by the field or property. The arguments of a primary-constructor base list are owned by the primary constructor. A local function, a lambda and a query clause are owned by the member that contains them. A parameter default value is owned by the method (an indexer parameter: the indexer property; a delegate parameter: the delegate type). An enum member value is owned by the enum member. A field-like event initializer is owned by the event. An attribute argument is owned by the attributed member (a type attribute: the type; a parameter or return-value attribute: its method).",
-    "6. References from signatures: each source type named in a member signature (the return type, the parameter types, the type of a property, field or event, with their type arguments, array elements and function-pointer types) is a References fact from that member. A delegate type owns its own signature. An accessor and an enum member add no signature fact of their own. A compiler-made member that Lurp stores gets the same signature facts as a written member. A type argument in a base list and each type in a generic constraint are References facts from the declaring type (a method constraint: from the method).",
+    "6. References from signatures: each source type named in a member signature (the return type, the parameter types, the type of a property, field or event, with their type arguments, array elements and function-pointer types) is a References fact from that member. A delegate type owns its own signature, its Returns fact included (D23). An accessor and an enum member add no signature fact of their own. A compiler-made member that Lurp stores gets the same signature facts as a written member. A type argument in a base list and each type in a generic constraint are References facts from the declaring type (a method constraint: from the method).",
     "7. References from bodies: each source type named in a body is a References fact from the owner. This includes the receiver type of a static member access (an invocation, a method group, a field, a property, an event or a constant), a local declaration (written or inferred type, also an implicitly typed lambda parameter), the return type of a lambda or anonymous method (written or inferred), is and type patterns, casts, default(T), sizeof, array creation, catch types and method type arguments. An object creation gives a Constructs fact, not a References fact. typeof gives ReflectionTypeRef, which this list does not compare.",
     "8. C# 14 extension blocks: a call to a block method targets the implementation method on the outer static class. A read or write of a block property targets the block property. The receiver type of the block is a References fact from each implementation member.",
-    "9. using and await using: the target is the member that implements IDisposable.Dispose (IAsyncDisposable.DisposeAsync) on the static type of the resource. A ref struct uses its own Dispose pattern method. For a type parameter, its effective base class decides. A nullable value type uses its underlying type. When the target is an interface method outside the fixture, or the resource is dynamic, there is no fact."
+    "9. using and await using: the target is the member that implements IDisposable.Dispose (IAsyncDisposable.DisposeAsync) on the static type of the resource. A ref struct uses its own Dispose pattern method. For a type parameter, its effective base class decides. A nullable value type uses its underlying type. When the target is an interface method outside the fixture, or the resource is dynamic, there is no fact.",
+    "10. StaticallyCalls (not compared here; GoldenEdgeTests covers it): an access whose target can dispatch at run time is also a StaticallyCalls fact from the owner (D22). The target can dispatch when it is virtual, abstract or an override (an interface member included), is not sealed, and its type is not sealed. The accesses are an invocation, a property or indexer access, an event += or -=, and the implicit calls and reads of rule 1. A base. access and a method group are not StaticallyCalls facts."
   ],
   "facts": [
     {
@@ -2347,12 +2348,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRecord",
       "basis": "convention:D38",
-      "reason": "Compiler-made record member: parameter type T:CallShapes.Core.ShapeRecord.",
-      "pending": {
-        "stage": "P2-S05",
-        "tracking": "S01-F37",
-        "reason": "the extractors skip implicitly declared members"
-      }
+      "reason": "Compiler-made record member: parameter type T:CallShapes.Core.ShapeRecord."
     },
     {
       "id": "gt-295",
@@ -2360,12 +2356,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRecord",
       "basis": "convention:D38",
-      "reason": "Compiler-made record operator: parameter type T:CallShapes.Core.ShapeRecord.",
-      "pending": {
-        "stage": "P2-S05",
-        "tracking": "S01-F37",
-        "reason": "the extractors skip implicitly declared members"
-      }
+      "reason": "Compiler-made record operator: parameter type T:CallShapes.Core.ShapeRecord."
     },
     {
       "id": "gt-296",
@@ -2373,12 +2364,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRecord",
       "basis": "convention:D38",
-      "reason": "Compiler-made record operator: parameter type T:CallShapes.Core.ShapeRecord.",
-      "pending": {
-        "stage": "P2-S05",
-        "tracking": "S01-F37",
-        "reason": "the extractors skip implicitly declared members"
-      }
+      "reason": "Compiler-made record operator: parameter type T:CallShapes.Core.ShapeRecord."
     },
     {
       "id": "gt-297",
@@ -2386,12 +2372,7 @@
       "kind": "References",
       "target": "T:CallShapes.Core.ShapeRecord",
       "basis": "convention:D126",
-      "reason": "Compiler-made record clone method: return type T:CallShapes.Core.ShapeRecord.",
-      "pending": {
-        "stage": "P2-S05",
-        "tracking": "S01-F37",
-        "reason": "the extractors skip implicitly declared members"
-      }
+      "reason": "Compiler-made record clone method: return type T:CallShapes.Core.ShapeRecord."
     },
     {
       "id": "gt-298",

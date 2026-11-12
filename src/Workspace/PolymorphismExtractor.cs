@@ -3,27 +3,23 @@ using Microsoft.CodeAnalysis;
 namespace Lurp.Workspace;
 
 /// <summary>
-///     Extracts polymorphism-related edges:
-///     1. may_dispatch_to  : from an interface member (or virtual root) to its
-///     concrete implementations / overrides.
-///     2. statically_calls : from a calling method to the interface/abstract/virtual
-///     member it invokes (the "dispatch point").
+///     Extracts may_dispatch_to edges: from an interface member to each implementation
+///     (<see cref="InterfaceDispatchExtractor" />) and from each member of an override
+///     chain to each override below it (<see cref="VirtualOverrideExtractor" />, D15).
 ///     Provenance on may_dispatch_to:
-///     - "compiler_proved"   : the implementing member is directly declared on the
-///     type (not inherited through a base), or the override
-///     is reachable through a known virtual-chain root.
-///     - "possible"          : the implementation is inherited from a base type;
-///     it is a valid dispatch target but a future re-implementation
-///     in a derived type could shadow it.
+///     - "compiler_proved"   : the type that declares the implementing member maps
+///     the interface member to it, or the override is a descendant
+///     of the dispatch point in its override chain.
+///     - "possible"          : only a derived type maps the interface member to an
+///     inherited implementation; it is a valid dispatch target but
+///     a future re-implementation in a derived type could shadow it.
 ///     - "framework_derived" : (NOT emitted here) emitted by DependencyInjectionAdapter
 ///     as a separate may_dispatch_to edge when DI registration
 ///     evidence narrows the candidate set.  See the adapter
 ///     for details.
-///     Note: MemberEdgeExtractor already emits Calls edges for *all* invocations
-///     (including dispatch-point calls).  The statically_calls edge is an additional
-///     marker that identifies *which* call sites target a polymorphic dispatch point,
-///     enabling graph traversal to follow the call → interface member → implementation
-///     chain.
+///     The StaticallyCalls marker of a call site that targets a dispatch point is written
+///     by the member-body pass (<see cref="OperationShapeExtractor" />, D22), so graph
+///     traversal can follow the call → dispatch point → implementation chain.
 /// </summary>
 public sealed class PolymorphismExtractor
 {
@@ -45,7 +41,6 @@ public sealed class PolymorphismExtractor
         var edges = new List<EdgeRecord>();
         edges.AddRange(new InterfaceDispatchExtractor(_context).Extract(allTypes));
         edges.AddRange(new VirtualOverrideExtractor(_context).Extract(allTypes));
-        edges.AddRange(new StaticDispatchCallExtractor(_context).Extract(allTypes));
         return edges;
     }
 }
