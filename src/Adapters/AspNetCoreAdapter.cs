@@ -9,20 +9,13 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
     public string Name => "ASP.NET Core";
     public string Version => AdapterVersion;
-    public string Description => "ASP.NET Core framework edges (controller actions, middleware)";
+    public string Description => "ASP.NET Core controller action routes";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
-        var compilation = context.Compilation;
-        var snapshotId = context.SnapshotId;
-        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
-        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, Version, edges, seen, locationResolver);
 
-        foreach (var type in allTypes)
+        foreach (var type in context.GetAllNamedTypes())
         {
             if (!IsController(type))
                 continue;
@@ -30,7 +23,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!context.IsSymbolInScope(type))
                 continue;
 
-            var controllerId = SymbolIdFactory.Make(type, assemblyIdentity);
+            var controllerId = context.MakeSymbolId(type);
             if (controllerId == null)
                 continue;
 
@@ -39,74 +32,56 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
                 if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method || !IsAction(type, method))
                     continue;
 
-                ProcessControllerAction(method, controllerId, ctx);
+                ProcessControllerAction(method, controllerId, context, edges);
             }
         }
 
         return edges;
     }
 
-    private void ProcessControllerAction(IMethodSymbol method, string controllerId, ExtractionContext ctx)
+    private static void ProcessControllerAction(IMethodSymbol method, string controllerId, AdapterExtractionContext context, List<EdgeRecord> edges)
     {
-        var methodId = SymbolIdFactory.Make(method, ctx.AssemblyIdentity);
+        var methodId = context.MakeSymbolId(method);
         if (methodId == null)
             return;
 
         // All edges from this action are anchored to the action method declaration
-        var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(method);
-        var loc = new EdgeLocation(path, sl, sc, el, ec, ctx.LocationResolver.IsGenerated(path));
+        var location = context.LocationResolver.Resolve(method);
 
-        var declaresKey = (controllerId, methodId, nameof(EdgeKind.Declares));
-        if (ctx.Seen.Add(declaresKey))
-            ctx.Edges.Add(MakeEdge(controllerId, methodId, nameof(EdgeKind.Declares), ctx.SnapshotId, loc));
+        edges.Add(context.MakeEdge(controllerId, methodId, nameof(EdgeKind.Declares), Provenance.FrameworkDerived, AdapterVersion, location));
 
-        EmitRouteEdge(method, methodId, ctx, loc);
-        EmitReturnTypeEdge(method, methodId, ctx, loc);
-        EmitFromServicesEdges(method, methodId, ctx, loc);
+        EmitRouteEdge(method, methodId, context, edges, location);
+        EmitReturnTypeEdge(method, methodId, context, edges, location);
+        EmitFromServicesEdges(method, methodId, context, edges, location);
     }
 
-    private void EmitRouteEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    private static void EmitRouteEdge(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
+        (string? path, int? sl, int? sc, int? el, int? ec) location)
     {
         var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
         if (routeTemplate == null)
             return;
 
         var routeSourceId = $"{GraphNodeIds.RoutePrefix}{routeTemplate}";
-        var routeKey = (routeSourceId, methodId, nameof(EdgeKind.RoutesTo));
-        if (ctx.Seen.Add(routeKey))
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = routeSourceId,
-                TargetSymbolId = methodId,
-                Kind = nameof(EdgeKind.RoutesTo),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = Version,
-                SourceDocumentPath = loc.Path,
-                SourceStartLine = loc.StartLine,
-                SourceStartColumn = loc.StartColumn,
-                SourceEndLine = loc.EndLine,
-                SourceEndColumn = loc.EndColumn,
-                IsCrossGenerated = loc.IsGenerated,
-                SourceNodeKind = GraphNodeKind.Route
-            });
+        edges.Add(context.MakeEdge(routeSourceId, methodId, nameof(EdgeKind.RoutesTo), Provenance.FrameworkDerived, AdapterVersion, location,
+            sourceNodeKind: GraphNodeKind.Route));
     }
 
-    private static void EmitReturnTypeEdge(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    private static void EmitReturnTypeEdge(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
+        (string? path, int? sl, int? sc, int? el, int? ec) location)
     {
         if (method.ReturnsVoid || method.ReturnType == null)
             return;
 
-        var returnTypeId = SymbolIdFactory.Make(method.ReturnType, ctx.AssemblyIdentity);
+        var returnTypeId = context.MakeSymbolId(method.ReturnType);
         if (returnTypeId == null)
             return;
 
-        var retKey = (methodId, returnTypeId, nameof(EdgeKind.Returns));
-        if (ctx.Seen.Add(retKey))
-            ctx.Edges.Add(MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns), ctx.SnapshotId, loc));
+        edges.Add(context.MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns), Provenance.FrameworkDerived, AdapterVersion, location));
     }
 
-    private static void EmitFromServicesEdges(IMethodSymbol method, string methodId, ExtractionContext ctx, EdgeLocation loc)
+    private static void EmitFromServicesEdges(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
+        (string? path, int? sl, int? sc, int? el, int? ec) location)
     {
         foreach (var param in method.Parameters)
         {
@@ -114,13 +89,11 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!hasFromServices)
                 continue;
 
-            var paramTypeId = SymbolIdFactory.Make(param.Type, ctx.AssemblyIdentity);
+            var paramTypeId = context.MakeSymbolId(param.Type);
             if (paramTypeId == null)
                 continue;
 
-            var refKey = (methodId, paramTypeId, nameof(EdgeKind.References));
-            if (ctx.Seen.Add(refKey))
-                ctx.Edges.Add(MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References), ctx.SnapshotId, loc));
+            edges.Add(context.MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References), Provenance.FrameworkDerived, AdapterVersion, location));
         }
     }
 
@@ -190,25 +163,4 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
 
         return parts.Count > 0 ? string.Join("/", parts) : null;
     }
-
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, string snapshotId, EdgeLocation loc)
-    {
-        return new EdgeRecord
-        {
-            SourceSymbolId = sourceId,
-            TargetSymbolId = targetId,
-            Kind = kind,
-            Provenance = Provenance.FrameworkDerived,
-            SnapshotId = snapshotId,
-            ExtractorVersion = AdapterVersion,
-            SourceDocumentPath = loc.Path,
-            SourceStartLine = loc.StartLine,
-            SourceStartColumn = loc.StartColumn,
-            SourceEndLine = loc.EndLine,
-            SourceEndColumn = loc.EndColumn,
-            IsCrossGenerated = loc.IsGenerated
-        };
-    }
-
-    private readonly record struct EdgeLocation(string? Path, int? StartLine, int? StartColumn, int? EndLine, int? EndColumn, bool IsGenerated);
 }

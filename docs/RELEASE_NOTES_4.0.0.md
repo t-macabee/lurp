@@ -147,6 +147,11 @@ index after the upgrade. Old snapshots stay until they are pruned.
   to `Name` for `PropertyChanged` with `"Name"`. Like every edge from a member to
   itself, it does not make the member live.
 
+## Dependency injection
+
+- When a scan and an explicit registration give the same pair, the pair keeps
+  `framework_derived`. The extractor label is `di-v2`.
+
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |

@@ -12,38 +12,18 @@ namespace Lurp.Adapters;
 
 internal static class DependencyInjectionConventionMatcher
 {
-    internal static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
+    internal static void ProcessConventionCandidate(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiEmitContext ctx)
     {
-        var sourceId = DependencyInjectionAdapter.ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
+        var sourceId = DependencyInjectionAdapter.ResolveSourceId(invocation, semanticModel, ctx.Adapter.AssemblyIdentity);
         if (sourceId == null)
             return;
 
-        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, ctx.AssemblyIdentity);
+        var assemblyName = ExtractConventionAssemblyName(invocation, methodSymbol, semanticModel, ctx.Adapter.AssemblyIdentity);
 
         var targetId = $"{GraphNodeIds.AssemblyScanConventionPrefix}{assemblyName}";
 
-        var key = (sourceId, targetId, nameof(EdgeKind.Registers));
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = targetId,
-                Kind = nameof(EdgeKind.Registers),
-                Provenance = Provenance.Convention,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
-                TargetNodeKind = GraphNodeKind.Convention
-            });
-        }
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, targetId, nameof(EdgeKind.Registers), Provenance.Convention, ctx.ExtractorVersion,
+            ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation()), targetNodeKind: GraphNodeKind.Convention));
 
         if (methodSymbol.Name == "Scan") EmitScanConventionRegistrationEdges(invocation, semanticModel, compilation, ctx);
     }
@@ -56,7 +36,7 @@ internal static class DependencyInjectionConventionMatcher
     ///     the convention placeholder edge from <see cref="ProcessConventionCandidate" />
     ///     is preserved in all cases.
     /// </summary>
-    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, ExtractionContext ctx)
+    private static void EmitScanConventionRegistrationEdges(InvocationExpressionSyntax scanInvocation, SemanticModel semanticModel, Compilation compilation, DependencyInjectionAdapter.DiEmitContext ctx)
     {
         var assemblyType = ResolveScannedAssemblyType(scanInvocation, semanticModel);
         if (assemblyType?.ContainingAssembly == null)
@@ -73,10 +53,9 @@ internal static class DependencyInjectionConventionMatcher
         // external scanned assembly yields no in-snapshot type edges at all, so its
         // relation set is provably closed.
         if (SymbolEqualityComparer.Default.Equals(assemblyType.ContainingAssembly, compilation.Assembly))
-            ctx.Incompleteness?.RecordConventionScan(scanInvocation);
+            ctx.Adapter.Incompleteness?.RecordConventionScan(scanInvocation);
 
-        var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(scanInvocation.GetLocation());
-        var isCrossGenerated = ctx.LocationResolver.IsGenerated(path);
+        var location = ctx.Adapter.LocationResolver.Resolve(scanInvocation.GetLocation());
 
         var assembly = assemblyType.ContainingAssembly;
 
@@ -91,7 +70,7 @@ internal static class DependencyInjectionConventionMatcher
             if (!SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, assembly))
                 continue;
 
-            var implTypeId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
+            var implTypeId = SymbolIdFactory.Make(type, ctx.Adapter.AssemblyIdentity);
             if (implTypeId == null)
                 continue;
 
@@ -100,29 +79,11 @@ internal static class DependencyInjectionConventionMatcher
                 if (iface.TypeKind == TypeKind.Error)
                     continue;
 
-                var ifaceTypeId = SymbolIdFactory.Make(iface, ctx.AssemblyIdentity);
+                var ifaceTypeId = SymbolIdFactory.Make(iface, ctx.Adapter.AssemblyIdentity);
                 if (ifaceTypeId == null)
                     continue;
 
-                var key = (ifaceTypeId, implTypeId, nameof(EdgeKind.Registers));
-                if (!ctx.Seen.Add(key))
-                    continue;
-
-                ctx.Edges.Add(new EdgeRecord
-                {
-                    SourceSymbolId = ifaceTypeId,
-                    TargetSymbolId = implTypeId,
-                    Kind = nameof(EdgeKind.Registers),
-                    Provenance = Provenance.Convention,
-                    SnapshotId = ctx.SnapshotId,
-                    ExtractorVersion = ctx.ExtractorVersion,
-                    SourceDocumentPath = path,
-                    SourceStartLine = sl,
-                    SourceStartColumn = sc,
-                    SourceEndLine = el,
-                    SourceEndColumn = ec,
-                    IsCrossGenerated = isCrossGenerated
-                });
+                ctx.Edges.Add(ctx.Adapter.MakeEdge(ifaceTypeId, implTypeId, nameof(EdgeKind.Registers), Provenance.Convention, ctx.ExtractorVersion, location));
             }
         }
     }

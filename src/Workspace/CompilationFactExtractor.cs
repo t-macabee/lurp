@@ -158,9 +158,7 @@ public static class CompilationFactExtractor
 
         var adapters = adapterProvider(skipAdapters);
 
-        var adapterContext = new AdapterExtractionContext(
-            compilation, snapshotId, inputs.LocationResolver, scopeDocuments, inputs.SemanticModelCache,
-            incompleteness);
+        var adapterContext = new AdapterExtractionContext(inputs);
 
         var annotations = new List<AnnotationRecord>();
 

@@ -3,37 +3,23 @@ using Microsoft.CodeAnalysis;
 
 namespace Lurp.Adapters;
 
+/// <summary>
+///     The inputs of one adapter run: the project's shared extraction inputs (S01-F32), the one edge
+///     maker (S02-F19) and the D8 owner roots. Adapters do not dedupe their edges: the store collapse
+///     keeps the row of the highest provenance rank for each relation (D6, D27).
+/// </summary>
 public sealed class AdapterExtractionContext
 {
-    private readonly Dictionary<SyntaxTree, SemanticModel> _semanticModelCache;
+    private readonly AdapterWorkspaceContext _workspace;
 
-    internal AdapterExtractionContext(
-        Compilation compilation,
-        string snapshotId,
-        EdgeLocationResolver locationResolver,
-        IReadOnlySet<string>? scopeDocuments,
-        Dictionary<SyntaxTree, SemanticModel> semanticModelCache,
-        BindingIncompletenessCollector? incompleteness = null)
+    internal AdapterExtractionContext(ProjectExtractionInputs inputs)
     {
-        Compilation = compilation;
-        SnapshotId = snapshotId;
-        LocationResolver = locationResolver;
-        ScopeDocuments = scopeDocuments;
-        _semanticModelCache = semanticModelCache;
-        Incompleteness = incompleteness;
+        _workspace = new AdapterWorkspaceContext(inputs);
     }
 
-    public Compilation Compilation { get; }
-    public string SnapshotId { get; }
-    public EdgeLocationResolver LocationResolver { get; }
-
-    /// <summary>
-    ///     Collector for unobservable-binding records, shared with the workspace
-    ///     extractors so adapter-detected incompleteness lands in the same persisted
-    ///     vocabulary. Null in unit-test contexts that bypass
-    ///     <see cref="Lurp.Workspace.CompilationFactExtractor.ExtractAll" />.
-    /// </summary>
-    internal BindingIncompletenessCollector? Incompleteness { get; }
+    public Compilation Compilation => _workspace.Compilation;
+    public string SnapshotId => _workspace.SnapshotId;
+    public EdgeLocationResolver LocationResolver => _workspace.LocationResolver;
 
     /// <summary>
     ///     Absolute, forward-slash-normalized document paths; null means the whole compilation.
@@ -41,21 +27,25 @@ public sealed class AdapterExtractionContext
     ///     the evidence document and are retired by
     ///     <c>IEdgeStore.DeleteAnnotationsByDocumentPaths</c> over the same scope.
     /// </summary>
-    public IReadOnlySet<string>? ScopeDocuments { get; }
+    public IReadOnlySet<string>? ScopeDocuments => _workspace.ScopeDocuments;
+
+    /// <summary>
+    ///     Collector for unobservable-binding records, shared with the workspace
+    ///     extractors so adapter-detected incompleteness lands in the same persisted
+    ///     vocabulary.
+    /// </summary>
+    internal BindingIncompletenessCollector? Incompleteness => _workspace.Incompleteness;
+
+    internal string AssemblyIdentity => _workspace.AssemblyIdentity;
 
     public SemanticModel GetSemanticModel(SyntaxTree tree)
     {
-        if (_semanticModelCache.TryGetValue(tree, out var model))
-            return model;
-
-        model = Compilation.GetSemanticModel(tree);
-        _semanticModelCache[tree] = model;
-        return model;
+        return _workspace.GetOrCreateSemanticModel(tree);
     }
 
     public bool IsInScope(SyntaxTree? syntaxTree)
     {
-        return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
+        return _workspace.IsInScope(syntaxTree);
     }
 
     /// <summary>
@@ -82,4 +72,38 @@ public sealed class AdapterExtractionContext
 
         return references.Any(reference => IsInScope(reference.SyntaxTree));
     }
+
+    /// <summary>Every named type of the compilation's own assembly, nested types included.</summary>
+    internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
+    {
+        return _workspace.GetAllNamedTypes();
+    }
+
+    internal string? MakeSymbolId(ISymbol symbol)
+    {
+        return _workspace.MakeSymbolId(symbol);
+    }
+
+    /// <summary>The code roots in scope, each with its D8 owner (<see cref="ExecutableRoots.Bodies" />).</summary>
+    internal IEnumerable<(ISymbol Owner, SyntaxNode Node)> Bodies()
+    {
+        return ExecutableRoots.Bodies(_workspace);
+    }
+
+    /// <summary>The one adapter edge maker (S02-F19).</summary>
+    internal EdgeRecord MakeEdge(
+        string sourceId,
+        string targetId,
+        string kind,
+        string provenance,
+        string extractorVersion,
+        (string? path, int? sl, int? sc, int? el, int? ec) location,
+        GraphNodeKind? sourceNodeKind = null,
+        GraphNodeKind? targetNodeKind = null)
+    {
+        return _workspace.MakeEdge(sourceId, targetId, kind, extractorVersion, location, provenance,
+            sourceNodeKind: sourceNodeKind, targetNodeKind: targetNodeKind);
+    }
+
+    private sealed class AdapterWorkspaceContext(ProjectExtractionInputs inputs) : ExtractionContextBase(inputs);
 }

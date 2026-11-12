@@ -11,17 +11,20 @@ public sealed class MediatRAdapter : IFrameworkAdapter
     public string Version => AdapterVersion;
     public string Description => "MediatR framework edges (request/handler)";
 
+    private static readonly HashSet<string> UnmodeledInterfaceNames = new(StringComparer.Ordinal)
+    {
+        "IStreamRequestHandler", "IAsyncStreamHandler",
+        "IPipelineBehavior",
+        "IRequestExceptionHandler",
+        "IRequestPreProcessor", "IRequestPostProcessor"
+    };
+
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
-        var compilation = context.Compilation;
-        var snapshotId = context.SnapshotId;
-        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
-        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
+        var allTypes = context.GetAllNamedTypes().ToList();
 
-        var hasMediatRReferences = compilation.ReferencedAssemblyNames.Any(a => a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
+        var hasMediatRReferences = context.Compilation.ReferencedAssemblyNames.Any(a => a.Name.Contains("MediatR", StringComparison.OrdinalIgnoreCase));
 
         if (!hasMediatRReferences)
             return edges;
@@ -35,19 +38,12 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             if (!context.IsSymbolInScope(handlerType))
                 continue;
 
-            EmitHandlesEdge(handlerType, requestType, assemblyIdentity, snapshotId, edges, seen, locationResolver);
+            EmitHandlesEdge(handlerType, requestType, context, edges);
         }
 
         // Collect annotations for unmodeled MediatR patterns (no edge emitted, but
         // signal the consumer that the pattern was seen).
         var unmodeledAnnotations = new List<AnnotationRecord>();
-        var unmodeledIfaceNames = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "IStreamRequestHandler", "IAsyncStreamHandler",
-            "IPipelineBehavior",
-            "IRequestExceptionHandler",
-            "IRequestPreProcessor", "IRequestPostProcessor"
-        };
 
         foreach (var type in allTypes)
         {
@@ -56,11 +52,11 @@ public sealed class MediatRAdapter : IFrameworkAdapter
             foreach (var iface in type.AllInterfaces)
             {
                 var ifaceName = iface.OriginalDefinition?.Name;
-                if (ifaceName is null || !unmodeledIfaceNames.Contains(ifaceName))
+                if (ifaceName is null || !UnmodeledInterfaceNames.Contains(ifaceName))
                     continue;
-                var typeSymbolId = SymbolIdFactory.Make(type, assemblyIdentity);
+                var typeSymbolId = context.MakeSymbolId(type);
                 if (typeSymbolId is null) continue;
-                var (path, _, _, _, _) = locationResolver.Resolve(type);
+                var (path, _, _, _, _) = context.LocationResolver.Resolve(type);
                 unmodeledAnnotations.Add(new AnnotationRecord(
                     typeSymbolId, "unmodeled_mediatr_pattern", ifaceName, path));
                 break; // one annotation per type is enough
@@ -106,10 +102,9 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         return handlerTypes;
     }
 
-    private static void EmitHandlesEdge(INamedTypeSymbol handlerType, INamedTypeSymbol requestType, string assemblyIdentity, string snapshotId,
-        List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen, EdgeLocationResolver locationResolver)
+    private static void EmitHandlesEdge(INamedTypeSymbol handlerType, INamedTypeSymbol requestType, AdapterExtractionContext context, List<EdgeRecord> edges)
     {
-        var requestId = SymbolIdFactory.Make(requestType, assemblyIdentity);
+        var requestId = context.MakeSymbolId(requestType);
         if (requestId == null)
             return;
 
@@ -120,30 +115,11 @@ public sealed class MediatRAdapter : IFrameworkAdapter
         if (handleMethod == null)
             return;
 
-        var handleMethodId = SymbolIdFactory.Make(handleMethod, assemblyIdentity);
+        var handleMethodId = context.MakeSymbolId(handleMethod);
         if (handleMethodId == null)
             return;
 
-        var key = (requestId, handleMethodId, nameof(EdgeKind.Handles));
-        if (seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = locationResolver.Resolve(handleMethod);
-
-            edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = requestId,
-                TargetSymbolId = handleMethodId,
-                Kind = nameof(EdgeKind.Handles),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = snapshotId,
-                ExtractorVersion = AdapterVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = locationResolver.IsGenerated(path)
-            });
-        }
+        edges.Add(context.MakeEdge(requestId, handleMethodId, nameof(EdgeKind.Handles), Provenance.FrameworkDerived, AdapterVersion,
+            context.LocationResolver.Resolve(handleMethod)));
     }
 }

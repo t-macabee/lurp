@@ -116,7 +116,9 @@ internal abstract class ExtractionContextBase(ProjectExtractionInputs inputs)
         string extractorVersion,
         (string? path, int? sl, int? sc, int? el, int? ec)? location,
         string provenance = Provenance.CompilerProved,
-        string? typeArgumentsJson = null)
+        string? typeArgumentsJson = null,
+        GraphNodeKind? sourceNodeKind = null,
+        GraphNodeKind? targetNodeKind = null)
     {
         var sourceDocumentPath = location?.path;
         return new EdgeRecord
@@ -133,7 +135,9 @@ internal abstract class ExtractionContextBase(ProjectExtractionInputs inputs)
             SourceEndLine = location?.el,
             SourceEndColumn = location?.ec,
             TypeArgumentsJson = typeArgumentsJson,
-            IsCrossGenerated = IsGenerated(sourceDocumentPath)
+            IsCrossGenerated = IsGenerated(sourceDocumentPath),
+            SourceNodeKind = sourceNodeKind,
+            TargetNodeKind = targetNodeKind
         };
     }
 }

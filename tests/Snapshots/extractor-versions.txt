@@ -1,9 +1,9 @@
 # Extractor version gate (D103). Columns: name, version, rows, SHA-256 of the sorted rows.
 # Written by ExtractorVersionGateTests. Review the diff; see VERSIONING.md.
-ExtractorVersion	1.12.0	2116	38477e9c462849e06032aea52f2e267ceb4126db098eeb4afd7fcc359b3ac411
+ExtractorVersion	1.12.0	2119	cd9bac7289b71a76fb701b23182765512f95f5aeb139b32a9901d48e472c83ea
 ASP.NET Core	aspnetcore-v2	3	1d29bd8ec77805ac8a64c06d0053ec012521541f80d83e0941121c0a4a65fd29
 Declares	declares-v2	382	9066a794d38c53752af7b27545e18c503de5c742992fbb05726fc50dc464890c
-Dependency Injection	di-v1	7	2e876a090e23c6e610af1e7f255536dad8f00bfb2207636d7febf13dac3de9d1
+Dependency Injection	di-v2	10	8c9359ae9aacbcee9c15fb354ccde5b1e2c29bf02864f742e302a994507d7065
 EF Core	efcore-v1	2	bd8941e8529748a0a3484a8619777d55f0e0b4727ab989148b5a61794fa68aa5
 Hides	hides-v2	3	5b45f24b446f55b2bf7ca143f0d961d4f5ab789a0c9d6a8983814b6503071cdf
 MediatR	mediatr-v1	1	15b3ac01baafbbc56a6d718d786b4be5c1c04a795bfea2c02e3b44386fb3c695

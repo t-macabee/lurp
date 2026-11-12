@@ -22,23 +22,23 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     /// </remarks>
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
-        var compilation = context.Compilation;
-        var snapshotId = context.SnapshotId;
-        var locationResolver = context.LocationResolver;
-        var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
-        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
-        var allTypes = AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace);
-        var annotations = new List<AnnotationRecord>();
-        var ctx = new ExtractionContext(assemblyIdentity, snapshotId, Version, edges, seen, locationResolver, Annotations: annotations);
+        var allTypes = context.GetAllNamedTypes().ToList();
+        var ctx = new EfEmitContext(context, Version, [], []);
 
-        ExtractDbContextMappings(context, allTypes, ctx);
-        ExtractEntityTypeConfigurations(allTypes, ctx, context);
+        ExtractDbContextMappings(allTypes, ctx);
+        ExtractEntityTypeConfigurations(allTypes, ctx);
 
-        return new AdapterExtractionResult(edges, annotations);
+        return new AdapterExtractionResult(ctx.Edges, ctx.Annotations);
     }
 
-    private static void ExtractDbContextMappings(AdapterExtractionContext context, List<INamedTypeSymbol> allTypes, ExtractionContext ctx)
+    /// <summary>The adapter context of one run with the lists that the run fills.</summary>
+    private sealed record EfEmitContext(
+        AdapterExtractionContext Adapter,
+        string ExtractorVersion,
+        List<EdgeRecord> Edges,
+        List<AnnotationRecord> Annotations);
+
+    private static void ExtractDbContextMappings(List<INamedTypeSymbol> allTypes, EfEmitContext ctx)
     {
         foreach (var type in allTypes)
         {
@@ -48,37 +48,37 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             // The walk is anchored to the DbContext type: the emitted edges and
             // annotations all carry evidence in its declaring document, which is
             // what the delete scope will have removed.
-            if (!context.IsSymbolInScope(type))
+            if (!ctx.Adapter.IsSymbolInScope(type))
                 continue;
 
-            var dbContextId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
+            var dbContextId = ctx.Adapter.MakeSymbolId(type);
             if (dbContextId == null)
                 continue;
 
             ExtractDbSetProperties(type, dbContextId, ctx);
-            ExtractOnModelCreatingCalls(context, type, dbContextId, ctx);
+            ExtractOnModelCreatingCalls(type, dbContextId, ctx);
         }
     }
 
-    private static void ExtractDbSetProperties(INamedTypeSymbol type, string dbContextId, ExtractionContext ctx)
+    private static void ExtractDbSetProperties(INamedTypeSymbol type, string dbContextId, EfEmitContext ctx)
     {
         foreach (var member in type.GetMembers())
         {
             if (member is not IPropertySymbol prop || !IsDbSetType(prop.Type, out var entityType) || entityType == null)
                 continue;
 
-            var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
+            var entityTypeId = ctx.Adapter.MakeSymbolId(entityType);
             if (entityTypeId == null)
                 continue;
 
-            var propId = SymbolIdFactory.Make(prop, ctx.AssemblyIdentity);
+            var propId = ctx.Adapter.MakeSymbolId(prop);
             var sourceId = propId ?? dbContextId;
 
-            AddMapsToEdge(sourceId, entityTypeId, ctx, ctx.LocationResolver.Resolve(prop));
+            AddMapsToEdge(sourceId, entityTypeId, ctx, ctx.Adapter.LocationResolver.Resolve(prop));
         }
     }
 
-    private static void ExtractOnModelCreatingCalls(AdapterExtractionContext context, INamedTypeSymbol type, string dbContextId, ExtractionContext ctx)
+    private static void ExtractOnModelCreatingCalls(INamedTypeSymbol type, string dbContextId, EfEmitContext ctx)
     {
         var onModelCreating = type.GetMembers()
             .OfType<IMethodSymbol>()
@@ -90,14 +90,14 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         foreach (var syntaxRef in onModelCreating.DeclaringSyntaxReferences)
             if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax)
             {
-                var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
+                var semanticModel = ctx.Adapter.GetSemanticModel(methodSyntax.SyntaxTree);
                 ExtractEntityCalls(methodSyntax, semanticModel, dbContextId, ctx);
-                var (evidencePath, _, _, _, _) = context.LocationResolver.Resolve(type);
+                var (evidencePath, _, _, _, _) = ctx.Adapter.LocationResolver.Resolve(type);
                 ExtractMethodConstraints(methodSyntax, semanticModel, dbContextId, evidencePath, ctx);
             }
     }
 
-    private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, ExtractionContext ctx, AdapterExtractionContext context)
+    private static void ExtractEntityTypeConfigurations(List<INamedTypeSymbol> allTypes, EfEmitContext ctx)
     {
         foreach (var type in allTypes)
             foreach (var iface in type.AllInterfaces)
@@ -107,10 +107,10 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
 
                 // Same anchoring as the DbContext walk: the configuration
                 // class's declaring document is the evidence document.
-                if (!context.IsSymbolInScope(type))
+                if (!ctx.Adapter.IsSymbolInScope(type))
                     continue;
 
-                var configId = SymbolIdFactory.Make(type, ctx.AssemblyIdentity);
+                var configId = ctx.Adapter.MakeSymbolId(type);
                 if (configId == null)
                     continue;
 
@@ -118,11 +118,11 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                 if (entityTypeArg is not INamedTypeSymbol entityType)
                     continue;
 
-                var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
+                var entityTypeId = ctx.Adapter.MakeSymbolId(entityType);
                 if (entityTypeId == null)
                     continue;
 
-                var typeLocation = ctx.LocationResolver.Resolve(type);
+                var typeLocation = ctx.Adapter.LocationResolver.Resolve(type);
                 AddMapsToEdge(configId, entityTypeId, ctx, typeLocation);
 
                 var evidencePath = typeLocation.path;
@@ -137,29 +137,9 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
             }
     }
 
-    private static void AddMapsToEdge(string sourceId, string targetId, ExtractionContext ctx, (string? path, int? sl, int? sc, int? el, int? ec) location)
+    private static void AddMapsToEdge(string sourceId, string targetId, EfEmitContext ctx, (string? path, int? sl, int? sc, int? el, int? ec) location)
     {
-        var key = (sourceId, targetId, nameof(EdgeKind.MapsTo));
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = location;
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = targetId,
-                Kind = nameof(EdgeKind.MapsTo),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-            });
-        }
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, targetId, nameof(EdgeKind.MapsTo), Provenance.FrameworkDerived, ctx.ExtractorVersion, location));
     }
 
     private static bool IsDbContext(INamedTypeSymbol type)
@@ -201,7 +181,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         return false;
     }
 
-    private static void ExtractEntityCalls(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
+    private static void ExtractEntityCalls(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, EfEmitContext ctx)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -214,7 +194,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         }
     }
 
-    private static void ExtractEntityMethodMapping(GenericNameSyntax genericName, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
+    private static void ExtractEntityMethodMapping(GenericNameSyntax genericName, SemanticModel semanticModel, string dbContextId, EfEmitContext ctx)
     {
         if (genericName.TypeArgumentList.Arguments.Count != 1)
             return;
@@ -223,14 +203,14 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (typeInfo.Type is not INamedTypeSymbol entityType)
             return;
 
-        var entityTypeId = SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity);
+        var entityTypeId = ctx.Adapter.MakeSymbolId(entityType);
         if (entityTypeId == null)
             return;
 
-        AddMapsToEdge(dbContextId, entityTypeId, ctx, ctx.LocationResolver.Resolve(genericName.GetLocation()));
+        AddMapsToEdge(dbContextId, entityTypeId, ctx, ctx.Adapter.LocationResolver.Resolve(genericName.GetLocation()));
     }
 
-    private static void ExtractNavigationTypeReference(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string dbContextId, ExtractionContext ctx)
+    private static void ExtractNavigationTypeReference(InvocationExpressionSyntax invocation, SemanticModel semanticModel, string dbContextId, EfEmitContext ctx)
     {
         var symbolInfo = semanticModel.GetSymbolInfo(invocation);
         if (symbolInfo.Symbol is not IMethodSymbol navMethod || navMethod.TypeArguments.Length == 0)
@@ -239,34 +219,15 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         if (navMethod.TypeArguments[0] is not INamedTypeSymbol navNamedType)
             return;
 
-        var navTypeId = SymbolIdFactory.Make(navNamedType, ctx.AssemblyIdentity);
+        var navTypeId = ctx.Adapter.MakeSymbolId(navNamedType);
         if (navTypeId == null)
             return;
 
-        var key = (dbContextId, navTypeId, nameof(EdgeKind.References));
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = dbContextId,
-                TargetSymbolId = navTypeId,
-                Kind = nameof(EdgeKind.References),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-            });
-        }
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(dbContextId, navTypeId, nameof(EdgeKind.References), Provenance.FrameworkDerived, ctx.ExtractorVersion,
+            ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation())));
     }
 
-    private static void ExtractMethodConstraints(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, string? evidencePath, ExtractionContext ctx)
+    private static void ExtractMethodConstraints(MethodDeclarationSyntax methodSyntax, SemanticModel semanticModel, string dbContextId, string? evidencePath, EfEmitContext ctx)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -289,7 +250,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
                             })
                         {
                             entityTypeId = containingType.TypeArguments[0] is INamedTypeSymbol entityType
-                                ? SymbolIdFactory.Make(entityType, ctx.AssemblyIdentity)
+                                ? ctx.Adapter.MakeSymbolId(entityType)
                                 : null;
                             entityName = containingType.TypeArguments[0].Name;
                         }
@@ -322,7 +283,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         }
     }
 
-    private static void ExtractEntityTypeConfigConstraints(MethodDeclarationSyntax methodSyntax, INamedTypeSymbol entityType, string entityTypeId, string? evidencePath, ExtractionContext ctx)
+    private static void ExtractEntityTypeConfigConstraints(MethodDeclarationSyntax methodSyntax, INamedTypeSymbol entityType, string entityTypeId, string? evidencePath, EfEmitContext ctx)
     {
         foreach (var invocation in methodSyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -357,8 +318,8 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
         }
     }
 
-    private static void AddConstraintAnnotation(string symbolId, string kind, string value, string? documentPath, ExtractionContext ctx)
+    private static void AddConstraintAnnotation(string symbolId, string kind, string value, string? documentPath, EfEmitContext ctx)
     {
-        ctx.Annotations?.Add(new AnnotationRecord(symbolId, kind, value, documentPath));
+        ctx.Annotations.Add(new AnnotationRecord(symbolId, kind, value, documentPath));
     }
 }

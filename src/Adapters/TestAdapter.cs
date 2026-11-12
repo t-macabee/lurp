@@ -15,18 +15,13 @@ public sealed class TestAdapter : IFrameworkAdapter
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
-        var compilation = context.Compilation;
-        var snapshotId = context.SnapshotId;
-        var locationResolver = context.LocationResolver;
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
-        var assemblyIdentity = compilation.Assembly.Identity.GetDisplayName();
 
-        var isTestProject = IsTestProject(compilation);
+        var isTestProject = IsTestProject(context.Compilation);
         if (!isTestProject)
             return edges;
 
-        foreach (var type in AdapterTypeUtils.GetAllNamedTypes(compilation.Assembly.GlobalNamespace))
+        foreach (var type in context.GetAllNamedTypes())
             foreach (var member in type.GetMembers())
             {
                 if (member is not IMethodSymbol method)
@@ -35,13 +30,12 @@ public sealed class TestAdapter : IFrameworkAdapter
                 if (!IsTestMethod(method))
                     continue;
 
-                var testMethodId = SymbolIdFactory.Make(method, assemblyIdentity);
+                var testMethodId = context.MakeSymbolId(method);
                 if (testMethodId == null)
                     continue;
 
                 // Resolve the evidence site: the test method declaration
-                var (path, sl, sc, el, ec) = locationResolver.Resolve(method);
-                var isGenerated = locationResolver.IsGenerated(path);
+                var location = context.LocationResolver.Resolve(method);
 
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
@@ -56,9 +50,7 @@ public sealed class TestAdapter : IFrameworkAdapter
                         continue;
 
                     var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
-                    var referencedSymbols = new HashSet<string>();
-                    var testCtx = new TestEmitContext(assemblyIdentity, seen, edges, testMethodId, snapshotId, referencedSymbols,
-                        path, sl, sc, el, ec, isGenerated);
+                    var testCtx = new TestEmitContext(context, edges, testMethodId, [], location);
 
                     CollectTestReferences(bodySyntax, semanticModel, testCtx);
                 }
@@ -117,33 +109,18 @@ public sealed class TestAdapter : IFrameworkAdapter
             return;
 
         var productionAssembly = productionSymbol.ContainingAssembly;
-        if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.AssemblyIdentity)
+        if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.Adapter.AssemblyIdentity)
             return;
 
-        var productionId = SymbolIdFactory.Make(productionSymbol, context.AssemblyIdentity);
+        var productionId = context.Adapter.MakeSymbolId(productionSymbol);
         if (productionId == null)
             return;
 
         if (!context.ReferencedSymbols.Add(productionId))
             return;
 
-        var key = (productionId, context.TestMethodId, nameof(EdgeKind.TestedBy));
-        if (context.Seen.Add(key))
-            context.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = productionId,
-                TargetSymbolId = context.TestMethodId,
-                Kind = nameof(EdgeKind.TestedBy),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = context.SnapshotId,
-                ExtractorVersion = AdapterVersion,
-                SourceDocumentPath = context.TestDocumentPath,
-                SourceStartLine = context.TestStartLine,
-                SourceStartColumn = context.TestStartColumn,
-                SourceEndLine = context.TestEndLine,
-                SourceEndColumn = context.TestEndColumn,
-                IsCrossGenerated = context.TestIsCrossGenerated
-            });
+        context.Edges.Add(context.Adapter.MakeEdge(productionId, context.TestMethodId, nameof(EdgeKind.TestedBy), Provenance.FrameworkDerived,
+            AdapterVersion, context.Location));
     }
 
     private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, TestEmitContext context)
@@ -170,17 +147,11 @@ public sealed class TestAdapter : IFrameworkAdapter
         }
     }
 
+    /// <summary>The adapter context, the edge list and the evidence site of one test method body.</summary>
     private sealed record TestEmitContext(
-        string AssemblyIdentity,
-        HashSet<(string source, string target, string kind)> Seen,
+        AdapterExtractionContext Adapter,
         List<EdgeRecord> Edges,
         string TestMethodId,
-        string SnapshotId,
         HashSet<string> ReferencedSymbols,
-        string? TestDocumentPath,
-        int? TestStartLine,
-        int? TestStartColumn,
-        int? TestEndLine,
-        int? TestEndColumn,
-        bool TestIsCrossGenerated);
+        (string? path, int? sl, int? sc, int? el, int? ec) Location);
 }

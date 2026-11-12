@@ -14,27 +14,13 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     ];
 
     public string Name => "Dependency Injection";
-    public string Version => "di-v1";
+    public string Version => "di-v2";
     public string Description => "Dependency injection container edges";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
         var compilation = context.Compilation;
-        var snapshotId = context.SnapshotId;
-        var locationResolver = context.LocationResolver;
-        var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string Source, string Target, string Kind)>();
-
-        var ctx = new ExtractionContext(
-            compilation.Assembly.Identity.GetDisplayName(),
-            snapshotId,
-            Version,
-            edges,
-            seen,
-            locationResolver,
-            context.Incompleteness,
-            null
-        );
+        var ctx = new DiEmitContext(context, Version, []);
 
         var serviceCollectionType = compilation.GetTypeByMetadataName("Microsoft.Extensions.DependencyInjection.IServiceCollection");
 
@@ -78,15 +64,18 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
             }
         }
 
-        return edges;
+        return ctx.Edges;
     }
 
-    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, ExtractionContext ctx)
+    /// <summary>The adapter context of one run with the edge list that the run fills.</summary>
+    internal sealed record DiEmitContext(AdapterExtractionContext Adapter, string ExtractorVersion, List<EdgeRecord> Edges);
+
+    private static void ProcessExplicitGeneric(InvocationExpressionSyntax invocation, IMethodSymbol methodSymbol, SemanticModel semanticModel, DiEmitContext ctx)
     {
         if (!IsDependencyInjectionExtensionMethod(methodSymbol))
             return;
 
-        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
+        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.Adapter.AssemblyIdentity);
         if (sourceId == null)
             return;
 
@@ -94,31 +83,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (typeArgs.Count == 0)
             return;
 
-        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.AssemblyIdentity);
+        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.Adapter.AssemblyIdentity);
         if (implTypeId == null)
             return;
 
-        var key = (sourceId, implTypeId, nameof(EdgeKind.Registers));
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = implTypeId,
-                Kind = nameof(EdgeKind.Registers),
-                Provenance = Provenance.FrameworkDerived,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-            });
-        }
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, implTypeId, nameof(EdgeKind.Registers), Provenance.FrameworkDerived, ctx.ExtractorVersion,
+            ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation())));
 
         EmitInterfaceToImplementationEdge(invocation, typeArgs, implTypeId, ctx);
     }
@@ -130,7 +100,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     ///     self-registration <c>AddScoped&lt;Service&gt;()</c>) or when the source
     ///     and target resolve to the same symbol.
     /// </summary>
-    private static void EmitInterfaceToImplementationEdge(InvocationExpressionSyntax invocation, List<ITypeSymbol> typeArgs, string implTypeId, ExtractionContext ctx)
+    private static void EmitInterfaceToImplementationEdge(InvocationExpressionSyntax invocation, List<ITypeSymbol> typeArgs, string implTypeId, DiEmitContext ctx)
     {
         if (typeArgs.Count < 2)
             return;
@@ -139,31 +109,12 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         if (serviceType.TypeKind == TypeKind.Error)
             return;
 
-        var serviceTypeId = SymbolIdFactory.Make(serviceType, ctx.AssemblyIdentity);
+        var serviceTypeId = SymbolIdFactory.Make(serviceType, ctx.Adapter.AssemblyIdentity);
         if (serviceTypeId == null || serviceTypeId == implTypeId)
             return;
 
-        var key = (serviceTypeId, implTypeId, nameof(EdgeKind.Registers));
-        if (!ctx.Seen.Add(key))
-            return;
-
-        var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-        ctx.Edges.Add(new EdgeRecord
-        {
-            SourceSymbolId = serviceTypeId,
-            TargetSymbolId = implTypeId,
-            Kind = nameof(EdgeKind.Registers),
-            Provenance = Provenance.FrameworkDerived,
-            SnapshotId = ctx.SnapshotId,
-            ExtractorVersion = ctx.ExtractorVersion,
-            SourceDocumentPath = path,
-            SourceStartLine = sl,
-            SourceStartColumn = sc,
-            SourceEndLine = el,
-            SourceEndColumn = ec,
-            IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-        });
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(serviceTypeId, implTypeId, nameof(EdgeKind.Registers), Provenance.FrameworkDerived, ctx.ExtractorVersion,
+            ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation())));
     }
 
     private static bool IsDependencyInjectionExtensionMethod(IMethodSymbol methodSymbol)
@@ -171,7 +122,7 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         var current = methodSymbol.ContainingType;
         while (current != null)
         {
-            if (current.Name is "ServiceCollectionServiceExtensions" or "ExtensionsServiceCollectionExtensions" or "ServiceCollectionDescriptorExtensions")
+            if (current.Name is "ServiceCollectionServiceExtensions" or "ServiceCollectionDescriptorExtensions")
                 return true;
             current = current.BaseType;
         }
@@ -206,68 +157,26 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
     }
 
 
-    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, ExtractionContext ctx)
+    private static void ProcessRuntimeUnknown(InvocationExpressionSyntax invocation, SemanticModel semanticModel, DiEmitContext ctx)
     {
-        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.AssemblyIdentity);
+        var sourceId = ResolveSourceId(invocation, semanticModel, ctx.Adapter.AssemblyIdentity);
 
         if (sourceId == null)
             return;
 
-        const string targetId = GraphNodeIds.RuntimeUnknown;
-
-        var key = (sourceId, targetId, nameof(EdgeKind.Registers));
-
-        if (ctx.Seen.Add(key))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = targetId,
-                Kind = nameof(EdgeKind.Registers),
-                Provenance = Provenance.RuntimeUnknown,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path),
-                TargetNodeKind = GraphNodeKind.RuntimePlaceholder
-            });
-        }
+        var location = ctx.Adapter.LocationResolver.Resolve(invocation.GetLocation());
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, GraphNodeIds.RuntimeUnknown, nameof(EdgeKind.Registers), Provenance.RuntimeUnknown, ctx.ExtractorVersion,
+            location, targetNodeKind: GraphNodeKind.RuntimePlaceholder));
 
         var typeArgs = ResolveRegistrationTypeArgs(invocation, semanticModel);
         if (typeArgs.Count == 0)
             return;
 
-        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.AssemblyIdentity);
+        var implTypeId = SymbolIdFactory.Make(typeArgs[^1], ctx.Adapter.AssemblyIdentity);
         if (implTypeId == null)
             return;
 
-        var concreteKey = (sourceId, implTypeId, nameof(EdgeKind.Registers));
-        if (ctx.Seen.Add(concreteKey))
-        {
-            var (path, sl, sc, el, ec) = ctx.LocationResolver.Resolve(invocation.GetLocation());
-
-            ctx.Edges.Add(new EdgeRecord
-            {
-                SourceSymbolId = sourceId,
-                TargetSymbolId = implTypeId,
-                Kind = nameof(EdgeKind.Registers),
-                Provenance = Provenance.RuntimeUnknown,
-                SnapshotId = ctx.SnapshotId,
-                ExtractorVersion = ctx.ExtractorVersion,
-                SourceDocumentPath = path,
-                SourceStartLine = sl,
-                SourceStartColumn = sc,
-                SourceEndLine = el,
-                SourceEndColumn = ec,
-                IsCrossGenerated = ctx.LocationResolver.IsGenerated(path)
-            });
-        }
+        ctx.Edges.Add(ctx.Adapter.MakeEdge(sourceId, implTypeId, nameof(EdgeKind.Registers), Provenance.RuntimeUnknown, ctx.ExtractorVersion, location));
     }
 
     /// <summary>
