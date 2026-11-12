@@ -108,6 +108,44 @@ index after the upgrade. Old snapshots stay until they are pruned.
   call and a delegate invocation were marked although they cannot dispatch. The
   `StaticallyCalls` label is `operation-shapes-v2`; the label
   `statically-calls-v2` and the extractor row `StaticDispatch` are gone.
+- The reflection facts (`ReflectionTypeRef`, `ReflectionMemberRef`,
+  `ReflectionNameCandidate` and `ReflectionTargetUnknown`) follow the owner rule
+  of the other body facts. An accessor owns its body, also the expression body of
+  a property or an indexer. Each variable of a field declaration owns its own
+  initializer. A type owns the arguments of its attributes. Before, the property
+  owned an accessor body, the first variable owned every initializer of the
+  declaration, and a `typeof`, a `nameof` or a reflection call in an indexer, an
+  operator, a finalizer, an event accessor or a type attribute gave no fact. The
+  `Reflection` label is `reflection-v4`.
+- A name of one or two characters is a name candidate, for example the key
+  property in `HasKey("Id")`. Before, a string shorter than three characters was
+  dropped.
+- A reflection sink is the runtime API that the call binds, not a member name in
+  the source. New sinks: `Type.GetInterface`, `GetRuntimeMethod`,
+  `GetRuntimeProperty`, `GetRuntimeField` and `GetRuntimeEvent`
+  (`RuntimeReflectionExtensions`), and the `GetDeclared*` methods of `TypeInfo`.
+  A method named `GetType` or `MakeGenericMethod` on another type is no sink.
+  A name candidate matches the case of the name, unless the call passes
+  `BindingFlags.IgnoreCase`, and binds only the member kind of the call:
+  `GetMethod` a method, `GetProperty` a property, `GetField` a field, `GetEvent`
+  an event, `GetNestedType` a nested type. A member lookup on a known type also
+  finds the members of its base types; `GetNestedType` and `GetDeclared*` find
+  only the members that the type declares. `Type.GetType`, `Assembly.GetType`
+  and `Activator.CreateInstance` read the namespace-qualified type name
+  (`N.Outer+Inner`), with or without an assembly name. Before, the match ignored
+  case and kind, `Type.GetType("Target")` matched `N.Target`, and the name
+  `Type.GetType("N.Target")` matched nothing.
+- A framework name (EF Core `[ForeignKey]`, `[InverseProperty]` and the string
+  APIs, xUnit `[MemberData]`, `PropertyChangedEventArgs`, `[CallerMemberName]`)
+  also binds an inherited member, and a `[property: ...]` attribute on a
+  positional record parameter binds like an attribute on the property. Each
+  framework API binds only its member kind: `PropertyChangedEventArgs` a
+  property, an EF Core name a property or a field, `[MemberData]` a property, a
+  field or a method, an MVC action name a method.
+- A name candidate to its own owner is recorded, for example from `Run` to `Run`
+  for `typeof(C).GetMethod("Run")` inside `Run`, and from the setter of `Name`
+  to `Name` for `PropertyChanged` with `"Name"`. Like every edge from a member to
+  itself, it does not make the member live.
 
 ## Versions
 

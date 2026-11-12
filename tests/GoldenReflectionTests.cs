@@ -19,7 +19,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     {
         Assert.Equal(kind, edge.Kind);
         Assert.Equal(provenance, edge.Provenance);
-        Assert.Equal("reflection-v3", edge.ExtractorVersion);
+        Assert.Equal("reflection-v4", edge.ExtractorVersion);
         Assert.NotNull(edge.SourceDocumentPath);
         Assert.EndsWith(Doc, edge.SourceDocumentPath);
         Assert.Equal(sourceFqn, edge.SourceSymbolId);
@@ -106,6 +106,58 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     }
 
     [Fact]
+    public async Task ReflectionEdges_AreOwnedByTheMemberThatRunsTheCode()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                using System;
+                                                namespace N;
+                                                public class Pb8Idx { } public class Pb8Op { } public class Pb8Tail { } public class Pb8Ev { }
+                                                public class Pb8OnType { } public class Pb8OnMethod { } public class Pb8Multi1 { } public class Pb8Multi2 { }
+                                                public class Pb8Acc { } public class Pb8Prop { } public class Pb8Init { }
+                                                public sealed class Pb8Attr : Attribute { public Pb8Attr(Type t) { } }
+                                                [Pb8Attr(typeof(Pb8OnType))]
+                                                public class Refl8
+                                                {
+                                                    public Type this[int i] => typeof(Pb8Idx);
+                                                    public static Type operator +(Refl8 a, Refl8 b) => typeof(Pb8Op);
+                                                    ~Refl8() { var t = typeof(Pb8Tail); }
+                                                    public event Action Ev { add { var t = typeof(Pb8Ev); } remove { } }
+                                                    public object F1 = typeof(Pb8Multi1), F2 = typeof(Pb8Multi2);
+                                                    public Type P2 { get { return typeof(Pb8Acc); } }
+                                                    public Type P1 => typeof(Pb8Prop);
+                                                    public Type P3 { get; } = typeof(Pb8Init);
+                                                    [Pb8Attr(typeof(Pb8OnMethod))]
+                                                    public void Mark() { }
+                                                    public string N1 => nameof(P2);
+                                                    public object M1 => typeof(Refl8).GetMethod("Mark");
+                                                }
+                                                """));
+
+        // D8, D20: the member that runs the code owns the fact. An accessor owns its body (an
+        // expression-bodied property or indexer included), each variable owns its own initializer,
+        // a property owns its initializer, the type owns a type attribute, and a member owns its
+        // attribute.
+        extraction.AssertDocIdEdgeSet("ReflectionTypeRef",
+            ("M:N.Refl8.get_Item(System.Int32)", "T:N.Pb8Idx"),
+            ("M:N.Refl8.op_Addition(N.Refl8,N.Refl8)", "T:N.Pb8Op"),
+            ("M:N.Refl8.Finalize", "T:N.Pb8Tail"),
+            ("M:N.Refl8.add_Ev(System.Action)", "T:N.Pb8Ev"),
+            ("T:N.Refl8", "T:N.Pb8OnType"),
+            ("F:N.Refl8.F1", "T:N.Pb8Multi1"),
+            ("F:N.Refl8.F2", "T:N.Pb8Multi2"),
+            ("M:N.Refl8.get_P2", "T:N.Pb8Acc"),
+            ("M:N.Refl8.get_P1", "T:N.Pb8Prop"),
+            ("P:N.Refl8.P3", "T:N.Pb8Init"),
+            ("M:N.Refl8.Mark", "T:N.Pb8OnMethod"),
+            ("M:N.Refl8.get_M1", "T:N.Refl8"));
+        extraction.AssertDocIdEdgeSet("ReflectionMemberRef", ("M:N.Refl8.get_N1", "P:N.Refl8.P2"));
+        extraction.AssertDocIdEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("M:N.Refl8.get_M1", "M:N.Refl8.Mark"));
+        extraction.AssertDocIdEdgeSetOf("ReflectionTargetUnknown", Provenance.RuntimeUnknown,
+            ("M:N.Refl8.get_M1", "M:N.Refl8.get_M1"));
+    }
+
+    [Fact]
     public async Task UnresolvableInvocation_StillRecordsCompilerError()
     {
         var extraction = await ExtractAsync(One("""
@@ -140,7 +192,7 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
     }
 
     [Fact]
-    public async Task TypeGetType_Call_KeepsTypeCandidate()
+    public async Task TypeGetType_MatchesTheNamespaceQualifiedName()
     {
         var extraction = await ExtractAsync(One("""
                                                 using System;
@@ -148,14 +200,18 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
                                                 public class Target { }
                                                 public class User
                                                 {
-                                                    public void Use() { var t = Type.GetType("Target"); }
+                                                    public void Use() { var t = Type.GetType("N.Target"); }
+                                                    public void UseSimpleName() { var t = Type.GetType("Target"); }
                                                 }
                                                 """));
 
+        // D144 (.NET docs, Type.GetType(String)): the name is namespace-qualified; a simple name
+        // finds only a type of the global namespace, so "Target" does not bind N.Target.
         var edge = extraction.SingleEdge("ReflectionNameCandidate", "global::N.User.Use", "global::N.Target",
             Provenance.NameCandidate);
         AssertReflectionContract(edge, "ReflectionNameCandidate", Provenance.NameCandidate,
             extraction.ResolveId("global::N.User.Use"));
+        AssertNoNameCandidate(extraction, "global::N.User.UseSimpleName");
     }
 
     [Fact]
@@ -187,11 +243,11 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
 
         var nameCandidate = extraction.SingleEdge("ReflectionNameCandidate", "global::N.User.Use", "global::N.Target.Run",
             Provenance.NameCandidate);
-        Assert.Equal("reflection-v3", nameCandidate.ExtractorVersion);
+        Assert.Equal("reflection-v4", nameCandidate.ExtractorVersion);
     }
 
     [Fact]
-    public async Task PropertyChangedLiteral_MatchingOwnMemberName_DoesNotProduceSelfEdge()
+    public async Task PropertyChangedLiteral_NamesOnlyAProperty()
     {
         var extraction = await ExtractAsync(One("""
                                                 using System.ComponentModel;
@@ -209,20 +265,174 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
                                                 }
                                                 """));
 
-        // No ReflectionNameCandidate edge where source == target (self-reference).
-        Assert.DoesNotContain(extraction.Result.Edges,
-            e => e.Kind == "ReflectionNameCandidate" && e.SourceSymbolId == e.TargetSymbolId);
+        // D143 (.NET docs, PropertyChangedEventArgs.PropertyName): the name is the name of a
+        // property. Login and Logout are methods, so neither literal is a candidate.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate);
+    }
 
-        // Specifically, Login must not emit a candidate to itself despite the literal "Login" in its body.
-        var loginId = extraction.ResolveId("global::N.AccessController.Login");
-        Assert.DoesNotContain(extraction.Result.Edges,
-            e => e.Kind == "ReflectionNameCandidate" && e.Provenance == Provenance.NameCandidate
-                 && e.SourceSymbolId == loginId && e.TargetSymbolId == loginId);
+    [Fact]
+    public async Task NameCandidate_ToItsOwnOwner_IsRecorded()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                using System.ComponentModel;
+                                                namespace N;
+                                                public class Refl38
+                                                {
+                                                    public void Run() { typeof(Refl38).GetMethod("Run"); }
+                                                    public void Other() { typeof(Refl38).GetMethod("Run"); }
+                                                }
+                                                public class Vm38 : INotifyPropertyChanged
+                                                {
+                                                    public event PropertyChangedEventHandler? PropertyChanged;
+                                                    public string Name
+                                                    {
+                                                        get => "";
+                                                        set { PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Name")); }
+                                                    }
+                                                    public void Touch() { PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Name")); }
+                                                }
+                                                """));
 
-        var logoutId = extraction.ResolveId("global::N.AccessController.Logout");
-        Assert.DoesNotContain(extraction.Result.Edges,
-            e => e.Kind == "ReflectionNameCandidate" && e.Provenance == Provenance.NameCandidate
-                 && e.SourceSymbolId == logoutId && e.TargetSymbolId == logoutId);
+        // D13, D134: no extractor drops an edge from a member to itself; the readers ignore it.
+        // D20: the setter owns its body, so its candidate starts at the setter.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("global::N.Refl38.Other", "global::N.Refl38.Run"),
+            ("global::N.Refl38.Run", "global::N.Refl38.Run"),
+            ("global::N.Vm38.Name.set", "global::N.Vm38.Name"),
+            ("global::N.Vm38.Touch", "global::N.Vm38.Name"));
+    }
+
+    [Fact]
+    public async Task ShortMemberName_IsACandidate()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                namespace Microsoft.EntityFrameworkCore.Metadata.Builders
+                                                {
+                                                    public class EntityTypeBuilder<T>
+                                                    {
+                                                        public void HasKey(params string[] names) { }
+                                                    }
+                                                }
+                                                namespace N
+                                                {
+                                                    using Microsoft.EntityFrameworkCore.Metadata.Builders;
+                                                    public class Order
+                                                    {
+                                                        public int Id { get; set; }
+                                                        public int X { get; set; }
+                                                    }
+                                                    public class User
+                                                    {
+                                                        public void Use() { var p = typeof(Order).GetProperty("X"); }
+                                                        public void Configure(EntityTypeBuilder<Order> b) { b.HasKey("Id"); }
+                                                    }
+                                                }
+                                                """));
+
+        // D17: no length cutoff. GetProperty("X") binds the property X (.NET reflection docs), and
+        // EF Core HasKey("Id") names the key property Id.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("global::N.User.Configure", "global::N.Order.Id"),
+            ("global::N.User.Use", "global::N.Order.X"));
+    }
+
+    [Fact]
+    public async Task MemberLookups_MatchCaseAndMemberKind()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                using System;
+                                                using System.Reflection;
+                                                namespace N;
+                                                public class K12
+                                                {
+                                                    public void Run() { }
+                                                    public string Code { get; set; } = "";
+                                                    public int Counter;
+                                                    public event Action? Changed;
+                                                    public class Inner { }
+                                                }
+                                                public class User
+                                                {
+                                                    public void Case() { typeof(K12).GetMethod("run"); typeof(K12).GetMethod("RUN"); }
+                                                    public void IgnoreCase() { typeof(K12).GetMethod("run", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase); }
+                                                    public void MethodOnProperty() { typeof(K12).GetMethod("Code"); }
+                                                    public void PropertyOnMethod() { typeof(K12).GetProperty("Run"); }
+                                                    public void MethodOnField() { typeof(K12).GetMethod("Counter"); }
+                                                    public void Kinds()
+                                                    {
+                                                        typeof(K12).GetMethod("Run");
+                                                        typeof(K12).GetProperty("Code");
+                                                        typeof(K12).GetField("Counter");
+                                                        typeof(K12).GetEvent("Changed");
+                                                        typeof(K12).GetNestedType("Inner");
+                                                    }
+                                                    public void AnyKind() { typeof(K12).GetMember("Counter"); }
+                                                }
+                                                """));
+
+        // D21 (.NET reflection docs): the name matches case-sensitively unless the call passes
+        // BindingFlags.IgnoreCase, and GetMethod, GetProperty, GetField, GetEvent and GetNestedType
+        // each bind only their member kind. GetMember binds any member.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("global::N.User.AnyKind", "global::N.K12.Counter"),
+            ("global::N.User.IgnoreCase", "global::N.K12.Run"),
+            ("global::N.User.Kinds", "global::N.K12.Changed"),
+            ("global::N.User.Kinds", "global::N.K12.Code"),
+            ("global::N.User.Kinds", "global::N.K12.Counter"),
+            ("global::N.User.Kinds", "global::N.K12.Inner"),
+            ("global::N.User.Kinds", "global::N.K12.Run"));
+    }
+
+    [Fact]
+    public async Task RuntimeNameApis_AreSinksByTheirBoundMethod()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                using System;
+                                                using System.Reflection;
+                                                namespace N;
+                                                public interface IRefl { }
+                                                public class Refl : IRefl
+                                                {
+                                                    public void Target() { }
+                                                    public int Value { get; set; }
+                                                }
+                                                public class Base10 { public void Inherited() { } }
+                                                public class Der10 : Base10 { }
+                                                public class Type2 { public object GetType(string name) => name; }
+                                                public class Holder
+                                                {
+                                                    public Type2 Type => new Type2();
+                                                    public void MakeGenericMethod(System.Type t) { }
+                                                    public void Fake() { Type.GetType("N.Refl"); MakeGenericMethod(typeof(int)); }
+                                                }
+                                                public class User
+                                                {
+                                                    public void Iface() { typeof(Refl).GetInterface("IRefl"); }
+                                                    public void Runtime() { typeof(Refl).GetRuntimeMethod("Target", Type.EmptyTypes); typeof(Refl).GetRuntimeProperty("Value"); }
+                                                    public void Declared() { typeof(Refl).GetTypeInfo().GetDeclaredMethod("Target"); typeof(Der10).GetTypeInfo().GetDeclaredMethod("Inherited"); }
+                                                    public void Inherit() { typeof(Der10).GetMethod("Inherited"); }
+                                                    public void ByName() { Type.GetType("N.Refl"); Type.GetType("Refl"); Type.GetType("N.Refl, App"); }
+                                                }
+                                                """));
+
+        // D36, D143: a sink is the bound runtime API (Type.GetInterface, RuntimeReflectionExtensions,
+        // TypeInfo.GetDeclared*), not a member name in the syntax, so Holder's own GetType and
+        // MakeGenericMethod are no sinks. GetMethod also finds an inherited public method; a
+        // GetDeclared* call finds only a member that the type declares (.NET reflection docs).
+        // D144: Type.GetType reads a namespace-qualified name, optionally assembly-qualified.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("global::N.User.ByName", "global::N.Refl"),
+            ("global::N.User.Declared", "global::N.Refl.Target"),
+            ("global::N.User.Iface", "global::N.IRefl"),
+            ("global::N.User.Inherit", "global::N.Base10.Inherited"),
+            ("global::N.User.Runtime", "global::N.Refl.Target"),
+            ("global::N.User.Runtime", "global::N.Refl.Value"));
+        extraction.AssertEdgeSetOf("ReflectionTargetUnknown", Provenance.RuntimeUnknown,
+            ("global::N.User.ByName", "global::N.User.ByName"),
+            ("global::N.User.Declared", "global::N.User.Declared"),
+            ("global::N.User.Iface", "global::N.User.Iface"),
+            ("global::N.User.Inherit", "global::N.User.Inherit"),
+            ("global::N.User.Runtime", "global::N.User.Runtime"));
     }
 
     [Fact]
@@ -576,6 +786,52 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
         AssertNoNameCandidateTo(extraction, "global::N.Tests.UseLocalData", "global::N.DataSource.Cases");
         AssertNoNameCandidateTo(extraction, "global::N.Tests.UseExternalData", "global::N.OtherData.Cases");
         AssertNoNameCandidateTo(extraction, "global::N.Tests.UseLocalData", "global::N.OtherData.Cases");
+    }
+
+    [Fact]
+    public async Task FrameworkNames_BindInheritedMembersOfTheirKind()
+    {
+        var extraction = await ExtractAsync(One("""
+                                                using System.ComponentModel;
+                                                using System.ComponentModel.DataAnnotations.Schema;
+                                                using Xunit;
+                                                namespace N;
+                                                public class BaseEntity { public int OwnerId { get; set; } }
+                                                public class Owner { }
+                                                public class Pet : BaseEntity
+                                                {
+                                                    [ForeignKey("OwnerId")]
+                                                    public Owner? Owner { get; set; }
+                                                }
+                                                public record PetRec(int OwnerRecId, [property: ForeignKey("OwnerRecId")] Owner? O);
+                                                public class DataBase { public static object[][] Rows => []; }
+                                                public class MemberDataTests : DataBase
+                                                {
+                                                    [Theory]
+                                                    [MemberData("Rows")]
+                                                    public void Check(int x) { }
+                                                }
+                                                public class VmBase { public string Title { get; set; } = ""; }
+                                                public class Vm : VmBase, INotifyPropertyChanged
+                                                {
+                                                    public event PropertyChangedEventHandler? PropertyChanged;
+                                                    public void Raise()
+                                                    {
+                                                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Title"));
+                                                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Raise"));
+                                                    }
+                                                }
+                                                """));
+
+        // D36: EF Core resolves [ForeignKey] on the entity with its inherited properties, xUnit
+        // MemberData walks the base types, and a [property:] attribute on a positional record
+        // parameter applies to the generated property. D143: PropertyChangedEventArgs names a
+        // property, so "Raise" (a method) is no candidate.
+        extraction.AssertEdgeSetOf("ReflectionNameCandidate", Provenance.NameCandidate,
+            ("global::N.MemberDataTests.Check", "global::N.DataBase.Rows"),
+            ("global::N.Pet.Owner", "global::N.BaseEntity.OwnerId"),
+            ("global::N.PetRec.O", "global::N.PetRec.OwnerRecId"),
+            ("global::N.Vm.Raise", "global::N.VmBase.Title"));
     }
 
     [Fact]

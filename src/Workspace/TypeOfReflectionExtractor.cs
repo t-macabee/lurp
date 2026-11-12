@@ -26,7 +26,7 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
             if (targetId == null)
                 continue;
 
-            var sourceId = context.GetContainingMemberSymbolId(typeOfExpr, semanticModel);
+            var sourceId = context.OwnerIdOf(typeOfExpr);
             if (sourceId == null)
                 continue;
 

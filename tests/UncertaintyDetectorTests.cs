@@ -4,7 +4,7 @@ namespace Lurp.Tests;
 
 /// <summary>
 ///     S01-F18: a capsule holds one uncertainty entry for each uncertain relation. Hand count
-///     for the source below: <c>Type.GetType("Pb7T")</c> in <c>Pb7U.Use</c> is one reflection
+///     for the source below: <c>Type.GetType("TestProject.Pb7T")</c> in <c>Pb7U.Use</c> is one reflection
 ///     sink (one <c>ReflectionTargetUnknown</c> relation) whose literal names one declared type
 ///     (one <c>ReflectionNameCandidate</c> relation).
 /// </summary>
@@ -22,7 +22,7 @@ public sealed class UncertaintyDetectorTests : IntegrationTestBase
 
                           public class Pb7U
                           {
-                              public void Use() { System.Type.GetType("Pb7T"); }
+                              public void Use() { System.Type.GetType("TestProject.Pb7T"); }
                           }
                           """
         });

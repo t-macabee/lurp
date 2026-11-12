@@ -142,12 +142,18 @@ public abstract class InMemoryTestBase : IDisposable
         /// </summary>
         public void AssertEdgeSet(string kind, params (string Source, string Target)[] expected)
         {
+            AssertEdgeSetOf(kind, Provenance.CompilerProved, expected);
+        }
+
+        /// <summary><see cref="AssertEdgeSet" /> for the edges of one <paramref name="provenance" />.</summary>
+        public void AssertEdgeSetOf(string kind, string provenance, params (string Source, string Target)[] expected)
+        {
             var fqnById = Result.Declarations
                 .Where(declaration => declaration.SymbolId.FullyQualifiedName != null)
                 .GroupBy(declaration => declaration.SymbolId.Value, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First().SymbolId.FullyQualifiedName!, StringComparer.Ordinal);
             var actual = Result.Edges
-                .Where(e => e.Kind == kind && e.Provenance == Provenance.CompilerProved &&
+                .Where(e => e.Kind == kind && e.Provenance == provenance &&
                             fqnById.ContainsKey(e.SourceSymbolId) && fqnById.ContainsKey(e.TargetSymbolId))
                 .Select(e => (Source: fqnById[e.SourceSymbolId], Target: fqnById[e.TargetSymbolId]))
                 .Distinct()
@@ -162,9 +168,15 @@ public abstract class InMemoryTestBase : IDisposable
         /// </summary>
         public void AssertDocIdEdgeSet(string kind, params (string Source, string Target)[] expected)
         {
+            AssertDocIdEdgeSetOf(kind, Provenance.CompilerProved, expected);
+        }
+
+        /// <summary><see cref="AssertDocIdEdgeSet" /> for the edges of one <paramref name="provenance" />.</summary>
+        public void AssertDocIdEdgeSetOf(string kind, string provenance, params (string Source, string Target)[] expected)
+        {
             var declared = Result.Declarations.Select(declaration => declaration.SymbolId.Value).ToHashSet(StringComparer.Ordinal);
             var actual = Result.Edges
-                .Where(e => e.Kind == kind && e.Provenance == Provenance.CompilerProved &&
+                .Where(e => e.Kind == kind && e.Provenance == provenance &&
                             declared.Contains(e.SourceSymbolId) && declared.Contains(e.TargetSymbolId))
                 .Select(e => (Source: DocId(e.SourceSymbolId), Target: DocId(e.TargetSymbolId)))
                 .Distinct()

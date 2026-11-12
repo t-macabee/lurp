@@ -41,7 +41,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
 
     private void EmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
     {
-        var sourceId = context.GetContainingMemberSymbolId(invocation, semanticModel);
+        var sourceId = context.OwnerIdOf(invocation);
         if (sourceId == null)
             return;
 

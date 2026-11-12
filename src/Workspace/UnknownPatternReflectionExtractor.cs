@@ -18,13 +18,13 @@ internal sealed class UnknownPatternReflectionExtractor(ReflectionExtractionCont
             if (sink == null)
                 continue;
 
-            var sourceId = context.GetContainingMemberSymbolId(invocation, semanticModel);
+            var sourceId = context.OwnerIdOf(invocation);
             if (sourceId == null)
                 continue;
 
             var argumentString = GetFirstStringLiteralArgument(invocation);
 
-            var key = (sourceId, sink.Value.Pattern, argumentString ?? "");
+            var key = (sourceId, sink.Value.Sink.Pattern, argumentString ?? "");
             if (!seen.Add(key))
                 continue;
 

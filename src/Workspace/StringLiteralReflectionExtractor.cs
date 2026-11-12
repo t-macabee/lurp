@@ -34,11 +34,11 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (!literal.IsKind(SyntaxKind.StringLiteralExpression))
                 continue;
 
+            // D17: a literal is a candidate only when a sink binds it and it equals a declared
+            // name in the sink's scope. There is no length cutoff and no noise filter: a string
+            // that is not an identifier never equals a declared name.
             var text = literal.Token.ValueText;
-            if (string.IsNullOrEmpty(text) || text.Length < 3)
-                continue;
-
-            if (IsNoiseString(text))
+            if (text.Length == 0)
                 continue;
 
             if (!TryResolveBinding(literal, semanticModel, out var binding))
@@ -48,7 +48,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             if (matchedSymbols.Count == 0)
                 continue;
 
-            var sourceId = context.GetContainingMemberSymbolId(literal, semanticModel);
+            var sourceId = context.OwnerIdOf(literal);
             if (sourceId == null)
                 continue;
 
@@ -67,11 +67,10 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
 
             var loc = context.GetLocationInfo(literal.GetLocation());
 
+            // D13, D134: a candidate that names its own owner is a fact like any other; the
+            // readers ignore an edge from a member to itself.
             foreach (var targetId in targetIds)
             {
-                if (sourceId == targetId)
-                    continue;
-
                 var key = (sourceId, targetId, nameof(EdgeKind.ReflectionNameCandidate));
                 if (!seen.Add(key))
                     continue;
@@ -83,7 +82,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return edges;
     }
 
-    private static bool TryResolveBinding(LiteralExpressionSyntax literal, SemanticModel semanticModel, out LiteralBinding binding)
+    private bool TryResolveBinding(LiteralExpressionSyntax literal, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -104,18 +103,19 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         }
     }
 
-    private static bool TryResolveInvocationBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
+    private bool TryResolveInvocationBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
-        var reflectionSink = ReflectionSinkPatterns.Resolve(invocation, semanticModel);
-        if (reflectionSink is { } sink && IsReflectionNameArgument(invocation, argument, sink))
+        // D36, D143: a runtime name-binding API binds only its name argument.
+        if (ReflectionSinkPatterns.Resolve(invocation, semanticModel) is { } call)
         {
-            var scopeTypes = new List<INamedTypeSymbol>();
-            if (sink.KnownType is not null)
-                scopeTypes.Add(sink.KnownType);
+            if (call.Sink.TargetKind == NameTargetKind.None || !ReferenceEquals(call.NameArgument, argument))
+                return false;
 
-            binding = new LiteralBinding(ToTargetKind(sink.TargetKind), scopeTypes, ControllersOnly: false);
+            var scope = call.KnownType is null ? NameScope.Global : call.DeclaredOnly ? NameScope.Declared : call.Sink.Scope;
+            binding = new LiteralBinding(call.Sink.TargetKind, scope,
+                call.KnownType is null ? [] : [call.KnownType], ControllersOnly: false, call.IgnoreCase);
             return true;
         }
 
@@ -132,25 +132,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return TryResolveMvcActionBinding(invocation, argument, method, semanticModel, out binding);
     }
 
-    private static bool IsReflectionNameArgument(InvocationExpressionSyntax invocation, ArgumentSyntax argument, ReflectionSinkPattern sink)
-    {
-        var arguments = invocation.ArgumentList.Arguments;
-
-        if (sink.Pattern == "Activator.CreateInstance")
-        {
-            for (var i = arguments.Count - 1; i >= 0; i--)
-            {
-                if (arguments[i].Expression is LiteralExpressionSyntax candidate && candidate.IsKind(SyntaxKind.StringLiteralExpression))
-                    return ReferenceEquals(arguments[i], argument);
-            }
-
-            return false;
-        }
-
-        return arguments.Count > 0 && ReferenceEquals(arguments[0], argument);
-    }
-
-    private static bool TryResolveCallerMemberNameBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, IMethodSymbol method, SemanticModel semanticModel, out LiteralBinding binding)
+    private bool TryResolveCallerMemberNameBinding(InvocationExpressionSyntax invocation, ArgumentSyntax argument, IMethodSymbol method, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -163,11 +145,11 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         if (!isCallerMemberName)
             return false;
 
-        var containingType = ReflectionExtractionContext.GetContainingMemberSymbol(invocation, semanticModel)?.ContainingType;
+        var containingType = OwnerType(context.OwnerOf(invocation));
         if (containingType is null)
             return false;
 
-        binding = new LiteralBinding(NameCandidateTargetKind.Member, new[] { containingType }, ControllersOnly: false);
+        binding = LiteralBinding.InTypeHierarchy(NameTargetKind.AnyMember, containingType);
         return true;
     }
 
@@ -196,7 +178,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             ? Array.Empty<INamedTypeSymbol>()
             : receiverType.TypeArguments.OfType<INamedTypeSymbol>().ToArray();
 
-        binding = new LiteralBinding(NameCandidateTargetKind.Member, scopeTypes, ControllersOnly: false);
+        binding = LiteralBinding.InTypeHierarchy(NameTargetKind.PropertyOrField, scopeTypes);
         return true;
     }
 
@@ -214,7 +196,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         if (parameter.Name is not ("action" or "actionName"))
             return false;
 
-        binding = new LiteralBinding(NameCandidateTargetKind.Member, Array.Empty<INamedTypeSymbol>(), ControllersOnly: true);
+        binding = new LiteralBinding(NameTargetKind.Method, NameScope.Global, [], ControllersOnly: true, IgnoreCase: false);
         return true;
     }
 
@@ -232,7 +214,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return false;
     }
 
-    private static bool TryResolvePropertyChangedBinding(ArgumentSyntax argument, ObjectCreationExpressionSyntax creation, SemanticModel semanticModel, out LiteralBinding binding)
+    private bool TryResolvePropertyChangedBinding(ArgumentSyntax argument, ObjectCreationExpressionSyntax creation, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -242,15 +224,15 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         if (semanticModel.GetTypeInfo(creation).Type?.ToDisplayString() != "System.ComponentModel.PropertyChangedEventArgs")
             return false;
 
-        var containingType = ReflectionExtractionContext.GetContainingMemberSymbol(creation, semanticModel)?.ContainingType;
+        var containingType = OwnerType(context.OwnerOf(creation));
         if (containingType is null)
             return false;
 
-        binding = new LiteralBinding(NameCandidateTargetKind.Member, new[] { containingType }, ControllersOnly: false);
+        binding = LiteralBinding.InTypeHierarchy(NameTargetKind.Property, containingType);
         return true;
     }
 
-    private static bool TryResolveAttributeBinding(AttributeArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
+    private bool TryResolveAttributeBinding(AttributeArgumentSyntax argument, SemanticModel semanticModel, out LiteralBinding binding)
     {
         binding = default;
 
@@ -270,11 +252,11 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
                 if (!IsNameAttributeArgument(argument, constructor, "name", "propertyName", "property"))
                     return false;
 
-                var containingType = GetAttributedContainingType(attribute, semanticModel);
+                var containingType = OwnerType(context.OwnerOf(attribute));
                 if (containingType is null)
                     return false;
 
-                binding = new LiteralBinding(NameCandidateTargetKind.Member, new[] { containingType }, ControllersOnly: false);
+                binding = LiteralBinding.InTypeHierarchy(NameTargetKind.PropertyOrField, containingType);
                 return true;
             }
 
@@ -283,11 +265,11 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
                 if (!IsNameAttributeArgument(argument, constructor, "memberName"))
                     return false;
 
-                var memberType = GetMemberDataMemberType(attribute, semanticModel) ?? GetAttributedContainingType(attribute, semanticModel);
+                var memberType = GetMemberDataMemberType(attribute, semanticModel) ?? OwnerType(context.OwnerOf(attribute));
                 if (memberType is null)
                     return false;
 
-                binding = new LiteralBinding(NameCandidateTargetKind.Member, new[] { memberType }, ControllersOnly: false);
+                binding = LiteralBinding.InTypeHierarchy(NameTargetKind.PropertyFieldOrMethod, memberType);
                 return true;
             }
 
@@ -341,77 +323,74 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
         return null;
     }
 
-    private static INamedTypeSymbol? GetAttributedContainingType(AttributeSyntax attribute, SemanticModel semanticModel)
-    {
-        if (attribute.Parent is not AttributeListSyntax { Parent: { } declaration })
-            return null;
-
-        return declaration switch
-        {
-            PropertyDeclarationSyntax property => (semanticModel.GetDeclaredSymbol(property) as IPropertySymbol)?.ContainingType,
-            FieldDeclarationSyntax field => field.Declaration.Variables.Count == 0
-                ? null
-                : (semanticModel.GetDeclaredSymbol(field.Declaration.Variables[0]) as IFieldSymbol)?.ContainingType,
-            EventDeclarationSyntax eventDeclaration => (semanticModel.GetDeclaredSymbol(eventDeclaration) as IEventSymbol)?.ContainingType,
-            EventFieldDeclarationSyntax eventField => eventField.Declaration.Variables.Count == 0
-                ? null
-                : (semanticModel.GetDeclaredSymbol(eventField.Declaration.Variables[0]) as IEventSymbol)?.ContainingType,
-            MethodDeclarationSyntax method => (semanticModel.GetDeclaredSymbol(method) as IMethodSymbol)?.ContainingType,
-            ConstructorDeclarationSyntax constructor => (semanticModel.GetDeclaredSymbol(constructor) as IMethodSymbol)?.ContainingType,
-            ClassDeclarationSyntax @class => semanticModel.GetDeclaredSymbol(@class) as INamedTypeSymbol,
-            StructDeclarationSyntax @struct => semanticModel.GetDeclaredSymbol(@struct) as INamedTypeSymbol,
-            RecordDeclarationSyntax record => semanticModel.GetDeclaredSymbol(record) as INamedTypeSymbol,
-            _ => null
-        };
-    }
-
+    /// <summary>
+    ///     The declared symbols that <paramref name="text" /> names under <paramref name="binding" />:
+    ///     the same name (ordinal, or ignoring case when the call asks for it, D21), the member kind
+    ///     of the sink (D21, D143) and the scope of the sink (D36).
+    /// </summary>
     private List<ISymbol> ResolveCandidates(string text, LiteralBinding binding)
     {
-        List<ISymbol>? candidates = binding.TargetKind switch
+        IEnumerable<ISymbol> named = binding.Kind switch
         {
-            NameCandidateTargetKind.Member => context.MembersByName.TryGetValue(text, out var members) ? members : null,
-            NameCandidateTargetKind.Type => ResolveTypeCandidates(text),
-            NameCandidateTargetKind.NestedType => context.MembersByName.TryGetValue(text, out var nested)
-                ? nested.Where(static symbol => symbol is INamedTypeSymbol).ToList()
-                : null,
-            _ => null
+            NameTargetKind.Type => context.TypesByFullName(ReflectionExtractionContext.TypeNameOf(text), binding.IgnoreCase),
+            NameTargetKind.Interface => context.TypesBySimpleName(text, binding.IgnoreCase)
+                .Concat(context.TypesByFullName(text, binding.IgnoreCase))
+                .Where(static type => type.TypeKind == TypeKind.Interface)
+                .Distinct<ISymbol>(SymbolEqualityComparer.Default),
+            _ => context.MembersNamed(text, binding.IgnoreCase).Where(symbol => IsKind(symbol, binding.Kind))
         };
 
-        if (candidates is null || candidates.Count == 0)
-            return [];
-
-        if (binding.ScopeTypes.Count == 0 && !binding.ControllersOnly)
-            return candidates;
-
-        var scoped = new List<ISymbol>(candidates.Count);
-        foreach (var symbol in candidates)
+        var scoped = new List<ISymbol>();
+        foreach (var symbol in named)
         {
-            var containingType = symbol.ContainingType;
-            if (containingType is null)
-                continue;
-
-            if (binding.ControllersOnly)
-            {
-                if (IsControllerType(containingType))
-                    scoped.Add(symbol);
-                continue;
-            }
-
-            if (binding.ScopeTypes.Any(scope => SymbolEqualityComparer.Default.Equals(containingType, scope)))
+            if (InScope(symbol, binding))
                 scoped.Add(symbol);
         }
 
         return scoped;
     }
 
-    private List<ISymbol>? ResolveTypeCandidates(string text)
+    private static bool IsKind(ISymbol symbol, NameTargetKind kind)
     {
-        if (context.TypesByName.TryGetValue(text, out var types))
-            return types;
+        return kind switch
+        {
+            NameTargetKind.NestedType => symbol is INamedTypeSymbol,
+            NameTargetKind.Method => symbol is IMethodSymbol,
+            NameTargetKind.Property => symbol is IPropertySymbol,
+            NameTargetKind.Field => symbol is IFieldSymbol,
+            NameTargetKind.Event => symbol is IEventSymbol,
+            NameTargetKind.PropertyOrField => symbol is IPropertySymbol or IFieldSymbol,
+            NameTargetKind.PropertyFieldOrMethod => symbol is IPropertySymbol or IFieldSymbol or IMethodSymbol,
+            NameTargetKind.AnyMember => true,
+            _ => false
+        };
+    }
 
-        return context.MembersByName.TryGetValue(text, out var members)
-            ? members.Where(static symbol => symbol is INamedTypeSymbol).ToList()
-            : null;
+    private static bool InScope(ISymbol symbol, LiteralBinding binding)
+    {
+        if (binding.ControllersOnly)
+            return IsControllerType(symbol.ContainingType);
+
+        return binding.Scope switch
+        {
+            NameScope.Global => true,
+            NameScope.Declared => binding.ScopeTypes.Any(type => SameType(symbol.ContainingType, type)),
+            NameScope.Hierarchy => binding.ScopeTypes.Any(type => SelfAndBaseTypes(type).Any(scope => SameType(symbol.ContainingType, scope))),
+            NameScope.Interfaces => binding.ScopeTypes.Any(type => type.AllInterfaces.Any(@interface => SameType(symbol as INamedTypeSymbol, @interface))),
+            _ => false
+        };
+    }
+
+    private static IEnumerable<INamedTypeSymbol> SelfAndBaseTypes(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+            yield return current;
+    }
+
+    private static bool SameType(INamedTypeSymbol? candidate, INamedTypeSymbol scope)
+    {
+        return candidate is not null &&
+               SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, scope.OriginalDefinition);
     }
 
     private static IParameterSymbol? ResolveArgumentParameter(IMethodSymbol method, ArgumentSyntax argument)
@@ -479,44 +458,26 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
                    || receiverType.AllInterfaces.Any(@interface => @interface.ToDisplayString() == HtmlHelperType));
     }
 
-    private static NameCandidateTargetKind ToTargetKind(ReflectionSinkTargetKind kind)
+    /// <summary>The type whose members an owner-scoped name names: the owner type, or the type of the owner member.</summary>
+    private static INamedTypeSymbol? OwnerType(ISymbol? owner)
     {
-        return kind switch
-        {
-            ReflectionSinkTargetKind.Type => NameCandidateTargetKind.Type,
-            ReflectionSinkTargetKind.NestedType => NameCandidateTargetKind.NestedType,
-            _ => NameCandidateTargetKind.Member
-        };
+        return owner as INamedTypeSymbol ?? owner?.ContainingType;
     }
 
-    private static bool IsNoiseString(string text)
-    {
-        if (text.All(char.IsDigit))
-            return true;
-        if (text.Contains(' ') && !text.Contains('.') && !IsPascalCase(text) && !IsCamelCase(text))
-            return true;
-        return false;
-    }
-
-    private static bool IsPascalCase(string text)
-    {
-        return text.Length > 0 && char.IsUpper(text[0]) && text.Any(char.IsLower);
-    }
-
-    private static bool IsCamelCase(string text)
-    {
-        return text.Length > 0 && char.IsLower(text[0]) && text.Any(char.IsUpper);
-    }
-
-    private enum NameCandidateTargetKind
-    {
-        Member,
-        Type,
-        NestedType
-    }
-
+    /// <summary>What a bound literal names: the kind, the scope and its types, and the case rule (D21, D36).</summary>
     private readonly record struct LiteralBinding(
-        NameCandidateTargetKind TargetKind,
+        NameTargetKind Kind,
+        NameScope Scope,
         IReadOnlyList<INamedTypeSymbol> ScopeTypes,
-        bool ControllersOnly);
+        bool ControllersOnly,
+        bool IgnoreCase)
+    {
+        /// <summary>
+        ///     D36: a name in the given types and their base types, or in every type when none is
+        ///     given. The framework APIs bind inherited members (EF Core, xUnit MemberData,
+        ///     PropertyChanged).
+        /// </summary>
+        internal static LiteralBinding InTypeHierarchy(NameTargetKind kind, params IReadOnlyList<INamedTypeSymbol> types) =>
+            new(kind, types.Count == 0 ? NameScope.Global : NameScope.Hierarchy, types, ControllersOnly: false, IgnoreCase: false);
+    }
 }

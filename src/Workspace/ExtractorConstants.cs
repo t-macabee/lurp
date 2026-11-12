@@ -7,7 +7,7 @@ internal static class ExtractorConstants
     internal const string HidesExtractor = "hides-v2";
     internal const string ReturnsExtractor = "returns-v2";
     internal const string ParameterDependenciesExtractor = "parameter-deps-v2";
-    internal const string ReflectionExtractor = "reflection-v3";
+    internal const string ReflectionExtractor = "reflection-v4";
     internal const string PolymorphismExtractor = "polymorphism-v2";
     internal const string OperationShapesExtractor = "operation-shapes-v2";
 }

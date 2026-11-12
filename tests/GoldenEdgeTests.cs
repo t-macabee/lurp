@@ -1341,6 +1341,9 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
             $"unsupported_syntax row: {rows}");
         Assert.DoesNotContain(extraction.Result.Edges,
             e => e.Kind == "Reads" && e.TargetSymbolId.Contains("C.N(", StringComparison.Ordinal));
+
+        // D20: the getter runs the expression body, so it owns the nameof.
+        extraction.AssertEdgeSet("ReflectionMemberRef", ("global::N.C.Name.get", "global::N.C.N"));
     }
 
     [Fact]

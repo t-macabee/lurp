@@ -28,6 +28,7 @@ namespace Lurp.Workspace;
 ///     <c>sizeof</c>, array creation, local declarations, <c>catch</c> types, method and
 ///     constructor type arguments) are <c>References</c> to the type and to the types
 ///     nested inside it; <c>typeof</c> is left to <c>ReflectionTypeRef</c>.
+///     The roots and their owners come from <see cref="ExecutableRoots" /> (D8, D20).
 /// </summary>
 internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
@@ -38,7 +39,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
         ExtractAttributeConstructions(edges, seen);
 
-        foreach (var (owner, node) in EnumerateRoots())
+        foreach (var (owner, node) in ExecutableRoots.Bodies(context))
         {
             var ownerId = context.MakeSymbolId(owner);
             if (ownerId == null)
@@ -74,148 +75,6 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         }
 
         return edges;
-    }
-
-    private IEnumerable<(ISymbol Owner, SyntaxNode Node)> EnumerateRoots()
-    {
-        foreach (var (method, syntax) in context.EnumerateMethodDeclarations())
-        {
-            var node = syntax switch
-            {
-                PropertyDeclarationSyntax { ExpressionBody: { } body } => body.Expression,
-                IndexerDeclarationSyntax { ExpressionBody: { } body } => body.Expression,
-                _ => (SyntaxNode)syntax
-            };
-            yield return (method, node);
-
-            // B33: a local function's or lambda's parameter default sits inside a
-            // method body but not in the body's operation tree; its owner is the
-            // enclosing member.
-            foreach (var parameter in syntax.DescendantNodes().OfType<ParameterSyntax>())
-            {
-                if (parameter.Default is not { } parameterDefault)
-                    continue;
-                if (parameter.Parent?.Parent is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
-                    continue;
-                yield return (method, parameterDefault.Value);
-            }
-        }
-
-        foreach (var typeSymbol in context.GetAllNamedTypes())
-        {
-            foreach (var member in typeSymbol.GetMembers())
-            {
-                if (member.IsImplicitlyDeclared)
-                    continue;
-
-                switch (member)
-                {
-                    case IFieldSymbol field:
-                        foreach (var syntax in InScopeDeclarations(field))
-                        {
-                            if (syntax is VariableDeclaratorSyntax { Initializer: { } initializer })
-                                yield return (field, initializer.Value);
-                            else if (syntax is EnumMemberDeclarationSyntax { EqualsValue: { } equalsValue })
-                                yield return (field, equalsValue.Value);
-                        }
-
-                        break;
-                    case IPropertySymbol property:
-                        foreach (var syntax in InScopeDeclarations(property))
-                        {
-                            if (syntax is PropertyDeclarationSyntax { Initializer: { } initializer })
-                                yield return (property, initializer.Value);
-                        }
-
-                        if (property.IsIndexer)
-                        {
-                            foreach (var parameterDefault in EnumerateParameterDefaults(property.Parameters))
-                                yield return (property, parameterDefault);
-                        }
-
-                        break;
-                    case IMethodSymbol method:
-                        foreach (var parameterDefault in EnumerateParameterDefaults(method.Parameters))
-                            yield return (method, parameterDefault);
-
-                        if (method.MethodKind == MethodKind.Constructor)
-                        {
-                            foreach (var syntax in InScopeDeclarations(method))
-                            {
-                                if (syntax is ConstructorDeclarationSyntax { Initializer: { } initializer })
-                                    yield return (method, initializer);
-                            }
-                        }
-
-                        break;
-                    case IEventSymbol eventSymbol:
-                        foreach (var syntax in InScopeDeclarations(eventSymbol))
-                        {
-                            if (syntax is VariableDeclaratorSyntax { Initializer: { } initializer })
-                                yield return (eventSymbol, initializer.Value);
-                        }
-
-                        break;
-                }
-            }
-
-            // R4.5: a delegate parameter default is owned by the delegate type; Roslyn's
-            // Invoke method is not a stored symbol, so its ContainingSymbol is not an id.
-            if (typeSymbol.TypeKind == TypeKind.Delegate && typeSymbol.DelegateInvokeMethod is { } invoke)
-            {
-                foreach (var parameterDefault in EnumerateParameterDefaults(invoke.Parameters))
-                    yield return (typeSymbol, parameterDefault);
-            }
-
-            foreach (var syntax in InScopeDeclarations(typeSymbol))
-            {
-                if (syntax is not TypeDeclarationSyntax typeDeclaration)
-                    continue;
-                if (typeDeclaration.BaseList?.Types.OfType<PrimaryConstructorBaseTypeSyntax>().FirstOrDefault() is not { } primaryBase)
-                    continue;
-
-                var constructor = typeSymbol.InstanceConstructors.FirstOrDefault(c => !c.IsImplicitlyDeclared)
-                                  ?? typeSymbol.InstanceConstructors.FirstOrDefault();
-                if (constructor != null)
-                    yield return (constructor, primaryBase);
-            }
-        }
-
-        var entryPoint = context.Compilation.GetEntryPoint(CancellationToken.None);
-        if (entryPoint != null)
-        {
-            foreach (var tree in context.Compilation.SyntaxTrees)
-            {
-                if (!context.IsInScope(tree))
-                    continue;
-                foreach (var global in tree.GetRoot().ChildNodes().OfType<GlobalStatementSyntax>())
-                    yield return (entryPoint, global);
-            }
-        }
-    }
-
-    /// <summary>
-    ///     The declaring syntax of <paramref name="symbol" /> that lies in the extraction scope.
-    /// </summary>
-    private IEnumerable<SyntaxNode> InScopeDeclarations(ISymbol symbol)
-    {
-        foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
-        {
-            if (context.IsInScope(syntaxRef.SyntaxTree))
-                yield return syntaxRef.GetSyntax();
-        }
-    }
-
-    private IEnumerable<SyntaxNode> EnumerateParameterDefaults(IEnumerable<IParameterSymbol> parameters)
-    {
-        foreach (var parameter in parameters)
-        {
-            foreach (var syntax in InScopeDeclarations(parameter))
-            {
-                if (syntax is ParameterSyntax { Default: { } parameterDefault })
-                    yield return parameterDefault.Value;
-            }
-        }
     }
 
     private void Walk(
@@ -469,85 +328,49 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
-        foreach (var typeSymbol in context.GetAllNamedTypes())
+        foreach (var (owner, attribute) in ExecutableRoots.Attributes(context))
         {
-            ExtractAttributeConstructions(typeSymbol, edges, seen);
+            var ownerId = context.MakeSymbolId(owner);
+            if (ownerId == null)
+                continue;
 
-            foreach (var member in typeSymbol.GetMembers())
-            {
-                if (member is INamedTypeSymbol)
-                    continue;
-                ExtractAttributeConstructions(member, edges, seen);
-            }
+            var syntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(owner);
+            ExtractAttribute(owner, attribute, ownerId, syntax, edges, seen);
         }
     }
 
-    private void ExtractAttributeConstructions(
-        ISymbol symbol,
-        List<EdgeRecord> edges,
-        Dictionary<(string Source, string Target, string Kind), int> seen)
-    {
-        if (symbol.IsImplicitlyDeclared || !context.IsMemberInScope(symbol))
-            return;
-
-        var sourceId = context.MakeSymbolId(symbol);
-        if (sourceId == null)
-            return;
-
-        var syntax = BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(symbol);
-        ExtractAttributes(symbol, symbol.GetAttributes(), sourceId, syntax, edges, seen);
-
-        // B33: parameter and return-value attributes belong to the declaring
-        // member (an indexer parameter to the indexer).
-        switch (symbol)
-        {
-            case IMethodSymbol method:
-                foreach (var parameter in method.Parameters)
-                    ExtractAttributes(symbol, parameter.GetAttributes(), sourceId, syntax, edges, seen);
-                ExtractAttributes(symbol, method.GetReturnTypeAttributes(), sourceId, syntax, edges, seen);
-                break;
-            case IPropertySymbol { IsIndexer: true } indexer:
-                foreach (var parameter in indexer.Parameters)
-                    ExtractAttributes(symbol, parameter.GetAttributes(), sourceId, syntax, edges, seen);
-                break;
-        }
-    }
-
-    private void ExtractAttributes(
+    private void ExtractAttribute(
         ISymbol owner,
-        IEnumerable<AttributeData> attributes,
+        AttributeData attribute,
         string sourceId,
         SyntaxNode? syntax,
         List<EdgeRecord> edges,
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
-        foreach (var attribute in attributes)
+        var attributeClass = attribute.AttributeClass;
+        if (attributeClass == null)
+            return;
+
+        var targetId = context.MakeSymbolId(attributeClass);
+        if (targetId == null)
+            return;
+
+        Emit(edges, seen, sourceId, targetId, nameof(EdgeKind.Constructs), syntax);
+
+        // B28: an attribute application calls its constructor when the
+        // constructor is declared in source.
+        if (attribute.AttributeConstructor is { IsImplicitlyDeclared: false } attributeConstructor)
+            AddEdge(sourceId, attributeConstructor, nameof(EdgeKind.Calls), syntax, edges, seen);
+
+        // B33: an attribute argument is a root; walk its expression.
+        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax { ArgumentList: { } argumentList } &&
+            context.IsInScope(argumentList.SyntaxTree))
         {
-            var attributeClass = attribute.AttributeClass;
-            if (attributeClass == null)
-                continue;
-
-            var targetId = context.MakeSymbolId(attributeClass);
-            if (targetId == null)
-                continue;
-
-            Emit(edges, seen, sourceId, targetId, nameof(EdgeKind.Constructs), syntax);
-
-            // B28: an attribute application calls its constructor when the
-            // constructor is declared in source.
-            if (attribute.AttributeConstructor is { IsImplicitlyDeclared: false } attributeConstructor)
-                AddEdge(sourceId, attributeConstructor, nameof(EdgeKind.Calls), syntax, edges, seen);
-
-            // B33: an attribute argument is a root; walk its expression.
-            if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax { ArgumentList: { } argumentList } &&
-                context.IsInScope(argumentList.SyntaxTree))
+            var model = context.GetOrCreateSemanticModel(argumentList.SyntaxTree);
+            foreach (var argument in argumentList.Arguments)
             {
-                var model = context.GetOrCreateSemanticModel(argumentList.SyntaxTree);
-                foreach (var argument in argumentList.Arguments)
-                {
-                    if (model.GetOperation(argument.Expression) is { } argumentOperation)
-                        Walk(argumentOperation, owner, sourceId, model, edges, seen);
-                }
+                if (model.GetOperation(argument.Expression) is { } argumentOperation)
+                    Walk(argumentOperation, owner, sourceId, model, edges, seen);
             }
         }
     }

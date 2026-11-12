@@ -120,6 +120,54 @@ declaration records while `symbols_in_snapshot` counts symbols.
 | `name_candidate` | Name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically |
 | `runtime_unknown` | Runtime target not observable statically |
 
+### 4.3 Edge kinds
+
+An edge is one fact: a source symbol, a target symbol and a kind. A fact from a
+body has the member that runs the code as its source (the owner rule). An
+accessor owns its body, also the expression body of a property or an indexer. A
+field, property, event or enum-member initializer belongs to that member; each
+variable of a field declaration owns its own initializer. A local function, a
+lambda and a query clause belong to the member that contains them. A parameter
+default belongs to its method (an indexer parameter: the indexer; a delegate
+parameter: the delegate type). The arguments of a primary-constructor base list
+belong to the primary constructor. An attribute argument belongs to the
+attributed member (a type attribute: the type; a parameter or return-value
+attribute: its method). The top-level statements belong to the entry point. All
+extractors read one list of these roots (`ExecutableRoots`). No extractor drops an
+edge from a member to itself; the readers (dead candidates, capsules) ignore such
+an edge. The `mapping` list of
+[call-shapes.golden.json](../tests/Fixtures/GroundTruth/CallShapes/call-shapes.golden.json)
+is the executable form of these rules for the kinds that the golden compares.
+
+| Kind | Meaning | Source → target | Provenance |
+|---|---|---|---|
+| `Inherits` | A type names its base class. A class whose base is `object` and a struct give no edge. | type → base type | `compiler_proved` |
+| `Implements` | A type names an interface in its base list (an interface: its base interfaces). | type → interface | `compiler_proved` |
+| `References` | A type is named in a signature (a return, parameter, property, field or event type, with its type arguments, array elements and function-pointer types), as a type argument in a base list, in a written constraint, or in a body (a local declaration, a written or inferred lambda type, a pattern, a cast, `default`, `sizeof`, an array creation, a `catch` type, a method type argument, the receiver type of a static member access). | member or type → type | `compiler_proved` |
+| `Contains` | A type declares a nested type. | type → nested type | `compiler_proved` |
+| `Overrides` | A method, property or event overrides a base member. | override → overridden member | `compiler_proved` |
+| `Hides` | A member hides an inherited member by the C# hiding rules. | member → hidden member | `compiler_proved` |
+| `ExtensionReceiver` | A reduced extension call (`x.M()`) binds its receiver type to the extension method. | receiver type → extension method | `compiler_proved` |
+| `Calls` | Code calls a method: an invocation, the implicit calls of the C# rules (`foreach`, `using`, `await`, deconstruction, collection initializers and expressions, user-defined operators and conversions, interpolated-string handlers, `with`), a constructor initializer, and a source-declared constructor of an object creation or an attribute. | owner → method | `compiler_proved` |
+| `MethodGroupRef` | A method group converts to a delegate, also the handler of an event `+=` or `-=`. | owner → method | `compiler_proved` |
+| `Constructs` | An object creation, an attribute application or an interpolated-string handler creation. | owner → created type | `compiler_proved` |
+| `Reads` | Code reads a field, property, indexer or event. | owner → member | `compiler_proved` |
+| `Writes` | Code writes a field, property, indexer or event. A compound assignment, `??=`, `++`, `--` and a `ref` use are a read and a write. | owner → member | `compiler_proved` |
+| `Returns` | A method returns a source type. A delegate type owns the return type of its `Invoke`. | method or delegate type → type | `compiler_proved` |
+| `Throws` | A `throw` names an exception type. | owner → exception type | `compiler_proved` |
+| `Declares` | A type declares a member, also a compiler-made member that Lurp stores (the synthesized members of a record, the members of a delegate). | type → member | `compiler_proved` |
+| `MayDispatchTo` | A call on a virtual, abstract or interface member can run this implementation at run time. Every member of an override chain points to every override below it. | dispatch member → implementation | `compiler_proved`; `possible` when only a derived type maps the member to an inherited implementation |
+| `StaticallyCalls` | An access whose target can dispatch at run time. It sits next to the `Calls`, `Reads` or `Writes` edge of the same access. A `base.` access and a method group get none. | owner → dispatch member | `compiler_proved` |
+| `RoutesTo` | An ASP.NET Core route reaches a controller action. | route node → action method | `framework_derived` |
+| `Registers` | A dependency-injection registration binds a service to an implementation. | registering member or service type → implementation type, or the runtime-unknown node | `framework_derived`; `convention` for a convention scan; `runtime_unknown` for a registration that Lurp cannot read |
+| `Handles` | A MediatR handler handles a request or a notification. | request type → handler method | `framework_derived` |
+| `MapsTo` | EF Core maps an entity type (a `DbSet`, a configuration, a model builder call). | context, property or configuration → entity type | `framework_derived` |
+| `TestedBy` | A test method covers a production symbol. | production symbol → test method | `framework_derived` |
+| `ReflectionTypeRef` | A `typeof(T)` names a type. | owner → type | `compiler_proved` |
+| `ReflectionMemberRef` | A `nameof` names a member, and each member of its receiver chain. | owner → member | `compiler_proved` |
+| `ReflectionNameCandidate` | A string literal is the name argument of a runtime or framework name-binding API, and it equals a declared name of the member kind of that API in its scope: the known type and its base types (see [TRUST_KERNEL.md](../notes/TRUST_KERNEL.md)). | owner → candidate member or type | `name_candidate` |
+| `ReflectionTargetUnknown` | Code calls a runtime name-binding API, so the target is not known statically. | owner → owner | `runtime_unknown` |
+
 ## 5. Read Path (Handlers)
 
 Handlers consume persisted facts through `SqliteIndexStore` and related store

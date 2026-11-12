@@ -40,6 +40,28 @@ internal abstract class ExtractionContextBase(ProjectExtractionInputs inputs)
         return ExtractionUtils.IsInScope(ScopeDocuments, syntaxTree);
     }
 
+    /// <summary>
+    ///     True when a declaration of <paramref name="member" /> lies in the extraction scope. A
+    ///     compiler-made member without syntax (an implicit constructor, a backing field) takes the
+    ///     scope of its containing type.
+    /// </summary>
+    internal bool IsMemberInScope(ISymbol member)
+    {
+        if (ScopeDocuments == null)
+            return true;
+
+        var syntaxRefs = member.DeclaringSyntaxReferences;
+        if (syntaxRefs.IsEmpty)
+        {
+            var containingType = member.ContainingType;
+            if (containingType == null)
+                return true;
+            return containingType.DeclaringSyntaxReferences.Any(syntaxRef => IsInScope(syntaxRef.SyntaxTree));
+        }
+
+        return syntaxRefs.Any(syntaxRef => IsInScope(syntaxRef.SyntaxTree));
+    }
+
     internal IEnumerable<INamedTypeSymbol> GetAllNamedTypes()
     {
         return ExtractionUtils.GetAllNamedTypes(Compilation.Assembly.GlobalNamespace);

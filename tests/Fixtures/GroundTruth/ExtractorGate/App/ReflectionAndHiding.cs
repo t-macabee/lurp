@@ -17,6 +17,9 @@ public static class ReflectionShapes
     public static Type TypeOfShape() => typeof(Calculator);
 
     public static Type? ByName() => Type.GetType("ExtractorGate.App.Calculator");
+
+    // D20: the getter owns the expression body of a property.
+    public static Type ShapeType => typeof(Calculator);
 }
 
 // S01-F17: a member hides a member that its type inherits through a base type that does not declare it.

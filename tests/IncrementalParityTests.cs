@@ -514,7 +514,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                                  public static void Register(IServiceCollection services)
                                  {
                                      services.AddScoped<ISvc, Svc>();
-                                     _ = Type.GetType("Svc");
+                                     _ = Type.GetType("TestProject.Svc");
                                  }
                              }
                              """
