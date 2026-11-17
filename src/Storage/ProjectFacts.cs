@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Shared;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
@@ -12,22 +13,6 @@ namespace Lurp.Storage;
 /// </summary>
 internal sealed class ProjectFacts
 {
-    /// <summary>
-    ///     Simple names of assemblies whose presence marks a project as a test project.
-    ///     A project is a test project only because it references one of these, never
-    ///     because of its name or its solution. Order is the order the constant lists;
-    ///     membership is compared ordinally.
-    /// </summary>
-    private static readonly string[] TestFrameworkSimpleNames =
-    [
-        "Microsoft.VisualStudio.TestPlatform.ObjectModel",
-        "Microsoft.Testing.Platform",
-        "xunit.core",
-        "xunit.v3.core",
-        "nunit.framework",
-        "Microsoft.VisualStudio.TestPlatform.TestFramework"
-    ];
-
     private readonly Dictionary<string, string> _assemblyNameByProjectName;
     private readonly Dictionary<string, HashSet<string>> _referenceSimpleNamesByAssemblyName;
 
@@ -97,14 +82,8 @@ internal sealed class ProjectFacts
     /// </summary>
     public bool IsTestProject(string assemblyName)
     {
-        if (!_referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames))
-            return false;
-
-        foreach (var name in TestFrameworkSimpleNames)
-            if (simpleNames.Contains(name))
-                return true;
-
-        return false;
+        return _referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames) &&
+               TestFrameworks.IsTestProjectReferenceSet(simpleNames);
     }
 
     /// <summary>

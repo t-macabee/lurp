@@ -101,12 +101,12 @@ declaration records while `symbols_in_snapshot` counts symbols.
 
 | Adapter | Facts emitted |
 |---|---|
-| ASP.NET Core | `RoutesTo` (route → controller action) |
+| ASP.NET Core | `RoutesTo` (`route://<METHOD> /<template>` built with ASP.NET Core's selector, combine, token and HTTP-method rules → controller action) |
 | Dependency Injection | `Registers` for every MS.DI registration form (`Add*`, `TryAdd*`, keyed, `ServiceDescriptor`): service → implementation and registering member → implementation. A factory, an instance of an interface or abstract type and a `Type` value that is not a `typeof` give the runtime-unknown node. Hosted services, options and an external `IServiceCollection` method give the runtime-unknown node and the named type with `runtime_unknown`. A Scrutor scan `FromAssemblyOf<T>()` → `AddClasses()` → `AsImplementedInterfaces()` gives interface → class with `convention`; any other scan gives a `convention:assembly_scan:<assembly>` placeholder. |
-| MediatR | `Handles` (request/notification → handler) |
-| EF Core | `MapsTo` (entity, `DbSet`, configuration) |
-| Serialization | DTO/property contract participation |
-| Test | `TestedBy` (production symbol → covering test) |
+| MediatR | `Handles` (request/notification → the method that implements the handler interface's `Handle`, including explicit, inherited and overloaded implementations) |
+| EF Core | `MapsTo` (entity, `DbSet`, configuration); navigation `References` (context or configuration → related entity); `ef_query_filter_constraint` and `ef_unique_index_constraint` (only `IsUnique`) on the entity; same facts in `OnModelCreating` and `Configure` |
+| Serialization | `serialization_contract` annotation per member (`name=<wire name>`, `ignored`, `included`) from System.Text.Json, Newtonsoft.Json and DataContract attributes; `JsonSerializable` context → type `References` |
+| Test | `TestedBy` (production type → covering test method; test methods: an attribute that is or derives from a framework test attribute, list in `TestFrameworks`; follows the test body, test-assembly helpers, class constructors, initializers and setup methods) |
 
 ### 4.2 Evidence ladder
 
@@ -143,7 +143,7 @@ is the executable form of these rules for the kinds that the golden compares.
 |---|---|---|---|
 | `Inherits` | A type names its base class. A class whose base is `object` and a struct give no edge. | type → base type | `compiler_proved` |
 | `Implements` | A type names an interface in its base list (an interface: its base interfaces). | type → interface | `compiler_proved` |
-| `References` | A type is named in a signature (a return, parameter, property, field or event type, with its type arguments, array elements and function-pointer types), as a type argument in a base list, in a written constraint, or in a body (a local declaration, a written or inferred lambda type, a pattern, a cast, `default`, `sizeof`, an array creation, a `catch` type, a method type argument, the receiver type of a static member access). | member or type → type | `compiler_proved` |
+| `References` | A type is named in a signature (a return, parameter, property, field or event type, with its type arguments, array elements and function-pointer types), as a type argument in a base list, in a written constraint, or in a body (a local declaration, a written or inferred lambda type, a pattern, a cast, `default`, `sizeof`, an array creation, a `catch` type, a method type argument, the receiver type of a static member access); an EF Core navigation (`HasOne`/`HasMany`); or a `[JsonSerializable]` context. | member, type, context or configuration → type | `compiler_proved`; `framework_derived` for EF Core navigations and `[JsonSerializable]` |
 | `Contains` | A type declares a nested type. | type → nested type | `compiler_proved` |
 | `Overrides` | A method, property or event overrides a base member. | override → overridden member | `compiler_proved` |
 | `Hides` | A member hides an inherited member by the C# hiding rules. | member → hidden member | `compiler_proved` |
@@ -158,11 +158,11 @@ is the executable form of these rules for the kinds that the golden compares.
 | `Declares` | A type declares a member, also a compiler-made member that Lurp stores (the synthesized members of a record, the members of a delegate). | type → member | `compiler_proved` |
 | `MayDispatchTo` | A call on a virtual, abstract or interface member can run this implementation at run time. Every member of an override chain points to every override below it. | dispatch member → implementation | `compiler_proved`; `possible` when only a derived type maps the member to an inherited implementation |
 | `StaticallyCalls` | An access whose target can dispatch at run time. It sits next to the `Calls`, `Reads` or `Writes` edge of the same access. A `base.` access and a method group get none. | owner → dispatch member | `compiler_proved` |
-| `RoutesTo` | An ASP.NET Core route reaches a controller action. | route node → action method | `framework_derived` |
+| `RoutesTo` | An ASP.NET Core route (`route://<METHOD> /<template>`, tokens and overrides resolved, `ANY` without a method constraint) reaches a controller action. | route node → action method | `framework_derived` |
 | `Registers` | A dependency-injection registration binds a service to an implementation. A registration without an implementation registers the service type itself. | registering member or service type → implementation type; interface → class for a Scrutor scan; or the runtime-unknown node or an assembly-scan placeholder | `framework_derived`; `convention` for a Scrutor scan; `runtime_unknown` for a registration that Lurp cannot read |
-| `Handles` | A MediatR handler handles a request or a notification. | request type → handler method | `framework_derived` |
+| `Handles` | A MediatR handler handles a request or a notification; target = the method that implements the interface's `Handle` (explicit, inherited and overloaded implementations included). | request type → handler method | `framework_derived` |
 | `MapsTo` | EF Core maps an entity type (a `DbSet`, a configuration, a model builder call). | context, property or configuration → entity type | `framework_derived` |
-| `TestedBy` | A test method covers a production symbol. | production symbol → test method | `framework_derived` |
+| `TestedBy` | A test method covers a production type; the test reaches the type through its body, the helpers of the test assembly, its class constructor, initializers and setup methods (D31). | production type → test method | `framework_derived` |
 | `ReflectionTypeRef` | A `typeof(T)` names a type. | owner → type | `compiler_proved` |
 | `ReflectionMemberRef` | A `nameof` names a member, and each member of its receiver chain. | owner → member | `compiler_proved` |
 | `ReflectionNameCandidate` | A string literal is the name argument of a runtime or framework name-binding API, and it equals a declared name of the member kind of that API in its scope: the known type and its base types (see [TRUST_KERNEL.md](../notes/TRUST_KERNEL.md)). | owner → candidate member or type | `name_candidate` |
@@ -239,7 +239,7 @@ entry, not a new extractor.
 | `di_options` | Options-pattern registration Configure<T>/AddOptions<T> is not fully modeled: the options type is resolved but the configuration-binding semantics are not captured. |
 | `di_external_extension` | An external IServiceCollection extension method was detected but could not be analyzed: the method lives outside the compilation so its registration semantics are unknown. |
 | `masstransit_consumer` | MassTransit consumer registration is not modeled: no adapter exists to emit consumer-wiring edges for AddConsumer or endpoint configuration. |
-| `ef_convention` | EF Core model conventions beyond query filters and indexes (e.g. IsRequired, HasMaxLength, HasDefaultSchema) are not modeled. |
+| `ef_convention` | EF Core model conventions beyond query filters and unique indexes (e.g. IsRequired, HasMaxLength, HasDefaultSchema) are not modeled. |
 | `shape_similarity` | Semantic sibling similarity is not modeled: consistency audits requiring comparison against 'similar' implementations are unsupported. Use the proved neighborhood instead — implementations of a shared interface, shared base types and overrides, callers/callees, and containing-declaration siblings. |
 | `mediatr_stream_handler` | MediatR stream handler pattern (IStreamRequestHandler or IAsyncStreamHandler) is not modeled: the implementing type was detected but no Handles edge was emitted. |
 | `mediatr_pipeline_behavior` | MediatR pipeline behavior (IPipelineBehavior) is not modeled: the implementing type was detected but no edge was emitted. Pipeline behaviors affect all requests passing through the pipeline. |
@@ -247,7 +247,7 @@ entry, not a new extractor.
 | `mediatr_pre_post_processor` | MediatR pre/post processor (IRequestPreProcessor or IRequestPostProcessor) is not modeled: the implementing type was detected but no edge was emitted. |
 | `source_generators` | Source-generated code is not executed or indexed (generated trees are excluded and obj/ output is path-filtered), so symbols, calls, and registrations declared only by a source generator are absent from the graph. |
 | `razor_blazor` | Razor (.cshtml) and Blazor components are not parsed: only C# documents in the solution's compilations are indexed, so component event handlers and render-tree calls are absent from the graph. |
-| `minimal_api_endpoints` | Minimal API endpoints and non-controller ASP.NET Core surfaces (MapGet/MapPost, endpoint filters, SignalR hubs, gRPC services) are not modeled: the ASP.NET Core adapter recognizes only Controller-derived types, so endpoint-to-handler routes are absent from the graph. |
+| `minimal_api_endpoints` | Minimal API endpoints, non-controller ASP.NET Core surfaces (MapGet/MapPost, endpoint filters, SignalR hubs, gRPC services) and conventional routes (MapControllerRoute) are not modeled: the ASP.NET Core adapter recognizes only types that ASP.NET Core's ControllerFeatureProvider accepts, so endpoint-to-handler and conventional routes are absent from the graph. |
 | `multi_target_union` | Multi-target projects are indexed as one union snapshot over every declared target framework: the declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but reads do not surface the per-symbol set, so a construct present in only one target framework cannot be told apart by a consumer from one present in all of them. |
 | `non_csharp_projects` | F# and VB projects are out of scope: MSBuildWorkspace skips non-C# languages and the skip is reported as a warning, so symbols and relationships declared in those projects are absent from the graph. |
 | `intermediate_redirect_not_applied` | A project's build files set the intermediate output path after Lurp's redirect (or assign CustomBeforeMicrosoftCommonTargets in the project file), so its design-time build files are written under its own obj/ directory in the target tree. The project's own build hooks do take effect; the indexed compilation is not affected. |

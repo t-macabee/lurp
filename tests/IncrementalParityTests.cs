@@ -1199,6 +1199,222 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
 
+    [Fact]
+    public async Task ScenarioM2_RenamedDerivedController_RetiresItsInheritedRoute()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Base.cs"] = """
+                              using Microsoft.AspNetCore.Mvc;
+
+                              namespace App;
+
+                              [Route("api/[controller]")]
+                              public abstract class ApiBase : ControllerBase
+                              {
+                                  [HttpGet("ping")]
+                                  public int Ping() => 1;
+                              }
+                              """,
+                ["Orders.cs"] = """
+                                using Microsoft.AspNetCore.Mvc;
+
+                                namespace App;
+
+                                public class OrdersController : ApiBase
+                                {
+                                    [HttpGet("list")]
+                                    public int List() => 1;
+                                }
+                                """
+            },
+            frameworkReferences: ["Microsoft.AspNetCore.App"]);
+
+        RestoreSolution();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("App", "Orders.cs", """
+                                      using Microsoft.AspNetCore.Mvc;
+
+                                      namespace App;
+
+                                      public class PurchasesController : ApiBase
+                                      {
+                                          [HttpGet("list")]
+                                          public int List() => 1;
+                                      }
+                                      """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+        var routesB = QueryEdges(DbPath, snapshotB, "RoutesTo");
+        Assert.DoesNotContain(routesB, r => r.SourceSymbolId == "route://GET /api/Orders/ping");
+    }
+
+    [Fact]
+    public async Task ScenarioMediatR_UnmodeledAnnotation_IsNotDuplicatedByIncrementalRuns()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Handlers.cs"] = """
+                                  using System.Collections.Generic;
+                                  using System.Runtime.CompilerServices;
+                                  using System.Threading;
+                                  using MediatR;
+
+                                  namespace App;
+
+                                  public record SR : IStreamRequest<int>;
+
+                                  public class SH : IStreamRequestHandler<SR, int>
+                                  {
+                                      public async IAsyncEnumerable<int> Handle(SR request, [EnumeratorCancellation] CancellationToken cancellationToken)
+                                      {
+                                          yield return 1;
+                                      }
+                                  }
+                                  """,
+                ["Dtos.cs"] = """
+                              namespace App;
+
+                              public class Dto { }
+                              """
+            },
+            ["MediatR@12.4.1"]);
+
+        RestoreSolution();
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile("App", "Dtos.cs", """
+                                    namespace App;
+
+                                    public class Dto { }
+                                    // edit 1
+                                    """);
+        var snapshotB = await RunIncrementalIndexAsync();
+
+        WriteFile("App", "Dtos.cs", """
+                                    namespace App;
+
+                                    public class Dto { }
+                                    // edit 2
+                                    """);
+        var snapshotC = await RunIncrementalIndexAsync();
+
+        var snapshotD = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        void AssertSingleAnnotation(string dbPath, string snapshotId)
+        {
+            using var store = OpenStore(dbPath);
+            try
+            {
+                var shId = store.GetSymbolIdsInSnapshot(snapshotId)
+                    .Single(id => store.GetSymbolInfo(id, snapshotId)?.FullyQualifiedName == "global::App.SH");
+                var annotations = store.GetAnnotations(snapshotId)
+                    .Where(a => a.Kind == "unmodeled_mediatr_pattern")
+                    .ToList();
+                var row = Assert.Single(annotations);
+                Assert.Equal(shId, row.SymbolId);
+                Assert.Equal("unmodeled_mediatr_pattern", row.Kind);
+                Assert.Equal("IStreamRequestHandler", row.Value);
+                Assert.Equal("src/App/Handlers.cs", row.DocumentPath);
+            }
+            finally
+            {
+                store.Close();
+            }
+        }
+
+        AssertSingleAnnotation(DbPath, snapshotB);
+        AssertSingleAnnotation(DbPath, snapshotC);
+        AssertSingleAnnotation(_cleanRebuildDbPath, snapshotD);
+    }
+
+    [Fact]
+    public async Task ScenarioTestedBy_HelperChange_UpdatesTheTestOfAnotherDocument()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                            namespace App;
+
+                            public class A { }
+                            public class B { }
+                            """
+        });
+
+        CreateProject("App.Tests", new Dictionary<string, string>
+        {
+            ["Helpers.cs"] = """
+                             namespace App.Tests;
+
+                             public static class Helpers
+                             {
+                                 public static object Make() => new App.A();
+                             }
+                             """,
+            ["Tests.cs"] = """
+                           using Xunit;
+
+                           namespace App.Tests;
+
+                           public class T
+                           {
+                               [Fact]
+                               public void Uses() { Helpers.Make(); }
+                           }
+                           """
+        },
+        packageReferences: ["xunit@2.9.3"],
+        projectReferences: ["App"]);
+
+        RestoreSolution();
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile("App.Tests", "Helpers.cs", """
+                                            namespace App.Tests;
+
+                                            public static class Helpers
+                                            {
+                                                public static object Make() => new App.B();
+                                            }
+                                            """);
+        var incrementalSnapshot = await RunIncrementalIndexAsync();
+        var cleanSnapshot = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(
+            DbPath, incrementalSnapshot,
+            _cleanRebuildDbPath, cleanSnapshot);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var aId = store.GetSymbolIdsInSnapshot(incrementalSnapshot)
+                .Single(id => store.GetSymbolInfo(id, incrementalSnapshot)?.FullyQualifiedName == "global::App.A");
+            var bId = store.GetSymbolIdsInSnapshot(incrementalSnapshot)
+                .Single(id => store.GetSymbolInfo(id, incrementalSnapshot)?.FullyQualifiedName == "global::App.B");
+            var usesId = store.GetSymbolIdsInSnapshot(incrementalSnapshot)
+                .Single(id => store.GetSymbolInfo(id, incrementalSnapshot)?.FullyQualifiedName == "global::App.Tests.T.Uses");
+
+            var testedBy = store.GetOutgoingEdges(incrementalSnapshot, aId)
+                .Concat(store.GetOutgoingEdges(incrementalSnapshot, bId))
+                .Where(e => e.Kind == "TestedBy")
+                .ToList();
+
+            Assert.DoesNotContain(testedBy, e => e.SourceSymbolId == aId && e.TargetSymbolId == usesId);
+            Assert.Contains(testedBy, e => e.SourceSymbolId == bId && e.TargetSymbolId == usesId);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     // ── Phase 7.8: per-symbol TFM attribution on a multi-target project ──────
 
     /// <summary>

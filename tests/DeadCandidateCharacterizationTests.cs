@@ -542,6 +542,58 @@ internal static class Helper2
     }
 
     [Fact]
+    public async Task TestProjectDetection_MSTest4AndTUnit_AreTestProjects()
+    {
+        CreateProject("Checks.MsTest", new Dictionary<string, string>
+        {
+            ["Helper.cs"] = """
+                            namespace Checks.MsTest;
+
+                            internal static class Helper
+                            {
+                                internal static void Unused() { }
+                            }
+                            """
+        }, packageReferences: ["MSTest.TestFramework@4.5.2"]);
+
+        CreateProject("Checks.TUnit", new Dictionary<string, string>
+        {
+            ["Helper.cs"] = """
+                            namespace Checks.TUnit;
+
+                            internal static class Helper
+                            {
+                                internal static void Unused() { }
+                            }
+                            """
+        }, packageReferences: ["TUnit.Core@1.78.0"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var defaultPage = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            Assert.DoesNotContain(defaultPage.Candidates, c => c.SymbolId.Contains("Checks.MsTest.Helper.Unused"));
+            Assert.DoesNotContain(defaultPage.Candidates, c => c.SymbolId.Contains("Checks.TUnit.Helper.Unused"));
+
+            var testPage = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, true, 200, null);
+            var msTestUnused = Assert.Single(testPage.Candidates, c => c.SymbolId.Contains("Checks.MsTest.Helper.Unused"));
+            var tunitUnused = Assert.Single(testPage.Candidates, c => c.SymbolId.Contains("Checks.TUnit.Helper.Unused"));
+
+            Assert.Equal(DeadCandidateStatus.Uncertain, msTestUnused.Status);
+            Assert.Equal(DeadCandidateReason.TestHarness, msTestUnused.Reason);
+            Assert.Equal(DeadCandidateStatus.Uncertain, tunitUnused.Status);
+            Assert.Equal(DeadCandidateReason.TestHarness, tunitUnused.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
     public void DeadCandidateStore_HasNoHardcodedProjectNameRule()
     {
         AssertStoreSourceHasNoHardcodedProjectName();

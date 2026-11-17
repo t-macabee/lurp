@@ -26,7 +26,7 @@ internal static class DeclaredBoundaries
         ),
         new(
             "ef_convention",
-            "EF Core model conventions beyond query filters and indexes (e.g. IsRequired, HasMaxLength, " +
+            "EF Core model conventions beyond query filters and unique indexes (e.g. IsRequired, HasMaxLength, " +
             "HasDefaultSchema) are not modeled."
         ),
         new(
@@ -69,9 +69,10 @@ internal static class DeclaredBoundaries
         ),
         new(
             "minimal_api_endpoints",
-            "Minimal API endpoints and non-controller ASP.NET Core surfaces (MapGet/MapPost, endpoint filters, " +
-            "SignalR hubs, gRPC services) are not modeled: the ASP.NET Core adapter recognizes only " +
-            "Controller-derived types, so endpoint-to-handler routes are absent from the graph."
+            "Minimal API endpoints, non-controller ASP.NET Core surfaces (MapGet/MapPost, endpoint filters, " +
+            "SignalR hubs, gRPC services) and conventional routes (MapControllerRoute) are not modeled: the " +
+            "ASP.NET Core adapter recognizes only types that ASP.NET Core's ControllerFeatureProvider accepts, " +
+            "so endpoint-to-handler and conventional routes are absent from the graph."
         ),
         new(
             "multi_target_union",

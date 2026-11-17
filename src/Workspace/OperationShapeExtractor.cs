@@ -32,13 +32,40 @@ namespace Lurp.Workspace;
 /// </summary>
 internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext context) : IMemberEdgeExtractor
 {
+    private Dictionary<string, ISymbol>? _targetSymbolsById;
+
     List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
         var seen = new Dictionary<(string Source, string Target, string Kind), int>();
 
         ExtractAttributeConstructions(edges, seen);
+        ExtractBodyEdges(edges, seen);
 
+        return edges;
+    }
+
+    internal List<EdgeRecord> ExtractBodies(Dictionary<string, ISymbol>? targetSymbolsById = null)
+    {
+        var edges = new List<EdgeRecord>();
+        var seen = new Dictionary<(string Source, string Target, string Kind), int>();
+        _targetSymbolsById = targetSymbolsById;
+        try
+        {
+            ExtractBodyEdges(edges, seen);
+        }
+        finally
+        {
+            _targetSymbolsById = null;
+        }
+
+        return edges;
+    }
+
+    private void ExtractBodyEdges(
+        List<EdgeRecord> edges,
+        Dictionary<(string Source, string Target, string Kind), int> seen)
+    {
         foreach (var (owner, node) in ExecutableRoots.Bodies(context))
         {
             var ownerId = context.MakeSymbolId(owner);
@@ -73,8 +100,6 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
                     Walk(childOperation, owner, ownerId, model, edges, seen);
             }
         }
-
-        return edges;
     }
 
     private void Walk(
@@ -355,7 +380,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (targetId == null)
             return;
 
-        Emit(edges, seen, sourceId, targetId, nameof(EdgeKind.Constructs), syntax);
+        Emit(edges, seen, sourceId, targetId, nameof(EdgeKind.Constructs), syntax, attributeClass);
 
         // B28: an attribute application calls its constructor when the
         // constructor is declared in source.
@@ -394,7 +419,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (targetId == null)
             return;
 
-        Emit(edges, seen, ownerId, targetId, kind, syntax, receiverConstraintsJson);
+        Emit(edges, seen, ownerId, targetId, kind, syntax, target, receiverConstraintsJson);
     }
 
     /// <summary>
@@ -475,7 +500,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         if (receiverTypeId == null || methodId == null)
             return;
 
-        Emit(edges, seen, receiverTypeId, methodId, nameof(EdgeKind.ExtensionReceiver), invocation.Syntax);
+        Emit(edges, seen, receiverTypeId, methodId, nameof(EdgeKind.ExtensionReceiver), invocation.Syntax, invocation.TargetMethod);
     }
 
     private void AddCall(
@@ -517,7 +542,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         Dictionary<(string Source, string Target, string Kind), int> seen)
     {
         if (ExtractionUtils.IsDispatchPoint(target) && context.MakeSymbolId(target) is { } targetId)
-            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.StaticallyCalls), syntax);
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.StaticallyCalls), syntax, target);
     }
 
     /// <summary>True when <paramref name="instance" /> is <c>base</c>: the access calls the base member without dispatch.</summary>
@@ -564,7 +589,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         context.RecordFilteredExternal(exceptionType, thrown.Syntax);
         var targetId = context.MakeSymbolId(exceptionType);
         if (targetId != null)
-            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Throws), throwSyntax);
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Throws), throwSyntax, exceptionType);
     }
 
     /// <summary>
@@ -647,9 +672,9 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
 
         var (reads, writes) = ClassifyAccess(operation, owner);
         if (reads)
-            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Reads), operation.Syntax);
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Reads), operation.Syntax, member);
         if (writes)
-            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Writes), operation.Syntax);
+            Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.Writes), operation.Syntax, member);
         if (RunsAccessor(operation))
             AddDispatchMarker(ownerId, member, operation.Syntax, edges, seen);
     }
@@ -763,7 +788,7 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         {
             context.RecordFilteredExternal(used, operation.Syntax);
             if (context.MakeSymbolId(used) is { } targetId)
-                Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.References), memberAccess.Expression);
+                Emit(edges, seen, ownerId, targetId, nameof(EdgeKind.References), memberAccess.Expression, used);
         }
     }
 
@@ -992,8 +1017,11 @@ internal sealed class OperationShapeExtractor(MemberEdgeExtractionContext contex
         string targetId,
         string kind,
         SyntaxNode? syntax,
+        ISymbol targetSymbol,
         string? receiverConstraintsJson = null)
     {
+        _targetSymbolsById?.TryAdd(targetId, targetSymbol);
+
         var key = (sourceId, targetId, kind);
         if (seen.TryGetValue(key, out var position))
         {

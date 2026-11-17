@@ -22,7 +22,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     ];
 
     [Fact]
-    public async Task AspNetCoreAdapter_ControllerActionProducesRoutesToDeclaresReturns()
+    public async Task AspNetCoreAdapter_ControllerActionProducesRoutesTo()
     {
         CreateProject("App",
             new Dictionary<string, string>
@@ -52,7 +52,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
 
         var routes = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived);
         var route = Assert.Single(routes);
-        Assert.Equal("route://api/[controller]/{id}", route.SourceSymbolId);
+        Assert.Equal("route://GET /api/Items/{id}", route.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.ItemsController.Get"), route.TargetSymbolId);
         Assert.Equal(new AspNetCoreAdapter().Version, route.ExtractorVersion);
 
@@ -63,26 +63,228 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             connection.Open();
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
-            command.Parameters.AddWithValue("@nodeId", "route://api/[controller]/{id}");
+            command.Parameters.AddWithValue("@nodeId", "route://GET /api/Items/{id}");
             var actual = command.ExecuteScalar();
             Assert.Equal(GraphNodeKind.Route.ToString(), actual);
         }
+    }
 
-        // The adapter's Declares/Returns edges duplicate the compiler-proved
-        // workspace edges for the same (source, target, kind) and are merged
-        // away by EdgeDedup in favor of the stronger provenance — the persisted
-        // snapshot therefore carries the compiler-proved variants.
-        var declares = QueryEdges(snapshotId, "Declares", Provenance.CompilerProved);
-        Assert.Contains(declares, e =>
-            e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController") &&
-            e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController.Get") &&
-            e.ExtractorVersion == "declares-v2");
+    [Fact]
+    public async Task AspNetCoreAdapter_RouteIds_AreTheRoutesAspNetCoreBuilds()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Controllers.cs"] = """
+                                     using System.Threading.Tasks;
+                                     using Microsoft.AspNetCore.Mvc;
 
-        var returns = QueryEdges(snapshotId, "Returns", Provenance.CompilerProved);
-        Assert.Contains(returns, e =>
-            e.SourceSymbolId == ResolveSymbolId(snapshotId, "global::App.ItemsController.Get") &&
-            e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.Item") &&
-            e.ExtractorVersion == "returns-v2");
+                                     namespace App;
+
+                                     [Route("api/[controller]")]
+                                     public class UsersController : ControllerBase
+                                     {
+                                         [HttpGet("{id}")]
+                                         public int Get(int id) => 1;
+
+                                         [HttpGet("a")]
+                                         [HttpGet("b")]
+                                         public int Two() => 1;
+
+                                         [HttpGet("~/root")]
+                                         public int Root() => 1;
+
+                                         [HttpHead("h")]
+                                         public int Head() => 1;
+
+                                         public int Plain() => 1;
+
+                                         [AcceptVerbs("get", "POST", Route = "v")]
+                                         public int Verbs() => 1;
+
+                                         [HttpPost]
+                                         [Route("both")]
+                                         public int Both() => 1;
+
+                                         [ActionName("Renamed")]
+                                         [HttpGet("[action]")]
+                                         public int Named() => 1;
+
+                                         [HttpGet("[action]")]
+                                         public Task<int> LoadAsync() => Task.FromResult(1);
+
+                                         [HttpGet("[area]/x")]
+                                         public int NoArea() => 1;
+                                     }
+
+                                     [Area("Admin")]
+                                     [Route("[area]/[controller]")]
+                                     public class PanelController : ControllerBase
+                                     {
+                                         [HttpGet("")]
+                                         public int Index() => 1;
+                                     }
+                                     """
+            },
+            frameworkReferences: [AspNetCoreFramework]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var routes = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived);
+        var expectedVersion = new AspNetCoreAdapter().Version;
+        Assert.All(routes, r => Assert.Equal(expectedVersion, r.ExtractorVersion));
+
+        var actual = routes
+            .Select(r => (r.SourceSymbolId, r.TargetSymbolId))
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToArray();
+
+        var expected = new (string Source, string Target)[]
+            {
+                ("route://GET /api/Users/{id}", ResolveSymbolId(snapshotId, "global::App.UsersController.Get")),
+                ("route://GET /api/Users/a", ResolveSymbolId(snapshotId, "global::App.UsersController.Two")),
+                ("route://GET /api/Users/b", ResolveSymbolId(snapshotId, "global::App.UsersController.Two")),
+                ("route://GET /root", ResolveSymbolId(snapshotId, "global::App.UsersController.Root")),
+                ("route://HEAD /api/Users/h", ResolveSymbolId(snapshotId, "global::App.UsersController.Head")),
+                ("route://ANY /api/Users", ResolveSymbolId(snapshotId, "global::App.UsersController.Plain")),
+                ("route://GET /api/Users/v", ResolveSymbolId(snapshotId, "global::App.UsersController.Verbs")),
+                ("route://POST /api/Users/v", ResolveSymbolId(snapshotId, "global::App.UsersController.Verbs")),
+                ("route://POST /api/Users/both", ResolveSymbolId(snapshotId, "global::App.UsersController.Both")),
+                ("route://GET /api/Users/Renamed", ResolveSymbolId(snapshotId, "global::App.UsersController.Named")),
+                ("route://GET /api/Users/Load", ResolveSymbolId(snapshotId, "global::App.UsersController.LoadAsync")),
+                ("route://GET /Admin/Panel", ResolveSymbolId(snapshotId, "global::App.PanelController.Index"))
+            }
+            .OrderBy(p => p.Source, StringComparer.Ordinal)
+            .ThenBy(p => p.Target, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task AspNetCoreAdapter_ControllerRuleAndInheritedActions_FollowAspNetCore()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Base.cs"] = """
+                              using Microsoft.AspNetCore.Mvc;
+
+                              namespace App;
+
+                              [Route("api/[controller]")]
+                              public abstract class ApiBase : ControllerBase
+                              {
+                                  [HttpGet("ping")]
+                                  public int Ping() => 1;
+                              }
+                              """,
+                ["Orders.cs"] = """
+                                using Microsoft.AspNetCore.Mvc;
+
+                                namespace App;
+
+                                public class OrdersController : ApiBase
+                                {
+                                    [HttpGet("list")]
+                                    public int List() => 1;
+                                }
+
+                                public class CustomersController : ApiBase
+                                {
+                                }
+                                """,
+                ["Others.cs"] = """
+                                using Microsoft.AspNetCore.Mvc;
+
+                                namespace App.Fake
+                                {
+                                    public class Controller { }
+                                }
+
+                                namespace App
+                                {
+                                    [Route("poco")]
+                                    public class PocoController
+                                    {
+                                        public int Hello() => 1;
+                                    }
+
+                                    [Controller]
+                                    [Route("attr")]
+                                    public class ByAttr
+                                    {
+                                        public int Hi() => 1;
+                                    }
+
+                                    [NonController]
+                                    [Route("nc")]
+                                    public class NotOneController : ControllerBase
+                                    {
+                                        public int X() => 1;
+                                    }
+
+                                    [Route("int")]
+                                    internal class InternalController : ControllerBase
+                                    {
+                                        public int I() => 1;
+                                    }
+
+                                    [Route("gen")]
+                                    public class GenericController<T> : ControllerBase
+                                    {
+                                        public int G() => 1;
+                                    }
+
+                                    public class Outer
+                                    {
+                                        [Route("n")]
+                                        public class NestedController : ControllerBase
+                                        {
+                                            public int N() => 1;
+                                        }
+                                    }
+
+                                    [Route("fake")]
+                                    public class FakeUser : App.Fake.Controller
+                                    {
+                                        public int F() => 1;
+                                    }
+                                }
+                                """
+            },
+            frameworkReferences: [AspNetCoreFramework]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var routes = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived);
+        var actual = routes
+            .Select(r => (r.SourceSymbolId, r.TargetSymbolId))
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToArray();
+
+        var expected = new (string Source, string Target)[]
+            {
+                ("route://GET /api/Orders/list", ResolveSymbolId(snapshotId, "global::App.OrdersController.List")),
+                ("route://GET /api/Orders/ping", ResolveSymbolId(snapshotId, "global::App.ApiBase.Ping")),
+                ("route://GET /api/Customers/ping", ResolveSymbolId(snapshotId, "global::App.ApiBase.Ping")),
+                ("route://ANY /poco", ResolveSymbolId(snapshotId, "global::App.PocoController.Hello")),
+                ("route://ANY /attr", ResolveSymbolId(snapshotId, "global::App.ByAttr.Hi"))
+            }
+            .OrderBy(p => p.Source, StringComparer.Ordinal)
+            .ThenBy(p => p.Target, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expected, actual);
+
+        var ordersPing = Assert.Single(routes, r => r.SourceSymbolId == "route://GET /api/Orders/ping");
+        var customersPing = Assert.Single(routes, r => r.SourceSymbolId == "route://GET /api/Customers/ping");
+        Assert.EndsWith("Orders.cs", ordersPing.SourceDocumentPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("Orders.cs", customersPing.SourceDocumentPath, StringComparison.OrdinalIgnoreCase);
     }
 
     // Regression: a class-level [Route] used to give every ordinary method a RoutesTo
@@ -138,6 +340,60 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             .Order(StringComparer.Ordinal)
             .ToList();
         Assert.Equal(expected, routed);
+    }
+
+    [Fact]
+    public async Task AspNetCoreAdapter_SilentHttpMethodAndSubclassedHttpGet_ProduceExpectedRoutes()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Controller.cs"] = """
+                                    using Microsoft.AspNetCore.Mvc;
+
+                                    namespace App;
+
+                                    public sealed class CustomGetAttribute : HttpGetAttribute
+                                    {
+                                        public CustomGetAttribute(string template) : base(template) { }
+                                    }
+
+                                    [Route("api/[controller]")]
+                                    public class MixedController : ControllerBase
+                                    {
+                                        [HttpGet]
+                                        [HttpPost("x")]
+                                        public int Mixed() => 1;
+
+                                        [CustomGet("custom")]
+                                        public int Custom() => 2;
+                                    }
+                                    """
+            },
+            frameworkReferences: [AspNetCoreFramework]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var mixedId = ResolveSymbolId(snapshotId, "global::App.MixedController.Mixed");
+        var customId = ResolveSymbolId(snapshotId, "global::App.MixedController.Custom");
+        var routes = QueryEdges(snapshotId, "RoutesTo", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(e => e.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(e => e.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+
+        var expected = new (string Source, string Target)[]
+            {
+                ("route://GET /api/Mixed", mixedId),
+                ("route://GET /api/Mixed/custom", customId),
+                ("route://POST /api/Mixed/x", mixedId)
+            }
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ThenBy(e => e.Target, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(expected, routes);
     }
 
     [Fact]
@@ -325,6 +581,103 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task MediatRAdapter_Handles_TargetsTheImplementationOfEachInterface()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Handlers.cs"] = """
+                                  using System.Threading;
+                                  using System.Threading.Tasks;
+                                  using MediatR;
+
+                                  namespace App;
+
+                                  public record Ping : IRequest<string>;
+                                  public record Pong : IRequest<string>;
+
+                                  public class Multi : IRequestHandler<Ping, string>, IRequestHandler<Pong, string>
+                                  {
+                                      public Task<string> Handle(Ping request, CancellationToken cancellationToken) => Task.FromResult("ping");
+                                      public Task<string> Handle(Pong request, CancellationToken cancellationToken) => Task.FromResult("pong");
+                                  }
+
+                                  public record Q : IRequest;
+
+                                  public class ExplicitHandler : IRequestHandler<Q>
+                                  {
+                                      Task IRequestHandler<Q>.Handle(Q request, CancellationToken cancellationToken) => Task.CompletedTask;
+                                  }
+
+                                  public record N : INotification;
+
+                                  public abstract class BaseN<T> : INotificationHandler<T> where T : INotification
+                                  {
+                                      public Task Handle(T notification, CancellationToken cancellationToken) => Task.CompletedTask;
+                                  }
+
+                                  public class NHandler : BaseN<N> { }
+                                  """
+            },
+            ["MediatR@12.4.1"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var handles = QueryEdges(snapshotId, "Handles", Provenance.FrameworkDerived);
+        var expectedVersion = new MediatRAdapter().Version;
+        Assert.All(handles, h => Assert.Equal(expectedVersion, h.ExtractorVersion));
+
+        string FindSymbolId(Func<IndexedSymbolInfo, string, bool> predicate)
+        {
+            using var store = OpenStore(DbPath);
+            try
+            {
+                foreach (var id in store.GetSymbolIdsInSnapshot(snapshotId))
+                {
+                    var info = store.GetSymbolInfo(id, snapshotId);
+                    if (info != null && predicate(info, id))
+                        return id;
+                }
+            }
+            finally
+            {
+                store.Close();
+            }
+
+            throw new InvalidOperationException("Matching symbol not found.");
+        }
+
+        var pingHandleId = FindSymbolId((info, id) => info.FullyQualifiedName == "global::App.Multi.Handle" && id.Contains("App.Ping", StringComparison.Ordinal));
+        var pongHandleId = FindSymbolId((info, id) => info.FullyQualifiedName == "global::App.Multi.Handle" && id.Contains("App.Pong", StringComparison.Ordinal));
+        var explicitHandleId = FindSymbolId((info, _) => info.FullyQualifiedName != null && info.FullyQualifiedName.StartsWith("global::App.ExplicitHandler.", StringComparison.Ordinal) && info.FullyQualifiedName.EndsWith(".Handle", StringComparison.Ordinal));
+        var baseNHandleId = FindSymbolId((info, _) => info.FullyQualifiedName != null && info.FullyQualifiedName.StartsWith("global::App.BaseN", StringComparison.Ordinal) && info.FullyQualifiedName.EndsWith(".Handle", StringComparison.Ordinal));
+
+        var actual = handles
+            .Select(h => (h.SourceSymbolId, h.TargetSymbolId))
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToArray();
+
+        var expected = new (string Source, string Target)[]
+            {
+                (ResolveSymbolId(snapshotId, "global::App.Ping"), pingHandleId),
+                (ResolveSymbolId(snapshotId, "global::App.Pong"), pongHandleId),
+                (ResolveSymbolId(snapshotId, "global::App.Q"), explicitHandleId),
+                (ResolveSymbolId(snapshotId, "global::App.N"), baseNHandleId)
+            }
+            .OrderBy(p => p.Source, StringComparer.Ordinal)
+            .ThenBy(p => p.Target, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expected, actual);
+
+        var nId = ResolveSymbolId(snapshotId, "global::App.N");
+        var nEdge = Assert.Single(handles, h => h.SourceSymbolId == nId);
+        Assert.EndsWith("Handlers.cs", nEdge.SourceDocumentPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task EfCoreAdapter_DbContextDbSetProducesMapsTo()
     {
         CreateProject("App",
@@ -408,43 +761,316 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SerializationAdapter_JsonPropertyNameProducesReferenceEdge()
+    public async Task EfCoreAdapter_ModelBuilderAndConfigurations_GiveTheSameFacts()
     {
-        // Attribute classification is name-based, so no framework reference is
-        // needed to observe the extractor's output. The edge's target (System.String)
-        // is external, so the persisted snapshot drops it as external by design —
-        // this golden test pins the extractor contract at the extraction level.
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Data.cs"] = """
+                              using System.Collections.Generic;
+                              using Microsoft.EntityFrameworkCore;
+
+                              namespace App;
+
+                              public class Blog
+                              {
+                                  public int Id { get; set; }
+                                  public string Url { get; set; } = "";
+                                  public List<Post> Posts { get; set; } = new();
+                              }
+
+                              public class Post
+                              {
+                                  public int Id { get; set; }
+                                  public string Title { get; set; } = "";
+                                  public Blog Blog { get; set; } = null!;
+                              }
+
+                              public class Tag
+                              {
+                                  public int Id { get; set; }
+                                  public bool Hidden { get; set; }
+                              }
+
+                              public class Author
+                              {
+                                  public int Id { get; set; }
+                              }
+
+                              public class AppDb : DbContext
+                              {
+                                  public DbSet<Blog> Blogs { get; set; } = null!;
+
+                                  protected override void OnModelCreating(ModelBuilder modelBuilder)
+                                  {
+                                      modelBuilder.Entity<Post>().HasIndex(p => p.Title).HasDatabaseName("IX_Title");
+                                      modelBuilder.Entity<Blog>().HasIndex(b => b.Url).IsUnique();
+                                      modelBuilder.Entity<Post>().HasIndex(p => new { p.Title, p.Id }).IsUnique().HasDatabaseName("UX_Post");
+                                      modelBuilder.Entity<Blog>().HasMany(b => b.Posts).WithOne(p => p.Blog);
+                                  }
+                              }
+                              """,
+                ["Config.cs"] = """
+                                using Microsoft.EntityFrameworkCore;
+                                using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+                                namespace App;
+
+                                public class TwoConfig : IEntityTypeConfiguration<Tag>, IEntityTypeConfiguration<Author>
+                                {
+                                    public void Configure(EntityTypeBuilder<Tag> b)
+                                    {
+                                        b.HasQueryFilter(t => !t.Hidden);
+                                    }
+
+                                    public void Configure(EntityTypeBuilder<Author> b)
+                                    {
+                                    }
+                                }
+
+                                public class BlogConfig : IEntityTypeConfiguration<Blog>
+                                {
+                                    public void Configure(EntityTypeBuilder<Blog> b)
+                                    {
+                                        b.HasMany(x => x.Posts).WithOne();
+                                    }
+                                }
+                                """
+            },
+            ["Microsoft.EntityFrameworkCore.Relational@10.0.13"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var appDbId = ResolveSymbolId(snapshotId, "global::App.AppDb");
+        var appDbBlogsId = ResolveSymbolId(snapshotId, "global::App.AppDb.Blogs");
+        var blogId = ResolveSymbolId(snapshotId, "global::App.Blog");
+        var postId = ResolveSymbolId(snapshotId, "global::App.Post");
+        var tagId = ResolveSymbolId(snapshotId, "global::App.Tag");
+        var authorId = ResolveSymbolId(snapshotId, "global::App.Author");
+        var twoConfigId = ResolveSymbolId(snapshotId, "global::App.TwoConfig");
+        var blogConfigId = ResolveSymbolId(snapshotId, "global::App.BlogConfig");
+
+        var mapsTo = QueryEdges(snapshotId, "MapsTo", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+        var expectedMapsTo = new (string SourceSymbolId, string TargetSymbolId)[]
+            {
+                (appDbBlogsId, blogId),
+                (appDbId, postId),
+                (appDbId, blogId),
+                (twoConfigId, tagId),
+                (twoConfigId, authorId),
+                (blogConfigId, blogId)
+            }
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(expectedMapsTo, mapsTo);
+
+        var refs = QueryEdges(snapshotId, "References", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+        var expectedRefs = new (string SourceSymbolId, string TargetSymbolId)[]
+            {
+                (appDbId, postId),
+                (blogConfigId, postId)
+            }
+            .OrderBy(p => p.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(p => p.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(expectedRefs, refs);
+
+        using var store = OpenStore(DbPath);
+        var annotations = store.GetAnnotations(snapshotId)
+            .Select(a => (a.SymbolId, a.Kind, a.Value, File: Path.GetFileName(a.DocumentPath)))
+            .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+            .ThenBy(a => a.Kind, StringComparer.Ordinal)
+            .ThenBy(a => a.Value, StringComparer.Ordinal)
+            .ToList();
+        var expectedAnnotations = new (string SymbolId, string Kind, string Value, string? File)[]
+            {
+                (blogId, "ef_unique_index_constraint", "Blog(Url)", "Data.cs"),
+                (postId, "ef_unique_index_constraint", "Post(Title, Id) name=UX_Post", "Data.cs"),
+                (tagId, "ef_query_filter_constraint", "Tag: HasQueryFilter: t => !t.Hidden", "Config.cs")
+            }
+            .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+            .ThenBy(a => a.Kind, StringComparer.Ordinal)
+            .ThenBy(a => a.Value, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(expectedAnnotations, annotations);
+    }
+
+    [Fact]
+    public async Task SerializationAdapter_RecordsTheWireContractOfEachMember()
+    {
         var test = new SerializationAdapterExtractorTest();
         try
         {
             var extraction = await test.ExtractAsync(
                 new Dictionary<string, string>
                 {
-                    ["Product.cs"] = """
-                                     using System.Text.Json.Serialization;
+                    ["Contract.cs"] = """
+                                      using System.Collections.Generic;
+                                      using System.Runtime.Serialization;
+                                      using System.Text.Json.Serialization;
 
-                                     namespace App;
+                                      namespace App;
 
-                                     public class Product
-                                     {
-                                         [JsonPropertyName("product_name")]
-                                         public string Name { get; set; } = "";
-                                     }
-                                     """
+                                      public class Inner { }
+
+                                      public class Dto
+                                      {
+                                          [JsonPropertyName("a")]
+                                          public Inner A { get; set; } = new();
+
+                                          [System.Text.Json.Serialization.JsonPropertyName("b")]
+                                          public Inner B { get; set; } = new();
+
+                                          [JsonIgnore]
+                                          public Inner C { get; set; } = new();
+
+                                          public Inner D { get; set; } = new();
+
+                                          [JsonInclude]
+                                          internal int E;
+
+                                          [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+                                          public string? F { get; set; }
+
+                                          [JsonIgnore]
+                                          [JsonPropertyName("g")]
+                                          public int G { get; set; }
+
+                                          [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+                                          public int H { get; set; }
+
+                                          [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+                                          public int I { get; set; }
+                                      }
+
+                                      public record RDto([property: JsonPropertyName("x")] int X);
+
+                                      [DataContract]
+                                      public class DcDto
+                                      {
+                                          [DataMember(Name = "w")]
+                                          public int W { get; set; }
+
+                                          [DataMember]
+                                          public int V { get; set; }
+
+                                          [IgnoreDataMember]
+                                          public int U { get; set; }
+                                      }
+
+                                      public class Order { }
+
+                                      [JsonSerializable(typeof(List<Order>))]
+                                      internal partial class Ctx { }
+                                      """
                 },
                 runAdapters: true);
 
-            var references = extraction.EdgesOf("References", Provenance.FrameworkDerived);
-            var edge = Assert.Single(references);
-            Assert.Equal(extraction.ResolveId("global::App.Product.Name"), edge.SourceSymbolId);
-            Assert.StartsWith("T:System.String|", edge.TargetSymbolId);
-            Assert.Equal(new SerializationAdapter().Version, edge.ExtractorVersion);
-            Assert.Equal("Product.cs", edge.SourceDocumentPath);
+            var annotations = extraction.Result.Annotations
+                .Where(a => a.Kind == "serialization_contract")
+                .Select(a => (a.SymbolId, a.Value))
+                .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+                .ThenBy(a => a.Value, StringComparer.Ordinal)
+                .ToList();
+
+            var expectedAnnotations = new (string SymbolId, string Value)[]
+                {
+                    (extraction.ResolveId("global::App.Dto.A"), "name=a"),
+                    (extraction.ResolveId("global::App.Dto.B"), "name=b"),
+                    (extraction.ResolveId("global::App.Dto.C"), "ignored"),
+                    (extraction.ResolveId("global::App.Dto.E"), "included"),
+                    (extraction.ResolveId("global::App.Dto.F"), "included"),
+                    (extraction.ResolveId("global::App.Dto.G"), "ignored"),
+                    (extraction.ResolveId("global::App.Dto.H"), "ignored"),
+                    (extraction.ResolveId("global::App.Dto.I"), "included"),
+                    (extraction.ResolveId("global::App.RDto.X"), "name=x"),
+                    (extraction.ResolveId("global::App.DcDto.W"), "name=w"),
+                    (extraction.ResolveId("global::App.DcDto.V"), "included"),
+                    (extraction.ResolveId("global::App.DcDto.U"), "ignored")
+                }
+                .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+                .ThenBy(a => a.Value, StringComparer.Ordinal)
+                .ToList();
+            Assert.Equal(expectedAnnotations, annotations);
+
+            var serializationVersion = new SerializationAdapter().Version;
+            var adapterEdges = extraction.Result.Edges
+                .Where(e => e.ExtractorVersion == serializationVersion)
+                .ToList();
+            Assert.Equal(2, adapterEdges.Count);
+            Assert.All(adapterEdges, e =>
+            {
+                Assert.Equal("References", e.Kind);
+                Assert.Equal(Provenance.FrameworkDerived, e.Provenance);
+                Assert.Equal(extraction.ResolveId("global::App.Ctx"), e.SourceSymbolId);
+            });
+            Assert.Contains(adapterEdges, e => e.TargetSymbolId.StartsWith("T:System.Collections.Generic.List`1|", StringComparison.Ordinal));
+            Assert.Contains(adapterEdges, e => e.TargetSymbolId == extraction.ResolveId("global::App.Order"));
         }
         finally
         {
             test.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task SerializationAdapter_ReadsNewtonsoftAttributes()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["N1.cs"] = """
+                            using Newtonsoft.Json;
+
+                            namespace App;
+
+                            public class N1
+                            {
+                                [JsonProperty("n")]
+                                public int A { get; set; }
+
+                                [JsonProperty]
+                                private int B { get; set; }
+
+                                [Newtonsoft.Json.JsonIgnore]
+                                public int C { get; set; }
+                            }
+                            """
+            },
+            ["Newtonsoft.Json@13.0.3"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        var annotations = store.GetAnnotations(snapshotId)
+            .Where(a => a.Kind == "serialization_contract")
+            .Select(a => (a.SymbolId, a.Value))
+            .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+            .ThenBy(a => a.Value, StringComparer.Ordinal)
+            .ToList();
+
+        var expected = new (string SymbolId, string Value)[]
+            {
+                (ResolveSymbolId(snapshotId, "global::App.N1.A"), "name=n"),
+                (ResolveSymbolId(snapshotId, "global::App.N1.B"), "included"),
+                (ResolveSymbolId(snapshotId, "global::App.N1.C"), "ignored")
+            }
+            .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+            .ThenBy(a => a.Value, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(expected, annotations);
     }
 
     [Fact]
@@ -482,6 +1108,7 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             projectReferences: ["App"],
             packageReferences: ["xunit@2.9.3"]);
 
+        RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
 
         var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived);
@@ -621,6 +1248,412 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         var expected = expectedIds.OrderBy(id => id).ToList();
 
         Assert.Equal(expected, actualIds);
+    }
+
+    [Fact]
+    public async Task TestAdapter_DerivedTestAttributes_MarkTestMethods()
+    {
+        var test = new TestAdapterExtractorTest();
+        try
+        {
+            var extraction = await test.ExtractAsync(
+                new Dictionary<string, string>
+                {
+                    ["Tests.cs"] = """
+                                   using System;
+
+                                   namespace App.Tests;
+
+                                   public sealed class MyFactAttribute : Xunit.FactAttribute { }
+                                   public sealed class TestAttribute : Attribute { }
+
+                                   public class T
+                                   {
+                                       [Xunit.SkippableFact]
+                                       public void Skippable() { new System.Text.StringBuilder(); }
+
+                                       [MyFact]
+                                       public void Mine() { new System.Text.StringBuilder(); }
+
+                                       [Test]
+                                       public void NotATest() { new System.Text.StringBuilder(); }
+                                   }
+                                   """
+                },
+                projectName: "App.Tests",
+                runAdapters: true);
+
+            var testedBy = extraction.EdgesOf("TestedBy", Provenance.FrameworkDerived)
+                .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+                .OrderBy(e => e.TargetSymbolId, StringComparer.Ordinal)
+                .ToList();
+
+            var expected = new (string Source, string Target)[]
+                {
+                    ("T:System.Text.StringBuilder", extraction.ResolveId("global::App.Tests.T.Skippable")),
+                    ("T:System.Text.StringBuilder", extraction.ResolveId("global::App.Tests.T.Mine"))
+                }
+                .OrderBy(e => e.Target, StringComparer.Ordinal)
+                .ToList();
+
+            Assert.Equal(expected.Count, testedBy.Count);
+            for (var i = 0; i < expected.Count; i++)
+            {
+                Assert.StartsWith(expected[i].Source + "|", testedBy[i].SourceSymbolId, StringComparison.Ordinal);
+                Assert.Equal(expected[i].Target, testedBy[i].TargetSymbolId);
+            }
+        }
+        finally
+        {
+            test.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task TestAdapter_NUnitAndMSTestAttributes_MarkTestMethods()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                            namespace App;
+
+                            public class E { }
+                            public class F { }
+                            public class C { }
+                            public class T5 { }
+                            """
+        });
+
+        CreateProject("App.NUnit", new Dictionary<string, string>
+        {
+            ["NUnitTests.cs"] = """
+                                using NUnit.Framework;
+
+                                namespace App.NUnit;
+
+                                public class NUnitTests
+                                {
+                                    public static int[] Src = { 1 };
+
+                                    [TestCase(1)]
+                                    public void Case(int x) { new App.E(); }
+
+                                    [TestCaseSource(nameof(Src))]
+                                    public void Source(int x) { new App.F(); }
+                                }
+                                """
+        },
+        packageReferences: ["NUnit@5.0.0"],
+        projectReferences: ["App"]);
+
+        CreateProject("App.MsTest", new Dictionary<string, string>
+        {
+            ["MsTests.cs"] = """
+                             using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+                             namespace App.MsTest;
+
+                             [TestClass]
+                             public class MsTests
+                             {
+                                 [DataTestMethod]
+                                 [DataRow(1)]
+                                 public void Data(int x) { new App.C(); }
+
+                                 [TestMethod]
+                                 public void Plain() { new App.T5(); }
+                             }
+                             """
+        },
+        packageReferences: ["MSTest.TestFramework@4.5.2"],
+        projectReferences: ["App"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(e => e.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(e => e.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+
+        var expected = new (string Source, string Target)[]
+            {
+                (ResolveSymbolId(snapshotId, "global::App.E"), ResolveSymbolId(snapshotId, "global::App.NUnit.NUnitTests.Case")),
+                (ResolveSymbolId(snapshotId, "global::App.F"), ResolveSymbolId(snapshotId, "global::App.NUnit.NUnitTests.Source")),
+                (ResolveSymbolId(snapshotId, "global::App.C"), ResolveSymbolId(snapshotId, "global::App.MsTest.MsTests.Data")),
+                (ResolveSymbolId(snapshotId, "global::App.T5"), ResolveSymbolId(snapshotId, "global::App.MsTest.MsTests.Plain"))
+            }
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ThenBy(e => e.Target, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(expected, testedBy);
+    }
+
+    [Fact]
+    public async Task TestAdapter_ProjectNamedTests_WithoutAFramework_IsNotATestProject()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["T1.cs"] = """
+                        namespace App;
+
+                        public class T1 { }
+                        """
+        });
+
+        CreateProject("Foo.Tests", new Dictionary<string, string>
+        {
+            ["Checks.cs"] = """
+                            using System;
+
+                            namespace Foo.Tests;
+
+                            public sealed class TestAttribute : Attribute { }
+
+                            public class Checks
+                            {
+                                [Test]
+                                public void Run() { new App.T1(); }
+                            }
+                            """
+        },
+        projectReferences: ["App"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived);
+        Assert.Empty(testedBy);
+    }
+
+    [Fact]
+    public async Task TestAdapter_TUnitProject_IsATestProject()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["T6.cs"] = """
+                        namespace App;
+
+                        public class T6 { }
+                        """
+        });
+
+        CreateProject("Checks", new Dictionary<string, string>
+        {
+            ["C.cs"] = """
+                       namespace Checks;
+
+                       public class C
+                       {
+                           [TUnit.Core.Test]
+                           public void Run() { new App.T6(); }
+                       }
+                       """
+        },
+        packageReferences: ["TUnit.Core@1.78.0"],
+        projectReferences: ["App"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived);
+        var edge = Assert.Single(testedBy);
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::App.T6"), edge.SourceSymbolId);
+        Assert.Equal(ResolveSymbolId(snapshotId, "global::Checks.C.Run"), edge.TargetSymbolId);
+    }
+
+    [Fact]
+    public async Task TestAdapter_TestedBy_FollowsHelpersSetupAndTargetTypedNew()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                            namespace App;
+
+                            public class A { }
+                            public class B { }
+                            public class C { }
+                            public class D { }
+                            public class E { }
+                            public class F { }
+                            public class G { }
+                            public class H { }
+                            public class Svc { public static void Run() { } }
+                            """
+        });
+
+        CreateProject("App.Tests", new Dictionary<string, string>
+        {
+            ["Fixture.cs"] = """
+                             namespace App.Tests;
+
+                             public static class Fixture
+                             {
+                                 public static object MakeG() => new App.G();
+                             }
+
+                             public class Holder
+                             {
+                                 public App.H Prop => new App.H();
+                             }
+                             """,
+            ["CoverageTests.cs"] = """
+                                   using Xunit;
+
+                                   namespace App.Tests;
+
+                                   public class CoverageTests
+                                   {
+                                       private readonly App.C _c = new App.C();
+
+                                       public CoverageTests()
+                                       {
+                                           new App.D();
+                                       }
+
+                                       [Fact]
+                                       public void TargetNew()
+                                       {
+                                           App.F f = new();
+                                       }
+
+                                       [Fact]
+                                       public void ViaHelper()
+                                       {
+                                           Fixture.MakeG();
+                                       }
+
+                                       [Fact]
+                                       public void ViaProperty()
+                                       {
+                                           _ = new Holder().Prop;
+                                       }
+
+                                       [Fact]
+                                       public void ViaLocal()
+                                       {
+                                           Local();
+                                           static void Local() { App.Svc.Run(); }
+                                       }
+                                   }
+                                   """
+        },
+        packageReferences: ["xunit@2.9.3"],
+        projectReferences: ["App"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var cId = ResolveSymbolId(snapshotId, "global::App.C");
+        var dId = ResolveSymbolId(snapshotId, "global::App.D");
+        var fId = ResolveSymbolId(snapshotId, "global::App.F");
+        var gId = ResolveSymbolId(snapshotId, "global::App.G");
+        var hId = ResolveSymbolId(snapshotId, "global::App.H");
+        var svcId = ResolveSymbolId(snapshotId, "global::App.Svc");
+
+        var targetNewId = ResolveSymbolId(snapshotId, "global::App.Tests.CoverageTests.TargetNew");
+        var viaHelperId = ResolveSymbolId(snapshotId, "global::App.Tests.CoverageTests.ViaHelper");
+        var viaPropertyId = ResolveSymbolId(snapshotId, "global::App.Tests.CoverageTests.ViaProperty");
+        var viaLocalId = ResolveSymbolId(snapshotId, "global::App.Tests.CoverageTests.ViaLocal");
+
+        var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(e => e.SourceSymbolId, StringComparer.Ordinal)
+            .ThenBy(e => e.TargetSymbolId, StringComparer.Ordinal)
+            .ToList();
+
+        var expected = new (string Source, string Target)[]
+            {
+                (cId, targetNewId),
+                (dId, targetNewId),
+                (fId, targetNewId),
+                (cId, viaHelperId),
+                (dId, viaHelperId),
+                (gId, viaHelperId),
+                (cId, viaPropertyId),
+                (dId, viaPropertyId),
+                (hId, viaPropertyId),
+                (cId, viaLocalId),
+                (dId, viaLocalId),
+                (svcId, viaLocalId)
+            }
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ThenBy(e => e.Target, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(expected, testedBy);
+    }
+
+    [Fact]
+    public async Task TestAdapter_UncalledTestPropertyGetter_DoesNotProduceTestedBy()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Prod.cs"] = """
+                              namespace App;
+                              public class UnusedFromTestProp { }
+                              public class UnusedFromHelperProp { }
+                              public class UsedFromInit { }
+                              public class UsedFromRead { }
+                              """
+            });
+
+        CreateProject("App.Tests",
+            new Dictionary<string, string>
+            {
+                ["Tests.cs"] = """
+                               using Xunit;
+                               using App;
+
+                               namespace App.Tests;
+
+                               public class Helper
+                               {
+                                   public UnusedFromHelperProp HelperProp => new UnusedFromHelperProp();
+                                   public UsedFromInit InitProp { get; } = new UsedFromInit();
+                               }
+
+                               public class PropertyTests
+                               {
+                                   public UnusedFromTestProp UnusedProp => new UnusedFromTestProp();
+                                   public UsedFromRead ReadProp => new UsedFromRead();
+
+                                   [Fact]
+                                   public void Run()
+                                   {
+                                       _ = new Helper();
+                                       _ = ReadProp;
+                                   }
+                               }
+                               """
+            },
+            projectReferences: ["App"],
+            packageReferences: ["xunit@2.9.3"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        var usedInitId = ResolveSymbolId(snapshotId, "global::App.UsedFromInit");
+        var usedReadId = ResolveSymbolId(snapshotId, "global::App.UsedFromRead");
+        var testId = ResolveSymbolId(snapshotId, "global::App.Tests.PropertyTests.Run");
+
+        var testedBy = QueryEdges(snapshotId, "TestedBy", Provenance.FrameworkDerived)
+            .Select(e => (e.SourceSymbolId, e.TargetSymbolId))
+            .OrderBy(e => e.SourceSymbolId, StringComparer.Ordinal)
+            .ToList();
+
+        var expected = new (string Source, string Target)[]
+            {
+                (usedInitId, testId),
+                (usedReadId, testId)
+            }
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(expected, testedBy);
     }
 }
 

@@ -305,7 +305,7 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
                 if (scopeRelativePaths != null)
                 {
                     store.DeleteBindingIncompletenessByDocumentPaths(newSnapshotId, scopeRelativePaths, project.Name);
-                    unreadable = [.. IncrementalIndexer.ScopeBindingIncompleteness(unreadable, scopeRelativePaths.ToHashSet(StringComparer.Ordinal))];
+                    unreadable = [.. IncrementalIndexer.ScopeToDocuments(unreadable, r => r.DocumentPath, scopeRelativePaths.ToHashSet(StringComparer.Ordinal))];
                 }
 
                 store.SaveBindingIncompleteness(newSnapshotId, unreadable);
@@ -337,22 +337,16 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
             // in the deletion scope. Out-of-scope documents — and null/empty-path
             // doc-less aggregates, which no scoped delete retires — carry forward
             // their copied-forward values unchanged (EXCLUDE-AND-CARRY-FORWARD;
-            // see IncrementalIndexer.ScopeBindingIncompleteness and TRUST_KERNEL R6).
-            if (scopeRelativePaths != null)
-            {
-                var scopedSet = new HashSet<string>(scopeRelativePaths, StringComparer.Ordinal);
-                var scopedBi = result.BindingIncompleteness
-                    .Where(r => r.DocumentPath is { } path && scopedSet.Contains(path))
-                    .ToList();
-                store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
-            }
-            else
-            {
-                store.SaveBindingIncompleteness(newSnapshotId, result.BindingIncompleteness);
-            }
+            // see IncrementalIndexer.ScopeToDocuments and TRUST_KERNEL R6).
+            var scopedSet = scopeRelativePaths != null
+                ? new HashSet<string>(scopeRelativePaths, StringComparer.Ordinal)
+                : null;
+            var scopedBi = IncrementalIndexer.ScopeToDocuments(result.BindingIncompleteness, r => r.DocumentPath, scopedSet);
+            store.SaveBindingIncompleteness(newSnapshotId, scopedBi);
 
-            if (result.Annotations.Count > 0)
-                store.SaveAnnotations(newSnapshotId, result.Annotations);
+            var scopedAnnotations = IncrementalIndexer.ScopeToDocuments(result.Annotations, a => a.DocumentPath, scopedSet);
+            if (scopedAnnotations.Count > 0)
+                store.SaveAnnotations(newSnapshotId, scopedAnnotations);
             totalEdges += savedEdges;
             _output.Write($"  [cross-doc {project.Name}] {savedEdges} edges. ");
         }

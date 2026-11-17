@@ -39,7 +39,7 @@ DEFAULT_PAGE = REPO_ROOT / "docs" / "MODEL_VIEW.html"
 # Provenance vocabulary, strongest first (docs/ARCHITECTURE.md, section 4.2 "Evidence ladder").
 TIERS = [
     ("compiler_proved", "The compiler resolved it. Calls, inheritance, field reads: verified, not guessed."),
-    ("framework_derived", "An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery, MediatR Handles, serialization References) and emitted a typed fact."),
+    ("framework_derived", "An adapter read a framework convention (DI registration, EF Core mapping, ASP.NET routing, test discovery, MediatR Handles, serialization contexts) and emitted a typed fact."),
     ("global_implementation_relation", "Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges."),
     ("possible", "An interface member implemented through an inherited member: the type gets the implementation from a base class, so the dispatch target is valid but not declared on the type (MayDispatchTo)."),
     ("convention", "Inferred from a convention such as an assembly scan, not from a direct reference."),

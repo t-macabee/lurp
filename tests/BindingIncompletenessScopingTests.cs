@@ -18,7 +18,7 @@ public sealed class BindingIncompletenessScopingTests
     }
 
     [Fact]
-    public void ScopeBindingIncompleteness_ExcludesNullPathBucket_ForCarryForward()
+    public void ScopeToDocuments_ExcludesNullPathBucket_ForCarryForward()
     {
         // An affected project re-extracted with a document-scoped pass may emit
         // a PARTIAL doc-less aggregate (document_path = null/""). Including it in
@@ -35,7 +35,7 @@ public sealed class BindingIncompletenessScopingTests
             Row("", "extractor_failure", 2) // empty bucket — must be dropped (carry-forward)
         };
 
-        var scoped = IncrementalIndexer.ScopeBindingIncompleteness(records, scope);
+        var scoped = IncrementalIndexer.ScopeToDocuments(records, r => r.DocumentPath, scope);
 
         Assert.Single(scoped);
         Assert.Equal("App/Helper.cs", scoped[0].DocumentPath);

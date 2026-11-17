@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.CodeAnalysis;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -5,7 +6,7 @@ namespace Lurp.Adapters;
 
 public sealed class AspNetCoreAdapter : IFrameworkAdapter
 {
-    private const string AdapterVersion = "aspnetcore-v2";
+    private const string AdapterVersion = "aspnetcore-v3";
 
     public string Name => "ASP.NET Core";
     public string Version => AdapterVersion;
@@ -23,96 +24,72 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
             if (!context.IsSymbolInScope(type))
                 continue;
 
-            var controllerId = context.MakeSymbolId(type);
-            if (controllerId == null)
-                continue;
+            var overridden = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
 
-            foreach (var member in type.GetMembers())
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
             {
-                if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method || !IsAction(type, method))
-                    continue;
+                foreach (var member in current.GetMembers())
+                {
+                    if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method)
+                        continue;
 
-                ProcessControllerAction(method, controllerId, context, edges);
+                    if (overridden.Contains(method))
+                        continue;
+
+                    for (var ov = method.OverriddenMethod; ov != null; ov = ov.OverriddenMethod)
+                        overridden.Add(ov);
+
+                    if (!IsAction(type, method))
+                        continue;
+
+                    ProcessControllerAction(type, method, context, edges);
+                }
             }
         }
 
         return edges;
     }
 
-    private static void ProcessControllerAction(IMethodSymbol method, string controllerId, AdapterExtractionContext context, List<EdgeRecord> edges)
+    private static void ProcessControllerAction(INamedTypeSymbol controller, IMethodSymbol method, AdapterExtractionContext context, List<EdgeRecord> edges)
     {
-        var methodId = context.MakeSymbolId(method);
+        var methodId = context.MakeSymbolId(method.OriginalDefinition);
         if (methodId == null)
             return;
 
-        // All edges from this action are anchored to the action method declaration
-        var location = context.LocationResolver.Resolve(method);
-
-        edges.Add(context.MakeEdge(controllerId, methodId, nameof(EdgeKind.Declares), Provenance.FrameworkDerived, AdapterVersion, location));
-
-        EmitRouteEdge(method, methodId, context, edges, location);
-        EmitReturnTypeEdge(method, methodId, context, edges, location);
-        EmitFromServicesEdges(method, methodId, context, edges, location);
-    }
-
-    private static void EmitRouteEdge(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
-        (string? path, int? sl, int? sc, int? el, int? ec) location)
-    {
-        var routeTemplate = ExtractRouteTemplate((INamedTypeSymbol)method.ContainingType, method);
-        if (routeTemplate == null)
-            return;
-
-        var routeSourceId = $"{GraphNodeIds.RoutePrefix}{routeTemplate}";
-        edges.Add(context.MakeEdge(routeSourceId, methodId, nameof(EdgeKind.RoutesTo), Provenance.FrameworkDerived, AdapterVersion, location,
-            sourceNodeKind: GraphNodeKind.Route));
-    }
-
-    private static void EmitReturnTypeEdge(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
-        (string? path, int? sl, int? sc, int? el, int? ec) location)
-    {
-        if (method.ReturnsVoid || method.ReturnType == null)
-            return;
-
-        var returnTypeId = context.MakeSymbolId(method.ReturnType);
-        if (returnTypeId == null)
-            return;
-
-        edges.Add(context.MakeEdge(methodId, returnTypeId, nameof(EdgeKind.Returns), Provenance.FrameworkDerived, AdapterVersion, location));
-    }
-
-    private static void EmitFromServicesEdges(IMethodSymbol method, string methodId, AdapterExtractionContext context, List<EdgeRecord> edges,
-        (string? path, int? sl, int? sc, int? el, int? ec) location)
-    {
-        foreach (var param in method.Parameters)
+        var location = SymbolEqualityComparer.Default.Equals(method.ContainingType, controller)
+            ? context.LocationResolver.Resolve(method)
+            : context.LocationResolver.Resolve(controller);
+        foreach (var (httpMethod, template) in BuildRoutes(controller, method))
         {
-            var hasFromServices = param.GetAttributes().Any(a => a.AttributeClass?.Name is "FromServicesAttribute" or "FromServices");
-            if (!hasFromServices)
-                continue;
-
-            var paramTypeId = context.MakeSymbolId(param.Type);
-            if (paramTypeId == null)
-                continue;
-
-            edges.Add(context.MakeEdge(methodId, paramTypeId, nameof(EdgeKind.References), Provenance.FrameworkDerived, AdapterVersion, location));
+            var routeSourceId = $"{GraphNodeIds.RoutePrefix}{httpMethod} /{template}";
+            edges.Add(context.MakeEdge(routeSourceId, methodId, nameof(EdgeKind.RoutesTo), Provenance.FrameworkDerived, AdapterVersion, location,
+                sourceNodeKind: GraphNodeKind.Route));
         }
     }
 
     private static bool IsController(INamedTypeSymbol type)
     {
-        if (type.TypeKind != TypeKind.Class)
-            return false;
-
-        var current = type.BaseType;
-
-        while (current != null)
+        if (type.TypeKind != TypeKind.Class ||
+            type.ContainingType != null ||
+            type.DeclaredAccessibility != Accessibility.Public ||
+            type.IsAbstract ||
+            type.IsGenericType)
         {
-            if (current.Name is "ControllerBase" or "Controller")
-                return true;
-
-            current = current.BaseType;
+            return false;
         }
 
-        return false;
+        var hasControllerAttr = false;
+
+        foreach (var attr in FrameworkTypes.GetAttributesWithInheritance(type))
+        {
+            if (FrameworkTypes.Is(attr.AttributeClass, "Microsoft.AspNetCore.Mvc.NonControllerAttribute"))
+                return false;
+
+            if (FrameworkTypes.Is(attr.AttributeClass, "Microsoft.AspNetCore.Mvc.ControllerAttribute"))
+                hasControllerAttr = true;
+        }
+
+        return hasControllerAttr || type.Name.EndsWith("Controller", StringComparison.OrdinalIgnoreCase);
     }
 
     // Same rule as ASP.NET Core's DefaultApplicationModelProvider.IsAction: an action is a
@@ -128,10 +105,10 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         {
             if (current.ContainingType.SpecialType == SpecialType.System_Object)
                 return false;
-
-            if (current.GetAttributes().Any(a => a.AttributeClass?.Name is "NonActionAttribute" or "NonAction"))
-                return false;
         }
+
+        if (FrameworkTypes.GetAttributesWithInheritance(method).Any(a => FrameworkTypes.Is(a.AttributeClass, "Microsoft.AspNetCore.Mvc.NonActionAttribute")))
+            return false;
 
         var dispose = controller.AllInterfaces
             .FirstOrDefault(i => i.SpecialType == SpecialType.System_IDisposable)?
@@ -141,26 +118,294 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         return dispose == null || !SymbolEqualityComparer.Default.Equals(controller.FindImplementationForInterfaceMember(dispose), method);
     }
 
-    private static string? ExtractRouteTemplate(INamedTypeSymbol controller, IMethodSymbol action)
+    private static List<(string Method, string Template)> BuildRoutes(INamedTypeSymbol controller, IMethodSymbol action)
     {
-        var parts = new List<string>();
+        var controllerSelectors = CreateSelectors(controller);
+        var actionSelectors = CreateSelectors(action);
 
-        var classRoute = controller.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "RouteAttribute" or "Route");
+        var controllerToken = controller.Name.EndsWith("Controller", StringComparison.OrdinalIgnoreCase)
+            ? controller.Name[..^"Controller".Length]
+            : controller.Name;
 
-        if (classRoute?.ConstructorArguments.Length > 0 && classRoute.ConstructorArguments[0].Value is string classTemplate) parts.Add(classTemplate.TrimStart('/'));
+        var actionToken = GetActionName(action);
+        var areaToken = GetAreaName(action) ?? GetAreaName(controller);
 
-        var methodRoute = action.GetAttributes().FirstOrDefault(a =>
-            a.AttributeClass?.Name is "RouteAttribute" or "Route" or "HttpGetAttribute" or "HttpGet" or "HttpPostAttribute" or "HttpPost" or "HttpPutAttribute" or "HttpPut" or "HttpDeleteAttribute" or "HttpDelete" or "HttpPatchAttribute"
-                or "HttpPatch");
+        var routes = new List<(string Method, string Template)>();
 
-        if (methodRoute?.ConstructorArguments.Length > 0 && methodRoute.ConstructorArguments[0].Value is string methodTemplate)
+        foreach (var cSel in controllerSelectors)
         {
-            if (methodTemplate.StartsWith('/'))
-                return methodTemplate.TrimStart('/');
+            foreach (var aSel in actionSelectors)
+            {
+                var combined = CombineTemplates(cSel.Template, aSel.Template);
+                if (combined == null)
+                    continue;
 
-            parts.Add(methodTemplate);
+                var replaced = ReplaceTokens(combined, controllerToken, actionToken, areaToken);
+                if (replaced == null)
+                    continue;
+
+                if (aSel.HttpMethods.Count > 0)
+                {
+                    foreach (var httpMethod in aSel.HttpMethods)
+                        routes.Add((httpMethod, replaced));
+                }
+                else
+                {
+                    routes.Add(("ANY", replaced));
+                }
+            }
         }
 
-        return parts.Count > 0 ? string.Join("/", parts) : null;
+        return routes;
+    }
+
+    private sealed record RouteSelector(string? Template, IReadOnlyList<string> HttpMethods);
+
+    private static List<RouteSelector> CreateSelectors(ISymbol symbol)
+    {
+        var nonSilent = new List<(string? Template, List<string> Methods)>();
+        var silentMethods = new List<string>();
+
+        foreach (var attr in FrameworkTypes.GetAttributesWithInheritance(symbol))
+        {
+            if (!TryReadRouteProvider(attr, out var template, out var hasNameOrOrder, out var methods))
+                continue;
+
+            if (template == null && !hasNameOrOrder)
+            {
+                foreach (var m in methods)
+                {
+                    if (!silentMethods.Contains(m, StringComparer.Ordinal))
+                        silentMethods.Add(m);
+                }
+            }
+            else
+            {
+                nonSilent.Add((template, methods));
+            }
+        }
+
+        var selectors = new List<RouteSelector>();
+
+        if (nonSilent.Count == 0)
+        {
+            selectors.Add(new RouteSelector(null, silentMethods));
+            return selectors;
+        }
+
+        var hasMethodlessNonSilent = false;
+        foreach (var (template, methods) in nonSilent)
+        {
+            if (methods.Count == 0)
+            {
+                hasMethodlessNonSilent = true;
+                selectors.Add(new RouteSelector(template, silentMethods.Count > 0 ? silentMethods : methods));
+            }
+            else
+            {
+                selectors.Add(new RouteSelector(template, methods));
+            }
+        }
+
+        if (silentMethods.Count > 0 && !hasMethodlessNonSilent)
+            selectors.Add(new RouteSelector(null, silentMethods));
+
+        return selectors;
+    }
+
+    private static bool TryReadRouteProvider(AttributeData attr, out string? template, out bool hasNameOrOrder, out List<string> methods)
+    {
+        template = null;
+        hasNameOrOrder = false;
+        methods = [];
+
+        var attrClass = attr.AttributeClass;
+        if (attrClass == null)
+            return false;
+
+        if (FrameworkTypes.Is(attrClass, "Microsoft.AspNetCore.Mvc.RouteAttribute"))
+        {
+            if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string t)
+                template = t;
+            hasNameOrOrder = HasNameOrOrder(attr);
+            return true;
+        }
+
+        if (FrameworkTypes.Is(attrClass, "Microsoft.AspNetCore.Mvc.AcceptVerbsAttribute"))
+        {
+            if (attr.ConstructorArguments.Length > 0)
+            {
+                var arg = attr.ConstructorArguments[0];
+                if (arg.Kind == TypedConstantKind.Array)
+                {
+                    foreach (var item in arg.Values)
+                    {
+                        if (item.Value is string m && !string.IsNullOrEmpty(m))
+                            methods.Add(m.ToUpperInvariant());
+                    }
+                }
+                else if (arg.Value is string m && !string.IsNullOrEmpty(m))
+                {
+                    methods.Add(m.ToUpperInvariant());
+                }
+            }
+
+            foreach (var named in attr.NamedArguments)
+            {
+                if (named.Key == "Route" && named.Value.Value is string r)
+                    template = r;
+                else if (named.Key is "Name" or "Order" && named.Value.Value != null)
+                    hasNameOrOrder = true;
+            }
+
+            return true;
+        }
+
+        if (FrameworkTypes.DerivesFrom(attrClass, "Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute"))
+        {
+            var fixedMethod = GetKnownHttpMethod(attrClass);
+            if (fixedMethod == null)
+                return false;
+
+            methods.Add(fixedMethod);
+            if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string t)
+                template = t;
+            hasNameOrOrder = HasNameOrOrder(attr);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasNameOrOrder(AttributeData attr)
+    {
+        return attr.NamedArguments.Any(named => named.Key is "Name" or "Order" && named.Value.Value != null);
+    }
+
+    private static string? GetKnownHttpMethod(INamedTypeSymbol attrClass)
+    {
+        for (var cur = attrClass; cur != null; cur = cur.BaseType)
+        {
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpGetAttribute")) return "GET";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpPostAttribute")) return "POST";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpPutAttribute")) return "PUT";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpDeleteAttribute")) return "DELETE";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpPatchAttribute")) return "PATCH";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpHeadAttribute")) return "HEAD";
+            if (FrameworkTypes.Is(cur, "Microsoft.AspNetCore.Mvc.HttpOptionsAttribute")) return "OPTIONS";
+        }
+        return null;
+    }
+
+    private static string? CombineTemplates(string? left, string? right)
+    {
+        if (left == null && right == null)
+            return null;
+
+        if (right != null && (right.StartsWith("~/", StringComparison.Ordinal) || right.StartsWith('/')))
+            return TrimTemplateSlashes(right);
+
+        var cleanLeft = left != null ? TrimTemplateSlashes(left) : string.Empty;
+        var cleanRight = right != null ? TrimTemplateSlashes(right) : string.Empty;
+
+        if (cleanLeft.Length == 0)
+            return cleanRight;
+        if (cleanRight.Length == 0)
+            return cleanLeft;
+        return $"{cleanLeft}/{cleanRight}";
+    }
+
+    private static string TrimTemplateSlashes(string template)
+    {
+        if (template.StartsWith("~/", StringComparison.Ordinal))
+            template = template[2..];
+        return template.Trim('/');
+    }
+
+    private static string GetActionName(IMethodSymbol action)
+    {
+        foreach (var attr in FrameworkTypes.GetAttributesWithInheritance(action))
+        {
+            if (FrameworkTypes.Is(attr.AttributeClass, "Microsoft.AspNetCore.Mvc.ActionNameAttribute") &&
+                attr.ConstructorArguments.Length > 0 &&
+                attr.ConstructorArguments[0].Value is string name)
+            {
+                return name;
+            }
+        }
+
+        return action.Name.EndsWith("Async", StringComparison.Ordinal)
+            ? action.Name[..^"Async".Length]
+            : action.Name;
+    }
+
+    private static string? GetAreaName(ISymbol symbol)
+    {
+        foreach (var attr in FrameworkTypes.GetAttributesWithInheritance(symbol))
+        {
+            if (FrameworkTypes.Is(attr.AttributeClass, "Microsoft.AspNetCore.Mvc.AreaAttribute") &&
+                attr.ConstructorArguments.Length > 0 &&
+                attr.ConstructorArguments[0].Value is string area)
+            {
+                return area;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ReplaceTokens(string template, string controller, string action, string? area)
+    {
+        var sb = new StringBuilder(template.Length);
+        var i = 0;
+
+        while (i < template.Length)
+        {
+            var c = template[i];
+            if (c == '[' && i + 1 < template.Length && template[i + 1] == '[')
+            {
+                sb.Append('[');
+                i += 2;
+                continue;
+            }
+
+            if (c == ']' && i + 1 < template.Length && template[i + 1] == ']')
+            {
+                sb.Append(']');
+                i += 2;
+                continue;
+            }
+
+            if (c == '[')
+            {
+                var close = template.IndexOf(']', i + 1);
+                if (close < 0)
+                    return null;
+
+                var token = template[(i + 1)..close];
+                if (string.Equals(token, "controller", StringComparison.OrdinalIgnoreCase))
+                    sb.Append(controller);
+                else if (string.Equals(token, "action", StringComparison.OrdinalIgnoreCase))
+                    sb.Append(action);
+                else if (string.Equals(token, "area", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrEmpty(area))
+                        return null;
+                    sb.Append(area);
+                }
+                else
+                {
+                    return null;
+                }
+
+                i = close + 1;
+                continue;
+            }
+
+            sb.Append(c);
+            i++;
+        }
+
+        return sb.ToString();
     }
 }

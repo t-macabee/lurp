@@ -169,6 +169,61 @@ index after the upgrade. Old snapshots stay until they are pruned.
 - When a scan and an explicit registration give the same pair, the pair keeps
   `framework_derived`. The extractor label is `di-v2`.
 
+## ASP.NET Core
+
+- The ASP.NET Core adapter writes only `RoutesTo`. Its `Declares`, `Returns`
+  and `[FromServices]` `References` rows never reached the index; the compiler
+  facts stay.
+- Route node ids are the routes ASP.NET Core builds: `route://GET /api/Users/{id}`
+  (tokens replaced, `~/` and `/` overrides applied, one node for each route
+  attribute and HTTP method, `ANY` without a method constraint). Old ids such as
+  `route://api/[controller]/{id}` are gone; reindex.
+- A controller is a type that ASP.NET Core accepts (public, top-level, not
+  abstract, not open generic, no `[NonController]`, a `Controller` suffix or
+  `[Controller]`). Inherited public actions are routed on each concrete
+  controller; the route uses the concrete controller's name and inherited
+  `[Route]` attributes.
+
+## MediatR
+
+- `Handles` targets the method that implements each handler interface: a type
+  with two handler interfaces, an explicit implementation and an inherited
+  `Handle` are right. The unmodeled MediatR patterns are the seven MediatR 12
+  interfaces (`IStreamPipelineBehavior` and `IRequestExceptionAction` added; the
+  nonexistent `IAsyncStreamHandler` removed).
+- Incremental runs no longer add a copy of each `unmodeled_mediatr_pattern`
+  annotation; annotations are saved only for the documents a run re-extracts.
+
+## EF Core
+
+- `HasDatabaseName` is no longer reported as a unique index; `IsUnique()` is,
+  on the entity, with its properties and database name. A configuration class
+  for two entities applies each `Configure` to its own entity. Navigations in
+  `IEntityTypeConfiguration<T>.Configure` give the same `References` as in
+  `OnModelCreating`.
+
+## Serialization
+
+- The Serialization adapter writes a `serialization_contract` annotation for
+  each member with a serialization attribute (`name=<wire name>`, `ignored` or
+  `included`), read from the attribute type (qualified and aliased names and
+  `[property:]` record attributes count). Its member `References` rows, which
+  never reached the index, are gone. A `[JsonSerializable]` context also
+  references the element types of generic arguments.
+
+## Test coverage
+
+- Test methods are found by attribute type, subclasses included: `[Theory]`,
+  `[SkippableFact]`, `[DataTestMethod]`, NUnit `[TestCase]` and
+  `[TestCaseSource]`, TUnit `[Test]`. An attribute that is only named `Test` no
+  longer counts.
+- One rule decides a test project for `TestedBy` and dead candidates: a
+  reference to one of eight test-framework assemblies (`MSTest.TestFramework`
+  and `TUnit.Core` added). The name of a project no longer counts.
+- `TestedBy` follows the code a test runs: helpers and local functions of the
+  test assembly, the test class constructor and initializers, setup methods, and
+  target-typed `new()`.
+
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |

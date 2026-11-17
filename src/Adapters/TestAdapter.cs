@@ -1,5 +1,5 @@
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
@@ -7,7 +7,7 @@ namespace Lurp.Adapters;
 
 public sealed class TestAdapter : IFrameworkAdapter
 {
-    private const string AdapterVersion = "test-v3";
+    private const string AdapterVersion = "test-v4";
 
     public string Name => "Test";
     public string Version => AdapterVersion;
@@ -17,141 +17,248 @@ public sealed class TestAdapter : IFrameworkAdapter
     {
         var edges = new List<EdgeRecord>();
 
-        var isTestProject = IsTestProject(context.Compilation);
-        if (!isTestProject)
+        if (!IsTestProject(context.Compilation))
             return edges;
 
+        var bodyInputs = context.Inputs with { ScopeDocuments = null, Incompleteness = null };
+        var memberCtx = new MemberEdgeExtractionContext(bodyInputs);
+        var targetSymbolsById = new Dictionary<string, ISymbol>(StringComparer.Ordinal);
+        var bodyEdges = new OperationShapeExtractor(memberCtx).ExtractBodies(targetSymbolsById);
+
+        var edgesByOwner = new Dictionary<string, List<(string TargetId, string Kind)>>(StringComparer.Ordinal);
+        foreach (var edge in bodyEdges)
+        {
+            if (edge.Kind is not (nameof(EdgeKind.Calls) or nameof(EdgeKind.Constructs) or
+                nameof(EdgeKind.Reads) or nameof(EdgeKind.Writes) or nameof(EdgeKind.References)))
+                continue;
+
+            if (!edgesByOwner.TryGetValue(edge.SourceSymbolId, out var list))
+            {
+                list = [];
+                edgesByOwner[edge.SourceSymbolId] = list;
+            }
+
+            list.Add((edge.TargetSymbolId, edge.Kind));
+        }
+
+        var asyncLifetimeInit = context.Compilation
+            .GetTypeByMetadataName("Xunit.IAsyncLifetime")
+            ?.GetMembers("InitializeAsync")
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault();
+
         foreach (var type in context.GetAllNamedTypes())
+        {
             foreach (var member in type.GetMembers())
             {
-                if (member is not IMethodSymbol method)
+                if (member is not IMethodSymbol method || !IsTestMethod(method))
                     continue;
 
-                if (!IsTestMethod(method))
+                if (!IsMethodInScope(method, context))
                     continue;
 
                 var testMethodId = context.MakeSymbolId(method);
                 if (testMethodId == null)
                     continue;
 
-                // Resolve the evidence site: the test method declaration
                 var location = context.LocationResolver.Resolve(method);
-
-                foreach (var syntaxRef in method.DeclaringSyntaxReferences)
-                {
-                    if (syntaxRef.GetSyntax() is not MethodDeclarationSyntax methodSyntax)
-                        continue;
-
-                    if (!context.IsInScope(methodSyntax.SyntaxTree))
-                        continue;
-
-                    var bodySyntax = methodSyntax.Body ?? (SyntaxNode?)methodSyntax.ExpressionBody;
-                    if (bodySyntax == null)
-                        continue;
-
-                    var semanticModel = context.GetSemanticModel(methodSyntax.SyntaxTree);
-                    var testCtx = new TestEmitContext(context, edges, testMethodId, [], location);
-
-                    CollectTestReferences(bodySyntax, semanticModel, testCtx);
-                }
+                CollectTestedByForMethod(
+                    method,
+                    type,
+                    testMethodId,
+                    location,
+                    asyncLifetimeInit,
+                    edgesByOwner,
+                    targetSymbolsById,
+                    context,
+                    edges);
             }
+        }
 
         return edges;
     }
 
     private static bool IsTestProject(Compilation compilation)
     {
-        var assemblyName = compilation.Assembly.Name;
-        if (assemblyName.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase) ||
-            assemblyName.EndsWith(".Test", StringComparison.OrdinalIgnoreCase) ||
-            assemblyName.EndsWith(".Specs", StringComparison.OrdinalIgnoreCase) ||
-            assemblyName.EndsWith(".IntegrationTests", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return compilation.ReferencedAssemblyNames.Any(refAsm =>
-            refAsm.Name.Contains("xunit", StringComparison.OrdinalIgnoreCase) ||
-            refAsm.Name.Contains("nunit", StringComparison.OrdinalIgnoreCase) ||
-            refAsm.Name.Contains("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase) ||
-            refAsm.Name.Contains("MSTest", StringComparison.OrdinalIgnoreCase) ||
-            refAsm.Name.Contains("Microsoft.VisualStudio.TestPlatform", StringComparison.OrdinalIgnoreCase));
+        return TestFrameworks.IsTestProjectReferenceSet(compilation.ReferencedAssemblyNames.Select(r => r.Name));
     }
 
     private static bool IsTestMethod(IMethodSymbol method)
+    {
+        if (method.MethodKind != MethodKind.Ordinary || method.IsAbstract)
+            return false;
+
+        return HasFrameworkAttribute(method, TestFrameworks.TestAttributeMetadataNames);
+    }
+
+    private static bool IsSetupMethod(IMethodSymbol method)
+    {
+        if (method.MethodKind != MethodKind.Ordinary || method.IsAbstract)
+            return false;
+
+        return HasFrameworkAttribute(method, TestFrameworks.SetupAttributeMetadataNames);
+    }
+
+    private static bool HasFrameworkAttribute(IMethodSymbol method, string[] metadataNames)
     {
         foreach (var attr in method.GetAttributes())
         {
             if (attr.AttributeClass == null)
                 continue;
 
-            var name = attr.AttributeClass.Name;
-            if (name is "Fact" or "FactAttribute" or "Theory" or "TheoryAttribute" or
-                "Test" or "TestAttribute" or "TestMethod" or "TestMethodAttribute")
-                return true;
+            foreach (var metadataName in metadataNames)
+            {
+                if (FrameworkTypes.DerivesFrom(attr.AttributeClass, metadataName))
+                    return true;
+            }
+        }
 
-            var fullName = attr.AttributeClass.ToDisplayString();
-            if (fullName is "Xunit.FactAttribute" or "Xunit.TheoryAttribute" or "NUnit.Framework.TestAttribute" or "Microsoft.VisualStudio.TestTools.UnitTesting.TestMethodAttribute")
+        return false;
+    }
+
+    private static bool IsMethodInScope(IMethodSymbol method, AdapterExtractionContext context)
+    {
+        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax() is MethodDeclarationSyntax methodSyntax &&
+                context.IsInScope(methodSyntax.SyntaxTree))
                 return true;
         }
 
         return false;
     }
 
-    private static void AddProductionRef(ISymbol symbol, TestEmitContext context)
+    private static bool IsInTestAssembly(ISymbol symbol, string testAssemblyIdentity)
     {
-        var productionSymbol = symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol
-            ? symbol.ContainingType
-            : symbol;
-
-        if (productionSymbol == null)
-            return;
-
-        if (productionSymbol is INamespaceSymbol)
-            return;
-
-        var productionAssembly = productionSymbol.ContainingAssembly;
-        if (productionAssembly != null && productionAssembly.Identity.GetDisplayName() == context.Adapter.AssemblyIdentity)
-            return;
-
-        var productionId = context.Adapter.MakeSymbolId(productionSymbol);
-        if (productionId == null)
-            return;
-
-        if (!context.ReferencedSymbols.Add(productionId))
-            return;
-
-        context.Edges.Add(context.Adapter.MakeEdge(productionId, context.TestMethodId, nameof(EdgeKind.TestedBy), Provenance.FrameworkDerived,
-            AdapterVersion, context.Location));
+        var assembly = symbol.ContainingAssembly;
+        return assembly != null && assembly.Identity.GetDisplayName() == testAssemblyIdentity;
     }
 
-    private static void CollectTestReferences(SyntaxNode bodySyntax, SemanticModel semanticModel, TestEmitContext context)
+    private static void CollectTestedByForMethod(
+        IMethodSymbol testMethod,
+        INamedTypeSymbol testType,
+        string testMethodId,
+        (string? path, int? sl, int? sc, int? el, int? ec) location,
+        IMethodSymbol? asyncLifetimeInit,
+        Dictionary<string, List<(string TargetId, string Kind)>> edgesByOwner,
+        Dictionary<string, ISymbol> targetSymbolsById,
+        AdapterExtractionContext context,
+        List<EdgeRecord> edges)
     {
-        foreach (var invocation in bodySyntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<(ISymbol Symbol, bool ExpandAccessors)>();
+        var accessorsExpanded = new HashSet<string>(StringComparer.Ordinal);
+        var emittedProductionIds = new HashSet<string>(StringComparer.Ordinal);
+
+        void EnqueueSymbol(ISymbol? symbol, bool expandAccessors = true)
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-            if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, context);
+            if (symbol == null)
+                return;
+
+            var id = context.MakeSymbolId(symbol);
+            if (id == null)
+                return;
+
+            var needBody = visited.Add(id);
+            var needAccessors = expandAccessors && symbol is IPropertySymbol or IEventSymbol && accessorsExpanded.Add(id);
+            if (needBody || needAccessors)
+                queue.Enqueue((symbol, needAccessors));
         }
 
-        foreach (var creation in bodySyntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+        void EnqueueInstanceInitializers(INamedTypeSymbol startType)
         {
-            var createdType = semanticModel.GetTypeInfo(creation).Type;
-            if (createdType != null)
-                AddProductionRef(createdType, context);
+            for (var cur = startType; cur != null && IsInTestAssembly(cur, context.AssemblyIdentity); cur = cur.BaseType)
+            {
+                foreach (var member in cur.GetMembers())
+                {
+                    if (member is (IFieldSymbol or IPropertySymbol) && !member.IsStatic)
+                        EnqueueSymbol(member, expandAccessors: false);
+                }
+            }
         }
 
-        foreach (var memberAccess in bodySyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+        EnqueueSymbol(testMethod);
+
+        for (var cur = testType; cur != null && IsInTestAssembly(cur, context.AssemblyIdentity); cur = cur.BaseType)
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
-            if (symbolInfo.Symbol != null)
-                AddProductionRef(symbolInfo.Symbol, context);
+            foreach (var member in cur.GetMembers())
+            {
+                switch (member)
+                {
+                    case IMethodSymbol { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: false, IsStatic: false } ctor:
+                        EnqueueSymbol(ctor);
+                        break;
+                    case IMethodSymbol m when IsSetupMethod(m):
+                        EnqueueSymbol(m);
+                        break;
+                    case (IFieldSymbol or IPropertySymbol) when !member.IsStatic:
+                        EnqueueSymbol(member, expandAccessors: false);
+                        break;
+                }
+            }
+
+            if (asyncLifetimeInit != null &&
+                cur.FindImplementationForInterfaceMember(asyncLifetimeInit) is IMethodSymbol initImpl &&
+                IsInTestAssembly(initImpl, context.AssemblyIdentity))
+            {
+                EnqueueSymbol(initImpl);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var (current, expandAccessors) = queue.Dequeue();
+            var currentId = context.MakeSymbolId(current);
+
+            if (currentId != null && edgesByOwner.TryGetValue(currentId, out var outgoing))
+            {
+                foreach (var (targetId, kind) in outgoing)
+                {
+                    if (!targetSymbolsById.TryGetValue(targetId, out var targetSymbol))
+                        continue;
+
+                    if (IsInTestAssembly(targetSymbol, context.AssemblyIdentity))
+                    {
+                        EnqueueSymbol(targetSymbol.OriginalDefinition);
+                        if (kind == nameof(EdgeKind.Constructs) && targetSymbol is INamedTypeSymbol constructedType)
+                            EnqueueInstanceInitializers(constructedType);
+                    }
+                    else
+                    {
+                        var productionType = targetSymbol switch
+                        {
+                            INamespaceSymbol or ITypeParameterSymbol => null,
+                            INamedTypeSymbol named => named.OriginalDefinition,
+                            _ => targetSymbol.ContainingType?.OriginalDefinition
+                        };
+
+                        if (productionType == null || IsInTestAssembly(productionType, context.AssemblyIdentity))
+                            continue;
+
+                        var productionId = context.MakeSymbolId(productionType);
+                        if (productionId != null && emittedProductionIds.Add(productionId))
+                        {
+                            edges.Add(context.MakeEdge(productionId, testMethodId,
+                                nameof(EdgeKind.TestedBy), Provenance.FrameworkDerived, AdapterVersion, location));
+                        }
+                    }
+                }
+            }
+
+            if (expandAccessors)
+            {
+                switch (current)
+                {
+                    case IPropertySymbol prop:
+                        EnqueueSymbol(prop.GetMethod);
+                        EnqueueSymbol(prop.SetMethod);
+                        break;
+                    case IEventSymbol ev:
+                        EnqueueSymbol(ev.AddMethod);
+                        EnqueueSymbol(ev.RemoveMethod);
+                        break;
+                }
+            }
         }
     }
-
-    /// <summary>The adapter context, the edge list and the evidence site of one test method body.</summary>
-    private sealed record TestEmitContext(
-        AdapterExtractionContext Adapter,
-        List<EdgeRecord> Edges,
-        string TestMethodId,
-        HashSet<string> ReferencedSymbols,
-        (string? path, int? sl, int? sc, int? el, int? ec) Location);
 }

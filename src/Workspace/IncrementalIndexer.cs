@@ -438,8 +438,9 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 _output.WriteErrorLine($"FAILED: {ex.Message}");
                 _store.SaveBindingIncompleteness(
                     newSnapshotIdStr,
-                    ScopeBindingIncompleteness(
+                    ScopeToDocuments(
                         WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot),
+                        r => r.DocumentPath,
                         extractionScopeRelativePaths));
                 continue;
             }
@@ -454,10 +455,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             // in the extraction scope (the same set the delete cleared). Records
             // for out-of-scope documents carry forward their copied-forward
             // values unchanged.
-            var scopedBi = ScopeBindingIncompleteness(result.BindingIncompleteness, extractionScopeRelativePaths);
+            var scopedBi = ScopeToDocuments(result.BindingIncompleteness, r => r.DocumentPath, extractionScopeRelativePaths);
             _store.SaveBindingIncompleteness(newSnapshotIdStr, scopedBi);
-            if (result.Annotations.Count > 0)
-                _store.SaveAnnotations(newSnapshotIdStr, result.Annotations);
+            var scopedAnnotations = ScopeToDocuments(result.Annotations, a => a.DocumentPath, extractionScopeRelativePaths);
+            if (scopedAnnotations.Count > 0)
+                _store.SaveAnnotations(newSnapshotIdStr, scopedAnnotations);
             foreach (var measurement in result.Measurements.Where(_ => verbose))
                 _output.WriteErrorLine($"    [measure] {measurement.Extractor}: {measurement.ElapsedMilliseconds} ms, {measurement.AllocatedBytes} bytes");
 
@@ -733,23 +735,16 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return expanded;
     }
 
-    /// <summary>
-    ///     Filters binding-incompleteness records to exactly those whose document
-    ///     path is in the given scope set. Restores the lockstep invariant: the save
-    ///     only writes facts for documents the delete cleared. Null/empty-path
-    ///     records (doc-less aggregates, e.g. <c>extractor_failure</c>) are dropped
-    ///     so their copied-forward value is preserved — EXCLUDE-AND-CARRY-FORWARD.
-    ///     A document-scoped incremental pass cannot correctly refresh that bucket
-    ///     (no document-scoped delete retires it and no scoped re-extraction
-    ///     reproduces the whole-compilation count); a <c>--strategy=full</c> rebuild
-    ///     is the reference for it. See TRUST_KERNEL R6 open finding 10.
-    /// </summary>
-    internal static IReadOnlyList<BindingIncompletenessRecord> ScopeBindingIncompleteness(
-        IReadOnlyList<BindingIncompletenessRecord> records,
-        IReadOnlySet<string> scopeRelativePaths)
+    internal static IReadOnlyList<T> ScopeToDocuments<T>(
+        IReadOnlyList<T> records,
+        Func<T, string?> getDocumentPath,
+        IReadOnlySet<string>? scopeRelativePaths)
     {
+        if (scopeRelativePaths == null)
+            return records;
+
         return [.. records
-            .Where(r => r.DocumentPath is { } path && scopeRelativePaths.Contains(path))];
+            .Where(r => getDocumentPath(r) is { } path && scopeRelativePaths.Contains(path))];
     }
 
     private sealed record IncrementalChangeScope(

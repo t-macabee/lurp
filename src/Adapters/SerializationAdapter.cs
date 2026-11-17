@@ -1,139 +1,196 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using EdgeKind = Lurp.Storage.EdgeKind;
 
 namespace Lurp.Adapters;
 
 public sealed class SerializationAdapter : IFrameworkAdapter
 {
+    private const string StjJsonPropertyName = "System.Text.Json.Serialization.JsonPropertyNameAttribute";
+    private const string StjJsonIgnore = "System.Text.Json.Serialization.JsonIgnoreAttribute";
+    private const string StjJsonInclude = "System.Text.Json.Serialization.JsonIncludeAttribute";
+    private const string StjJsonSerializable = "System.Text.Json.Serialization.JsonSerializableAttribute";
+
+    private const string NewtonsoftJsonProperty = "Newtonsoft.Json.JsonPropertyAttribute";
+    private const string NewtonsoftJsonIgnore = "Newtonsoft.Json.JsonIgnoreAttribute";
+
+    private const string DataContractDataMember = "System.Runtime.Serialization.DataMemberAttribute";
+    private const string DataContractIgnoreDataMember = "System.Runtime.Serialization.IgnoreDataMemberAttribute";
+
+    private const int JsonIgnoreConditionAlways = 1;
+
     public string Name => "Serialization";
-    public string Version => "serialization-v1";
-    public string Description => "Serialization framework edges (JSON contracts)";
+    public string Version => "serialization-v2";
+    public string Description => "Serialization contracts (System.Text.Json, Newtonsoft.Json, DataContract)";
 
     public AdapterExtractionResult Extract(AdapterExtractionContext context)
     {
-        var ctx = new SerializationEmitContext(context, Version, []);
+        var edges = new List<EdgeRecord>();
+        var annotations = new List<AnnotationRecord>();
 
-        foreach (var tree in context.Compilation.SyntaxTrees)
+        foreach (var type in context.GetAllNamedTypes())
         {
-            if (!context.IsInScope(tree))
+            if (!context.IsSymbolInScope(type))
                 continue;
 
-            var semanticModel = context.GetSemanticModel(tree);
+            ExtractJsonSerializable(type, context, edges);
 
-            foreach (var property in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>()) ProcessMemberWithSerializationAttrs(property, property.AttributeLists, semanticModel, ctx);
-
-            foreach (var field in tree.GetRoot().DescendantNodes().OfType<FieldDeclarationSyntax>())
-                foreach (var variable in field.Declaration.Variables)
-                    ProcessMemberWithSerializationAttrs(variable, field.AttributeLists, semanticModel, ctx);
-
-            foreach (var typeDecl in tree.GetRoot().DescendantNodes().OfType<TypeDeclarationSyntax>()) ProcessJsonSerializableType(typeDecl, semanticModel, ctx);
-        }
-
-        return ctx.Edges;
-    }
-
-    /// <summary>The adapter context of one run with the edge list that the run fills.</summary>
-    private sealed record SerializationEmitContext(AdapterExtractionContext Adapter, string ExtractorVersion, List<EdgeRecord> Edges);
-
-    private static void ProcessJsonSerializableType(TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, SerializationEmitContext ctx)
-    {
-        foreach (var attrList in typeDecl.AttributeLists)
-            foreach (var attr in attrList.Attributes)
+            foreach (var member in type.GetMembers())
             {
-                var attrName = GetAttributeName(attr);
-                if (attrName != "JsonSerializable" || attr.ArgumentList == null)
+                if (member is not (IPropertySymbol or IFieldSymbol { IsImplicitlyDeclared: false }))
                     continue;
 
-                foreach (var arg in attr.ArgumentList.Arguments)
-                {
-                    if (arg.Expression is not TypeOfExpressionSyntax typeofExpr)
-                        continue;
+                if (!context.IsSymbolInScope(member))
+                    continue;
 
-                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type);
-                    if (typeInfo.Type is not INamedTypeSymbol serializableType)
-                        continue;
-
-                    var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
-                    if (typeSymbol == null)
-                        continue;
-
-                    var sourceId = ctx.Adapter.MakeSymbolId(typeSymbol);
-                    var targetId = ctx.Adapter.MakeSymbolId(serializableType);
-                    if (sourceId != null && targetId != null)
-                        ctx.Edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.References), ctx, typeDecl.GetLocation()));
-                }
+                ExtractMemberContracts(member, context, annotations);
             }
+        }
+
+        return new AdapterExtractionResult(edges, annotations);
     }
 
-    private static void ProcessMemberWithSerializationAttrs(SyntaxNode memberNode, SyntaxList<AttributeListSyntax> attributeLists, SemanticModel semanticModel, SerializationEmitContext ctx)
+    private void ExtractJsonSerializable(INamedTypeSymbol type, AdapterExtractionContext context, List<EdgeRecord> edges)
     {
-        var memberSymbol = memberNode switch
-        {
-            PropertyDeclarationSyntax prop => semanticModel.GetDeclaredSymbol(prop),
-            VariableDeclaratorSyntax variable => semanticModel.GetDeclaredSymbol(variable) as IFieldSymbol,
-            _ => null
-        };
-
-        if (memberSymbol == null)
+        var sourceId = context.MakeSymbolId(type);
+        if (sourceId == null)
             return;
 
-        var memberId = ctx.Adapter.MakeSymbolId(memberSymbol);
+        foreach (var attr in type.GetAttributes())
+        {
+            if (!FrameworkTypes.Is(attr.AttributeClass, StjJsonSerializable))
+                continue;
+
+            if (attr.ConstructorArguments.Length == 0 || attr.ConstructorArguments[0].Value is not ITypeSymbol rootType)
+                continue;
+
+            var location = attr.ApplicationSyntaxReference != null
+                ? context.LocationResolver.Resolve(attr.ApplicationSyntaxReference.GetSyntax().GetLocation())
+                : context.LocationResolver.Resolve(type);
+
+            var targets = new List<INamedTypeSymbol>();
+            CollectNamedTypes(rootType, targets);
+
+            foreach (var target in targets)
+            {
+                var targetId = context.MakeSymbolId(target);
+                if (targetId != null)
+                {
+                    edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.References),
+                        Provenance.FrameworkDerived, Version, location));
+                }
+            }
+        }
+    }
+
+    private static void CollectNamedTypes(ITypeSymbol type, List<INamedTypeSymbol> results)
+    {
+        switch (type)
+        {
+            case INamedTypeSymbol named:
+                results.Add(named.OriginalDefinition);
+                foreach (var typeArg in named.TypeArguments)
+                    CollectNamedTypes(typeArg, results);
+                break;
+            case IArrayTypeSymbol array:
+                CollectNamedTypes(array.ElementType, results);
+                break;
+        }
+    }
+
+    private static void ExtractMemberContracts(
+        ISymbol member,
+        AdapterExtractionContext context,
+        List<AnnotationRecord> annotations)
+    {
+        var memberId = context.MakeSymbolId(member);
         if (memberId == null)
             return;
 
-        var memberType = memberSymbol switch
+        (int Rank, string Value) stj = default;
+        (int Rank, string Value) newtonsoft = default;
+        (int Rank, string Value) dataContract = default;
+
+        foreach (var attr in member.GetAttributes())
         {
-            IPropertySymbol prop => prop.Type,
-            IFieldSymbol field => field.Type,
-            _ => null
-        };
+            var attrClass = attr.AttributeClass;
+            if (attrClass == null)
+                continue;
 
-        string? targetId = null;
-        if (memberType is INamedTypeSymbol namedType) targetId = ctx.Adapter.MakeSymbolId(namedType);
-
-        // Resolve location from the syntax node (property/field decl) : the evidence site
-        var evidenceLocation = memberNode.GetLocation();
-
-        foreach (var attrList in attributeLists)
-            foreach (var attr in attrList.Attributes)
+            if (FrameworkTypes.Is(attrClass, StjJsonIgnore))
             {
-                var attrName = GetAttributeName(attr);
-                var classification = ClassifySerializationAttribute(attrName);
-                if (!classification)
-                    continue;
-
-                EmitSerializationReferenceEdge(memberId, targetId, ctx, evidenceLocation);
+                var condition = GetNamedInt(attr, "Condition") ?? JsonIgnoreConditionAlways;
+                var candidate = condition == JsonIgnoreConditionAlways ? (3, "ignored") : (1, "included");
+                stj = PickHigher(stj, candidate);
             }
+            else if (FrameworkTypes.Is(attrClass, StjJsonPropertyName))
+            {
+                if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string name)
+                    stj = PickHigher(stj, (2, $"name={name}"));
+            }
+            else if (FrameworkTypes.Is(attrClass, StjJsonInclude))
+            {
+                stj = PickHigher(stj, (1, "included"));
+            }
+            else if (FrameworkTypes.Is(attrClass, NewtonsoftJsonIgnore))
+            {
+                newtonsoft = PickHigher(newtonsoft, (3, "ignored"));
+            }
+            else if (FrameworkTypes.Is(attrClass, NewtonsoftJsonProperty))
+            {
+                var name = (attr.ConstructorArguments.Length > 0 ? attr.ConstructorArguments[0].Value as string : null)
+                           ?? GetNamedString(attr, "PropertyName");
+                var candidate = name != null ? (2, $"name={name}") : (1, "included");
+                newtonsoft = PickHigher(newtonsoft, candidate);
+            }
+            else if (FrameworkTypes.Is(attrClass, DataContractIgnoreDataMember))
+            {
+                dataContract = PickHigher(dataContract, (3, "ignored"));
+            }
+            else if (FrameworkTypes.Is(attrClass, DataContractDataMember))
+            {
+                var name = GetNamedString(attr, "Name");
+                var candidate = name != null ? (2, $"name={name}") : (1, "included");
+                dataContract = PickHigher(dataContract, candidate);
+            }
+        }
+
+        if (stj.Rank == 0 && newtonsoft.Rank == 0 && dataContract.Rank == 0)
+            return;
+
+        var distinctValues = new HashSet<string>(StringComparer.Ordinal);
+        if (stj.Rank > 0 && stj.Value != null) distinctValues.Add(stj.Value);
+        if (newtonsoft.Rank > 0 && newtonsoft.Value != null) distinctValues.Add(newtonsoft.Value);
+        if (dataContract.Rank > 0 && dataContract.Value != null) distinctValues.Add(dataContract.Value);
+
+        var docPath = context.LocationResolver.Resolve(member).path;
+        foreach (var value in distinctValues)
+            annotations.Add(new AnnotationRecord(memberId, "serialization_contract", value, docPath));
     }
 
-    private static bool ClassifySerializationAttribute(string attrName)
+    private static (int Rank, string Value) PickHigher((int Rank, string Value) current, (int Rank, string Value) candidate)
     {
-        return attrName switch
+        return candidate.Rank > current.Rank ? candidate : current;
+    }
+
+    private static string? GetNamedString(AttributeData attr, string name)
+    {
+        foreach (var named in attr.NamedArguments)
         {
-            "JsonPropertyName" or "JsonProperty" or "DataMember" or "JsonIgnore" or "IgnoreDataMember" => true,
-            _ => false
-        };
+            if (named.Key == name && named.Value.Value is string s)
+                return s;
+        }
+
+        return null;
     }
 
-    private static void EmitSerializationReferenceEdge(string memberId, string? targetId, SerializationEmitContext ctx, Location evidenceLocation)
+    private static int? GetNamedInt(AttributeData attr, string name)
     {
-        if (targetId != null)
-            ctx.Edges.Add(MakeEdge(memberId, targetId, nameof(EdgeKind.References), ctx, evidenceLocation));
-    }
+        foreach (var named in attr.NamedArguments)
+        {
+            if (named.Key == name && named.Value.Value is int i)
+                return i;
+        }
 
-    private static string GetAttributeName(AttributeSyntax attr)
-    {
-        var name = attr.Name.ToString();
-
-        if (name.EndsWith("Attribute", StringComparison.Ordinal))
-            name = name[..^"Attribute".Length];
-        return name;
-    }
-
-    private static EdgeRecord MakeEdge(string sourceId, string targetId, string kind, SerializationEmitContext ctx, Location evidenceLocation)
-    {
-        return ctx.Adapter.MakeEdge(sourceId, targetId, kind, Provenance.FrameworkDerived, ctx.ExtractorVersion,
-            ctx.Adapter.LocationResolver.Resolve(evidenceLocation));
+        return null;
     }
 }

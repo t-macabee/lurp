@@ -14,8 +14,11 @@ public sealed class AdapterExtractionContext
 
     internal AdapterExtractionContext(ProjectExtractionInputs inputs)
     {
+        Inputs = inputs;
         _workspace = new AdapterWorkspaceContext(inputs);
     }
+
+    internal ProjectExtractionInputs Inputs { get; }
 
     public Compilation Compilation => _workspace.Compilation;
     public string SnapshotId => _workspace.SnapshotId;
