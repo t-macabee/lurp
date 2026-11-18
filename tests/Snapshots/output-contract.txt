@@ -1099,19 +1099,19 @@ cli:outline:jsonl:meta $.meta.next_cursor null
 cli:outline:jsonl:meta $.meta.snapshot_id string
 cli:outline:jsonl:meta $.type string
 cli:pin-snapshot:json[clear] $ object
-cli:pin-snapshot:json[clear] $.built_at_latest_snapshot_id string
 cli:pin-snapshot:json[clear] $.cleared boolean
 cli:pin-snapshot:json[clear] $.effective_latest_snapshot_id string
 cli:pin-snapshot:json[clear] $.pin_active boolean
+cli:pin-snapshot:json[clear] $.selected_latest_snapshot_id string
 cli:pin-snapshot:json[clear] $.status string
 cli:pin-snapshot:json[set] $ object
-cli:pin-snapshot:json[set] $.built_at_latest_snapshot_id string
 cli:pin-snapshot:json[set] $.built_at_utc string
 cli:pin-snapshot:json[set] $.effective_latest_snapshot_id string
 cli:pin-snapshot:json[set] $.pin_active boolean
 cli:pin-snapshot:json[set] $.pinned_at_utc string
 cli:pin-snapshot:json[set] $.pinned_snapshot_id string
 cli:pin-snapshot:json[set] $.previous_pinned_snapshot_id null
+cli:pin-snapshot:json[set] $.selected_latest_snapshot_id string
 cli:pin-snapshot:json[set] $.status string
 cli:retract-annotation:json $ object
 cli:retract-annotation:json $.annotation_id number
@@ -1257,7 +1257,6 @@ cli:search:jsonl:result[type=symbol] $.result.symbol_id string
 cli:search:jsonl:result[type=symbol] $.result.type string
 cli:search:jsonl:result[type=symbol] $.type string
 cli:status:json[default] $ object
-cli:status:json[default] $.built_at_latest_snapshot_id string
 cli:status:json[default] $.contract_version number
 cli:status:json[default] $.database_path string
 cli:status:json[default] $.effective_latest_snapshot_id string
@@ -1317,6 +1316,7 @@ cli:status:json[default] $.pinned_at_utc null
 cli:status:json[default] $.pinned_snapshot_id null
 cli:status:json[default] $.previous_pinned_snapshot_id null
 cli:status:json[default] $.schema_version number
+cli:status:json[default] $.selected_latest_snapshot_id string
 cli:status:json[default] $.stale_pinned_snapshot_id null
 cli:status:json[default] $.timing_summary array
 cli:status:json[default] $.timing_summary[] object
@@ -1324,7 +1324,6 @@ cli:status:json[default] $.timing_summary[].elapsed_ms number
 cli:status:json[default] $.timing_summary[].step string
 cli:status:json[default] $.timing_total_ms number
 cli:status:json[detail=all] $ object
-cli:status:json[detail=all] $.built_at_latest_snapshot_id string
 cli:status:json[detail=all] $.contract_version number
 cli:status:json[detail=all] $.database_path string
 cli:status:json[detail=all] $.effective_latest_snapshot_id string
@@ -1389,6 +1388,7 @@ cli:status:json[detail=all] $.pinned_at_utc null
 cli:status:json[detail=all] $.pinned_snapshot_id null
 cli:status:json[detail=all] $.previous_pinned_snapshot_id null
 cli:status:json[detail=all] $.schema_version number
+cli:status:json[detail=all] $.selected_latest_snapshot_id string
 cli:status:json[detail=all] $.stale_pinned_snapshot_id null
 cli:status:json[detail=all] $.timing_summary array
 cli:status:json[detail=all] $.timing_summary[] object
@@ -1396,7 +1396,6 @@ cli:status:json[detail=all] $.timing_summary[].elapsed_ms number
 cli:status:json[detail=all] $.timing_summary[].step string
 cli:status:json[detail=all] $.timing_total_ms number
 cli:status:json[detail=completeness] $ object
-cli:status:json[detail=completeness] $.built_at_latest_snapshot_id string
 cli:status:json[detail=completeness] $.contract_version number
 cli:status:json[detail=completeness] $.database_path string
 cli:status:json[detail=completeness] $.effective_latest_snapshot_id string
@@ -1462,6 +1461,7 @@ cli:status:json[detail=completeness] $.pinned_at_utc null
 cli:status:json[detail=completeness] $.pinned_snapshot_id null
 cli:status:json[detail=completeness] $.previous_pinned_snapshot_id null
 cli:status:json[detail=completeness] $.schema_version number
+cli:status:json[detail=completeness] $.selected_latest_snapshot_id string
 cli:status:json[detail=completeness] $.stale_pinned_snapshot_id null
 cli:status:json[detail=completeness] $.timing_summary array
 cli:status:json[detail=completeness] $.timing_summary[] object
@@ -1469,7 +1469,6 @@ cli:status:json[detail=completeness] $.timing_summary[].elapsed_ms number
 cli:status:json[detail=completeness] $.timing_summary[].step string
 cli:status:json[detail=completeness] $.timing_total_ms number
 cli:status:json[detail=documents] $ object
-cli:status:json[detail=documents] $.built_at_latest_snapshot_id string
 cli:status:json[detail=documents] $.contract_version number
 cli:status:json[detail=documents] $.database_path string
 cli:status:json[detail=documents] $.effective_latest_snapshot_id string
@@ -1529,6 +1528,7 @@ cli:status:json[detail=documents] $.pinned_at_utc null
 cli:status:json[detail=documents] $.pinned_snapshot_id null
 cli:status:json[detail=documents] $.previous_pinned_snapshot_id null
 cli:status:json[detail=documents] $.schema_version number
+cli:status:json[detail=documents] $.selected_latest_snapshot_id string
 cli:status:json[detail=documents] $.stale_pinned_snapshot_id null
 cli:status:json[detail=documents] $.timing_summary array
 cli:status:json[detail=documents] $.timing_summary[] object
@@ -1536,7 +1536,6 @@ cli:status:json[detail=documents] $.timing_summary[].elapsed_ms number
 cli:status:json[detail=documents] $.timing_summary[].step string
 cli:status:json[detail=documents] $.timing_total_ms number
 cli:status:json[detail=references] $ object
-cli:status:json[detail=references] $.built_at_latest_snapshot_id string
 cli:status:json[detail=references] $.contract_version number
 cli:status:json[detail=references] $.database_path string
 cli:status:json[detail=references] $.effective_latest_snapshot_id string
@@ -1595,6 +1594,7 @@ cli:status:json[detail=references] $.pinned_at_utc null
 cli:status:json[detail=references] $.pinned_snapshot_id null
 cli:status:json[detail=references] $.previous_pinned_snapshot_id null
 cli:status:json[detail=references] $.schema_version number
+cli:status:json[detail=references] $.selected_latest_snapshot_id string
 cli:status:json[detail=references] $.stale_pinned_snapshot_id null
 cli:status:json[detail=references] $.timing_summary array
 cli:status:json[detail=references] $.timing_summary[] object
@@ -1602,7 +1602,6 @@ cli:status:json[detail=references] $.timing_summary[].elapsed_ms number
 cli:status:json[detail=references] $.timing_summary[].step string
 cli:status:json[detail=references] $.timing_total_ms number
 cli:status:json[failed-snapshot] $ object
-cli:status:json[failed-snapshot] $.built_at_latest_snapshot_id string
 cli:status:json[failed-snapshot] $.contract_version number
 cli:status:json[failed-snapshot] $.database_path string
 cli:status:json[failed-snapshot] $.effective_latest_snapshot_id string
@@ -1666,6 +1665,7 @@ cli:status:json[failed-snapshot] $.pinned_at_utc null
 cli:status:json[failed-snapshot] $.pinned_snapshot_id null
 cli:status:json[failed-snapshot] $.previous_pinned_snapshot_id null
 cli:status:json[failed-snapshot] $.schema_version number
+cli:status:json[failed-snapshot] $.selected_latest_snapshot_id string
 cli:status:json[failed-snapshot] $.stale_pinned_snapshot_id null
 cli:status:json[failed-snapshot] $.timing_summary array
 cli:status:json[failed-snapshot] $.timing_summary[] object
@@ -1673,7 +1673,6 @@ cli:status:json[failed-snapshot] $.timing_summary[].elapsed_ms number
 cli:status:json[failed-snapshot] $.timing_summary[].step string
 cli:status:json[failed-snapshot] $.timing_total_ms number
 cli:status:json[failed-then-complete] $ object
-cli:status:json[failed-then-complete] $.built_at_latest_snapshot_id string
 cli:status:json[failed-then-complete] $.contract_version number
 cli:status:json[failed-then-complete] $.database_path string
 cli:status:json[failed-then-complete] $.effective_latest_snapshot_id string
@@ -1733,6 +1732,7 @@ cli:status:json[failed-then-complete] $.pinned_at_utc null
 cli:status:json[failed-then-complete] $.pinned_snapshot_id null
 cli:status:json[failed-then-complete] $.previous_pinned_snapshot_id null
 cli:status:json[failed-then-complete] $.schema_version number
+cli:status:json[failed-then-complete] $.selected_latest_snapshot_id string
 cli:status:json[failed-then-complete] $.stale_pinned_snapshot_id null
 cli:status:json[failed-then-complete] $.timing_summary array
 cli:status:json[failed-then-complete] $.timing_summary[] object
@@ -1758,7 +1758,6 @@ cli:status:json[never-indexed-no-db] $.indexed boolean
 cli:status:json[never-indexed-no-db] $.latest_failure null
 cli:status:json[never-indexed-no-db] $.schema_version null
 cli:status:json[pinned] $ object
-cli:status:json[pinned] $.built_at_latest_snapshot_id string
 cli:status:json[pinned] $.contract_version number
 cli:status:json[pinned] $.database_path string
 cli:status:json[pinned] $.effective_latest_snapshot_id string
@@ -1818,6 +1817,7 @@ cli:status:json[pinned] $.pinned_at_utc string
 cli:status:json[pinned] $.pinned_snapshot_id string
 cli:status:json[pinned] $.previous_pinned_snapshot_id null
 cli:status:json[pinned] $.schema_version number
+cli:status:json[pinned] $.selected_latest_snapshot_id string
 cli:status:json[pinned] $.stale_pinned_snapshot_id null
 cli:status:json[pinned] $.timing_summary array
 cli:status:json[pinned] $.timing_summary[] object
@@ -1825,7 +1825,6 @@ cli:status:json[pinned] $.timing_summary[].elapsed_ms number
 cli:status:json[pinned] $.timing_summary[].step string
 cli:status:json[pinned] $.timing_total_ms number
 cli:status:json[snapshot-only] $ object
-cli:status:json[snapshot-only] $.built_at_latest_snapshot_id string
 cli:status:json[snapshot-only] $.contract_version number
 cli:status:json[snapshot-only] $.database_path string
 cli:status:json[snapshot-only] $.effective_latest_snapshot_id string
@@ -1883,6 +1882,7 @@ cli:status:json[snapshot-only] $.pinned_at_utc null
 cli:status:json[snapshot-only] $.pinned_snapshot_id null
 cli:status:json[snapshot-only] $.previous_pinned_snapshot_id null
 cli:status:json[snapshot-only] $.schema_version number
+cli:status:json[snapshot-only] $.selected_latest_snapshot_id string
 cli:status:json[snapshot-only] $.stale_pinned_snapshot_id null
 cli:status:json[snapshot-only] $.timing_summary array
 cli:status:json[snapshot-only] $.timing_summary[] object
@@ -1890,7 +1890,6 @@ cli:status:json[snapshot-only] $.timing_summary[].elapsed_ms number
 cli:status:json[snapshot-only] $.timing_summary[].step string
 cli:status:json[snapshot-only] $.timing_total_ms number
 cli:status:json[stale-pin] $ object
-cli:status:json[stale-pin] $.built_at_latest_snapshot_id string
 cli:status:json[stale-pin] $.contract_version number
 cli:status:json[stale-pin] $.database_path string
 cli:status:json[stale-pin] $.effective_latest_snapshot_id string
@@ -1950,6 +1949,7 @@ cli:status:json[stale-pin] $.pinned_at_utc null
 cli:status:json[stale-pin] $.pinned_snapshot_id null
 cli:status:json[stale-pin] $.previous_pinned_snapshot_id null
 cli:status:json[stale-pin] $.schema_version number
+cli:status:json[stale-pin] $.selected_latest_snapshot_id string
 cli:status:json[stale-pin] $.stale_pinned_snapshot_id string
 cli:status:json[stale-pin] $.timing_summary array
 cli:status:json[stale-pin] $.timing_summary[] object

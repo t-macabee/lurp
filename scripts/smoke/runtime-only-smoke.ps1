@@ -51,7 +51,7 @@ Assert-True ($help.Text -match 'MODES') 'help output does not contain the MODES 
 
 $status = ConvertFrom-LurpJson (Invoke-Lurp @('--mode=status', "--output-dir=$DbDir", '--output=json')).Text
 $latest = $status.latest_snapshot_id
-$builtAt = $status.built_at_latest_snapshot_id
+$selected = $status.selected_latest_snapshot_id
 Assert-True (-not [string]::IsNullOrEmpty($latest)) 'status did not report a latest snapshot'
 
 $source = Invoke-Lurp @('--mode=get-source', '--document=App/Lib.cs', "--output-dir=$DbDir", '--quiet')
@@ -85,7 +85,7 @@ $null = Invoke-Lurp @('--mode=timings', '--json', "--output-dir=$DbDir")
 $null = Invoke-Lurp @('--mode=diagnostics', '--limit=5', "--output-dir=$DbDir", '--output=json', '--quiet')
 $null = Invoke-Lurp @('--mode=dead-candidates', '--limit=5', "--output-dir=$DbDir", '--output=json', '--quiet')
 $null = Invoke-Lurp @('--mode=get-annotations', "--output-dir=$DbDir", '--output=json', '--quiet')
-$null = Invoke-Lurp @('--mode=diff', "--from-snapshot=$latest", "--to-snapshot=$builtAt", "--output-dir=$DbDir")
+$null = Invoke-Lurp @('--mode=diff', "--from-snapshot=$latest", "--to-snapshot=$selected", "--output-dir=$DbDir")
 
 $indexDir = Join-Path ([System.IO.Path]::GetTempPath()) "lurp-runtime-only-index-$([guid]::NewGuid().ToString('N'))"
 $indexAttempt = Invoke-Lurp @('--mode=index', "--solution=$SolutionPath", "--output-dir=$indexDir") -AllowFailure

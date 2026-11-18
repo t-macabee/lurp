@@ -53,12 +53,12 @@ internal static class FlagCatalog
 
     // index
     public static readonly FlagSpec Solution = new("--solution=", "Path to the `.sln` or `.slnx` file.", "path");
-    public static readonly FlagSpec Strategy = new("--strategy=", "`full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` is the definition of correctness: use it to recover a known-good index.", AllowedValues: IndexRunner.Strategies);
+    public static readonly FlagSpec Strategy = new("--strategy=", "`full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index.", AllowedValues: IndexRunner.Strategies);
     public static readonly FlagSpec OutputJson = new("--output-json=", "Also write the snapshot manifest as JSON (a one-way export; never read back as authority).", "path");
     public static readonly FlagSpec SkipAdapter = new("--skip-adapter=", "Skip a named framework adapter.", "name", AllowedValues: AdapterRegistry.Names, Repeatable: true);
     public static readonly FlagSpec SkipDiff = new("--skip-diff", "Skip computing and persisting the semantic diff against the previous snapshot. `--mode=diff` still computes the diff live.");
     public static readonly FlagSpec Verbose = new("--verbose", "Emit per-extractor timing lines to stderr.");
-    public static readonly FlagSpec Force = new("--force", "Re-extract even when the deterministic snapshot id already exists as a completed snapshot; a full reindex needs `--strategy=full --force`, which deletes the identical snapshot and re-extracts it. With the incremental strategy it re-runs the incremental re-extraction in place (a no-op when no document changed). Does not bypass identity computation: an identical workspace produces the same snapshot id.");
+    public static readonly FlagSpec Force = new("--force", "Re-extract even when the deterministic snapshot id already exists as a completed snapshot: the run deletes the existing complete snapshot and builds it again (with `--strategy=incremental`, from the previous snapshot; a no-op when no document changed). A pinned snapshot is not rebuilt and the run stops with an error. Does not bypass identity computation: an identical workspace produces the same snapshot id.");
 
     // get-source
     public static readonly FlagSpec Document = new("--document=", "Relative path of the document within the solution.", "relative-path");
@@ -116,7 +116,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec AnnotationId = new("--annotation-id=", "Surrogate PK from `get-annotations` annotation_id (positive integer).", "n", Requirement: FlagRequirement.Required);
 
     // pin-snapshot
-    public static readonly FlagSpec Clear = new("--clear", "Remove every pin in the database; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`).");
+    public static readonly FlagSpec Clear = new("--clear", "Remove every pin in the database; reads will again default to the snapshot that the last successful index run built or reused (`ORDER BY selected_at_utc DESC`).");
 
     // diagnostics: no description in the former help map; the text comes from the CLI reference.
     public static readonly FlagSpec Severity = new("--severity=", "Filter by severity: Roslyn `DiagnosticSeverity` names, matched case-insensitively, or `all` for every severity including `Hidden`. When omitted, `Hidden` diagnostics are excluded. Unknown severity values are rejected with an error instead of returning an empty result.", "level", AllowedValues: DiagnosticSeverityFilters.Values);

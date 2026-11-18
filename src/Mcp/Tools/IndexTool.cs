@@ -154,7 +154,6 @@ internal sealed class IndexTool
                         store = _storeFactory(dbPath);
                         store.Open();
                         store.RunMigrations();
-                        store.ValidateSchema(MigrationRunner.LatestVersion);
 
                         var skipAdapters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

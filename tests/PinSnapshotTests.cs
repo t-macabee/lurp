@@ -64,7 +64,7 @@ public sealed class PinSnapshotTests : IDisposable
         InsertSnapshot(store, "snap-b", ws, newer);
 
         // Without pin, latest is snap-b (built_at latest)
-        Assert.Equal("snap-b", store.GetBuiltAtLatestSnapshotId(ws));
+        Assert.Equal("snap-b", store.GetSelectedLatestSnapshotId(ws));
         Assert.Equal("snap-b", store.GetLatestSnapshotId(ws));
         Assert.Equal("snap-b", store.LoadLatestSnapshot(ws)!.SnapshotId);
         Assert.Equal("snap-b", HandlerBootstrap.ResolveSnapshotId(store, null));
@@ -81,7 +81,7 @@ public sealed class PinSnapshotTests : IDisposable
         // But explicit snapshot id should still work.
         Assert.Equal("snap-b", store.LoadSnapshot("snap-b")!.SnapshotId);
         // Built-at latest remains snap-b
-        Assert.Equal("snap-b", store.GetBuiltAtLatestSnapshotId(ws));
+        Assert.Equal("snap-b", store.GetSelectedLatestSnapshotId(ws));
 
         // Visible in status
         var pinned = store.GetPinnedSnapshot(ws);
@@ -120,7 +120,7 @@ public sealed class PinSnapshotTests : IDisposable
 
         // Also verify GetLatestSnapshotId without workspace param (single workspace fallback)
         Assert.Equal("snap-old", store.GetLatestSnapshotId());
-        Assert.Equal("snap-new", store.GetBuiltAtLatestSnapshotId());
+        Assert.Equal("snap-new", store.GetSelectedLatestSnapshotId());
 
         store.Close();
     }
@@ -162,6 +162,7 @@ public sealed class PinSnapshotTests : IDisposable
         store.SaveSnapshot(row);
         // status is in_progress
         var ex = Assert.Throws<InvalidOperationException>(() => store.SetPinnedSnapshot("snap-inprog"));
+        Assert.StartsWith("snapshot '", ex.Message, StringComparison.Ordinal);
         Assert.Contains("cannot be pinned", ex.Message);
 
         store.Close();
@@ -177,6 +178,7 @@ public sealed class PinSnapshotTests : IDisposable
         store.SetPinnedSnapshot("snap-x");
 
         var ex = Assert.Throws<InvalidOperationException>(() => store.DeleteSnapshotData("snap-x"));
+        Assert.StartsWith("snapshot '", ex.Message, StringComparison.Ordinal);
         Assert.Contains("pinned", ex.Message);
 
         // After clear, delete succeeds
@@ -226,7 +228,7 @@ public sealed class PinSnapshotTests : IDisposable
 
         store.PruneOldSnapshots(3);
 
-        Assert.Equal(["snap-3", "snap-4", "snap-5"], store.GetSnapshotIds(ws));
+        Assert.Equal(["snap-2", "snap-3", "snap-4", "snap-5"], store.GetSnapshotIds(ws));
         var pin = store.GetPinnedSnapshot(ws);
         Assert.NotNull(pin);
         Assert.Equal("snap-5", pin.PinnedSnapshotId);
@@ -249,8 +251,25 @@ public sealed class PinSnapshotTests : IDisposable
 
         store.PruneOldSnapshots(3);
 
-        Assert.Equal(["snap-2", "snap-3", "snap-4"], store.GetSnapshotIds(ws));
+        Assert.Equal(["snap-1", "snap-2", "snap-3", "snap-4"], store.GetSnapshotIds(ws));
         Assert.Equal("snap-2", store.GetPinnedSnapshot(ws)!.PreviousPinnedSnapshotId);
+        store.Close();
+    }
+
+    [Fact]
+    public void Prune_PinInsideTheWindow_KeepsThreeUnpinnedSnapshots()
+    {
+        using var store = CreateStore();
+        var ws = "ws-pin-inside-window";
+        var baseTime = DateTime.UtcNow.AddHours(-10);
+        for (var i = 1; i <= 5; i++)
+            InsertSnapshot(store, $"snap-{i}", ws, baseTime.AddHours(i));
+
+        store.SetPinnedSnapshot("snap-4");
+
+        store.PruneOldSnapshots(3);
+
+        Assert.Equal(["snap-2", "snap-3", "snap-4", "snap-5"], store.GetSnapshotIds(ws));
         store.Close();
     }
 

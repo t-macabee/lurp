@@ -997,7 +997,7 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         using var command = connection.CreateCommand();
         command.CommandText = builtAtUtc is null
             ? "UPDATE snapshots SET status = @status, failure_reason_code = @reasonCode, failure_message = @message WHERE snapshot_id = @id;"
-            : "UPDATE snapshots SET status = @status, failure_reason_code = @reasonCode, failure_message = @message, built_at_utc = @builtAtUtc WHERE snapshot_id = @id;";
+            : "UPDATE snapshots SET status = @status, failure_reason_code = @reasonCode, failure_message = @message, built_at_utc = @builtAtUtc, selected_at_utc = @builtAtUtc WHERE snapshot_id = @id;";
         command.Parameters.AddWithValue("@status", status);
         command.Parameters.AddWithValue("@reasonCode", (object?)reasonCode ?? DBNull.Value);
         command.Parameters.AddWithValue("@message", (object?)message ?? DBNull.Value);

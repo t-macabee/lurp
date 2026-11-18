@@ -21,8 +21,14 @@ internal static class PinSnapshotHandler
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
         try
         {
-            store.RunMigrations();
-            store.ValidateSchema(MigrationRunner.LatestVersion);
+            try
+            {
+                store.RunMigrations();
+            }
+            catch (NewerSchemaException ex)
+            {
+                HandlerBootstrap.Fail("ERROR: " + ex.Message);
+            }
 
             // Clear path: --clear or --snapshot=latest
             var isLatestLiteral = string.Equals(snapshotArg, "latest", StringComparison.OrdinalIgnoreCase);
@@ -32,7 +38,7 @@ internal static class PinSnapshotHandler
             {
                 var cleared = store.ClearPinnedSnapshot();
                 var effectiveLatest = store.GetLatestSnapshotId();
-                var builtAtLatest = store.GetBuiltAtLatestSnapshotId();
+                var selectedLatest = store.GetSelectedLatestSnapshotId();
                 if (asJson)
                 {
                     output.WriteLine(JsonSerializer.Serialize(new
@@ -40,14 +46,14 @@ internal static class PinSnapshotHandler
                         status = "cleared",
                         cleared,
                         effective_latest_snapshot_id = effectiveLatest,
-                        built_at_latest_snapshot_id = builtAtLatest,
+                        selected_latest_snapshot_id = selectedLatest,
                         pin_active = false
                     }, HandlerBootstrap.IndentedJson));
                 }
                 else
                 {
                     if (cleared)
-                        output.WriteLine($"Pin cleared. Effective latest is now built-at latest: {effectiveLatest ?? "(none)"}");
+                        output.WriteLine($"Pin cleared. Effective latest is now the selected latest: {effectiveLatest ?? "(none)"}");
                     else
                         output.WriteLine($"No pin was set. Effective latest remains: {effectiveLatest ?? "(none)"}");
                 }
@@ -79,14 +85,14 @@ internal static class PinSnapshotHandler
             }
             catch (InvalidOperationException ex)
             {
-                HandlerBootstrap.Fail(ex.Message);
+                HandlerBootstrap.Fail("ERROR: " + ex.Message);
                 return;
             }
 
             var pinnedRow = store.GetPinnedSnapshot(workspaceId);
             if (pinnedRow == null)
                 HandlerBootstrap.Fail($"ERROR: the pin on snapshot '{snapshotId}' was not stored.");
-            var builtAtLatestId = store.GetBuiltAtLatestSnapshotId();
+            var selectedLatestId = store.GetSelectedLatestSnapshotId();
             var effectiveLatestId = store.GetLatestSnapshotId();
 
             if (asJson)
@@ -99,7 +105,7 @@ internal static class PinSnapshotHandler
                     pinned_at_utc = pinnedRow.PinnedAtUtc,
                     built_at_utc = pinnedRow.BuiltAtUtc,
                     effective_latest_snapshot_id = effectiveLatestId,
-                    built_at_latest_snapshot_id = builtAtLatestId,
+                    selected_latest_snapshot_id = selectedLatestId,
                     pin_active = true
                 }, HandlerBootstrap.IndentedJson));
             }
@@ -109,9 +115,9 @@ internal static class PinSnapshotHandler
                 if (previousId != null && !string.Equals(previousId, snapshotId, StringComparison.Ordinal))
                     output.WriteLine($"  Previous pin: {previousId}");
                 output.WriteLine($"  Effective latest (reads default to): {effectiveLatestId}");
-                output.WriteLine($"  Built-at latest (most recent build): {builtAtLatestId}");
-                if (!string.Equals(effectiveLatestId, builtAtLatestId, StringComparison.Ordinal))
-                    output.WriteLine($"  Note: reads with no --snapshot= will now resolve to the pinned snapshot, not the most recently built one.");
+                output.WriteLine($"  Selected latest (last index run): {selectedLatestId}");
+                if (!string.Equals(effectiveLatestId, selectedLatestId, StringComparison.Ordinal))
+                    output.WriteLine($"  Note: reads with no --snapshot= will now resolve to the pinned snapshot, not the snapshot that the last index run selected.");
             }
         }
         finally

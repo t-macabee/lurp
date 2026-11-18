@@ -8,6 +8,9 @@ of the fix plan adds its line here in the commit that makes it.
 The extractor version changes, so every snapshot identity changes. Run one full
 index after the upgrade. Old snapshots stay until they are pruned.
 
+Schema v42 marks every existing snapshot as built by an incremental run. The
+first `--strategy=full` after the upgrade rebuilds the current snapshot once.
+
 ## Extraction
 
 - A failing extraction stage no longer removes the project from the snapshot.
@@ -241,12 +244,44 @@ index after the upgrade. Old snapshots stay until they are pruned.
   (`document`, `line`, `column`, `end_line`, `end_column`); `source_*` fields
   stay and equal the first site (additive, contract v6, output schema v6).
 
+## Snapshot lifecycle
+
+- The latest snapshot is the one that the last successful index run built or
+  reused. After a revert or a branch switch to an indexed state, reads, `status`
+  and the next incremental run use the reused snapshot, and pruning keeps it.
+  Schema v41 adds `snapshots.selected_at_utc`.
+- `--strategy=full` rebuilds a snapshot that an incremental run built, so it
+  recovers a wrong incremental snapshot; it reuses a snapshot that a full run
+  built. Schema v42 adds `snapshots.build_strategy`.
+- `--strategy=incremental --force` on an existing snapshot deletes it and runs
+  the incremental index into the same id; before, it failed with a SQLite
+  `UNIQUE` error.
+- A run that would rebuild a pinned snapshot stops with exit code 1 before it
+  deletes anything, and the message names the flag.
+- Retention keeps the 3 newest complete snapshots of a workspace. A pinned
+  snapshot is kept in addition and does not take a slot. Failed runs no longer
+  take slots; only the newest failure that no later run superseded is kept, so
+  `status` can report it.
+- `--mode=index`, `--mode=pin-snapshot` and `lurp_index` refuse a database of a
+  newer schema with the same message as the read modes, and do not touch it. A
+  store error no longer prints `ERROR: ERROR:`.
+
+## Breaking changes (CLI/MCP contract version 7)
+
+- `status` and `pin-snapshot` JSON: the key `built_at_latest_snapshot_id` is
+  renamed `selected_latest_snapshot_id`. Read the new key.
+- Reads that default to the latest snapshot use the snapshot that the last
+  successful index run built or reused, not the snapshot built last.
+- `--strategy=full` without `--force` rebuilds a snapshot that an incremental
+  run built (before: reused it). On a pinned snapshot that an incremental run
+  built, it now stops with exit code 1.
+
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v40 |
+| Database schema | v37 | v42 |
 | Extractor | 1.11.0 | 1.12.0 |
-| CLI/MCP contract | v6 | v6 |
+| CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v6 |

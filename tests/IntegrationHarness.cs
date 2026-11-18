@@ -39,7 +39,6 @@ internal static class IntegrationHarness
         var store = new SqliteIndexStore(dbPath);
         store.Open();
         store.RunMigrations();
-        store.ValidateSchema(MigrationRunner.LatestVersion);
         try
         {
             await IndexRunner.RunAsync(

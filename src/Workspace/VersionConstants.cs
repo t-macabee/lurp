@@ -17,5 +17,5 @@ internal static class VersionConstants
          ?? throw new InvalidOperationException("The Lurp assembly has no AssemblyInformationalVersionAttribute."))
         .InformationalVersion.Split('+')[0];
 
-    internal const int CliMcpContractVersion = 6;
+    internal const int CliMcpContractVersion = 7;
 }

@@ -99,8 +99,8 @@ internal static class StatusHandler
     {
         var expectedVersion = MigrationRunner.LatestVersion;
         var explanation = actualVersion < expectedVersion
-            ? $"Index database at {dbPath} uses schema v{actualVersion}; this Lurp needs v{expectedVersion}. Run 'lurp --mode=index' to update it."
-            : $"Index database at {dbPath} uses schema v{actualVersion}, newer than this Lurp (v{expectedVersion}). Update Lurp.";
+            ? SchemaVersionMessages.Older(dbPath, actualVersion, expectedVersion)
+            : SchemaVersionMessages.Newer(dbPath, actualVersion, expectedVersion);
 
         if (asJson)
         {
@@ -161,7 +161,7 @@ internal static class StatusHandler
                 contract_version = VersionConstants.CliMcpContractVersion,
                 latest_snapshot_id = latestSnapshotId,
                 effective_latest_snapshot_id = latestSnapshotId,
-                built_at_latest_snapshot_id = pin.BuiltAtLatestSnapshotId,
+                selected_latest_snapshot_id = pin.SelectedLatestSnapshotId,
                 pinned_snapshot_id = pin.PinnedRow?.PinnedSnapshotId,
                 pinned_at_utc = pin.PinnedRow?.PinnedAtUtc,
                 previous_pinned_snapshot_id = pin.PinnedRow?.PreviousPinnedSnapshotId,
@@ -199,7 +199,7 @@ internal static class StatusHandler
                 contract_version = VersionConstants.CliMcpContractVersion,
                 latest_snapshot_id = latestSnapshotId,
                 effective_latest_snapshot_id = latestSnapshotId,
-                built_at_latest_snapshot_id = pin.BuiltAtLatestSnapshotId,
+                selected_latest_snapshot_id = pin.SelectedLatestSnapshotId,
                 pinned_snapshot_id = pin.PinnedRow?.PinnedSnapshotId,
                 pinned_at_utc = pin.PinnedRow?.PinnedAtUtc,
                 previous_pinned_snapshot_id = pin.PinnedRow?.PreviousPinnedSnapshotId,
@@ -236,8 +236,8 @@ internal static class StatusHandler
         {
             var pinnedRow = pin.PinnedRow!;
             output.WriteLine($"Pinned snapshot: {pinnedRow.PinnedSnapshotId} (pinned at {pinnedRow.PinnedAtUtc:O}, built at {pinnedRow.BuiltAtUtc:O})");
-            if (!string.Equals(latestSnapshotId, pin.BuiltAtLatestSnapshotId, StringComparison.Ordinal))
-                output.WriteLine($"  Note: effective latest is pinned; built-at latest is {pin.BuiltAtLatestSnapshotId}");
+            if (!string.Equals(latestSnapshotId, pin.SelectedLatestSnapshotId, StringComparison.Ordinal))
+                output.WriteLine($"  Note: effective latest is pinned; selected latest is {pin.SelectedLatestSnapshotId}");
             if (pinnedRow.PreviousPinnedSnapshotId != null)
                 output.WriteLine($"  Previous pin: {pinnedRow.PreviousPinnedSnapshotId}");
         }
@@ -249,7 +249,7 @@ internal static class StatusHandler
 
     /// <summary>The pin and failure facts both <c>status</c> branches print.</summary>
     private sealed record PinPreamble(PinnedSnapshotRow? PinnedRow, string? StalePinnedSnapshotId,
-        string? BuiltAtLatestSnapshotId, bool PinActive, SnapshotFailureRow? LatestFailure);
+        string? SelectedLatestSnapshotId, bool PinActive, SnapshotFailureRow? LatestFailure);
 
     private static PinPreamble ReadPinPreamble(SqliteIndexStore store, SnapshotRow latestSnapshot)
     {
@@ -257,7 +257,7 @@ internal static class StatusHandler
         return new PinPreamble(
             pinnedRow,
             store.GetStalePinnedSnapshotId(),
-            store.GetBuiltAtLatestSnapshotId(),
+            store.GetSelectedLatestSnapshotId(),
             pinnedRow != null,
             store.GetLatestSnapshotFailure(latestSnapshot.WorkspaceId));
     }

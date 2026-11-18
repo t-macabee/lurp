@@ -308,46 +308,6 @@ public sealed class SnapshotManifestJsonTests
         };
     }
 
-    [Fact]
-    public void WorkspaceIdConverter_ValueOnly_ThrowsJsonException()
-    {
-        const string json = """
-            {
-              "snapshot_id": "00000000000000000000000000000000",
-              "workspace_id": {
-                "value": "workspace://C:/repo/App.sln"
-              }
-            }
-            """;
-
-        var ex = Assert.Throws<JsonException>(() =>
-            JsonSerializer.Deserialize<SnapshotManifest>(json, LurpJsonOptions.SnakeCaseIndented));
-
-        Assert.Contains("git_root/solution_path", ex.Message);
-        Assert.Contains("--mode=index --strategy=full", ex.Message);
-    }
-
-    [Fact]
-    public void WorkspaceIdConverter_FullFields_Reads()
-    {
-        const string json = """
-            {
-              "snapshot_id": "00000000000000000000000000000000",
-              "workspace_id": {
-                "git_root": "/home/someone/repo",
-                "solution_path": "/home/someone/repo/App.sln",
-                "value": "workspace:///home/someone/repo/App.sln"
-              }
-            }
-            """;
-
-        var manifest = JsonSerializer.Deserialize<SnapshotManifest>(json, LurpJsonOptions.SnakeCaseIndented);
-
-        Assert.NotNull(manifest);
-        Assert.Equal("/home/someone/repo", manifest!.WorkspaceId.GitRoot);
-        Assert.Equal("workspace:///home/someone/repo/App.sln", manifest.WorkspaceId.Value);
-    }
-
     private sealed class StubBindingIncompletenessStore(IReadOnlyList<BindingIncompletenessRecord> records)
         : IBindingIncompletenessStore
     {

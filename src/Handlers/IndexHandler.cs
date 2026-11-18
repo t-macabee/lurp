@@ -59,11 +59,17 @@ internal static class IndexHandler
         output.WriteLine();
 
         var store = HandlerBootstrap.OpenStoreUnchecked(dbPath);
-        store.RunMigrations();
-        store.ValidateSchema(MigrationRunner.LatestVersion);
-
         try
         {
+            try
+            {
+                store.RunMigrations();
+            }
+            catch (NewerSchemaException ex)
+            {
+                HandlerBootstrap.Fail("ERROR: " + ex.Message);
+            }
+
             await IndexRunner.RunAsync(store, solutionPathArg, skipAdapters, jsonExportPath, strategyArg, verbose, null, skipDiff, force, cancellationToken);
         }
         finally

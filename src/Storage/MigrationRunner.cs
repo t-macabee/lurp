@@ -23,6 +23,10 @@ public class MigrationRunner
 
     public void RunMigrations()
     {
+        var existingVersion = GetCurrentSchemaVersion();
+        if (existingVersion > LatestVersion)
+            throw new NewerSchemaException(_dbPath, existingVersion, LatestVersion);
+
         // Foreign keys are off for the whole run: SQLite ignores the pragma inside a transaction,
         // and a table rebuild fails with them on while child rows still name the old table.
         // The check below replaces the enforcement.
@@ -188,7 +192,9 @@ public class MigrationRunner
             new Migration_037_DocumentVersionsDocumentIdIndex(),
             new Migration_038_SnapshotDeclarations(),
             new Migration_039_DropWriteOnlyColumns(),
-            new Migration_040_EdgeSites()
+            new Migration_040_EdgeSites(),
+            new Migration_041_SnapshotSelectedAt(),
+            new Migration_042_SnapshotBuildStrategy()
         ];
     }
 }

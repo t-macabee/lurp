@@ -293,9 +293,9 @@ internal static class HandlerBootstrap
             return;
 
         if (actual < expected)
-            Fail($"ERROR: Index database at {dbPath} uses schema v{actual}; this Lurp needs v{expected}. Run 'lurp --mode=index' to update it.");
+            Fail("ERROR: " + SchemaVersionMessages.Older(dbPath, actual, expected));
 
-        Fail($"ERROR: Index database at {dbPath} uses schema v{actual}, newer than this Lurp (v{expected}). Update Lurp.");
+        Fail("ERROR: " + SchemaVersionMessages.Newer(dbPath, actual, expected));
     }
 
     /// <summary>

@@ -19,6 +19,7 @@ public class SnapshotRow
     public string? PreviousSnapshotId { get; init; }
     public List<ProjectRow> Projects { get; init; } = [];
     public List<string> SkippedAdapters { get; init; } = [];
+    public string BuildStrategy { get; init; } = SnapshotBuildStrategies.Incremental;
 }
 
 public sealed class ProjectRow

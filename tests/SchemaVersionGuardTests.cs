@@ -107,6 +107,103 @@ public sealed class SchemaVersionGuardTests : IDisposable
     }
 
     [Fact]
+    public async Task CliIndex_OnNewerSchema_FailsWithTheReadModeMessage_AndDoesNotChangeIt()
+    {
+        using (var connection = TestDatabase.Open(_dbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({MigrationRunner.LatestVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.ExecuteNonQuery();
+        }
+
+        var slnPath = Path.Combine(_root, "x.sln");
+        File.WriteAllText(slnPath, string.Empty);
+
+        var ex = await Assert.ThrowsAsync<CliExitException>(() =>
+            IndexHandler.Run([$"--output-dir={_outputDir}", $"--solution={slnPath}"], new CapturingOutputSink()));
+
+        Assert.Equal(Message(MigrationRunner.LatestVersion + 1), ex.Message);
+        Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+    }
+
+    [Fact]
+    public void PinSnapshot_OnNewerSchema_FailsWithTheReadModeMessage_AndDoesNotChangeIt()
+    {
+        using (var connection = TestDatabase.Open(_dbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({MigrationRunner.LatestVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.ExecuteNonQuery();
+        }
+
+        var ex = Assert.Throws<CliExitException>(() =>
+            PinSnapshotHandler.Run([$"--output-dir={_outputDir}", "--clear"], new CapturingOutputSink()));
+
+        Assert.Equal(Message(MigrationRunner.LatestVersion + 1), ex.Message);
+        Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+    }
+
+    [Fact]
+    public async Task McpIndex_OnNewerSchema_ReportsTheNewerMessage()
+    {
+        UseCurrentSchemaDatabase();
+        const string snapshotId = "snap-index-guard";
+        using (var store = new SqliteIndexStore(_dbPath))
+        {
+            store.Open();
+            store.SaveWorkspace("ws-guard", "gitroot", "solution.sln");
+            store.SaveSnapshot(new SnapshotRow
+            {
+                SnapshotId = snapshotId,
+                WorkspaceId = "ws-guard",
+                GitRoot = "gitroot",
+                SolutionPath = "solution.sln",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            store.MarkSnapshotComplete(snapshotId);
+            store.Close();
+        }
+
+        var slnPath = Path.Combine(_root, "x.sln");
+        File.WriteAllText(slnPath, string.Empty);
+        await using var session = McpSessionContext.Create([$"--output-dir={_outputDir}", $"--solution={slnPath}"]);
+
+        using (var connection = TestDatabase.Open(_dbPath))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({MigrationRunner.LatestVersion + 1}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.ExecuteNonQuery();
+        }
+
+        var tool = new IndexTool(session, new McpIndexSessionState());
+        using var startDoc = JsonDocument.Parse(tool.LurpIndex());
+        var opId = startDoc.RootElement.GetProperty("operation_id").GetString()!;
+
+        JsonDocument? finalDoc = null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 15000)
+        {
+            var doc = JsonDocument.Parse(tool.LurpIndex(operation_id: opId));
+            if (doc.RootElement.GetProperty("status").GetString() != "running")
+            {
+                finalDoc = doc;
+                break;
+            }
+            doc.Dispose();
+            await Task.Delay(50);
+        }
+
+        Assert.NotNull(finalDoc);
+        using (finalDoc)
+        {
+            Assert.Equal("failed", finalDoc.RootElement.GetProperty("status").GetString());
+            Assert.Equal(Message(MigrationRunner.LatestVersion + 1)["ERROR: ".Length..], finalDoc.RootElement.GetProperty("error").GetString());
+            Assert.Equal("index_failed", finalDoc.RootElement.GetProperty("error_code").GetString());
+        }
+        Assert.Equal(MigrationRunner.LatestVersion + 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+    }
+
+    [Fact]
     public async Task McpAdvancePin_OnStaleSchema_FailsWithMessage_AndKeepsOldStore()
     {
         UseCurrentSchemaDatabase();

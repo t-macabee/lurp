@@ -172,21 +172,28 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
     }
 
     [Fact]
-    public void ValidateSchema_AfterRunMigrations_DoesNotThrow()
+    public void RunMigrations_OnNewerSchema_ThrowsAndAppliesNothing()
     {
-        var runner = new MigrationRunner(_dbPath);
-        runner.RunMigrations();
-        using var store = new SqliteIndexStore(_dbPath);
-        store.Open();
-        try
+        new MigrationRunner(_dbPath).RunMigrations();
+        SqliteConnection.ClearAllPools();
+
+        var futureVersion = MigrationRunner.LatestVersion + 1;
+        using (var connection = TestDatabase.Open(_dbPath))
         {
-            var ex = Record.Exception(() => store.ValidateSchema(MigrationRunner.LatestVersion));
-            Assert.Null(ex);
+            using var command = connection.CreateCommand();
+            command.CommandText = $"INSERT INTO schema_metadata (version, applied_at_utc, migration_id) VALUES ({futureVersion}, '2030-01-01T00:00:00.0000000Z', 'FutureMigration');";
+            command.ExecuteNonQuery();
         }
-        finally
-        {
-            store.Close();
-        }
+        SqliteConnection.ClearAllPools();
+
+        var ex = Assert.Throws<NewerSchemaException>(() => new MigrationRunner(_dbPath).RunMigrations());
+        Assert.Equal(SchemaVersionMessages.Newer(_dbPath, futureVersion, MigrationRunner.LatestVersion), ex.Message);
+        Assert.Equal(futureVersion, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
+
+        using var verify = TestDatabase.OpenReadOnly(_dbPath);
+        using var countCmd = verify.CreateCommand();
+        countCmd.CommandText = "SELECT COUNT(*) FROM schema_metadata;";
+        Assert.Equal((long)futureVersion, (long)countCmd.ExecuteScalar()!);
     }
 
     [Fact]
@@ -315,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (040). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (042). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -327,8 +334,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 40;
-                DROP TABLE edge_sites;
+                DELETE FROM schema_metadata WHERE version = 42;
+                ALTER TABLE snapshots DROP COLUMN build_strategy;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -340,9 +347,9 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var tableCommand = verify.CreateCommand();
-        tableCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'edge_sites';";
-        Assert.Equal(0L, (long)tableCommand.ExecuteScalar()!);
+        using var columnCommand = verify.CreateCommand();
+        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'build_strategy';";
+        Assert.Equal(0L, (long)columnCommand.ExecuteScalar()!);
     }
 
     [Fact]
@@ -603,6 +610,130 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
                     (1, "a.cs", 1, 2, 1, 10),
                     (2, "b.cs", 3, 4, 3, 12)
                 },
+                rows);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV40_SetsSelectedAtToBuiltAt()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v40-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo40 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 40)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo40)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (40, '2026-02-01T00:00:00.0000000Z', 'Migration_040_EdgeSites');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2026-01-01T00:00:00.0000000Z', '10.0.100', 40, 6),
+                           ('s2', 'ws1', '2026-02-01T00:00:00.0000000Z', '10.0.100', 40, 6);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var query = verify.CreateCommand();
+            query.CommandText = "SELECT snapshot_id, built_at_utc, selected_at_utc FROM snapshots ORDER BY snapshot_id;";
+            var rows = new List<(string Id, string BuiltAt, string? SelectedAt)>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+
+            Assert.Equal(2, rows.Count);
+            Assert.Equal("s1", rows[0].Id);
+            Assert.Equal("2026-01-01T00:00:00.0000000Z", rows[0].BuiltAt);
+            Assert.Equal(rows[0].BuiltAt, rows[0].SelectedAt);
+            Assert.Equal("s2", rows[1].Id);
+            Assert.Equal("2026-02-01T00:00:00.0000000Z", rows[1].BuiltAt);
+            Assert.Equal(rows[1].BuiltAt, rows[1].SelectedAt);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV41_MarksExistingSnapshotsIncremental()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v41-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo41 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 41)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo41)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (41, '2026-02-01T00:00:00.0000000Z', 'Migration_041_SnapshotSelectedAt');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, selected_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2026-01-01T00:00:00.0000000Z', '2026-01-01T00:00:00.0000000Z', '10.0.100', 41, 6),
+                           ('s2', 'ws1', '2026-02-01T00:00:00.0000000Z', '2026-02-01T00:00:00.0000000Z', '10.0.100', 41, 6);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var query = verify.CreateCommand();
+            query.CommandText = "SELECT snapshot_id, build_strategy FROM snapshots ORDER BY snapshot_id;";
+            var rows = new List<(string Id, string Strategy)>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                rows.Add((reader.GetString(0), reader.GetString(1)));
+
+            Assert.Equal(
+                new (string, string)[] { ("s1", "incremental"), ("s2", "incremental") },
                 rows);
         }
         finally

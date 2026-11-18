@@ -6,6 +6,18 @@ namespace Lurp.Storage;
 
 internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 {
+    /// <summary>
+    ///     Shared SQL predicate (D157.3, D159): a failed snapshot <c>f</c> is superseded when a
+    ///     complete snapshot of the same workspace was selected at or after <c>f.selected_at_utc</c>.
+    /// </summary>
+    internal const string SupersededFailureExistsSql = """
+        EXISTS (
+            SELECT 1 FROM snapshots c
+            WHERE c.workspace_id = f.workspace_id
+              AND c.status = @completeStatus
+              AND c.selected_at_utc >= f.selected_at_utc)
+        """;
+
     private const string WorkspaceUpsertSql = """
             INSERT INTO workspaces (workspace_id, git_root, solution_path)
             VALUES (@workspaceId, @gitRoot, @solutionPath)
@@ -63,7 +75,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Transaction = transaction;
 
         command.CommandText = """
-            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, @status);
+            INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, selected_at_utc, sdk_version, compiler_version,database_schema_version, output_schema_version, extractor_version,tool_version, previous_snapshot_id, skipped_adapters, status, build_strategy) VALUES (@snapshotId, @workspaceId, @builtAtUtc, @builtAtUtc, @sdkVersion, @compilerVersion,@databaseSchemaVersion, @outputSchemaVersion, @extractorVersion,@toolVersion, @previousSnapshotId, @skippedAdapters, @status, @buildStrategy);
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshot.SnapshotId);
         command.Parameters.AddWithValue("@workspaceId", snapshot.WorkspaceId);
@@ -77,6 +89,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@previousSnapshotId", (object?)snapshot.PreviousSnapshotId ?? DBNull.Value);
         command.Parameters.AddWithValue("@skippedAdapters", string.Join(",", snapshot.SkippedAdapters));
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
+        command.Parameters.AddWithValue("@buildStrategy", snapshot.BuildStrategy);
         command.ExecuteNonQuery();
     }
 
@@ -172,21 +185,27 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         }
     }
 
-    internal void MarkSnapshotInProgress(string snapshotId)
-    {
-        using var command = _connection.CreateCommand();
-        command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @snapshotId;";
-        command.Parameters.AddWithValue("@status", SnapshotStatusValues.InProgress);
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.ExecuteNonQuery();
-    }
-
     internal void MarkSnapshotComplete(string snapshotId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = "UPDATE snapshots SET status = @status WHERE snapshot_id = @snapshotId;";
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.ExecuteNonQuery();
+    }
+
+    internal void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            UPDATE snapshots
+            SET selected_at_utc = @selectedAtUtc
+            WHERE snapshot_id = @snapshotId
+              AND status = @completeStatus;
+            """;
+        command.Parameters.AddWithValue("@selectedAtUtc", selectedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
         command.ExecuteNonQuery();
     }
 
@@ -207,34 +226,26 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
 
     /// <summary>
     ///     Returns the newest failed snapshot, and only when no complete snapshot of the
-    ///     same workspace was built at or after it. A failure that the workspace has since
+    ///     same workspace was selected at or after it. A failure that the workspace has since
     ///     replaced with a complete snapshot is history, not a current failure.
     /// </summary>
     internal SnapshotFailureRow? GetLatestSnapshotFailure(string? workspaceId = null)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = string.IsNullOrEmpty(workspaceId)
-            ? """
+            ? $"""
 SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                 FROM snapshots f
                 WHERE f.status = @status
-                  AND NOT EXISTS (
-                      SELECT 1 FROM snapshots c
-                      WHERE c.workspace_id = f.workspace_id
-                        AND c.status = @completeStatus
-                        AND c.built_at_utc >= f.built_at_utc)
-                ORDER BY f.built_at_utc DESC LIMIT 1;
+                  AND NOT {SupersededFailureExistsSql}
+                ORDER BY f.selected_at_utc DESC LIMIT 1;
 """
-            : """
+            : $"""
 SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                 FROM snapshots f
                 WHERE f.status = @status AND f.workspace_id = @workspaceId
-                  AND NOT EXISTS (
-                      SELECT 1 FROM snapshots c
-                      WHERE c.workspace_id = f.workspace_id
-                        AND c.status = @completeStatus
-                        AND c.built_at_utc >= f.built_at_utc)
-                ORDER BY f.built_at_utc DESC LIMIT 1;
+                  AND NOT {SupersededFailureExistsSql}
+                ORDER BY f.selected_at_utc DESC LIMIT 1;
 """;
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Failed);
         command.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
@@ -259,11 +270,11 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters
+                       s.skipped_adapters, s.build_strategy
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.status = @status
-                ORDER BY s.built_at_utc DESC
+                ORDER BY s.selected_at_utc DESC
                 LIMIT 1;
                 """
             : """
@@ -271,12 +282,12 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                        s.sdk_version, s.compiler_version, s.built_at_utc,
                        s.database_schema_version, s.output_schema_version,
                        s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                       s.skipped_adapters
+                       s.skipped_adapters, s.build_strategy
                 FROM snapshots s
                 JOIN workspaces w ON w.workspace_id = s.workspace_id
                 WHERE s.workspace_id = @workspaceId
                   AND s.status = @status
-                ORDER BY s.built_at_utc DESC
+                ORDER BY s.selected_at_utc DESC
                 LIMIT 1;
                 """;
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
@@ -307,7 +318,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
-            SkippedAdapters = row.SkippedAdapters
+            SkippedAdapters = row.SkippedAdapters,
+            BuildStrategy = row.BuildStrategy
         };
     }
 
@@ -319,7 +331,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters
+                   s.skipped_adapters, s.build_strategy
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -350,7 +362,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
-            SkippedAdapters = row.SkippedAdapters
+            SkippedAdapters = row.SkippedAdapters,
+            BuildStrategy = row.BuildStrategy
         };
     }
 
@@ -368,7 +381,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                    s.sdk_version, s.compiler_version, s.built_at_utc,
                    s.database_schema_version, s.output_schema_version,
                    s.extractor_version, s.tool_version, s.previous_snapshot_id,
-                   s.skipped_adapters
+                   s.skipped_adapters, s.build_strategy
             FROM snapshots s
             JOIN workspaces w ON w.workspace_id = s.workspace_id
             WHERE s.snapshot_id = @snapshotId;
@@ -397,7 +410,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ToolVersion = row.ToolVersion,
             PreviousSnapshotId = row.PreviousSnapshotId,
             Projects = projects,
-            SkippedAdapters = row.SkippedAdapters
+            SkippedAdapters = row.SkippedAdapters,
+            BuildStrategy = row.BuildStrategy
         };
     }
 
@@ -420,6 +434,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         var skippedAdapters = string.IsNullOrEmpty(skippedAdaptersRaw)
             ? new List<string>()
             : skippedAdaptersRaw.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var buildStrategy = reader.IsDBNull(13) ? SnapshotBuildStrategies.Incremental : reader.GetString(13);
 
         return new SnapshotRow
         {
@@ -435,7 +450,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             ExtractorVersion = extractorVersion ?? "",
             ToolVersion = toolVersion ?? "",
             PreviousSnapshotId = previousSnapshotId,
-            SkippedAdapters = skippedAdapters
+            SkippedAdapters = skippedAdapters,
+            BuildStrategy = buildStrategy
         };
     }
 
@@ -530,12 +546,12 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         using var command = _connection.CreateCommand();
         if (!string.IsNullOrEmpty(workspaceId))
         {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = @status ORDER BY built_at_utc DESC LIMIT 1;";
+            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE workspace_id = @workspaceId AND status = @status ORDER BY selected_at_utc DESC LIMIT 1;";
             command.Parameters.AddWithValue("@workspaceId", workspaceId);
         }
         else
         {
-            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status ORDER BY built_at_utc DESC LIMIT 1;";
+            command.CommandText = "SELECT snapshot_id FROM snapshots WHERE status = @status ORDER BY selected_at_utc DESC LIMIT 1;";
         }
 
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
@@ -570,6 +586,24 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         return command.ExecuteScalar() as string;
     }
 
+    internal (string Status, string BuildStrategy)? GetExistingSnapshotState(string snapshotId, string workspaceId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT status, build_strategy
+            FROM snapshots
+            WHERE snapshot_id = @snapshotId
+              AND workspace_id = @workspaceId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@workspaceId", workspaceId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        return (reader.GetString(0), reader.GetString(1));
+    }
+
     internal List<string> GetSnapshotIds(string workspaceId)
     {
         using var command = _connection.CreateCommand();
@@ -578,7 +612,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
             FROM snapshots
             WHERE workspace_id = @workspaceId
               AND status = @status
-            ORDER BY built_at_utc;
+            ORDER BY selected_at_utc;
             """;
         command.Parameters.AddWithValue("@workspaceId", workspaceId);
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);

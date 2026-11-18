@@ -104,12 +104,13 @@ public sealed partial class SnapshotManifest
         };
     }
 
-    public void Save(SqliteIndexStore snapshotStore, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
+    public void Save(SqliteIndexStore snapshotStore, string buildStrategy, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null,
         string? jsonExportPath = null)
     {
         ArgumentNullException.ThrowIfNull(snapshotStore);
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildStrategy);
 
-        snapshotStore.SaveSnapshot(ToStorageManifest(contents));
+        snapshotStore.SaveSnapshot(ToStorageManifest(buildStrategy, contents));
 
         if (jsonExportPath != null)
         {
@@ -118,14 +119,7 @@ public sealed partial class SnapshotManifest
         }
     }
 
-    public static SnapshotManifest Load(string path)
-    {
-        var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<SnapshotManifest>(json, _jsonOptions)
-               ?? throw new InvalidOperationException("Failed to deserialize snapshot manifest.");
-    }
-
-    internal SnapshotRow ToStorageManifest(IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
+    internal SnapshotRow ToStorageManifest(string buildStrategy, IReadOnlyDictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>? contents = null)
     {
         var documents = DocumentVersions.Select(kvp =>
         {
@@ -189,7 +183,8 @@ public sealed partial class SnapshotManifest
             ToolVersion = ToolVersion,
             PreviousSnapshotId = PreviousSnapshotId?.ToString(),
             Projects = projects,
-            SkippedAdapters = Completeness?.SkippedAdapters ?? []
+            SkippedAdapters = Completeness?.SkippedAdapters ?? [],
+            BuildStrategy = buildStrategy
         };
     }
 

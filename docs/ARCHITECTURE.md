@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v40, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v42, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -45,9 +45,12 @@ One primary SQLite database (`index.db` in the output directory) is the
 canonical persisted state. JSON is appropriate for CLI response output and
 one-way export, but it is never a parallel authority. Snapshot identity is
 content-derived and content-addressed: when source content and compilation
-inputs are unchanged, a re-index reuses the existing snapshot. Source content,
-compilation inputs and the version of each extractor and adapter make up the
-identity, so a version bump also gives a new snapshot id.
+inputs are unchanged, a re-index reuses the existing snapshot, except
+`--strategy=full` reuses a snapshot only when a full run built it. Source
+content, compilation inputs and the version of each extractor and adapter make
+up the identity, so a version bump also gives a new snapshot id. The latest
+snapshot of a workspace is the one that the most recent successful index run
+built or reused.
 
 Logical boundaries:
 
@@ -91,7 +94,8 @@ full, incremental and cross-document pipelines follow the same rule.
 Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts only
 changed documents and creates a new snapshot when content changes; it never
 mutates an existing snapshot. When nothing changed, the existing snapshot is
-reused via content-addressed dedup.
+reused via content-addressed dedup and becomes the latest snapshot of the
+workspace.
 
 Declarations are per document: a `partial` type declared in two documents
 yields two declaration records of a snapshot with one symbol id, and the

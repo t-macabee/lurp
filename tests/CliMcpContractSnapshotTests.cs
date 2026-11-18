@@ -18,7 +18,7 @@ public sealed class CliMcpContractSnapshotTests
     [Fact]
     public void ContractVersion_IsExpected()
     {
-        Assert.Equal(6, VersionConstants.CliMcpContractVersion);
+        Assert.Equal(7, VersionConstants.CliMcpContractVersion);
     }
 
     [Fact]

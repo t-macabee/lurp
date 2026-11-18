@@ -22,29 +22,20 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
 
     private void PruneWorkspace(string workspaceId, int keep)
     {
-        using var snapCmd = _connection.CreateCommand();
-        snapCmd.CommandText = """
-            SELECT snapshot_id FROM snapshots
-            WHERE workspace_id = @workspaceId
-            ORDER BY built_at_utc DESC;
-            """;
-        snapCmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+        var completeIds = ReadCompleteSnapshotIds(workspaceId);
+        var failedToDelete = ReadPrunableFailedSnapshotIds(workspaceId);
 
-        var snapshotIds = new List<string>();
-        using (var snapReader = snapCmd.ExecuteReader())
-        {
-            while (snapReader.Read())
-                snapshotIds.Add(snapReader.GetString(0));
-        }
-
-        if (snapshotIds.Count <= keep)
+        if (completeIds.Count <= keep && failedToDelete.Count == 0)
             return;
 
         using var transaction = _connection.BeginTransaction();
         try
         {
             var pinnedIds = GetPinnedSnapshotIds(workspaceId, transaction);
-            var pruneIds = snapshotIds.Skip(keep).Where(id => !pinnedIds.Contains(id)).ToList();
+            var pruneIds = new List<string>(failedToDelete.Where(id => !pinnedIds.Contains(id)));
+            if (completeIds.Count > keep)
+                pruneIds.AddRange(completeIds.Where(id => !pinnedIds.Contains(id)).Skip(keep));
+
             if (pruneIds.Count == 0)
             {
                 transaction.Commit();
@@ -63,6 +54,56 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             transaction.Rollback();
             throw;
         }
+    }
+
+    private List<string> ReadCompleteSnapshotIds(string workspaceId)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT snapshot_id FROM snapshots
+            WHERE workspace_id = @workspaceId
+              AND status = @completeStatus
+            ORDER BY selected_at_utc DESC;
+            """;
+        cmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+        cmd.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
+
+        var ids = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            ids.Add(reader.GetString(0));
+        return ids;
+    }
+
+    private List<string> ReadPrunableFailedSnapshotIds(string workspaceId)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT f.snapshot_id,
+                   CASE WHEN {SnapshotLifecycleStore.SupersededFailureExistsSql} THEN 1 ELSE 0 END AS is_superseded
+            FROM snapshots f
+            WHERE f.workspace_id = @workspaceId
+              AND f.status = @failedStatus
+            ORDER BY f.selected_at_utc DESC;
+            """;
+        cmd.Parameters.AddWithValue("@workspaceId", workspaceId);
+        cmd.Parameters.AddWithValue("@failedStatus", SnapshotStatusValues.Failed);
+        cmd.Parameters.AddWithValue("@completeStatus", SnapshotStatusValues.Complete);
+
+        var toDelete = new List<string>();
+        var keptCurrentFailure = false;
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetString(0);
+            var isSuperseded = reader.GetInt32(1) == 1;
+            if (isSuperseded || keptCurrentFailure)
+                toDelete.Add(id);
+            else
+                keptCurrentFailure = true;
+        }
+
+        return toDelete;
     }
 
     internal void DeleteIncompleteSnapshots()
@@ -124,7 +165,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         try
         {
             if (IsPinnedSnapshot(snapshotId, transaction))
-                throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
+                throw new InvalidOperationException($"snapshot '{snapshotId}' is pinned and cannot be deleted. Clear the pin first with --mode=pin-snapshot --clear.");
 
             using var cmd = _connection.CreateCommand();
             cmd.Transaction = transaction;
@@ -257,7 +298,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     {
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = transaction;
-        cmd.CommandText = "SELECT 1 FROM snapshot_pins WHERE pinned_snapshot_id = @snapshotId LIMIT 1;";
+        cmd.CommandText = SnapshotPinStore.IsPinnedSnapshotSql;
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         return cmd.ExecuteScalar() != null;
     }

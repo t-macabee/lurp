@@ -29,7 +29,7 @@ internal static class HelpText
         var modeList = string.Join(", ", modes.Take(modes.Count - 1)) + ", or " + modes[^1];
         output.WriteErrorLine($"ERROR: Unknown mode. Use {modeList}.");
         output.WriteErrorLine("  Note: For --mode=index, use --strategy=<incremental|full> (default: full on first run, incremental on subsequent runs).");
-        output.WriteErrorLine("    --strategy=full forces a complete reindex. Use it as a recovery mechanism if something looks wrong.");
+        output.WriteErrorLine("    --strategy=full rebuilds a snapshot that an incremental run built and reuses one that a full run built; add --force to rebuild it in every case. Use it to recover when something looks wrong.");
     }
 
     internal static void PrintHelp(IOutputSink output)
@@ -68,7 +68,7 @@ internal static class HelpText
         output.WriteLine("  Each indexing run (full or incremental) creates a NEW snapshot,");
         output.WriteLine("  unless source content and compilation inputs are unchanged, in which");
         output.WriteLine("  case the existing snapshot is reused (content-addressed dedup).");
-        output.WriteLine("  The last 3 snapshots are retained; older ones are pruned automatically.");
+        output.WriteLine("  The 3 newest complete snapshots are retained; older ones are pruned automatically.");
         output.WriteLine("  Snapshots are never mutated : a new snapshot is created when content");
         output.WriteLine("  changes, and it does NOT modify the previous one.");
         output.WriteLine();

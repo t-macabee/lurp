@@ -232,7 +232,8 @@ public sealed class FlagSpecTests
     public void Help_ShowsSnapshotPinAndForceDeletion()
     {
         Assert.Contains("The literal latest means the same.", HelpBlock("search"));
-        Assert.Contains("which deletes the identical snapshot", HelpBlock("index"));
+        Assert.Contains("deletes the existing complete snapshot", HelpBlock("index"));
+        Assert.Contains("The 3 newest complete snapshots are retained; older ones are pruned automatically.", CaptureHelp());
     }
 
     [Fact]

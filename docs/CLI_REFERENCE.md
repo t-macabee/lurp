@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v40, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v42, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -91,17 +91,17 @@ Index a solution and store facts in the database.
 | Argument | Required | Description |
 |---|---|---|
 | `--solution=<path>` | Yes, or `LURP_SOLUTION_PATH` | Path to the `.sln` or `.slnx` file. |
-| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` is the definition of correctness: use it to recover a known-good index. |
+| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON (a one-way export; never read back as authority). |
 | `--skip-adapter=<ASP.NET Core\|Dependency Injection\|MediatR\|EF Core\|Serialization\|Test>` | No | Skip a named framework adapter. May be repeated. |
 | `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. `--mode=diff` still computes the diff live. |
 | `--verbose` | No | Emit per-extractor timing lines to stderr. |
-| `--force` | No | Re-extract even when the deterministic snapshot id already exists as a completed snapshot; a full reindex needs `--strategy=full --force`, which deletes the identical snapshot and re-extracts it. With the incremental strategy it re-runs the incremental re-extraction in place (a no-op when no document changed). Does not bypass identity computation: an identical workspace produces the same snapshot id. |
+| `--force` | No | Re-extract even when the deterministic snapshot id already exists as a completed snapshot: the run deletes the existing complete snapshot and builds it again (with `--strategy=incremental`, from the previous snapshot; a no-op when no document changed). A pinned snapshot is not rebuilt and the run stops with an error. Does not bypass identity computation: an identical workspace produces the same snapshot id. |
 <!-- /generated:flags:index -->
 
 `--output-dir=<path>`: directory where `index.db` is stored. When omitted, `--solution=` (or `LURP_SOLUTION_PATH`) resolves the default cache location: `%LOCALAPPDATA%\lurp\<hash>\` on Windows, `~/.local/share/lurp/<hash>/` on Linux (under `$XDG_DATA_HOME` when it is set). `<hash>` is the first 12 hex characters of the SHA-256 of the canonical solution path. On Windows that path is lower-cased first; on Linux it keeps its case. Also accepted via `LURP_OUTPUT_DIR`.
 
-`--strategy=full` is the definition of correctness for the index. Use it as the recovery mechanism when something looks wrong.
+`--strategy=full` is the definition of correctness for the index; it rebuilds a snapshot that an incremental run built, so it is the recovery mechanism when something looks wrong.
 
 The index summary prints two declaration counters that measure different things. `declarations_extracted_this_run` counts declaration records extracted in this run: a symbol declared in several documents (a `partial` type, for example) contributes one record per document. `symbols_in_snapshot` counts the distinct symbols in the snapshot, so a full index reports more extracted records than snapshot symbols when a symbol is declared in more than one document.
 
@@ -466,8 +466,8 @@ corresponding `omitted_tiers` record is the authority.
 #### Regeneration is bounded by snapshot retention
 
 A capsule is byte-for-byte regenerable from the snapshot it was built against,
-but only while that snapshot is retained: `--mode=index` prunes to the most
-recent 3 snapshots. Once the source snapshot is pruned, the artifact can no
+but only while that snapshot is retained: `--mode=index` prunes to the 3 newest
+complete snapshots. Once the source snapshot is pruned, the artifact can no
 longer be reproduced or re-verified against the store. A snapshot pinned via
 [`--mode=pin-snapshot`](#--modepin-snapshot) is excluded from pruning
 regardless of recency, so pinning a snapshot also extends how long any capsule
@@ -493,7 +493,7 @@ Show the current database status.
 | `--max-mismatches=<n>` | No | Cap on the `mismatches` list in `--json` output (default: 50; positive integer). |
 <!-- /generated:flags:status -->
 
-When the latest snapshot failed, `latest_failure` has `snapshot_id`, `reason_code`, `message` and `created_at_utc`; when no snapshot failed, the key is `null` in every branch, the never-indexed branches included. The text output prints a `Latest failed index:` line when a snapshot failed. A failed snapshot that is older than the newest complete snapshot is not reported.
+When the latest snapshot failed, `latest_failure` has `snapshot_id`, `reason_code`, `message` and `created_at_utc`; when no snapshot failed, the key is `null` in every branch, the never-indexed branches included. The text output prints a `Latest failed index:` line when a snapshot failed. A failed snapshot is not reported when a later index run succeeded (the selected latest snapshot was selected at or after it).
 
 `status` never migrates the database. When the database schema version is not the one this build needs, `status` still exits 0: the text output prints both versions and the `--mode=index` hint, and `--json` returns a reduced object with `schema_version_expected`, `schema_version_mismatch` and `schema_version_note` (see [Schema version of the database](#schema-version-of-the-database)).
 
@@ -640,7 +640,7 @@ Also accepts the shared [read-command options](#read-command-options). Output is
 
 ### `--mode=pin-snapshot`
 
-Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destructive, auditable override — the snapshots themselves remain immutable; `built_at_utc` is never rewritten.
+Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destructive, auditable override — the snapshots themselves remain immutable; a pin never rewrites `built_at_utc` or `selected_at_utc`.
 
 ```
 --mode=pin-snapshot --snapshot=<id> --output-dir=<path> [--json]
@@ -652,7 +652,7 @@ Pin which snapshot reads use by default when `--snapshot=` is omitted. Non-destr
 | Argument | Required | Description |
 |---|---|---|
 | `--snapshot=<id>` | Yes* | Snapshot ID to pin. Only snapshots with `status='complete'` can be pinned. The literal `latest` is an alias for `--clear`. |
-| `--clear` | No | Remove every pin in the database; reads will again default to the most recently built snapshot (`ORDER BY built_at_utc DESC`). |
+| `--clear` | No | Remove every pin in the database; reads will again default to the snapshot that the last successful index run built or reused (`ORDER BY selected_at_utc DESC`). |
 | `--json` | No | Emit structured JSON instead of plain text. `--output=json` is an alias. |
 | `--output=<summary\|json>` | No | Payload rendering (default: `summary` when neither flag is given). `jsonl` is rejected — the payload is a single document. |
 <!-- /generated:flags:pin-snapshot -->
@@ -665,16 +665,16 @@ Behavior:
 - When a pin is active, every read mode that defaults to "latest" (`search`, `grep`, `find-symbol`, `get-symbol`, `get-source`, `outline`, `navigate`, `diagnostics`, `get-annotations`, `impact`, `context`, `dead-candidates`, `timings`, `annotate/retract-annotation`) resolves `null`/`latest` to the pinned ID. Explicit `--snapshot=<id>` still bypasses the pin.
 - A read command that finds a pin on a snapshot that is not complete uses the latest snapshot and prints `WARNING: pinned snapshot '<id>' is not complete; …` to stderr.
 - Only `annotate`, `retract-annotation` and `pin-snapshot` remove a stale pin, and they print `NOTICE: removed the stale pin on snapshot '<id>' (the snapshot is not complete).` on stderr. Every other command, `index` included, leaves the row in place: reads treat the stale pin as absent, and `status` reports it in `stale_pinned_snapshot_id`.
-- `status` surfaces the override visibly: text reports `Pinned snapshot: <id> (pinned at <utc>, built at <utc>)` and `Note: effective latest is pinned; built-at latest is <id>` when they differ; JSON adds `pinned_snapshot_id`, `pinned_at_utc`, `previous_pinned_snapshot_id`, `effective_latest_snapshot_id`, `built_at_latest_snapshot_id`, `pin_active` (`false` when no pin is active).
+- `status` surfaces the override visibly: text reports `Pinned snapshot: <id> (pinned at <utc>, built at <utc>)` and `Note: effective latest is pinned; selected latest is <id>` when they differ; JSON adds `pinned_snapshot_id`, `pinned_at_utc`, `previous_pinned_snapshot_id`, `effective_latest_snapshot_id`, `selected_latest_snapshot_id`, `pin_active` (`false` when no pin is active).
 - Pin is protected from pruning: `PruneOldSnapshots(keep=3)` excludes the pinned ID from deletion (it does not count toward `keep`). A pinned snapshot cannot be deleted with `DeleteSnapshotData` — clear the pin first.
-- Indexing is unaffected: incremental and full pipelines still compute the next snapshot's content against the built-at latest (not the pin), so a correct pin never skips a needed re-index.
-- Recovery from a botched environment: revert the source, re-index (which prints `Identical complete snapshot ... already exists` when content reconverges), then `lurp --mode=pin-snapshot --snapshot=<correct-id> --output-dir=./out` to make that older snapshot the effective latest without deleting rows.
+- Indexing is unaffected: incremental and full pipelines still compute the next snapshot's content against the selected latest (not the pin), so a correct pin never skips a needed re-index.
+- Recovery from a botched environment: revert the source and re-index (which prints `Identical complete snapshot ... already exists` when content reconverges); the run reuses the identical snapshot and makes it the latest; no pin is needed.
 
 ---
 
 ## Snapshot Lifecycle
 
-Snapshots are immutable: an existing snapshot is never mutated. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
+The facts of a snapshot never change: an existing snapshot's content is never mutated. `selected_at_utc` is the one column that a later run sets, and it records selection, not content. The latest snapshot of a workspace is the one that the most recent successful index run built or reused. Each indexing run *normally* creates a new snapshot when content changes; incremental indexing creates a new snapshot when content changes and does not modify the previous one. When source content and compilation inputs (and extractor version) are unchanged, the run reuses the existing snapshot via content-addressed dedup instead of writing a duplicate row.
 
 ```
 Strategy: incremental
@@ -690,11 +690,11 @@ Incremental index complete. Snapshot: 3a69acadd9659d0f27d349c73d63fb9c
                                                                   edge_relations_in_snapshot:          13195
 ```
 
-(eNoteV2, 402 documents). The last 3 snapshots are retained; older ones are pruned automatically.
+(eNoteV2, 402 documents). The 3 newest complete snapshots are retained; older ones are pruned automatically.
 
 ### Schema version of the database
 
-Read commands never write to `index.db`. Every read mode, and the MCP server (at session start, on every `lurp_refresh` call, and before `lurp_retract_annotation`), first checks the database schema version. It must equal the version this build needs (`lurp --version` prints it as `schema vN`). When the database is older, the command fails with `ERROR: Index database at <path> uses schema v<n>; this Lurp needs v<m>. Run 'lurp --mode=index' to update it.` When it is newer, the error says to update Lurp instead. Only `--mode=index`, `--mode=pin-snapshot` and MCP `lurp_index` migrate the database. `--mode=status` reports the mismatch and does not fail (see [`--mode=status`](#--modestatus)).
+Read commands never write to `index.db`. Every read mode, and the MCP server (at session start, on every `lurp_refresh` call, and before `lurp_retract_annotation`), first checks the database schema version. It must equal the version this build needs (`lurp --version` prints it as `schema vN`). When the database is older, the command fails with `ERROR: Index database at <path> uses schema v<n>; this Lurp needs v<m>. Run 'lurp --mode=index' to update it.` When it is newer, the error says to update Lurp instead. Only `--mode=index`, `--mode=pin-snapshot` and MCP `lurp_index` migrate an older database; they refuse a newer database with the same message before they write. `--mode=status` reports the mismatch and does not fail (see [`--mode=status`](#--modestatus)).
 
 ## Environment Variables
 

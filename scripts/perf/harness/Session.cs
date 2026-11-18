@@ -320,8 +320,7 @@ internal sealed class Session(
         if (json is null)
             return null;
 
-        return JsonTools.GetString(json, "built_at_latest_snapshot_id")
-               ?? JsonTools.GetString(json, "latest_snapshot_id");
+        return JsonTools.GetString(json, "selected_latest_snapshot_id");
     }
 
     public (long? TotalMs, JsonArray? Steps, long? PeakWorkingSetMb) GetTimingsSnapshot(string dbDir, string snapshotId)

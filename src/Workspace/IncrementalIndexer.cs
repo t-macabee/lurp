@@ -71,27 +71,14 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // the same id must not block a retry.
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var newSnapshotIdStr = snapshotId.ToString();
-        var existing = _store.ResolveExistingSnapshot(newSnapshotIdStr, workspaceInfo.Id.Value);
-        switch (existing.Disposition)
+        var disposition = ExistingSnapshotPolicy.Resolve(_store, newSnapshotIdStr, workspaceInfo.Id.Value, SnapshotBuildStrategies.Incremental, force, _output);
+        if (disposition == ExistingSnapshotDisposition.Reuse)
         {
-            case ExistingSnapshotDisposition.Reuse:
-                if (force)
-                {
-                    _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists; --force given, re-extracting in place.");
-                }
-                else
-                {
-                    _output.WriteLine($"Identical complete snapshot {newSnapshotIdStr} already exists for this workspace; reusing it.");
-                    return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty)
-                    {
-                        DocumentsInSnapshot = workspaceInfo.Documents.Count,
-                        ProjectsInSnapshot = solution.Projects.Count()
-                    };
-                }
-                break;
-            case ExistingSnapshotDisposition.Retry:
-                _output.WriteLine($"Snapshot {newSnapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying incremental index.");
-                break;
+            return new IncrementalResult(newSnapshotIdStr, previousSnapshotId, changedDocs.Count, 0, 0, 0, OrphanEdgeDropSummary.Empty)
+            {
+                DocumentsInSnapshot = workspaceInfo.Documents.Count,
+                ProjectsInSnapshot = solution.Projects.Count()
+            };
         }
 
         // Step 2: Affected Project Resolution
@@ -209,7 +196,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         cancellationToken.ThrowIfCancellationRequested();
         var sw4 = Stopwatch.StartNew();
         _output.Write("Saving new snapshot manifest... ");
-        newManifest.Save(_store, workspaceInfo.DocumentContents, jsonExportPath);
+        newManifest.Save(_store, SnapshotBuildStrategies.Incremental, workspaceInfo.DocumentContents, jsonExportPath);
         _output.WriteLine("done.");
         sw4.Stop();
         timings.Add(new SnapshotTimingRow("manifest_creation", sw4.ElapsedMilliseconds));

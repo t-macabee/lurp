@@ -7,6 +7,8 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
+    internal const string IsPinnedSnapshotSql = "SELECT 1 FROM snapshot_pins WHERE pinned_snapshot_id = @snapshotId LIMIT 1;";
+
     // The one "complete pin" rule: the pin points at a snapshot row that exists, has a
     // build time and is complete. Every pin selection states it with this predicate.
     private const string CompletePinPredicate =
@@ -106,6 +108,15 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
         return GetPinnedSnapshot(workspaceId)?.PinnedSnapshotId;
     }
 
+    internal bool IsPinnedSnapshot(string snapshotId, SqliteTransaction? transaction = null)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = IsPinnedSnapshotSql;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        return command.ExecuteScalar() != null;
+    }
+
     internal void SetPinnedSnapshot(string snapshotId)
     {
         if (string.IsNullOrWhiteSpace(snapshotId))
@@ -120,13 +131,13 @@ internal sealed class SnapshotPinStore(SqliteConnection connection)
             cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
             using var reader = cmd.ExecuteReader();
             if (!reader.Read())
-                throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' not found.");
+                throw new InvalidOperationException($"snapshot '{snapshotId}' not found.");
             workspaceId = reader.GetString(0);
             status = reader.GetString(1);
         }
 
         if (!string.Equals(status, SnapshotStatusValues.Complete, StringComparison.Ordinal))
-            throw new InvalidOperationException($"ERROR: snapshot '{snapshotId}' has status '{status}' and cannot be pinned. Only snapshots with status 'complete' can be pinned.");
+            throw new InvalidOperationException($"snapshot '{snapshotId}' has status '{status}' and cannot be pinned. Only snapshots with status 'complete' can be pinned.");
 
         // Fetch previous pin to preserve audit trail.
         string? previousPinned;

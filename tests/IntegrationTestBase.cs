@@ -202,6 +202,21 @@ public abstract class IntegrationTestBase : IDisposable
         return snapshot.SnapshotId;
     }
 
+    public async Task<(string SnapshotId, string Output)> RunIndexAsync(string? strategy = null, bool force = false)
+    {
+        using var store = OpenStore(DbPath);
+        var sink = new CapturingOutputSink();
+        await IndexRunner.RunAsync(
+            store, SolutionPath,
+            [], null, strategy,
+            false, sink, false, force, CancellationToken.None);
+
+        var workspaceId = WorkspaceId.Create(TestDir, Path.GetFullPath(SolutionPath)).Value;
+        var snapshotId = store.GetSelectedLatestSnapshotId(workspaceId)
+                         ?? throw new InvalidOperationException($"No snapshot found in {DbPath} after index.");
+        return (snapshotId, sink.Output.ToString());
+    }
+
     public async Task<string> RunIncrementalIndexAsync()
     {
         using var store = OpenStore(DbPath);

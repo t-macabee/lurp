@@ -188,7 +188,7 @@ the evidence ladder is in [§4.2](docs/ARCHITECTURE.md#42-evidence-ladder).
 - **Multi-target projects are indexed as a union**: one snapshot per index run holds every target framework the solution declares. The declared TFM list is recorded per project and the per-symbol TFM set is recorded per snapshot, but CLI/MCP reads do not surface the per-symbol set, so a member present in only one target framework cannot be told apart by a consumer from one present in all of them.
 - **Source generators not executed**: `GeneratedTreesIncluded=false`; generated files under `obj/` are path-filtered out.
 - **Reflection string-literal candidates are `name_candidate`**, not `compiler_proved`.
-- **3-snapshot retention**: older snapshots and their document versions are pruned automatically, except a snapshot pinned via `pin-snapshot`, which pruning always skips.
+- **3-snapshot retention**: the 3 newest complete snapshots and their document versions are retained; older ones are pruned automatically, except a snapshot pinned via `pin-snapshot`, which is kept in addition and does not take a slot.
 - **Restore first**: an unrestored project still indexes, with a warning, but `MSBuildWorkspace` cannot resolve its references, so edges are missing and diagnostics are wrong. Run `dotnet restore` before `--mode=index`.
 - **NuGet audit warnings look like load failures**: `MSBuildWorkspace` reports a NuGet vulnerability warning as a failure-level workspace diagnostic, so the index run prints `WARNING: workspace load reported N failure-level diagnostic(s)` with the package message. Such a warning does not stop the index.
 
@@ -204,7 +204,7 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v40, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v42, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit

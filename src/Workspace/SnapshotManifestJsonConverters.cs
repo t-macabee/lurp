@@ -1,5 +1,5 @@
 // Purpose: JSON converters for snapshot-manifest identity types.
-// Owns: (de)serialization of SnapshotId/WorkspaceId/document-version maps.
+// Owns: serialization of SnapshotId/WorkspaceId/document-version maps.
 // Must not contain: manifest construction or freshness logic.
 
 using System.Text.Json;
@@ -9,12 +9,12 @@ namespace Lurp.Workspace;
 
 public sealed partial class SnapshotManifest
 {
+    private const string OneWayExportMessage = "Snapshot manifest JSON is a one-way export and cannot be read back.";
+
     private sealed class SnapshotIdConverter : JsonConverter<SnapshotId>
     {
         public override SnapshotId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            return SnapshotId.Parse(reader.GetString()!);
-        }
+            => throw new NotSupportedException(OneWayExportMessage);
 
         public override void Write(Utf8JsonWriter writer, SnapshotId value, JsonSerializerOptions options)
         {
@@ -25,10 +25,7 @@ public sealed partial class SnapshotManifest
     private sealed class NullableSnapshotIdConverter : JsonConverter<SnapshotId?>
     {
         public override SnapshotId? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.Null) return null;
-            return SnapshotId.Parse(reader.GetString()!);
-        }
+            => throw new NotSupportedException(OneWayExportMessage);
 
         public override void Write(Utf8JsonWriter writer, SnapshotId? value, JsonSerializerOptions options)
         {
@@ -40,34 +37,7 @@ public sealed partial class SnapshotManifest
     private sealed class WorkspaceIdConverter : JsonConverter<WorkspaceId>
     {
         public override WorkspaceId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType != JsonTokenType.StartObject)
-                throw new JsonException("Expected JSON object for WorkspaceId.");
-
-            string? gitRoot = null, solutionPath = null, value = null;
-
-            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-            {
-                var prop = reader.GetString();
-                reader.Read();
-                switch (prop)
-                {
-                    case "git_root" or "gitRoot": gitRoot = reader.GetString(); break;
-                    case "solution_path" or "solutionPath": solutionPath = reader.GetString(); break;
-                    case "value": value = reader.GetString(); break;
-                    default: reader.Skip(); break;
-                }
-            }
-
-            if (gitRoot != null && solutionPath != null)
-                return WorkspaceId.Create(gitRoot, solutionPath);
-
-            if (value != null)
-                throw new JsonException(
-                    "Manifest has no git_root/solution_path; run --mode=index --strategy=full to rebuild it.");
-
-            throw new JsonException("Insufficient data to reconstruct WorkspaceId.");
-        }
+            => throw new NotSupportedException(OneWayExportMessage);
 
         public override void Write(Utf8JsonWriter writer, WorkspaceId value, JsonSerializerOptions options)
         {
@@ -83,22 +53,7 @@ public sealed partial class SnapshotManifest
         : JsonConverter<Dictionary<DocumentId, DocumentVersionId>>
     {
         public override Dictionary<DocumentId, DocumentVersionId> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            var result = new Dictionary<DocumentId, DocumentVersionId>();
-
-            if (reader.TokenType != JsonTokenType.StartObject)
-                throw new JsonException("Expected JSON object for documentVersions.");
-
-            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-            {
-                var docPath = reader.GetString()!;
-                reader.Read();
-                var hash = reader.GetString()!;
-                result[new DocumentId(docPath)] = new DocumentVersionId(hash);
-            }
-
-            return result;
-        }
+            => throw new NotSupportedException(OneWayExportMessage);
 
         public override void Write(Utf8JsonWriter writer, Dictionary<DocumentId, DocumentVersionId> value, JsonSerializerOptions options)
         {

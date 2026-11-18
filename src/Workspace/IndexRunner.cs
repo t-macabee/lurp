@@ -6,15 +6,13 @@ namespace Lurp.Workspace;
 
 public static class IndexRunner
 {
-    private const string FullStrategy = "full";
-    private const string IncrementalStrategy = "incremental";
-
-    internal static readonly string[] Strategies = [FullStrategy, IncrementalStrategy];
+    internal static readonly string[] Strategies = [SnapshotBuildStrategies.Full, SnapshotBuildStrategies.Incremental];
 
     public static async Task RunAsync(SqliteIndexStore store, string solutionPath, HashSet<string> skipAdapters, string? jsonExportPath, string? strategyArg, bool verbose = false, IOutputSink? output = null, bool skipDiff = false,
         bool force = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var runStartedAtUtc = DateTime.UtcNow;
 
         var sink = output ?? ConsoleOutputSink.Instance;
 
@@ -24,7 +22,7 @@ public static class IndexRunner
 
         sink.WriteLine($"Strategy: {strategy}");
 
-        if (strategy == FullStrategy) sink.WriteLine("  (Use --strategy=full to force a full rebuild when something looks wrong.)");
+        if (strategy == SnapshotBuildStrategies.Incremental) sink.WriteLine("  (If something looks wrong, run --strategy=full: it rebuilds a snapshot that an incremental run built.)");
 
         var totalSw = Stopwatch.StartNew();
 
@@ -32,7 +30,7 @@ public static class IndexRunner
 
         long? precheckMs = null;
 
-        if (strategy == IncrementalStrategy && !force)
+        if (strategy == SnapshotBuildStrategies.Incremental && !force)
         {
             var swPrecheck = Stopwatch.StartNew();
             var precheckWorkspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(solutionPath));
@@ -50,6 +48,7 @@ public static class IndexRunner
                     DocumentsInSnapshot = store.CountDocumentsInSnapshot(builtSnapshot.SnapshotId),
                     ProjectsInSnapshot = store.CountProjectsInSnapshot(builtSnapshot.SnapshotId)
                 });
+                store.MarkSnapshotSelected(builtSnapshot.SnapshotId, runStartedAtUtc);
                 PruneAndRecord(store, sink, null);
 
                 totalSw.Stop();
@@ -79,14 +78,14 @@ public static class IndexRunner
             sink.WriteErrorLine();
         }
 
-        if (strategy == IncrementalStrategy)
+        if (strategy == SnapshotBuildStrategies.Incremental)
         {
-            var previousStorageManifest = store.LoadBuiltAtLatestSnapshot(workspaceInfo.Id.Value);
+            var previousStorageManifest = store.LoadSelectedLatestSnapshot(workspaceInfo.Id.Value);
 
             if (previousStorageManifest == null)
             {
                 sink.WriteLine("No previous snapshot found. Falling back to full index.");
-                strategy = FullStrategy;
+                strategy = SnapshotBuildStrategies.Full;
             }
             else
             {
@@ -96,6 +95,7 @@ public static class IndexRunner
                     var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousStorageManifest, loadElapsed, cancellationToken);
 
                     WriteIncrementalSummary(store, sink, result);
+                    store.MarkSnapshotSelected(result.NewSnapshotId, runStartedAtUtc);
                     var incrementalTimings = new List<SnapshotTimingRow>
                     {
                         new(SnapshotTimingSteps.WorkspaceInfo, swWorkspaceInfo.ElapsedMilliseconds)
@@ -112,13 +112,13 @@ public static class IndexRunner
                 catch (FullRebuildRequiredException ex)
                 {
                     sink.WriteLine(ex.Message);
-                    strategy = FullStrategy;
+                    strategy = SnapshotBuildStrategies.Full;
                 }
             }
         }
 
         string? newSnapshotId = null;
-        if (strategy == FullStrategy)
+        if (strategy == SnapshotBuildStrategies.Full)
         {
             var setupTimings = new List<SnapshotTimingRow>
             {
@@ -127,7 +127,9 @@ public static class IndexRunner
             };
             if (precheckMs is { } precheckElapsed)
                 setupTimings.Add(new SnapshotTimingRow(SnapshotTimingSteps.IncrementalPrecheck, precheckElapsed));
-            newSnapshotId = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+            var (selectedId, built) = await RunFullIndexAsync(store, solution, workspaceInfo, skipAdapters, jsonExportPath, setupTimings, verbose, sink, skipDiff, force, cancellationToken);
+            newSnapshotId = built ? selectedId : null;
+            store.MarkSnapshotSelected(selectedId, runStartedAtUtc);
         }
 
         PruneAndRecord(store, sink, newSnapshotId);
@@ -138,34 +140,15 @@ public static class IndexRunner
         sink.WriteLine($"  Total time ({runKind}): {totalSw.ElapsedMilliseconds} ms");
     }
 
-    private static async Task<string?> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
+    private static async Task<(string SelectedSnapshotId, bool Built)> RunFullIndexAsync(SqliteIndexStore store, Solution solution, WorkspaceInfo workspaceInfo, HashSet<string> skipAdapters, string? jsonExportPath, List<SnapshotTimingRow>? setupTimings, bool verbose, IOutputSink sink,
         bool skipDiff = false, bool force = false, CancellationToken cancellationToken = default)
     {
         var snapshotId = SnapshotIdentity.Create(workspaceInfo, skipAdapters);
         var snapshotIdStr = snapshotId.ToString();
 
-        // Deterministic identity: an identical complete snapshot for this
-        // workspace must not be duplicated. A non-complete row with the same
-        // identity (a crashed or failed attempt) must not block a retry.
-        var existing = store.ResolveExistingSnapshot(snapshotIdStr, workspaceInfo.Id.Value);
-        switch (existing.Disposition)
-        {
-            case ExistingSnapshotDisposition.Reuse:
-                if (force)
-                {
-                    sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists; --force given, deleting it and re-extracting.");
-                    store.DeleteSnapshotData(snapshotIdStr);
-                }
-                else
-                {
-                    sink.WriteLine($"Identical complete snapshot {snapshotIdStr} already exists for this workspace; no new snapshot written.");
-                    return null;
-                }
-                break;
-            case ExistingSnapshotDisposition.Retry:
-                sink.WriteLine($"Snapshot {snapshotIdStr} exists with status '{existing.ExistingStatus}'; removing it and retrying full index.");
-                break;
-        }
+        var disposition = ExistingSnapshotPolicy.Resolve(store, snapshotIdStr, workspaceInfo.Id.Value, SnapshotBuildStrategies.Full, force, sink);
+        if (disposition == ExistingSnapshotDisposition.Reuse)
+            return (snapshotIdStr, false);
 
         var manifest = SnapshotManifest.FromWorkspace(workspaceInfo, snapshotId, skipAdapters: skipAdapters);
         var timings = setupTimings != null ? new List<SnapshotTimingRow>(setupTimings) : new List<SnapshotTimingRow>();
@@ -174,7 +157,7 @@ public static class IndexRunner
         var swManifest = Stopwatch.StartNew();
         sink.Write("Saving snapshot to database... ");
 
-        manifest.Save(store, workspaceInfo.DocumentContents, jsonExportPath);
+        manifest.Save(store, SnapshotBuildStrategies.Full, workspaceInfo.DocumentContents, jsonExportPath);
 
         sink.WriteLine("done.");
         swManifest.Stop();
@@ -289,7 +272,7 @@ public static class IndexRunner
             swExtract.Stop();
             timings.Add(new SnapshotTimingRow("extraction_loop", swExtract.ElapsedMilliseconds));
 
-            var previousManifest = store.LoadBuiltAtLatestSnapshot(manifest.WorkspaceId.Value);
+            var previousManifest = store.LoadSelectedLatestSnapshot(manifest.WorkspaceId.Value);
 
             // Step: Remove edges targeting symbols not declared in this snapshot
             // Runs before the semantic diff so the diff compares the new snapshot's
@@ -359,7 +342,7 @@ public static class IndexRunner
                 sink.WriteErrorLine($"WARNING: Failed to save timings: {ex.Message}");
             }
 
-            return snapshotIdStr;
+            return (snapshotIdStr, true);
         }
         catch (Exception ex)
         {
@@ -433,19 +416,19 @@ public static class IndexRunner
                 // A caller-contract violation, not a CLI refusal: the Workspace layer
                 // must not exit the process. The CLI validates --strategy before
                 // reaching here (IndexHandler), so a throw means a misbehaving host.
-                throw new InvalidOperationException($"Invalid strategy '{strategyArg}'. Must be '{IncrementalStrategy}' or '{FullStrategy}'.");
+                throw new InvalidOperationException($"Invalid strategy '{strategyArg}'. Must be '{SnapshotBuildStrategies.Incremental}' or '{SnapshotBuildStrategies.Full}'.");
             return strategy;
         }
 
-        var latestSnapshotId = store.GetBuiltAtLatestSnapshotId();
+        var latestSnapshotId = store.GetSelectedLatestSnapshotId();
 
         if (latestSnapshotId == null)
         {
             sink.WriteLine("No existing snapshot found. Defaulting to --strategy=full for initial index.");
-            return FullStrategy;
+            return SnapshotBuildStrategies.Full;
         }
 
-        return IncrementalStrategy;
+        return SnapshotBuildStrategies.Incremental;
     }
 
     /// <summary>

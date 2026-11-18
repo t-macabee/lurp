@@ -162,7 +162,7 @@ public static class WorkspaceFreshness
     {
         try
         {
-            var built = store.LoadBuiltAtLatestSnapshot(workspaceId.Value);
+            var built = store.LoadSelectedLatestSnapshot(workspaceId.Value);
             if (built == null)
                 return null;
 

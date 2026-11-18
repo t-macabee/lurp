@@ -157,7 +157,7 @@ class Index:
         else:
             latest = self.conn.execute(
                 "SELECT snapshot_id FROM snapshots WHERE status = 'complete' "
-                "ORDER BY built_at_utc DESC LIMIT 1").fetchone()
+                "ORDER BY selected_at_utc DESC LIMIT 1").fetchone()
             snapshot_id = latest[0] if latest else None
             self.snapshot_reason = "latest complete snapshot"
         row = self.conn.execute(

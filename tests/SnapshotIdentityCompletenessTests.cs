@@ -73,8 +73,8 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
             SnapshotIdentity.Create(workspaceInfoV2, new HashSet<string>()));
 
         // Assertion 2: a second full index into the same db must write a new
-        // snapshot. Fails on main: ResolveExistingSnapshot returns Reuse, so
-        // "no new snapshot written" (IndexRunner).
+        // snapshot. Fails on main: ExistingSnapshotPolicy returns Reuse, so
+        // "reusing it" (IndexRunner).
         var snapshotV2 = await RunFullIndexNoDeleteAsync(DbPath);
         using (var store = OpenStore(DbPath))
         {

@@ -183,13 +183,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return new MigrationRunner(_dbPath).GetCurrentSchemaVersion();
     }
 
-    public void ValidateSchema(int expectedVersion)
-    {
-        var actual = GetCurrentSchemaVersion();
-        if (actual != expectedVersion)
-            throw new InvalidOperationException($"Schema version mismatch: expected {expectedVersion}, got {actual}.");
-    }
-
     // ── Snapshot lifecycle, pins, documents and metrics ─────────────────
 
     public void SaveWorkspace(string id, string gitRoot, string solutionPath)
@@ -204,16 +197,16 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _lifecycle!.SaveSnapshot(manifest);
     }
 
-    public void MarkSnapshotInProgress(string snapshotId)
-    {
-        EnsureOpen();
-        _lifecycle!.MarkSnapshotInProgress(snapshotId);
-    }
-
     public void MarkSnapshotComplete(string snapshotId)
     {
         EnsureOpen();
         _lifecycle!.MarkSnapshotComplete(snapshotId);
+    }
+
+    public void MarkSnapshotSelected(string snapshotId, DateTime selectedAtUtc)
+    {
+        EnsureOpen();
+        _lifecycle!.MarkSnapshotSelected(snapshotId, selectedAtUtc);
     }
 
     public void MarkSnapshotFailed(string snapshotId, string reasonCode, string? message)
@@ -241,7 +234,7 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _lifecycle!.LoadLatestSnapshot(workspaceId);
     }
 
-    public SnapshotRow? LoadBuiltAtLatestSnapshot(string? workspaceId = null)
+    public SnapshotRow? LoadSelectedLatestSnapshot(string? workspaceId = null)
     {
         EnsureOpen();
         return _lifecycle!.LoadLatestSnapshot(workspaceId);
@@ -268,7 +261,7 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _lifecycle!.GetLatestSnapshotId(workspaceId);
     }
 
-    public string? GetBuiltAtLatestSnapshotId(string? workspaceId = null)
+    public string? GetSelectedLatestSnapshotId(string? workspaceId = null)
     {
         EnsureOpen();
         return _lifecycle!.GetLatestSnapshotId(workspaceId);
@@ -322,27 +315,16 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _lifecycle!.GetSnapshotIds(workspaceId);
     }
 
-    /// <summary>
-    ///     Deterministic-identity guard shared by the full and incremental indexing
-    ///     pipelines: a complete snapshot with this identity must be reused rather
-    ///     than duplicated, and a non-complete row (a crashed or failed attempt)
-    ///     must not block a retry. Returns <see cref="ExistingSnapshotDisposition.Reuse" />
-    ///     when a complete row exists, <see cref="ExistingSnapshotDisposition.Retry" />
-    ///     after deleting a non-complete row, and <see cref="ExistingSnapshotDisposition.Fresh" />
-    ///     when no row exists. <see cref="ExistingSnapshotResolution.ExistingStatus" /> is
-    ///     the status of the row that existed (null when <see cref="ExistingSnapshotDisposition.Fresh" />).
-    /// </summary>
-    public ExistingSnapshotResolution ResolveExistingSnapshot(string snapshotId, string workspaceId)
+    public (string Status, string BuildStrategy)? GetExistingSnapshotState(string snapshotId, string workspaceId)
     {
         EnsureOpen();
-        var existingStatus = _lifecycle!.GetSnapshotStatus(snapshotId, workspaceId);
-        if (existingStatus == SnapshotStatusValues.Complete)
-            return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Reuse, existingStatus);
-        if (existingStatus == null)
-            return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Fresh, null);
+        return _lifecycle!.GetExistingSnapshotState(snapshotId, workspaceId);
+    }
 
-        _pruner!.DeleteSnapshotData(snapshotId);
-        return new ExistingSnapshotResolution(ExistingSnapshotDisposition.Retry, existingStatus);
+    public bool IsPinnedSnapshot(string snapshotId)
+    {
+        EnsureOpen();
+        return _pinStore!.IsPinnedSnapshot(snapshotId);
     }
 
     public string? GetSource(string relativePath, string snapshotId)
