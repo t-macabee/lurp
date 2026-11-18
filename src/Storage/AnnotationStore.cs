@@ -23,7 +23,7 @@ internal sealed class AnnotationStore
             foreach (var ann in annotations)
             {
                 command.CommandText = """
-                    INSERT INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
+                    INSERT OR IGNORE INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
                     VALUES (@snapshotId, @symbolId, @kind, @value, @documentPath);
                     """;
                 command.Parameters.Clear();

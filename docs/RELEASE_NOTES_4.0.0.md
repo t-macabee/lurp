@@ -243,6 +243,9 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `outgoing_paths`) include `site_count` and up to 20 ordered `sites`
   (`document`, `line`, `column`, `end_line`, `end_column`); `source_*` fields
   stay and equal the first site (additive, contract v6, output schema v6).
+- Schema v43 adds a unique index on extractor annotations. The upgrade deletes
+  duplicate rows that older incremental runs wrote (`unmodeled_mediatr_pattern`);
+  user annotations are not touched.
 
 ## Snapshot lifecycle
 
@@ -281,7 +284,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v42 |
+| Database schema | v37 | v43 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v6 |

@@ -322,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (042). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (043). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -334,8 +334,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 42;
-                ALTER TABLE snapshots DROP COLUMN build_strategy;
+                DELETE FROM schema_metadata WHERE version = 43;
+                DROP INDEX idx_annotations_extractor_fact;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -347,9 +347,9 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var columnCommand = verify.CreateCommand();
-        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'build_strategy';";
-        Assert.Equal(0L, (long)columnCommand.ExecuteScalar()!);
+        using var indexCommand = verify.CreateCommand();
+        indexCommand.CommandText = "SELECT COUNT(*) FROM pragma_index_list('annotations') WHERE name = 'idx_annotations_extractor_fact';";
+        Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);
     }
 
     [Fact]
@@ -735,6 +735,83 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             Assert.Equal(
                 new (string, string)[] { ("s1", "incremental"), ("s2", "incremental") },
                 rows);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV42_DeletesDuplicateExtractorAnnotationsAndKeepsUserAnnotations()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v42-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo42 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 42)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo42)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (42, '2026-02-01T00:00:00.0000000Z', 'Migration_042_SnapshotBuildStrategy');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, selected_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s', 'ws1', '2026-01-01T00:00:00.0000000Z', '2026-01-01T00:00:00.0000000Z', '10.0.100', 42, 6),
+                           ('t', 'ws1', '2026-02-01T00:00:00.0000000Z', '2026-02-01T00:00:00.0000000Z', '10.0.100', 42, 6);
+
+                    INSERT INTO annotations (annotation_id, snapshot_id, symbol_id, kind, value, document_path)
+                    VALUES (1, 's', 'Y', 'k', 'v', 'a.cs'),
+                           (2, 's', 'Y', 'k', 'v', 'a.cs'),
+                           (3, 's', 'Y', 'k', 'v', 'a.cs'),
+                           (4, 's', 'Y', 'k', 'v', NULL),
+                           (5, 's', 'Y', 'k', 'v', NULL),
+                           (6, 's', 'Y', 'k', 'v', 'b.cs'),
+                           (7, 't', 'Y', 'k', 'v', 'a.cs');
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            var runner = new MigrationRunner(dbPath);
+            runner.RunMigrations();
+            Assert.Equal(43, MigrationRunner.LatestVersion);
+            Assert.Equal(43, runner.GetCurrentSchemaVersion());
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var idsCmd = verify.CreateCommand();
+            idsCmd.CommandText = "SELECT annotation_id FROM annotations ORDER BY annotation_id;";
+            var remainingIds = new List<long>();
+            using (var reader = idsCmd.ExecuteReader())
+                while (reader.Read())
+                    remainingIds.Add(reader.GetInt64(0));
+
+            Assert.Equal(new long[] { 1, 4, 5, 6, 7 }, remainingIds);
+
+            using var idxCmd = verify.CreateCommand();
+            idxCmd.CommandText = "SELECT \"unique\", partial FROM pragma_index_list('annotations') WHERE name = 'idx_annotations_extractor_fact';";
+            using var idxReader = idxCmd.ExecuteReader();
+            Assert.True(idxReader.Read());
+            Assert.Equal(1L, idxReader.GetInt64(0));
+            Assert.Equal(1L, idxReader.GetInt64(1));
         }
         finally
         {

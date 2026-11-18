@@ -194,7 +194,8 @@ public class MigrationRunner
             new Migration_039_DropWriteOnlyColumns(),
             new Migration_040_EdgeSites(),
             new Migration_041_SnapshotSelectedAt(),
-            new Migration_042_SnapshotBuildStrategy()
+            new Migration_042_SnapshotBuildStrategy(),
+            new Migration_043_AnnotationUniqueIndex()
         ];
     }
 }
