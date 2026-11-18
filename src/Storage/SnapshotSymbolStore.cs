@@ -38,28 +38,55 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
         command.ExecuteNonQuery();
     }
 
-    internal void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
+    internal List<string> PruneUnlinkedSnapshotSymbols(string snapshotId, IEnumerable<string> candidateSymbolIds)
     {
-        var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];
+        var idList = candidateSymbolIds as IReadOnlyCollection<string> ?? [.. candidateSymbolIds];
         if (idList.Count == 0)
-            return;
+            return [];
 
         using var transaction = _connection.BeginTransaction();
         try
         {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = """
-                DELETE FROM snapshot_symbols
-                WHERE snapshot_id = @snapshotId
-                  AND symbol_id IN (SELECT value FROM json_each(@symbolIds));
-                """;
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            SqlIdList.Bind(command, "@symbolIds", idList);
-            command.ExecuteNonQuery();
+            var removedIds = new List<string>();
+            using (var selectCmd = _connection.CreateCommand())
+            {
+                selectCmd.Transaction = transaction;
+                selectCmd.CommandText = $"""
+                    SELECT DISTINCT c.value
+                    FROM json_each(@candidateIds) c
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM declarations d
+                        {SnapshotDeclarationLink.Join("d", "sdecl")}
+                        WHERE d.symbol_id = c.value
+                    );
+                    """;
+                selectCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                SqlIdList.Bind(selectCmd, "@candidateIds", idList);
 
-            DeleteTargetFrameworkRows(command, snapshotId, idList);
+                using var reader = selectCmd.ExecuteReader();
+                while (reader.Read())
+                    removedIds.Add(reader.GetString(0));
+            }
+
+            if (removedIds.Count > 0)
+            {
+                using var deleteCmd = _connection.CreateCommand();
+                deleteCmd.Transaction = transaction;
+                deleteCmd.CommandText = """
+                    DELETE FROM snapshot_symbols
+                    WHERE snapshot_id = @snapshotId
+                      AND symbol_id IN (SELECT value FROM json_each(@symbolIds));
+                    """;
+                deleteCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
+                SqlIdList.Bind(deleteCmd, "@symbolIds", removedIds);
+                deleteCmd.ExecuteNonQuery();
+
+                DeleteTargetFrameworkRows(deleteCmd, snapshotId, removedIds);
+            }
+
             transaction.Commit();
+            return removedIds;
         }
         catch
         {

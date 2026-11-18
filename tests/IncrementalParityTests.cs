@@ -1059,9 +1059,9 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     {
         // V1: only M(long) exists; c.M(42) binds to M(long) via implicit
         // conversion. V2 adds M(int) in a NEW file — the unedited caller now
-        // binds to M(int) by overload resolution. The incremental
-        // cross-document BFS must re-extract the unedited caller even though
-        // only a file was added (not edited).
+        // binds to M(int) by overload resolution. Under D43, adding a file
+        // widens the scope to its project and every dependent project, so the
+        // unedited caller in App is re-extracted.
         CreateProject("Calc",
             new Dictionary<string, string>
             {
@@ -1672,7 +1672,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Scenario_ClosureDocumentWithNewSymbolIds_ShowsOnlyCurrentDeclarations()
+    public async Task Scenario_ClosureDocumentWithNewSymbolIds_MatchesTheFullRebuild()
     {
         CreateProject("Lib",
             new Dictionary<string, string>
@@ -1703,9 +1703,19 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         Assert.NotEqual(snapshotA, snapshotB);
         AssertCurrentWidgetDeclarationsOnly(snapshotB);
-        Assert.Equal(
-            SnapshotAssertions.ReadDeclarations(_cleanRebuildDbPath, snapshotC),
-            SnapshotAssertions.ReadDeclarations(DbPath, snapshotB));
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        using var store = OpenStore(DbPath);
+        var symbolsB = store.GetSymbolIdsInSnapshot(snapshotB);
+        Assert.DoesNotContain(symbolsB, id => id.StartsWith("M:C.M(A.Widget)|", StringComparison.Ordinal));
+
+        var ftsSymbolIdsB = ReadFtsSymbolIds(snapshotB);
+        Assert.Contains(ftsSymbolIdsB, id => id.StartsWith("M:C.M(B.Widget)|", StringComparison.Ordinal));
+        Assert.DoesNotContain(ftsSymbolIdsB, id => id.StartsWith("M:C.M(A.Widget)|", StringComparison.Ordinal));
+
+        var semanticChanges = store.GetSemanticChanges(snapshotA, snapshotB);
+        Assert.Contains(semanticChanges, c => c.ChangeType == "symbol_removed" && c.SymbolId.StartsWith("M:C.M(A.Widget)|", StringComparison.Ordinal));
+        Assert.Contains(semanticChanges, c => c.ChangeType == "symbol_added" && c.SymbolId.StartsWith("M:C.M(B.Widget)|", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1742,7 +1752,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Scenario_UnchangedPartialSiblingWithNewSymbolIds_ShowsOnlyCurrentDeclarations()
+    public async Task Scenario_UnchangedPartialSiblingWithNewSymbolIds_MatchesTheFullRebuild()
     {
         CreateProject("Lib",
             new Dictionary<string, string>
@@ -1787,9 +1797,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         Assert.NotEqual(snapshotA, snapshotB);
         AssertCurrentWidgetDeclarationsOnly(snapshotB);
-        Assert.Equal(
-            SnapshotAssertions.ReadDeclarations(_cleanRebuildDbPath, snapshotC),
-            SnapshotAssertions.ReadDeclarations(DbPath, snapshotB));
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
     }
 
     [Fact]
@@ -1825,6 +1833,419 @@ public sealed class IncrementalParityTests : IntegrationTestBase
 
         var graphNodesB = SnapshotAssertions.ReadSnapshotGraphNodes(DbPath, snapshotB);
         Assert.DoesNotContain(graphNodesB, id => id.StartsWith("T:System.Enum|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ScenarioD43_MemberAddedInAnExistingFile_RebindsACallerWithoutAnArc()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Ext1.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext1
+                          {
+                              public static int F(this object o) => 1;
+                          }
+                          """,
+            ["Ext2.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext2
+                          {
+                              public static int G() => 0;
+                          }
+                          """,
+            ["Use.cs"] = """
+                         namespace Lib;
+
+                         public class Use
+                         {
+                             public int Run() => "s".F();
+                         }
+                         """
+        });
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "Ext2.cs", """
+                                    namespace Lib;
+
+                                    public static class Ext2
+                                    {
+                                        public static int G() => 0;
+                                        public static int F(this string s) => 2;
+                                    }
+                                    """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        var useRunId = ResolveSymbolId(snapshotB, "global::Lib.Use.Run");
+        var ext2FId = ResolveSymbolId(snapshotB, "global::Lib.Ext2.F");
+        var ext1FId = ResolveSymbolId(snapshotB, "global::Lib.Ext1.F");
+
+        using var store = OpenStore(DbPath);
+        var edges = store.GetEdges(snapshotB);
+        Assert.Contains(edges, e =>
+            e.Kind == nameof(EdgeKind.Calls) &&
+            e.SourceSymbolId == useRunId &&
+            e.TargetSymbolId == ext2FId);
+        Assert.DoesNotContain(edges, e =>
+            e.Kind == nameof(EdgeKind.Calls) &&
+            e.SourceSymbolId == useRunId &&
+            e.TargetSymbolId == ext1FId);
+    }
+
+    [Fact]
+    public async Task ScenarioD43_GlobalUsingAliasChange_RebindsAnUnchangedDocument()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["GlobalUsings.cs"] = "global using Shape = App.Square;",
+            ["Shapes.cs"] = """
+                            namespace App;
+
+                            public class Square { }
+                            public class Circle { }
+                            """,
+            ["Use.cs"] = """
+                         namespace App;
+
+                         public class Use
+                         {
+                             public object Make() => new Shape();
+                         }
+                         """
+        });
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("App", "GlobalUsings.cs", "global using Shape = App.Circle;");
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        var useMakeId = ResolveSymbolId(snapshotB, "global::App.Use.Make");
+        var circleId = ResolveSymbolId(snapshotB, "global::App.Circle");
+        var squareId = ResolveSymbolId(snapshotB, "global::App.Square");
+        using var store = OpenStore(DbPath);
+        var edges = store.GetEdges(snapshotB);
+        Assert.Contains(edges, e =>
+            e.Kind == nameof(EdgeKind.Constructs) &&
+            e.SourceSymbolId == useMakeId &&
+            e.TargetSymbolId == circleId);
+        Assert.DoesNotContain(edges, e =>
+            e.Kind == nameof(EdgeKind.Constructs) &&
+            e.SourceSymbolId == useMakeId &&
+            e.TargetSymbolId == squareId);
+    }
+
+    [Fact]
+    public async Task ScenarioD43_NewFileInAReferencedProject_RebindsTheDependentProject()
+    {
+        CreateProject("Core", new Dictionary<string, string>
+        {
+            ["Marker.cs"] = """
+                            namespace Core;
+
+                            public class Marker { }
+                            """
+        });
+
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["AppLinq.cs"] = """
+                             using System.Linq;
+                             using Core;
+
+                             namespace App;
+
+                             public class AppLinq
+                             {
+                                 public int CountAll(int[] items) => items.Count();
+                             }
+                             """
+        }, projectReferences: ["Core"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Core", "CoreCount.cs", """
+                                          namespace Core;
+
+                                          public static class CoreCount
+                                          {
+                                              public static int Count(this int[] items) => items.Length;
+                                          }
+                                          """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        var countAllId = ResolveSymbolId(snapshotB, "global::App.AppLinq.CountAll");
+        var coreCountId = ResolveSymbolId(snapshotB, "global::Core.CoreCount.Count");
+
+        using var store = OpenStore(DbPath);
+        var edges = store.GetEdges(snapshotB);
+        Assert.Contains(edges, e =>
+            e.Kind == nameof(EdgeKind.Calls) &&
+            e.SourceSymbolId == countAllId &&
+            e.TargetSymbolId == coreCountId);
+    }
+
+    [Fact]
+    public async Task ScenarioD43_ScrutorScanOfAReferencedAssembly_SeesANewClass()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["IService.cs"] = """
+                              namespace Lib;
+
+                              public interface IService { }
+                              """,
+            ["A.cs"] = """
+                       namespace Lib;
+
+                       public class A : IService { }
+                       """
+        });
+
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Startup.cs"] = """
+                             using Microsoft.Extensions.DependencyInjection;
+                             using Scrutor;
+
+                             namespace App;
+
+                             public static class Startup
+                             {
+                                 public static void Configure(IServiceCollection services) =>
+                                     services.Scan(s => s.FromAssemblyOf<Lib.IService>().AddClasses().AsImplementedInterfaces());
+                             }
+                             """
+        },
+        packageReferences: ["Scrutor@4.2.2"],
+        projectReferences: ["Lib"]);
+
+        RestoreSolution();
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "B.cs", """
+                                 namespace Lib;
+
+                                 public class B : IService { }
+                                 """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        var serviceId = ResolveSymbolId(snapshotB, "global::Lib.IService");
+        var bId = ResolveSymbolId(snapshotB, "global::Lib.B");
+
+        using var store = OpenStore(DbPath);
+        var edges = store.GetEdges(snapshotB);
+        Assert.Contains(edges, e =>
+            e.Kind == nameof(EdgeKind.Registers) &&
+            e.SourceSymbolId == serviceId &&
+            e.TargetSymbolId == bId &&
+            e.Provenance == Provenance.Convention);
+    }
+
+    [Fact]
+    public async Task ScenarioD43_DeclarationChange_WritesTheWidenedMarker()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Ext1.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext1
+                          {
+                              public static int F(this object o) => 1;
+                          }
+                          """,
+            ["Ext2.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext2
+                          {
+                              public static int G() => 0;
+                          }
+                          """,
+            ["Use.cs"] = """
+                         namespace Lib;
+
+                         public class Use
+                         {
+                             public int Run() => "s".F();
+                         }
+                         """
+        });
+
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "Ext2.cs", """
+                                    namespace Lib;
+
+                                    public static class Ext2
+                                    {
+                                        public static int G() => 0;
+                                        public static int F(this string s) => 2;
+                                    }
+                                    """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+
+        Assert.Equal(1L, CountTimingStepRows(snapshotB, SnapshotTimingSteps.ClosureWidened));
+    }
+
+    [Fact]
+    public async Task ScenarioD43_BodyOnlyEdit_KeepsTheNarrowScope()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Ext1.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext1
+                          {
+                              public static int F(this object o) => 1;
+                          }
+                          """,
+            ["Ext2.cs"] = """
+                          namespace Lib;
+
+                          public static class Ext2
+                          {
+                              public static int G() => 0;
+                          }
+                          """,
+            ["Use.cs"] = """
+                         namespace Lib;
+
+                         public class Use
+                         {
+                             public int Run() => "s".F();
+                         }
+                         """
+        });
+
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "Ext1.cs", """
+                                    namespace Lib;
+
+                                    public static class Ext1
+                                    {
+                                        public static int F(this object o) => 3;
+                                    }
+                                    """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+
+        Assert.Equal(0L, CountTimingStepRows(snapshotB, SnapshotTimingSteps.ClosureWidened));
+        Assert.Equal(1L, CountTimingStepRows(snapshotB, SnapshotTimingSteps.ClosureNarrowed));
+    }
+
+    [Fact]
+    public async Task ScenarioD43_DeletedLinkedDocumentOutsideProjectDir_StillWidens()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Base.cs"] = """
+                          namespace Lib;
+
+                          public static class Base
+                          {
+                              public static int M(this object o) => 1;
+                          }
+                          """
+        });
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Caller.cs"] = """
+                            using Lib;
+
+                            namespace App;
+
+                            public class Caller
+                            {
+                                public int Run() => 42.M();
+                            }
+                            """
+        }, projectReferences: ["Lib"]);
+
+        var linkedDir = Path.Combine(TestDir, "shared");
+        Directory.CreateDirectory(linkedDir);
+        var linkedFile = Path.Combine(linkedDir, "LinkedExt.cs");
+        File.WriteAllText(linkedFile, """
+                                      namespace Lib;
+
+                                      public static class LinkedExt
+                                      {
+                                          public static int M(this int x) => 2;
+                                      }
+                                      """);
+
+        var libCsprojPath = Path.Combine(TestDir, "src", "Lib", "Lib.csproj");
+        var originalCsproj = File.ReadAllText(libCsprojPath);
+        File.WriteAllText(libCsprojPath, originalCsproj.Replace(
+            "</Project>",
+            """
+              <ItemGroup>
+                <Compile Include="..\..\shared\LinkedExt.cs" Link="LinkedExt.cs" />
+              </ItemGroup>
+            </Project>
+            """,
+            StringComparison.Ordinal));
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        File.Delete(linkedFile);
+        File.WriteAllText(libCsprojPath, originalCsproj);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        Assert.Equal(1L, CountTimingStepRows(snapshotB, SnapshotTimingSteps.ClosureWidened));
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+    }
+
+    private long CountTimingStepRows(string snapshotId, string stepName)
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM snapshot_timings WHERE snapshot_id = @snapshotId AND step_name = @stepName;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@stepName", stepName);
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private List<string> ReadFtsSymbolIds(string snapshotId)
+    {
+        using var connection = OpenDbConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT symbol_id FROM symbol_fts WHERE snapshot_id = @snapshotId;";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        var ids = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            ids.Add(reader.GetString(0));
+        return ids;
     }
 
     private void AssertCurrentWidgetDeclarationsOnly(string snapshotId)

@@ -53,7 +53,7 @@ internal static class FlagCatalog
 
     // index
     public static readonly FlagSpec Solution = new("--solution=", "Path to the `.sln` or `.slnx` file.", "path");
-    public static readonly FlagSpec Strategy = new("--strategy=", "`full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index.", AllowedValues: IndexRunner.Strategies);
+    public static readonly FlagSpec Strategy = new("--strategy=", "`full`: index every document from scratch. `incremental`: re-index changed documents, their reverse-edge closure and type parts; when a document is added, deleted or edited outside member bodies, re-index its project and dependent projects. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index.", AllowedValues: IndexRunner.Strategies);
     public static readonly FlagSpec OutputJson = new("--output-json=", "Also write the snapshot manifest as JSON (a one-way export; never read back as authority).", "path");
     public static readonly FlagSpec SkipAdapter = new("--skip-adapter=", "Skip a named framework adapter.", "name", AllowedValues: AdapterRegistry.Names, Repeatable: true);
     public static readonly FlagSpec SkipDiff = new("--skip-diff", "Skip computing and persisting the semantic diff against the previous snapshot. `--mode=diff` still computes the diff live.");

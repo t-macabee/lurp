@@ -11,8 +11,8 @@ public static class SnapshotTimingSteps
     public const string ConfigurationCheck = "configuration_check";
 
     /// <summary>
-    ///     Incremental only: prune of symbols removed from the changed documents, and the
-    ///     symbol and path sets that the FTS rebuild and the semantic diff share.
+    ///     Incremental only: prune of unlinked symbols from the extraction-scope documents,
+    ///     and the symbol and path sets that the FTS rebuild and the semantic diff share.
     /// </summary>
     public const string ChangeScope = "change_scope";
 
@@ -28,4 +28,11 @@ public static class SnapshotTimingSteps
     public const string ClosureNarrowed = "closure_narrowed_document_scope";
 
     public const string ClosureFallback = "closure_fallback_project_scope";
+
+    /// <summary>
+    ///     Zero-duration marker row recorded when an incremental run widens its
+    ///     extraction scope to the affected projects and their dependents because
+    ///     at least one document was added, deleted, or edited outside member bodies (D43).
+    /// </summary>
+    public const string ClosureWidened = "closure_widened_declaration_change";
 }

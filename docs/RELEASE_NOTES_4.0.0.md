@@ -273,6 +273,13 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 
 - An incremental run extracts each document once. A null-path edge of a
   document outside the run's scope is kept; before, a run could drop it.
+- An edit outside member bodies (a new or removed member, a signature, an
+  attribute, a `using` or alias directive) and an added or deleted file
+  re-extract the project and every project that depends on it. Before, such an
+  edit could leave a caller bound to the old target until a full run.
+- When an edit changes the symbol ids of an unchanged document (for example, a
+  type that its signatures use is renamed or moved), `search` and the stored diff
+  no longer keep the old ids.
 
 ## Breaking changes (CLI/MCP contract version 7)
 

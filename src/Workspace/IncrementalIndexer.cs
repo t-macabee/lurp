@@ -13,7 +13,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
     // Incremental indexing strategy:
     //   1. Hash all documents and compare against the previous manifest to find changed/new/deleted files.
-    //   2. Compute the one extraction scope (changed documents, reverse-edge closure, type parts, and R3 new-file project documents) and identify affected projects.
+    //   2. Compute the one extraction scope (changed documents, reverse-edge closure, type parts, and any D43 declaration-level wide set) and identify affected projects.
     //   3. Load compilations only for affected projects (skip unchanged ones).
     //   4. Create a new snapshot manifest, copy forward edges/diagnostics/symbols/annotations from the previous snapshot.
     //   5. Remove stale data (edges, annotations, binding-incompleteness, declarations, TFMs, diagnostics) for the extraction scope.
@@ -85,50 +85,35 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var sw2 = Stopwatch.StartNew();
         _output.Write("Identifying affected projects... ");
 
-        // New-file widening (R3): a NEWLY ADDED file can change overload
-        // resolution for unedited callers in other documents — a new overload
-        // can steal a binding, or a new member can make a previously-unbound
-        // call bind. The BFS can only follow persisted arcs and a new file has
-        // none, so seed it with every document of each added file's project:
-        // their declarations exist in the previous snapshot, so the BFS follows
-        // the old arc to the callers that must be rebound. Guarded to added
-        // files — edits keep today's narrow seed, preserving incremental
-        // performance for the common case.
-        var addedFilePaths = changedDocs
-            .Where(static c => c.ChangeKind == DocumentChangeDetector.DocumentChangeKind.New)
-            .Select(static c => c.RelativePath)
-            .ToHashSet(PathNormalizer.PathComparer);
-        var newFileProjectPaths = addedFilePaths.Count == 0
+        // Declaration-level widening (D43): an added or deleted document, or an edit
+        // outside member bodies (Roslyn top-level equivalence), can create or steal a
+        // binding with no edge in the previous snapshot. Widen to the documents of the
+        // trigger's project and every project that depends on it. Body-only edits keep
+        // the narrow reverse-edge closure.
+        var triggerPaths = await CollectDeclarationChangeTriggersAsync(solution, previousSnapshotId, changedDocs, cancellationToken);
+        var widePaths = triggerPaths.Count == 0
             ? null
-            : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
+            : GetProjectDocumentPaths(solution, _changeDetector.IdentifyAffectedProjects(solution, triggerPaths, previousRichManifest.ProjectDocuments));
 
-        var invalidationPaths = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         var closure = new ReverseEdgeClosure(_store, _gitRoot);
-        var closureSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
-        if (newFileProjectPaths != null)
-            closureSeed.UnionWith(newFileProjectPaths);
-        var (closurePaths, fellBackToProjectScope) = closure.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
-        invalidationPaths.UnionWith(closurePaths);
-        if (newFileProjectPaths != null)
-        {
-            invalidationPaths.UnionWith(newFileProjectPaths);
-            closurePaths.UnionWith(newFileProjectPaths);
-        }
+        var (closurePaths, fellBackToProjectScope) = closure.FindAffectedDocPaths(solution, previousSnapshotId, changedPaths);
+        if (widePaths != null)
+            _output.WriteLine($"  {triggerPaths.Count} declaration-level change(s); widened scope to {widePaths.Count} document(s).");
 
-        if (newFileProjectPaths != null)
-            _output.WriteLine($"  {addedFilePaths.Count} new file(s); widened closure to {newFileProjectPaths.Count} document(s) in the new files' project(s).");
         timings.Add(new SnapshotTimingRow(
             fellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
             0));
+        if (widePaths is { Count: > 0 })
+            timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.ClosureWidened, 0));
 
         // Extraction scope: the one set of documents that will be deleted and
         // re-extracted in lockstep in steps 5 and 6.
         //
         // Contents: changed documents, the reverse-edge closure (closurePaths),
-        // R3 new-file project documents (when any file was added), and every
-        // document declaring any part of a type whose declaring syntax appears
-        // in that seed (ExpandToDeclaringTypeParts). The type-part expansion is
-        // required because two extraction guards are type-level
+        // the declaration-level wide set (when any document is added, deleted, or
+        // edited outside member bodies), and every document declaring any part of
+        // a type whose declaring syntax appears in that seed (ExpandToDeclaringTypeParts).
+        // The type-part expansion is required because two extraction guards are type-level
         // (SymbolStructuralEdgeExtractor.IsTypeInScope, PolymorphismExtractionContext
         // .IsTypeInScope), so a purely file-granular scope would leave partial types
         // half in and half out of scope while whole-symbol properties such as
@@ -140,13 +125,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // without needing a second extraction pass.
         var extractionScopeSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         extractionScopeSeed.UnionWith(closurePaths);
-        if (newFileProjectPaths != null)
-            extractionScopeSeed.UnionWith(newFileProjectPaths);
+        if (widePaths != null)
+            extractionScopeSeed.UnionWith(widePaths);
 
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
-        var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, extractionScopePaths);
-        var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
-        invalidationPaths.UnionWith(affectedDocumentPaths);
+        var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, extractionScopePaths, previousRichManifest.ProjectDocuments);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
         // and forward-slash normalized. Passing the git-root-relative form matches
@@ -154,8 +137,6 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         var extractionScopeAbsolutePaths = ToAbsoluteNormalizedPaths(extractionScopePaths);
         _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
-        var oldDocVersionIds = _store.GetDocumentVersionIdsForDocuments(previousSnapshotId, changedPaths);
-        var oldDocVersionIdSet = new HashSet<string>(oldDocVersionIds);
         sw2.Stop();
         timings.Add(new SnapshotTimingRow("affected_project_resolution", sw2.ElapsedMilliseconds));
 
@@ -205,7 +186,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 }
             }
 
-            PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, extractionScopePaths);
+            var pruneCandidates = PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, extractionScopePaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds));
 
@@ -217,23 +198,24 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             sw6.Stop();
             timings.Add(new SnapshotTimingRow("re_extraction", sw6.ElapsedMilliseconds));
 
-            // Step 6b: Prune symbols that were in changed documents' old versions
-            // but are no longer present after re-extraction
+            // Step 6b: Prune symbols that were in the scope documents' old versions
+            // and no longer have any declaration linked in the new snapshot.
             var swScope = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
-            var prunedSymbolIds = PruneRemovedSymbols(previousSnapshotId, newSnapshotIdStr, oldDocVersionIdSet, changedPaths);
+            var prunedSymbolIds = _store.PruneUnlinkedSnapshotSymbols(newSnapshotIdStr, pruneCandidates);
+            if (prunedSymbolIds.Count > 0)
+                _output.WriteLine($"Pruned {prunedSymbolIds.Count} removed symbols.");
 
-            // Compute the set of symbol IDs that need their FTS entries refreshed:
-            // all symbols currently declared in the changed documents after re-extraction,
-            // plus any symbols that were pruned (their stale FTS rows must be deleted).
-            var changedSymbolIds = ComputeChangedSymbolIds(newSnapshotIdStr, invalidationPaths);
+            // Compute the set of symbol IDs that need their FTS entries refreshed and
+            // semantic diff evaluated: all symbols currently declared in the extraction
+            // scope after re-extraction, plus any symbols that were pruned.
+            var diffAndSearchSymbolIds = ComputeChangedSymbolIds(newSnapshotIdStr, extractionScopePaths);
             foreach (var id in prunedSymbolIds)
-                changedSymbolIds.Add(id);
+                diffAndSearchSymbolIds.Add(id);
 
             // Build the change scope once so downstream phases share the same sets.
-            var diffAndSearchSymbolIds = new HashSet<string>(changedSymbolIds);
             var changeScope = new IncrementalChangeScope(
-                invalidationPaths,
+                changedPaths,
                 diffAndSearchSymbolIds);
 
             var finalizationContext = new SnapshotFinalizationContext(
@@ -305,7 +287,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return result;
     }
 
-    private void PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> extractionScopePaths)
+    private List<string> PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> extractionScopePaths)
     {
         _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
@@ -356,6 +338,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         _store.DeleteDiagnosticsByProjectNames(newSnapshotIdStr, affectedProjects);
 
         _output.WriteLine("done.");
+        return changedSymbolIds;
     }
 
     private (int Declarations, int Edges, int Diagnostics) ExtractReplacementFacts(
@@ -425,66 +408,6 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         }
 
         return (totalDecl, totalEdge, totalDiag);
-    }
-
-    private List<string> PruneRemovedSymbols(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> oldDocVersionIdSet, HashSet<string> changedPaths)
-    {
-        if (oldDocVersionIdSet.Count == 0)
-            return [];
-
-        // Get symbols that were in the old document versions
-        var oldSymbolIds = _store.GetSymbolIdsByDocumentVersionIds(previousSnapshotId, oldDocVersionIdSet);
-        if (oldSymbolIds.Count == 0)
-            return [];
-
-        // After re-extraction, look up new document version IDs for the changed paths
-        var pathToNewVersion = _store.GetDocumentVersionIdsByPath(newSnapshotIdStr);
-        var newDocVersionIdSet = new HashSet<string>(
-            changedPaths
-                .Where(pathToNewVersion.ContainsKey)
-                .Select(p => pathToNewVersion[p]));
-
-        // If no new document versions exist for any changed path (all changed
-        // documents were deleted), every old symbol is a prune candidate;
-        // otherwise only those absent from the re-extracted document versions.
-        List<string> candidateIds;
-        if (newDocVersionIdSet.Count == 0)
-        {
-            candidateIds = oldSymbolIds;
-        }
-        else
-        {
-            var newSymbolIds = new HashSet<string>(
-                _store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, newDocVersionIdSet));
-            candidateIds = [.. oldSymbolIds.Where(id => !newSymbolIds.Contains(id))];
-        }
-
-        // A candidate may still be declared elsewhere in the new snapshot — a
-        // partial type keeps its identity when one part is edited or deleted.
-        // Prune only symbols that no longer have any declaration site at all,
-        // or the surviving part's row is deleted along with the removed one.
-        var removedSymbolIds = candidateIds;
-        if (candidateIds.Count > 0)
-        {
-            // Survivors are read from every document version in the new snapshot
-            // except the stale versions of the changed documents themselves —
-            // those rows are exactly what pruning exists to remove.
-            var otherVersionIds = pathToNewVersion.Values
-                .Where(v => !oldDocVersionIdSet.Contains(v))
-                .ToList();
-            var survivingSymbolIds = otherVersionIds.Count == 0
-                ? []
-                : new HashSet<string>(_store.GetSymbolIdsByDocumentVersionIds(newSnapshotIdStr, otherVersionIds));
-            removedSymbolIds = [.. candidateIds.Where(id => !survivingSymbolIds.Contains(id))];
-        }
-
-        if (removedSymbolIds.Count == 0)
-            return [];
-
-        _output.Write($"Pruning {removedSymbolIds.Count} removed symbols... ");
-        _store.DeleteSnapshotSymbolsBySymbolIds(newSnapshotIdStr, removedSymbolIds);
-        _output.WriteLine("done.");
-        return removedSymbolIds;
     }
 
     private OrphanEdgeDropSummary FinalizeSnapshot(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
@@ -579,28 +502,67 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return paths;
     }
 
-    /// <summary>
-    ///     Maps git-root-relative document paths to the names of the projects that
-    ///     own them. Unlike <see cref="DocumentChangeDetector.IdentifyAffectedProjects" />,
-    ///     this does NOT follow project references — only the projects directly
-    ///     containing the given documents are returned.
-    /// </summary>
-    private HashSet<string> GetProjectsForPaths(Solution solution, HashSet<string> paths)
+    private async Task<HashSet<string>> CollectDeclarationChangeTriggersAsync(
+        Solution solution,
+        string previousSnapshotId,
+        IReadOnlyList<DocumentChangeDetector.DocumentChangeInfo> changedDocs,
+        CancellationToken cancellationToken)
     {
-        var projectNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var project in solution.Projects)
-            foreach (var document in project.Documents)
+        var triggerPaths = new HashSet<string>(PathNormalizer.PathComparer);
+        Dictionary<string, List<Document>>? docsByRelPath = null;
+
+        foreach (var change in changedDocs)
+        {
+            if (change.ChangeKind is DocumentChangeDetector.DocumentChangeKind.New or DocumentChangeDetector.DocumentChangeKind.Deleted)
             {
-                if (document.FilePath == null)
-                    continue;
-                if (paths.Contains(PathNormalizer.ToGitRelative(document.FilePath, _gitRoot)))
+                triggerPaths.Add(change.RelativePath);
+                continue;
+            }
+
+            docsByRelPath ??= BuildSolutionDocumentMap(solution);
+            if (!docsByRelPath.TryGetValue(change.RelativePath, out var docs) || docs.Count == 0)
+            {
+                triggerPaths.Add(change.RelativePath);
+                continue;
+            }
+
+            var previousText = _store.GetSource(change.RelativePath, previousSnapshotId);
+            foreach (var doc in docs)
+            {
+                var tree = await doc.GetSyntaxTreeAsync(cancellationToken);
+                if (tree == null || !DeclarationChange.IsBodyOnlyEdit(tree, previousText))
                 {
-                    projectNames.Add(project.Name);
+                    triggerPaths.Add(change.RelativePath);
                     break;
                 }
             }
+        }
 
-        return projectNames;
+        return triggerPaths;
+    }
+
+    private Dictionary<string, List<Document>> BuildSolutionDocumentMap(Solution solution)
+    {
+        var map = new Dictionary<string, List<Document>>(PathNormalizer.PathComparer);
+        foreach (var project in solution.Projects)
+        {
+            foreach (var document in project.Documents)
+            {
+                if (string.IsNullOrEmpty(document.FilePath))
+                    continue;
+
+                var relPath = PathNormalizer.ToGitRelative(document.FilePath, _gitRoot);
+                if (!map.TryGetValue(relPath, out var list))
+                {
+                    list = [];
+                    map[relPath] = list;
+                }
+
+                list.Add(document);
+            }
+        }
+
+        return map;
     }
 
     /// <summary>

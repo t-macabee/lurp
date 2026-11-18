@@ -91,7 +91,7 @@ Index a solution and store facts in the database.
 | Argument | Required | Description |
 |---|---|---|
 | `--solution=<path>` | Yes, or `LURP_SOLUTION_PATH` | Path to the `.sln` or `.slnx` file. |
-| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: only re-index changed documents. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index. |
+| `--strategy=<full\|incremental>` | No | `full`: index every document from scratch. `incremental`: re-index changed documents, their reverse-edge closure and type parts; when a document is added, deleted or edited outside member bodies, re-index its project and dependent projects. Default: `full` on first run, `incremental` on subsequent runs. `full` reuses a snapshot with the same id only when a full run built it; `full` is the definition of correctness: use it to recover a known-good index. |
 | `--output-json=<path>` | No | Also write the snapshot manifest as JSON (a one-way export; never read back as authority). |
 | `--skip-adapter=<ASP.NET Core\|Dependency Injection\|MediatR\|EF Core\|Serialization\|Test>` | No | Skip a named framework adapter. May be repeated. |
 | `--skip-diff` | No | Skip computing and persisting the semantic diff against the previous snapshot. `--mode=diff` still computes the diff live. |

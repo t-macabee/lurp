@@ -33,7 +33,10 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
         return (changedDocs, changedPaths);
     }
 
-    public HashSet<string> IdentifyAffectedProjects(Solution solution, HashSet<string> changedPaths)
+    public HashSet<string> IdentifyAffectedProjects(
+        Solution solution,
+        HashSet<string> changedPaths,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? previousProjectDocuments = null)
     {
         var affectedIds = new HashSet<ProjectId>();
 
@@ -52,6 +55,15 @@ public sealed class DocumentChangeDetector(string gitRoot, IOutputSink output)
                 affectedIds.Add(project.Id);
                 break;
             }
+
+            // A deleted linked document is absent from the current solution and can live
+            // outside the project directory; fall back to the previous snapshot's project
+            // document list so its owning project (and dependents) still widen.
+            if (!affectedIds.Contains(project.Id)
+                && previousProjectDocuments != null
+                && previousProjectDocuments.TryGetValue(project.Name, out var prevPaths)
+                && prevPaths.Any(changedPaths.Contains))
+                affectedIds.Add(project.Id);
 
             if (affectedIds.Contains(project.Id) || string.IsNullOrEmpty(project.FilePath))
                 continue;

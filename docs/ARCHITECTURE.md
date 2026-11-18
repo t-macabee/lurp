@@ -91,11 +91,15 @@ the stages that succeeded are saved, each document of the project gets an
 `extractor_failure` binding-incompleteness row, and the run prints a warning. The
 full and incremental pipelines follow the same rule.
 
-Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts only
-changed documents and creates a new snapshot when content changes; it never
-mutates an existing snapshot. When nothing changed, the existing snapshot is
-reused via content-addressed dedup and becomes the latest snapshot of the
-workspace.
+Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts the
+changed documents, every part of the types that they declare, and the documents
+that hold an edge into them (the reverse-edge closure); when a changed document
+changes anything outside member bodies (Roslyn top-level equivalence), or a
+document is added or deleted, the run re-extracts every document of that
+project and of every project that depends on it, and creates a new snapshot when
+content changes; it never mutates an existing snapshot. When nothing changed, the
+existing snapshot is reused via content-addressed dedup and becomes the latest
+snapshot of the workspace.
 
 Declarations are per document: a `partial` type declared in two documents
 yields two declaration records of a snapshot with one symbol id, and the

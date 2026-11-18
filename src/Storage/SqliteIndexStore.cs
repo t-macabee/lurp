@@ -363,10 +363,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _symbols!.CopySymbolTargetFrameworks(fromSnapshotId, toSnapshotId);
     }
 
-    public void DeleteSnapshotSymbolsBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)
+    public List<string> PruneUnlinkedSnapshotSymbols(string snapshotId, IEnumerable<string> candidateSymbolIds)
     {
         EnsureOpen();
-        _symbols!.DeleteSnapshotSymbolsBySymbolIds(snapshotId, symbolIds);
+        return _symbols!.PruneUnlinkedSnapshotSymbols(snapshotId, candidateSymbolIds);
     }
 
     public void DeleteSymbolTargetFrameworksBySymbolIds(string snapshotId, IEnumerable<string> symbolIds)

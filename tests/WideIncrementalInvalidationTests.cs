@@ -5,10 +5,11 @@ using System.Text;
 namespace Lurp.Tests;
 
 /// <summary>
-///     B16: an edit to one document invalidates every document of its project, so an
-///     incremental run can send more than SQLite's 32,766-parameter limit to the FTS rebuild,
-///     the maintenance deletes and the semantic diff. This end-to-end test indexes a project
-///     wide enough that the incremental run must bind more symbol ids than that limit.
+///     B16: adding a member triggers declaration-level widening (D43), so an edit to one
+///     document invalidates every document of its project and an incremental run can send more
+///     than SQLite's 32,766-parameter limit to the FTS rebuild, the maintenance deletes and
+///     the semantic diff. This end-to-end test indexes a project wide enough that the
+///     incremental run must bind more symbol ids than that limit.
 /// </summary>
 [Trait("Category", "Slow")]
 public sealed class WideIncrementalInvalidationTests : IntegrationTestBase
@@ -57,7 +58,7 @@ public sealed class WideIncrementalInvalidationTests : IntegrationTestBase
             Assert.True((long)command.ExecuteScalar()! > 32_766, "fixture too small to exceed the parameter limit");
         }
 
-        // A real code change in one file invalidates every document of its project.
+        // Adding a member triggers declaration-level widening (D43), invalidating every document of its project.
         WriteFile("WideProbe", "Edited.cs", """
             namespace WideProbe;
 
