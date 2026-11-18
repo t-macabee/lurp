@@ -204,7 +204,7 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v40, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit

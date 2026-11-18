@@ -230,11 +230,11 @@ static List<(string SymbolId, string DocPath, int? FullStart, int? FullEnd, int?
                d.full_start, d.full_end, d.signature_start, d.signature_end,
                d.body_start, d.body_end, d.name_start, d.name_end,
                d.is_partial, d.is_generated, d.generator_identity
-        FROM snapshot_documents sd
-        JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+        FROM snapshot_declarations sdecl
+        JOIN declarations d ON d.declaration_id = sdecl.declaration_id
+        JOIN document_versions dv ON dv.document_version_id = d.document_version_id
         JOIN documents docs ON docs.document_id = dv.document_id
-        JOIN declarations d ON d.document_version_id = sd.document_version_id
-        WHERE sd.snapshot_id = @id
+        WHERE sdecl.snapshot_id = @id
         ORDER BY d.symbol_id, docs.relative_path, d.full_start, d.full_end,
                  d.signature_start, d.signature_end, d.body_start, d.body_end,
                  d.name_start, d.name_end;";
@@ -288,9 +288,9 @@ static void NormalizeEdges(List<EdgeRecord> edges)
         if (c != 0) return c;
         c = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "", b.ReceiverTypeConstraintsJson ?? "");
         if (c != 0) return c;
-        c = string.Compare(a.SourceNodeKind?.ToString() ?? "", b.SourceNodeKind?.ToString() ?? "", StringComparison.Ordinal);
+        c = a.SourceIsBoundary.CompareTo(b.SourceIsBoundary);
         if (c != 0) return c;
-        return string.Compare(a.TargetNodeKind?.ToString() ?? "", b.TargetNodeKind?.ToString() ?? "", StringComparison.Ordinal);
+        return a.TargetIsBoundary.CompareTo(b.TargetIsBoundary);
     });
 }
 
@@ -309,8 +309,8 @@ static string? EdgeDiff(EdgeRecord a, EdgeRecord b)
     if (a.ReceiverTypeConstraintsJson != b.ReceiverTypeConstraintsJson) return "ReceiverTypeConstraintsJson";
     if (a.IsCrossGenerated != b.IsCrossGenerated) return "IsCrossGenerated";
     if (a.TypeArgumentsJson != b.TypeArgumentsJson) return "TypeArgumentsJson";
-    if (a.SourceNodeKind != b.SourceNodeKind) return "SourceNodeKind";
-    if (a.TargetNodeKind != b.TargetNodeKind) return "TargetNodeKind";
+    if (a.SourceIsBoundary != b.SourceIsBoundary) return "SourceIsBoundary";
+    if (a.TargetIsBoundary != b.TargetIsBoundary) return "TargetIsBoundary";
     return null;
 }
 

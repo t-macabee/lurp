@@ -55,17 +55,20 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal("route://GET /api/Items/{id}", route.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.ItemsController.Get"), route.TargetSymbolId);
         Assert.Equal(new AspNetCoreAdapter().Version, route.ExtractorVersion);
+        // Line 7: "    [HttpGet("{id}")]" (col 4) through line 8: "    public Item Get(int id) => new Item();" (col 42).
+        Assert.Equal((7, 4, 8, 42),
+            (route.SourceStartLine, route.SourceStartColumn, route.SourceEndLine, route.SourceEndColumn));
 
-        // Node kinds are not round-tripped through the edges read path; the
-        // graph_nodes table carries them.
+        // Boundary membership is recorded in snapshot_graph_nodes (D153).
         await using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
+            command.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @snapshotId AND node_id = @nodeId;";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
             command.Parameters.AddWithValue("@nodeId", "route://GET /api/Items/{id}");
-            var actual = command.ExecuteScalar();
-            Assert.Equal(GraphNodeKind.Route.ToString(), actual);
+            var actual = Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(1L, actual);
         }
     }
 
@@ -437,7 +440,12 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
             e.TargetSymbolId == ResolveSymbolId(snapshotId, "global::App.Service"));
 
         foreach (var edge in registers)
+        {
             Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
+            // Line 11: "        services.AddScoped<IService, Service>();" -> invocation spans col 8..47.
+            Assert.Equal((11, 8, 11, 47),
+                (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+        }
     }
 
     /// <summary>
@@ -536,16 +544,16 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal("convention:assembly_scan:App, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null", edge.TargetSymbolId);
         Assert.Equal(new DependencyInjectionAdapter().Version, edge.ExtractorVersion);
 
-        // Node kinds are not round-tripped through the edges read path; the
-        // graph_nodes table carries them.
+        // Boundary membership is recorded in snapshot_graph_nodes (D153).
         await using (var connection = new SqliteConnection($"Data Source={DbPath}"))
         {
             connection.Open();
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT node_kind FROM graph_nodes WHERE node_id = @nodeId;";
+            command.CommandText = "SELECT COUNT(*) FROM snapshot_graph_nodes WHERE snapshot_id = @snapshotId AND node_id = @nodeId;";
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
             command.Parameters.AddWithValue("@nodeId", edge.TargetSymbolId);
-            var actual = command.ExecuteScalar();
-            Assert.Equal(GraphNodeKind.Convention.ToString(), actual);
+            var actual = Convert.ToInt64(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(1L, actual);
         }
     }
 
@@ -578,6 +586,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Ping"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.PingHandler.Handle"), edge.TargetSymbolId);
         Assert.Equal(new MediatRAdapter().Version, edge.ExtractorVersion);
+        // Line 8: "    public Task<string> Handle(Ping request, CancellationToken ct) => Task.FromResult(\"pong\");" -> col 4..94.
+        Assert.Equal((8, 4, 8, 94),
+            (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
     }
 
     [Fact]
@@ -1116,6 +1127,9 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
         Assert.Equal(ResolveSymbolId(snapshotId, "global::App.Calculator"), edge.SourceSymbolId);
         Assert.Equal(ResolveSymbolId(snapshotId, "global::CalculatorTests.Add"), edge.TargetSymbolId);
         Assert.Equal(new TestAdapter().Version, edge.ExtractorVersion);
+        // Line 4: "    [Fact]" (col 4) through line 8: "    }" (col 5).
+        Assert.Equal((4, 4, 8, 5),
+            (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
     }
 
     /// <summary>

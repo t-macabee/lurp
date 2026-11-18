@@ -12,14 +12,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     internal IndexedSymbolInfo? GetSymbolInfo(string symbolId, string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
                    (SELECT COUNT(*) FROM declarations d
-                    JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-                    WHERE d.symbol_id = s.symbol_id AND sd.snapshot_id = @snapshotId) AS decl_count,
+                    {SnapshotDeclarationLink.Join("d", "sdecl1")}
+                    WHERE d.symbol_id = s.symbol_id) AS decl_count,
                    (SELECT MAX(d.is_partial) FROM declarations d
-                    JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-                    WHERE d.symbol_id = s.symbol_id AND sd.snapshot_id = @snapshotId) AS is_partial
+                    {SnapshotDeclarationLink.Join("d", "sdecl2")}
+                    WHERE d.symbol_id = s.symbol_id) AS is_partial
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.symbol_id = @symbolId AND ss.snapshot_id = @snapshotId;
@@ -120,14 +120,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     internal List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT doc.relative_path, d.full_start, d.full_end, dv.line_starts, dv.content,
                    COALESCE(d.is_generated, 0), d.document_version_id
             FROM declarations d
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
-            WHERE sd.snapshot_id = @snapshotId AND d.symbol_id = @symbolId
+            WHERE d.symbol_id = @symbolId
             """;
         if (!includeGenerated)
             command.CommandText += " AND COALESCE(d.is_generated, 0) = 0";
@@ -159,11 +159,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     internal Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId)
     {
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT d.symbol_id, d.document_version_id
             FROM declarations d
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-            WHERE sd.snapshot_id = @snapshotId
+            {SnapshotDeclarationLink.Join("d", "sdecl")}
             ORDER BY d.symbol_id, d.document_version_id;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
@@ -172,11 +171,11 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
     }
 
     // The scoped form of the full map above: the same rows restricted to the listed symbols.
-    internal static string DocumentVersionIdsBySymbolsSql() => """
+    internal static string DocumentVersionIdsBySymbolsSql() => $"""
         SELECT d.symbol_id, d.document_version_id
         FROM json_each(@symbolIds) j
         CROSS JOIN declarations d ON d.symbol_id = j.value
-        JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id AND sd.snapshot_id = @snapshotId
+        {SnapshotDeclarationLink.Join("d", "sdecl")}
         ORDER BY d.symbol_id, d.document_version_id;
         """;
 
@@ -240,11 +239,10 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             SELECT dv.content, d.{startCol}, d.{endCol}, dv.line_starts, dv.document_version_id
             FROM snapshot_symbols ss
             JOIN declarations d ON d.symbol_id = ss.symbol_id
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE ss.snapshot_id = @snapshotId
-              AND sd.snapshot_id = @snapshotId
               AND ss.symbol_id = @symbolId
             """;
 
@@ -296,7 +294,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             return [];
 
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT s.symbol_id, s.kind, s.assembly_identity, ss.fqn,
                    d.signature_start, d.signature_end,
                    d.name_start, d.name_end,
@@ -305,8 +303,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             FROM snapshot_symbols ss
             JOIN symbols s ON s.symbol_id = ss.symbol_id
             JOIN declarations d ON d.symbol_id = ss.symbol_id
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-                AND sd.snapshot_id = ss.snapshot_id
+            {SnapshotDeclarationLink.Join("d", "sdecl", "ss.snapshot_id")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             WHERE ss.snapshot_id = @snapshotId
@@ -430,14 +427,14 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         int totalCount;
         using (var countCmd = _connection.CreateCommand())
         {
-            countCmd.CommandText = """
+            countCmd.CommandText = $"""
                 SELECT COUNT(*)
                 FROM declarations d
+                {SnapshotDeclarationLink.Join("d", "sdecl")}
                 JOIN document_versions dv ON dv.document_version_id = d.document_version_id
                 JOIN documents doc ON doc.document_id = dv.document_id
-                JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
-                JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = sd.snapshot_id
-                WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+                JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = sdecl.snapshot_id
+                WHERE doc.relative_path = @relativePath
                   AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
                 """;
             if (!includeGenerated)
@@ -457,12 +454,12 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
             SELECT d.symbol_id, s.kind, ss.fqn, d.full_start, d.full_end, d.signature_start, d.name_start,
                    COALESCE(d.is_partial, 0), COALESCE(d.is_generated, 0)
             FROM declarations d
+            {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
-            JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
             JOIN symbols s ON s.symbol_id = d.symbol_id
-            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sd.snapshot_id
-            WHERE sd.snapshot_id = @snapshotId AND doc.relative_path = @relativePath
+            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id AND ss.snapshot_id = sdecl.snapshot_id
+            WHERE doc.relative_path = @relativePath
               AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
               AND {SymbolMetadata.NotImplicitlyDeclaredSql("ss")}
             {(includeGenerated ? string.Empty : " AND COALESCE(d.is_generated, 0) = 0")}

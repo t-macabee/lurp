@@ -185,7 +185,10 @@ public class MigrationRunner
             new Migration_034_ProjectAssemblyName(),
             new Migration_035_DeclarationIndexes(),
             new Migration_036_DropUnusedEdgeIndexes(),
-            new Migration_037_DocumentVersionsDocumentIdIndex()
+            new Migration_037_DocumentVersionsDocumentIdIndex(),
+            new Migration_038_SnapshotDeclarations(),
+            new Migration_039_DropWriteOnlyColumns(),
+            new Migration_040_EdgeSites()
         ];
     }
 }

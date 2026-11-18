@@ -27,7 +27,6 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
     internal List<EdgeRecord> Extract(SyntaxNode root, SemanticModel semanticModel)
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var literal in root.DescendantNodes().OfType<LiteralExpressionSyntax>())
         {
@@ -70,13 +69,7 @@ internal sealed class StringLiteralReflectionExtractor(ReflectionExtractionConte
             // D13, D134: a candidate that names its own owner is a fact like any other; the
             // readers ignore an edge from a member to itself.
             foreach (var targetId in targetIds)
-            {
-                var key = (sourceId, targetId, nameof(EdgeKind.ReflectionNameCandidate));
-                if (!seen.Add(key))
-                    continue;
-
                 edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.ReflectionNameCandidate), ExtractorConstants.ReflectionExtractor, loc, Provenance.NameCandidate));
-            }
         }
 
         return edges;

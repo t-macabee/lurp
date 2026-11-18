@@ -274,16 +274,16 @@ public sealed class DependencyInjectionAdapter : IFrameworkAdapter
         internal AdapterExtractionContext Context => context;
         internal string OwnerId => ownerId;
 
-        internal void Add(string sourceId, string targetId, string provenance, Location location, GraphNodeKind? targetNodeKind = null)
+        internal void Add(string sourceId, string targetId, string provenance, Location location, bool targetIsBoundary = false)
         {
             edges.Add(context.MakeEdge(sourceId, targetId, nameof(EdgeKind.Registers), provenance, version,
-                context.LocationResolver.Resolve(location), targetNodeKind: targetNodeKind));
+                context.LocationResolver.Resolve(location), targetIsBoundary: targetIsBoundary));
         }
 
         /// <summary>A registration that Lurp cannot read: source → the runtime-unknown node.</summary>
         internal void Unknown(string sourceId, Location location)
         {
-            Add(sourceId, GraphNodeIds.RuntimeUnknown, Provenance.RuntimeUnknown, location, GraphNodeKind.RuntimePlaceholder);
+            Add(sourceId, GraphNodeIds.RuntimeUnknown, Provenance.RuntimeUnknown, location, targetIsBoundary: true);
         }
 
         /// <summary>The owner → each named type of an unmodeled registration form, <c>runtime_unknown</c>.</summary>

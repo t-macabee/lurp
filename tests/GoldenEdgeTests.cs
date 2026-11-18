@@ -16,14 +16,31 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
         return new Dictionary<string, string> { [Doc] = source };
     }
 
-    private static void AssertEdgeContract(EdgeRecord edge, string kind, string provenance, string extractorVersion,
-        string sourceDocumentPathEndsWith)
+    internal static void AssertEdgeContract(EdgeRecord edge, string kind, string provenance, string extractorVersion,
+        string sourceDocumentPathEndsWith, params (int StartLine, int StartColumn, int EndLine, int EndColumn)[] expectedSites)
     {
         Assert.Equal(kind, edge.Kind);
         Assert.Equal(provenance, edge.Provenance);
         Assert.Equal(extractorVersion, edge.ExtractorVersion);
         Assert.NotNull(edge.SourceDocumentPath);
         Assert.EndsWith(sourceDocumentPathEndsWith, edge.SourceDocumentPath);
+
+        if (expectedSites.Length > 0)
+        {
+            if (edge.Sites.Count > 0)
+            {
+                Assert.Equal(
+                    expectedSites,
+                    edge.Sites.Select(static s => (s.StartLine, s.StartColumn, s.EndLine, s.EndColumn)).ToArray());
+            }
+            else
+            {
+                Assert.Single(expectedSites);
+                Assert.Equal(
+                    expectedSites[0],
+                    (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+            }
+        }
     }
 
     [Fact]
@@ -833,7 +850,15 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
                                                 }
                                                 """));
 
-        var edge = extraction.SingleEdge("Calls", "global::N.Painter.Paint", "global::N.IShape.Draw");
+        var painterPaint = extraction.ResolveId("global::N.Painter.Paint");
+        var shapeDraw = extraction.ResolveId("global::N.IShape.Draw");
+        var rawCalls = extraction.Result.Edges
+            .Where(e => e.Kind == "Calls" && e.SourceSymbolId == painterPaint && e.TargetSymbolId == shapeDraw)
+            .ToList();
+        Assert.Equal(2, rawCalls.Count);
+
+        var collapsed = EdgeMerge.CollapseBatch(rawCalls);
+        var edge = Assert.Single(collapsed);
         var expected = new[] { extraction.ResolveId("global::N.IRound"), extraction.ResolveId("global::N.ISquare") }
             .Order(StringComparer.Ordinal)
             .Select(static id => new[] { id });
@@ -1374,5 +1399,169 @@ public sealed class GoldenEdgeTests : InMemoryTestBase
             $"unsupported_syntax row for the controller document: {rows}");
         extraction.AssertEdgeSet("Calls", ("global::N.C.Get", "global::N.IService.Name"));
         extraction.AssertEdgeSet("ReflectionMemberRef", ("global::N.C.Route", "global::N.C.GetContent"));
+    }
+
+    [Fact]
+    public async Task CallsEdge_RepeatedCall_GivesOneRecordForEachSite()
+    {
+        // Line 6: "        Target();" -> invocation Target() starts at col 8 (8 spaces), length 8 -> col 16 (exclusive).
+        // Line 7: "        Target();" -> invocation Target() starts at col 8 (8 spaces), length 8 -> col 16 (exclusive).
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class C
+            {
+                public void Target() { }
+                public void Twice()
+                {
+                    Target();
+                    Target();
+                }
+            }
+            """));
+
+        var twiceId = extraction.ResolveId("global::N.C.Twice");
+        var targetId = extraction.ResolveId("global::N.C.Target");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "Calls" && e.SourceSymbolId == twiceId && e.TargetSymbolId == targetId)
+            .OrderBy(e => e.SourceStartLine)
+            .ThenBy(e => e.SourceStartColumn)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)6, (int?)8, (int?)6, (int?)16),
+                ((int?)7, (int?)8, (int?)7, (int?)16)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task DeclaresEdge_PartialMethod_GivesOneRecordForDefinitionAndImplementation()
+    {
+        // Line 3: "    public partial void M();" -> MethodDeclarationSyntax spans col 4..28 (24 chars).
+        // Line 4: "    public partial void M() { }" -> MethodDeclarationSyntax spans col 4..31 (27 chars).
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public partial class C
+            {
+                public partial void M();
+                public partial void M() { }
+            }
+            """));
+
+        var typeId = extraction.ResolveId("global::N.C");
+        var methodId = extraction.ResolveId("global::N.C.M");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "Declares" && e.SourceSymbolId == typeId && e.TargetSymbolId == methodId)
+            .OrderBy(e => e.SourceStartLine)
+            .ThenBy(e => e.SourceStartColumn)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)3, (int?)4, (int?)3, (int?)28),
+                ((int?)4, (int?)4, (int?)4, (int?)31)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task ReferencesEdge_ParameterDependency_RepeatedType_GivesOneRecordForEachSite()
+    {
+        // Line 4: "    public void M(Logger a, Logger b) { }"
+        // First Logger: "    public void M(" is 18 chars -> col 18..24.
+        // Second Logger: "    public void M(Logger a, " is 28 chars -> col 28..34.
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class Logger { }
+            public class C
+            {
+                public void M(Logger a, Logger b) { }
+            }
+            """));
+
+        var methodId = extraction.ResolveId("global::N.C.M");
+        var loggerId = extraction.ResolveId("global::N.Logger");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "References" && e.SourceSymbolId == methodId && e.TargetSymbolId == loggerId
+                        && e.ExtractorVersion == ExtractorConstants.ParameterDependenciesExtractor)
+            .OrderBy(e => e.SourceStartLine)
+            .ThenBy(e => e.SourceStartColumn)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)4, (int?)18, (int?)4, (int?)24),
+                ((int?)4, (int?)28, (int?)4, (int?)34)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task ReturnsEdge_SingleSite_IsLocatedAtMember()
+    {
+        // Line 4: "    public Result M() => new Result();" -> MethodDeclarationSyntax spans col 4..38 (34 chars).
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class Result { }
+            public class C
+            {
+                public Result M() => new Result();
+            }
+            """));
+
+        var methodId = extraction.ResolveId("global::N.C.M");
+        var resultId = extraction.ResolveId("global::N.Result");
+        var edge = Assert.Single(extraction.Result.Edges,
+            e => e.Kind == "Returns" && e.SourceSymbolId == methodId && e.TargetSymbolId == resultId);
+
+        Assert.Equal(((int?)4, (int?)4, (int?)4, (int?)38),
+            (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+    }
+
+    [Fact]
+    public async Task ReferencesEdge_WrittenBaseTypeArguments_RepeatedType_GivesOneRecordForEachUse()
+    {
+        // Line 3: "public class C : I<X, X> { }" -> spans col 0..28, located at primary declaration of C.
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class X { }
+            public interface I<T1, T2> { }
+            public class C : I<X, X> { }
+            """));
+
+        var typeId = extraction.ResolveId("global::N.C");
+        var xId = extraction.ResolveId("global::N.X");
+        var edges = extraction.Result.Edges
+            .Where(e => e.Kind == "References" && e.SourceSymbolId == typeId && e.TargetSymbolId == xId)
+            .ToList();
+
+        Assert.Equal(2, edges.Count);
+    }
+
+    [Fact]
+    public async Task MayDispatchToEdge_InterfaceDispatch_InheritedImplementation_GivesOneRecordPerImplementingType()
+    {
+        // Base implements I.M directly at line 2: "public class Base : I { public void M() { } }" (col 24..43).
+        // Derived also implements I through Base, so InterfaceDispatchExtractor visits (I.M, Base.M) twice.
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public interface I { void M(); }
+            public class Base : I { public void M() { } }
+            public class Derived : Base, I { }
+            """));
+
+        var ifaceM = extraction.ResolveId("global::N.I.M");
+        var baseM = extraction.ResolveId("global::N.Base.M");
+        var edges = extraction.Result.Edges
+            .Where(e => e.Kind == "MayDispatchTo" && e.SourceSymbolId == ifaceM && e.TargetSymbolId == baseM)
+            .ToList();
+
+        Assert.Equal(2, edges.Count);
+        Assert.All(edges, e => Assert.Equal(((int?)2, (int?)24, (int?)2, (int?)43),
+            (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn)));
     }
 }

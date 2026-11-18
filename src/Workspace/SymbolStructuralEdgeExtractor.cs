@@ -41,7 +41,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(typeSymbol.BaseType);
             if (targetId != null)
                 edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Inherits), typeSymbol,
-                    ExtractionUtils.IsOutsideCompilation(typeSymbol.BaseType, context.Compilation) ? GraphNodeKind.ExternalType : null));
+                    ExtractionUtils.IsOutsideCompilation(typeSymbol.BaseType, context.Compilation)));
         }
 
         foreach (var iface in typeSymbol.Interfaces)
@@ -50,7 +50,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             var targetId = MakeSymbolId(iface);
             if (targetId != null)
                 edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.Implements), typeSymbol,
-                    ExtractionUtils.IsOutsideCompilation(iface, context.Compilation) ? GraphNodeKind.ExternalType : null));
+                    ExtractionUtils.IsOutsideCompilation(iface, context.Compilation)));
         }
 
         AddWrittenSignatureReferences(sourceId, typeSymbol, sourceSyntax, edges);
@@ -124,7 +124,6 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
     /// </summary>
     private void AddWrittenSignatureReferences(string sourceId, ISymbol symbol, SyntaxNode? sourceSyntax, List<EdgeRecord> edges)
     {
-        var added = new HashSet<string>(StringComparer.Ordinal);
         foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
         {
             if (!context.IsInScope(syntaxRef.SyntaxTree))
@@ -156,7 +155,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             {
                 context.RecordFilteredExternal(type, sourceSyntax);
                 var targetId = MakeSymbolId(type);
-                if (targetId != null && added.Add(targetId))
+                if (targetId != null)
                     edges.Add(MakeEdge(sourceId, targetId, nameof(EdgeKind.References), symbol));
             }
         }
@@ -167,7 +166,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
         return SymbolIdFactory.Make(typeSymbol, context.AssemblyIdentity);
     }
 
-    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol, GraphNodeKind? targetNodeKind = null)
+    private EdgeRecord MakeEdge(string sourceId, string targetId, string kind, ISymbol sourceSymbol, bool targetIsBoundary = false)
     {
         var loc = GetSymbolSourceLocation(sourceSymbol);
         return new EdgeRecord
@@ -184,7 +183,7 @@ internal sealed class SymbolStructuralEdgeExtractor(SymbolExtractionContext cont
             SourceEndLine = loc?.endLine,
             SourceEndColumn = loc?.endColumn,
             IsCrossGenerated = IsGeneratedSymbol(sourceSymbol),
-            TargetNodeKind = targetNodeKind
+            TargetIsBoundary = targetIsBoundary
         };
     }
 

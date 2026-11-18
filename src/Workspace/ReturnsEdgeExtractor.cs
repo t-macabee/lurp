@@ -8,7 +8,6 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
     List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
             foreach (var member in typeSymbol.GetMembers())
@@ -29,10 +28,6 @@ internal sealed class ReturnsEdgeExtractor(MemberEdgeExtractionContext context) 
                     continue;
 
                 context.RecordFilteredExternal(method.ReturnType, BindingIncompletenessCollector.DeclaringSyntaxOrContainingType(owner));
-
-                var key = (ownerId, returnTypeId, nameof(EdgeKind.Returns));
-                if (!seen.Add(key))
-                    continue;
 
                 var loc = context.GetMemberSourceLocation(owner);
                 edges.Add(context.MakeEdge(ownerId, returnTypeId, nameof(EdgeKind.Returns),

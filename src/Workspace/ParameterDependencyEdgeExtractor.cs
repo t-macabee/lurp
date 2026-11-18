@@ -9,7 +9,6 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
     List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
             foreach (var member in typeSymbol.GetMembers())
@@ -44,10 +43,6 @@ internal sealed class ParameterDependencyEdgeExtractor(MemberEdgeExtractionConte
                             continue;
 
                         context.RecordFilteredExternal(usedType, sourceSyntax);
-
-                        var key = (sourceId, usedTypeId, nameof(EdgeKind.References));
-                        if (!seen.Add(key))
-                            continue;
 
                         // The edge names the parameter's type, so it is located at that
                         // type's syntax. For a primary constructor Roslyn reports the

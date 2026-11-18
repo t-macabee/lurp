@@ -40,14 +40,6 @@ public sealed class ProjectRow
     public IReadOnlyList<string>? DocumentPaths { get; init; }
 }
 
-public enum GraphNodeKind
-{
-    Route,
-    Convention,
-    RuntimePlaceholder,
-    ExternalType
-}
-
 public sealed record OrphanEdgeDropSummary(int Total, int External, int CompilerSynthesized, int Other)
 {
     public static readonly OrphanEdgeDropSummary Empty = new(0, 0, 0, 0);
@@ -64,6 +56,13 @@ public sealed record OrphanEdgeDropSummary(int Total, int External, int Compiler
             : null;
     }
 }
+
+public sealed record EdgeSite(
+    string DocumentPath,
+    int StartLine,
+    int StartColumn,
+    int EndLine,
+    int EndColumn);
 
 public sealed class EdgeRecord
 {
@@ -91,8 +90,64 @@ public sealed class EdgeRecord
     public bool IsCrossGenerated { get; init; }
     public string? TypeArgumentsJson { get; init; }
     public string? ReceiverTypeConstraintsJson { get; init; }
-    public GraphNodeKind? SourceNodeKind { get; init; }
-    public GraphNodeKind? TargetNodeKind { get; init; }
+    public bool SourceIsBoundary { get; init; }
+    public bool TargetIsBoundary { get; init; }
+    public IReadOnlyList<EdgeSite> Sites { get; init; } = [];
+
+    /// <summary>
+    ///     Returns a copy of this edge with <see cref="Sites" /> (and the primary location
+    ///     fields when <paramref name="sites" /> is non-empty), keeping existing payloads.
+    ///     Returns <see langword="this" /> when nothing changed.
+    /// </summary>
+    public EdgeRecord WithSites(IReadOnlyList<EdgeSite> sites) =>
+        WithSites(sites, TypeArgumentsJson, ReceiverTypeConstraintsJson);
+
+    /// <summary>
+    ///     Returns a copy of this edge with <see cref="Sites" /> (and the primary location
+    ///     fields when <paramref name="sites" /> is non-empty) and the specified
+    ///     type-argument and receiver-constraint payloads. Returns <see langword="this" />
+    ///     when nothing changed.
+    /// </summary>
+    public EdgeRecord WithSites(
+        IReadOnlyList<EdgeSite> sites,
+        string? typeArgumentsJson,
+        string? receiverTypeConstraintsJson)
+    {
+        ArgumentNullException.ThrowIfNull(sites);
+
+        var first = sites.Count > 0 ? sites[0] : null;
+        if (string.Equals(typeArgumentsJson, TypeArgumentsJson, StringComparison.Ordinal) &&
+            string.Equals(receiverTypeConstraintsJson, ReceiverTypeConstraintsJson, StringComparison.Ordinal) &&
+            Sites.SequenceEqual(sites) &&
+            (first == null || (
+                string.Equals(SourceDocumentPath, first.DocumentPath, StringComparison.Ordinal) &&
+                SourceStartLine == first.StartLine &&
+                SourceStartColumn == first.StartColumn &&
+                SourceEndLine == first.EndLine &&
+                SourceEndColumn == first.EndColumn)))
+            return this;
+
+        return new EdgeRecord
+        {
+            SourceSymbolId = SourceSymbolId,
+            TargetSymbolId = TargetSymbolId,
+            Kind = Kind,
+            Provenance = Provenance,
+            SnapshotId = SnapshotId,
+            ExtractorVersion = ExtractorVersion,
+            SourceDocumentPath = first?.DocumentPath ?? SourceDocumentPath,
+            SourceStartLine = first?.StartLine ?? SourceStartLine,
+            SourceStartColumn = first?.StartColumn ?? SourceStartColumn,
+            SourceEndLine = first?.EndLine ?? SourceEndLine,
+            SourceEndColumn = first?.EndColumn ?? SourceEndColumn,
+            IsCrossGenerated = IsCrossGenerated,
+            TypeArgumentsJson = typeArgumentsJson,
+            ReceiverTypeConstraintsJson = receiverTypeConstraintsJson,
+            SourceIsBoundary = SourceIsBoundary,
+            TargetIsBoundary = TargetIsBoundary,
+            Sites = sites
+        };
+    }
 }
 
 public sealed class DiagnosticRecord

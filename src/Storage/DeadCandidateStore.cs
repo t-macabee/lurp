@@ -27,13 +27,11 @@ internal sealed class DeadCandidateStore
     ///     The declaration query of <see cref="FetchDeclarationInfo" />. One owner: the
     ///     plan tests pin this text, so a change here is what they see.
     /// </summary>
-    internal static string DeclarationSql() => """
+    internal static string DeclarationSql() => $"""
         SELECT d.symbol_id, d.document_version_id, d.full_start, d.full_end, COALESCE(d.is_generated,0), d.is_partial
         FROM declarations d
-        CROSS JOIN snapshot_documents sd
-        WHERE sd.snapshot_id = @snapshotId
-          AND sd.document_version_id = d.document_version_id
-          AND d.symbol_id IN (SELECT value FROM json_each(@symbolIds));
+        CROSS {SnapshotDeclarationLink.Join("d", "sdecl")}
+        WHERE d.symbol_id IN (SELECT value FROM json_each(@symbolIds));
         """;
 
     /// <summary>
@@ -534,7 +532,7 @@ internal sealed class DeadCandidateStore
         var documentCache = new Dictionary<string, (string DocPath, int[]? LineStarts, byte[]? Content)>(StringComparer.Ordinal);
         // Declarations only, driven from the symbol ids. CROSS JOIN pins declarations as the
         // outer table so that with no sqlite_stat1 rows the planner cannot start from
-        // snapshot_documents and probe the IN list once per document row.
+        // snapshot_declarations and probe the IN list once per link row.
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = DeclarationSql();
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);

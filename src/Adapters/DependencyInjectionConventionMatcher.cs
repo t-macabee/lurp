@@ -51,7 +51,7 @@ internal static class DependencyInjectionConventionMatcher
 
         foreach (var assembly in assemblies.Distinct<IAssemblySymbol>(SymbolEqualityComparer.Default))
             call.Add(call.OwnerId, $"{GraphNodeIds.AssemblyScanConventionPrefix}{assembly.Identity.GetDisplayName()}", Provenance.Convention,
-                location, GraphNodeKind.Convention);
+                location, targetIsBoundary: true);
 
         if (unknown || assemblies.Count == 0)
             call.Unknown(call.OwnerId, location);

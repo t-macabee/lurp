@@ -259,6 +259,11 @@ internal sealed class CrossDocumentEdgeRefresher(SqliteIndexStore store, string 
                 allAffectedPaths.Add(GetRelativePath(path, gitRoot));
         store.DeleteEdgesByDocumentPaths(newSnapshotId, allAffectedPaths);
         store.DeleteAnnotationsByDocumentPaths(newSnapshotId, allAffectedPaths);
+        if (allAffectedPaths.Count > 0)
+        {
+            var affectedDocVersionIds = store.GetDocumentVersionIdsForDocuments(newSnapshotId, allAffectedPaths);
+            store.DeleteSnapshotDeclarationsByDocumentVersionIds(newSnapshotId, affectedDocVersionIds);
+        }
 
         var crossDocCompilations = await LoadCompilationsAsync(solution, affectedProjectNames, cancellationToken);
         var crossDocAssemblyIdentities = crossDocCompilations.Values

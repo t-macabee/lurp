@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v37, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v40, extractor 1.12.0, CLI/MCP contract v6, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -58,7 +58,8 @@ Logical boundaries:
 5. **Annotations**: human/agent interpretation, kept separate from compiler facts.
 
 Store complete document contents once per content hash; never make separately
-copied method bodies the canonical representation. Schema migrations are
+copied method bodies the canonical representation. Declarations are snapshot
+facts; each snapshot links to its own rows. Schema migrations are
 sequential and managed by `MigrationRunner`.
 
 Per-snapshot index cost is recorded in `snapshot_timings` (step → elapsed ms)
@@ -93,9 +94,11 @@ mutates an existing snapshot. When nothing changed, the existing snapshot is
 reused via content-addressed dedup.
 
 Declarations are per document: a `partial` type declared in two documents
-yields two declaration records with one symbol id, and the snapshot's symbol
-set holds that symbol once. `declarations_extracted_this_run` therefore counts
-declaration records while `symbols_in_snapshot` counts symbols.
+yields two declaration records of a snapshot with one symbol id, and the
+snapshot's symbol set holds that symbol once. `declarations_extracted_this_run`
+therefore counts declaration records while `symbols_in_snapshot` counts symbols.
+An edge keeps every site of its relation in source order; impact hops and
+capsule path hops list up to 20 sites with `site_count`.
 
 ### 4.1 Framework adapters
 

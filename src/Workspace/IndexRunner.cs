@@ -298,6 +298,7 @@ public static class IndexRunner
             var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
             var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
+            store.PruneSnapshotGraphNodes(snapshotIdStr);
             swOrphans.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 

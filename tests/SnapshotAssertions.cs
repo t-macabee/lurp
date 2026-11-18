@@ -61,6 +61,10 @@ internal static class SnapshotAssertions
 
             for (var i = 0; i < edgesC.Count && i < edgesB.Count; i++) AssertEqual(edgesB[i], edgesC[i]);
 
+            Assert.Equal(
+                ReadEdgeSites(dbPathC, snapshotC),
+                ReadEdgeSites(dbPathB, snapshotB));
+
             var diagB = storeB.GetDiagnostics(snapshotB);
             var diagC = storeC.GetDiagnostics(snapshotC);
             NormalizeDiagnostics(diagB);
@@ -133,7 +137,7 @@ internal static class SnapshotAssertions
         return result;
     }
 
-    private static List<DeclarationSnapshot> ReadDeclarations(string dbPath, string snapshotId)
+    internal static List<DeclarationSnapshot> ReadDeclarations(string dbPath, string snapshotId)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");
         connection.Open();
@@ -146,11 +150,11 @@ internal static class SnapshotAssertions
                    d.body_start, d.body_end,
                    d.name_start, d.name_end,
                    d.is_partial, d.is_generated, d.generator_identity
-            FROM snapshot_documents sd
-            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            FROM snapshot_declarations sdecl
+            JOIN declarations d ON d.declaration_id = sdecl.declaration_id
+            JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents docs ON docs.document_id = dv.document_id
-            JOIN declarations d ON d.document_version_id = sd.document_version_id
-            WHERE sd.snapshot_id = @snapshotId
+            WHERE sdecl.snapshot_id = @snapshotId
             ORDER BY d.symbol_id, docs.relative_path, d.full_start, d.full_end,
                      d.signature_start, d.signature_end, d.body_start, d.body_end,
                      d.name_start, d.name_end;
@@ -175,6 +179,38 @@ internal static class SnapshotAssertions
                 reader.GetInt32(11) != 0,
                 reader.IsDBNull(12) ? null : reader.GetString(12)));
 
+        return result;
+    }
+
+    internal static List<EdgeSiteSnapshot> ReadEdgeSites(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT e.source_symbol_id, e.target_symbol_id, e.kind,
+                   es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
+            FROM edge_sites es
+            JOIN edges e ON e.edge_id = es.edge_id
+            WHERE e.snapshot_id = @snapshotId
+            ORDER BY e.source_symbol_id, e.target_symbol_id, e.kind,
+                     es.document_path, es.start_line, es.start_column, es.end_line, es.end_column;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<EdgeSiteSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new EdgeSiteSnapshot(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt32(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6),
+                reader.GetInt32(7)));
         return result;
     }
 
@@ -311,9 +347,9 @@ internal static class SnapshotAssertions
             cmp = StringComparer.Ordinal.Compare(a.ReceiverTypeConstraintsJson ?? "",
                 b.ReceiverTypeConstraintsJson ?? "");
             if (cmp != 0) return cmp;
-            cmp = StringComparer.Ordinal.Compare(a.SourceNodeKind?.ToString() ?? "", b.SourceNodeKind?.ToString() ?? "");
+            cmp = a.SourceIsBoundary.CompareTo(b.SourceIsBoundary);
             if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.TargetNodeKind?.ToString() ?? "", b.TargetNodeKind?.ToString() ?? "");
+            return a.TargetIsBoundary.CompareTo(b.TargetIsBoundary);
         });
     }
 
@@ -369,8 +405,8 @@ internal static class SnapshotAssertions
         Assert.Equal(expected.ReceiverTypeConstraintsJson, actual.ReceiverTypeConstraintsJson);
         Assert.Equal(expected.IsCrossGenerated, actual.IsCrossGenerated);
         Assert.Equal(expected.TypeArgumentsJson, actual.TypeArgumentsJson);
-        Assert.Equal(expected.SourceNodeKind, actual.SourceNodeKind);
-        Assert.Equal(expected.TargetNodeKind, actual.TargetNodeKind);
+        Assert.Equal(expected.SourceIsBoundary, actual.SourceIsBoundary);
+        Assert.Equal(expected.TargetIsBoundary, actual.TargetIsBoundary);
     }
 
     private static void AssertEqual(DiagnosticRecord expected, DiagnosticRecord actual)
@@ -413,7 +449,7 @@ internal static class SnapshotAssertions
 
     private sealed record SymbolTargetFrameworkSnapshot(string SymbolId, string Tfm);
 
-    private sealed record DeclarationSnapshot(
+    internal sealed record DeclarationSnapshot(
         string SymbolId,
         string DocumentPath,
         int? FullStart,
@@ -435,4 +471,14 @@ internal static class SnapshotAssertions
         string Fqn,
         string DocCommentId,
         string Kind);
+
+    internal sealed record EdgeSiteSnapshot(
+        string SourceSymbolId,
+        string TargetSymbolId,
+        string Kind,
+        string DocumentPath,
+        int StartLine,
+        int StartColumn,
+        int EndLine,
+        int EndColumn);
 }

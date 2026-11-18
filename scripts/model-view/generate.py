@@ -188,10 +188,12 @@ class Index:
         self.diagnostics = self.conn.execute(
             "SELECT project_name, severity, id FROM diagnostics WHERE snapshot_id = ?", (sid,)).fetchall()
         self.files = self.conn.execute(
-            "SELECT d.relative_path, COUNT(decl.declaration_id) FROM snapshot_documents sd "
+            "SELECT d.relative_path, COUNT(sdecl.declaration_id) FROM snapshot_documents sd "
             "JOIN document_versions dv ON dv.document_version_id = sd.document_version_id "
             "JOIN documents d ON d.document_id = dv.document_id "
             "LEFT JOIN declarations decl ON decl.document_version_id = sd.document_version_id "
+            "LEFT JOIN snapshot_declarations sdecl ON sdecl.declaration_id = decl.declaration_id "
+            "AND sdecl.snapshot_id = sd.snapshot_id "
             "WHERE sd.snapshot_id = ? GROUP BY d.relative_path ORDER BY 2 DESC, 1", (sid,)).fetchall()
 
     def of_kind(self, kind):

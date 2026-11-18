@@ -24,7 +24,6 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
     internal List<EdgeRecord> Extract(List<INamedTypeSymbol> allTypes)
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind, string typeArgs)>();
 
         foreach (var type in allTypes)
         {
@@ -38,14 +37,14 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
             {
                 var typeArgsJson = GetTypeArgumentsJson(iface);
 
-                foreach (var member in iface.GetMembers()) EmitInterfaceDispatchEdge(type, member, edges, seen, typeArgsJson);
+                foreach (var member in iface.GetMembers()) EmitInterfaceDispatchEdge(type, member, edges, typeArgsJson);
             }
         }
 
         return edges;
     }
 
-    private void EmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, HashSet<(string source, string target, string kind, string typeArgs)> seen, string? typeArgumentsJson)
+    private void EmitInterfaceDispatchEdge(INamedTypeSymbol type, ISymbol member, List<EdgeRecord> edges, string? typeArgumentsJson)
     {
         if (member is not IMethodSymbol and not IPropertySymbol and not IEventSymbol)
             return;
@@ -62,10 +61,6 @@ internal sealed class InterfaceDispatchExtractor(PolymorphismExtractionContext c
 
         var implMemberId = context.MakeSymbolId(implMember);
         if (implMemberId == null || implMemberId == ifaceMemberId)
-            return;
-
-        var key = (ifaceMemberId, implMemberId, nameof(EdgeKind.MayDispatchTo), typeArgumentsJson ?? "");
-        if (!seen.Add(key))
             return;
 
         // S01-F15: the provenance belongs to the pair (interface member, implementation), not

@@ -224,12 +224,29 @@ index after the upgrade. Old snapshots stay until they are pruned.
   test assembly, the test class constructor and initializers, setup methods, and
   target-typed `new()`.
 
+## Storage
+
+- Declarations are linked to the snapshots that show them. After an incremental
+  or a full run in a database with older snapshots, `outline`, `navigate` and
+  dead candidates no longer return the declarations of an older compilation.
+  Schema v38.
+- Schema v39 drops four write-only columns and two unused tables. No behavior
+  changes except `snapshot_graph_nodes`, which now holds only boundary nodes
+  that are not snapshot symbols.
+- Schema v40 adds `edge_sites`: an edge keeps every site of its relation.
+  Existing edges get one site.
+- Every extractor reports every site of a relation. Reindex once.
+- Impact hops (`impact`, `lurp_impact`) and capsule path hops (`incoming_paths`,
+  `outgoing_paths`) include `site_count` and up to 20 ordered `sites`
+  (`document`, `line`, `column`, `end_line`, `end_column`); `source_*` fields
+  stay and equal the first site (additive, contract v6, output schema v6).
+
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v37 |
+| Database schema | v37 | v40 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v6 |
 | Output schema | v6 | v6 |

@@ -589,8 +589,8 @@ public sealed class CliExitSmokeTests : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
-            VALUES (@symbolId, 'T:Some.Type', 'assembly', 'Type', NULL, 'Some.Type');
+            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+            VALUES (@symbolId, 'T:Some.Type', 'assembly', 'Type');
             INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
             VALUES (@snapshotId, @symbolId, 'Some.Type', NULL);
             """;

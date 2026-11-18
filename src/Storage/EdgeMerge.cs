@@ -7,58 +7,175 @@ public static class EdgeMerge
     /// <summary>
     ///     Collapses a batch to one edge for each (source, target, kind). The edge with the
     ///     higher provenance rank wins (the first one on a tie); the type-argument and the
-    ///     receiver-constraint variants of every edge of the key are kept (<see cref="Merge" />).
+    ///     receiver-constraint variants of every edge of the key are kept (<see cref="Merge" />),
+    ///     and <see cref="EdgeRecord.Sites" /> keeps the ordered sites of the winning rank (D155.4).
     /// </summary>
     public static List<EdgeRecord> CollapseBatch(IEnumerable<EdgeRecord> edges)
     {
-        var best = new Dictionary<(string source, string target, string kind), EdgeRecord>();
+        var builders = new Dictionary<(string source, string target, string kind), BatchEdgeBuilder>();
 
         foreach (var edge in edges)
         {
             var key = (edge.SourceSymbolId, edge.TargetSymbolId, edge.Kind);
-            if (best.TryGetValue(key, out var existing))
-                best[key] = ProvenanceRank(edge.Provenance) > ProvenanceRank(existing.Provenance)
-                    ? Merge(edge, existing)
-                    : Merge(existing, edge);
+            if (builders.TryGetValue(key, out var builder))
+                builder.Add(edge);
             else
-                best[key] = edge;
+                builders[key] = new BatchEdgeBuilder(edge);
         }
 
-        return [.. best.Values];
+        var result = new List<EdgeRecord>(builders.Count);
+        foreach (var builder in builders.Values)
+            result.Add(builder.Build());
+        return result;
     }
 
     /// <summary>
     ///     The row of <paramref name="winner" /> with the union of the type-argument variants and
-    ///     the union of the receiver-constraint variants of both edges (the same rule as the
-    ///     persisted-row merge in <c>EdgeOperationsStore.WriteSplitEdges</c>).
+    ///     the union of the receiver-constraint variants of both edges, and sites per D155.4
+    ///     (equal rank adds sites; lower rank adds none).
     /// </summary>
     public static EdgeRecord Merge(EdgeRecord winner, EdgeRecord other)
     {
         var typeArguments = MergeTypeArguments(winner.TypeArgumentsJson, other.TypeArgumentsJson);
         var constraints = MergeReceiverTypeConstraints(winner.ReceiverTypeConstraintsJson, other.ReceiverTypeConstraintsJson);
-        if (string.Equals(typeArguments, winner.TypeArgumentsJson, StringComparison.Ordinal) &&
-            string.Equals(constraints, winner.ReceiverTypeConstraintsJson, StringComparison.Ordinal))
-            return winner;
+        var winnerSites = NormalizeSites(GetSites(winner));
+        var mergedSites = ProvenanceRank(winner.Provenance) == ProvenanceRank(other.Provenance)
+            ? NormalizeSites(winnerSites.Concat(GetSites(other)))
+            : winnerSites;
 
-        return new EdgeRecord
+        return winner.WithSites(mergedSites, typeArguments, constraints);
+    }
+
+    internal static IReadOnlyList<EdgeSite> GetSites(EdgeRecord edge)
+    {
+        if (edge.Sites.Count > 0)
+            return edge.Sites;
+
+        if (TryGetPrimarySite(edge, out var site))
+            return [site];
+
+        return [];
+    }
+
+    private static bool TryGetPrimarySite(EdgeRecord edge, out EdgeSite site)
+    {
+        if (edge.SourceDocumentPath != null &&
+            edge.SourceStartLine.HasValue &&
+            edge.SourceStartColumn.HasValue &&
+            edge.SourceEndLine.HasValue &&
+            edge.SourceEndColumn.HasValue)
         {
-            SourceSymbolId = winner.SourceSymbolId,
-            TargetSymbolId = winner.TargetSymbolId,
-            Kind = winner.Kind,
-            Provenance = winner.Provenance,
-            SnapshotId = winner.SnapshotId,
-            ExtractorVersion = winner.ExtractorVersion,
-            SourceDocumentPath = winner.SourceDocumentPath,
-            SourceStartLine = winner.SourceStartLine,
-            SourceStartColumn = winner.SourceStartColumn,
-            SourceEndLine = winner.SourceEndLine,
-            SourceEndColumn = winner.SourceEndColumn,
-            IsCrossGenerated = winner.IsCrossGenerated,
-            TypeArgumentsJson = typeArguments,
-            ReceiverTypeConstraintsJson = constraints,
-            SourceNodeKind = winner.SourceNodeKind,
-            TargetNodeKind = winner.TargetNodeKind
-        };
+            site = new EdgeSite(
+                edge.SourceDocumentPath,
+                edge.SourceStartLine.Value,
+                edge.SourceStartColumn.Value,
+                edge.SourceEndLine.Value,
+                edge.SourceEndColumn.Value);
+            return true;
+        }
+
+        site = default!;
+        return false;
+    }
+
+    internal static IReadOnlyList<EdgeSite> NormalizeSites(IEnumerable<EdgeSite> sites)
+    {
+        if (sites is IReadOnlyList<EdgeSite> readOnly)
+        {
+            if (readOnly.Count == 0)
+                return [];
+            if (readOnly.Count == 1)
+                return [readOnly[0]];
+        }
+
+        var list = sites.Distinct().ToList();
+        list.Sort(CompareSites);
+        return list;
+    }
+
+    internal static int CompareSites(EdgeSite a, EdgeSite b)
+    {
+        var cmp = StringComparer.Ordinal.Compare(a.DocumentPath, b.DocumentPath);
+        if (cmp != 0) return cmp;
+        cmp = a.StartLine.CompareTo(b.StartLine);
+        if (cmp != 0) return cmp;
+        cmp = a.StartColumn.CompareTo(b.StartColumn);
+        if (cmp != 0) return cmp;
+        cmp = a.EndLine.CompareTo(b.EndLine);
+        return cmp != 0 ? cmp : a.EndColumn.CompareTo(b.EndColumn);
+    }
+
+    private sealed class BatchEdgeBuilder
+    {
+        private EdgeRecord _winner;
+        private int _winnerRank;
+        private string? _typeArguments;
+        private bool _typeArgumentsNormalized;
+        private string? _constraints;
+        private bool _constraintsNormalized;
+        private readonly List<EdgeSite> _sites = [];
+
+        public BatchEdgeBuilder(EdgeRecord first)
+        {
+            _winner = first;
+            _winnerRank = ProvenanceRank(first.Provenance);
+            _typeArguments = first.TypeArgumentsJson;
+            _constraints = first.ReceiverTypeConstraintsJson;
+            AddSites(first);
+        }
+
+        public void Add(EdgeRecord edge)
+        {
+            var edgeRank = ProvenanceRank(edge.Provenance);
+            if (edgeRank > _winnerRank)
+            {
+                var taNormalized = false;
+                _typeArguments = MergePayload(edge.TypeArgumentsJson, _typeArguments, ref taNormalized);
+                _typeArgumentsNormalized = taNormalized;
+
+                var rcNormalized = false;
+                _constraints = MergePayload(edge.ReceiverTypeConstraintsJson, _constraints, ref rcNormalized);
+                _constraintsNormalized = rcNormalized;
+
+                _winner = edge;
+                _winnerRank = edgeRank;
+                _sites.Clear();
+                AddSites(edge);
+            }
+            else
+            {
+                _typeArguments = MergePayload(_typeArguments, edge.TypeArgumentsJson, ref _typeArgumentsNormalized);
+                _constraints = MergePayload(_constraints, edge.ReceiverTypeConstraintsJson, ref _constraintsNormalized);
+                if (edgeRank == _winnerRank)
+                    AddSites(edge);
+            }
+        }
+
+        public EdgeRecord Build() =>
+            _winner.WithSites(NormalizeSites(_sites), _typeArguments, _constraints);
+
+        private void AddSites(EdgeRecord edge)
+        {
+            if (edge.Sites.Count > 0)
+                _sites.AddRange(edge.Sites);
+            else if (TryGetPrimarySite(edge, out var site))
+                _sites.Add(site);
+        }
+
+        private static string? MergePayload(string? left, string? right, ref bool leftNormalized)
+        {
+            if (left == null && right == null)
+            {
+                leftNormalized = true;
+                return null;
+            }
+
+            if (right == null && leftNormalized)
+                return left;
+
+            leftNormalized = true;
+            return MergeTypeArguments(left, right);
+        }
     }
 
     public static string? MergeTypeArguments(string? leftJson, string? rightJson)

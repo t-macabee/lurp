@@ -8,7 +8,6 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
     List<EdgeRecord> IMemberEdgeExtractor.Extract()
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeSymbol in context.GetAllNamedTypes())
         {
@@ -25,31 +24,39 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
                 if (!ExtractionUtils.HasStructuralFacts(member))
                     continue;
 
-                if (!context.IsMemberInScope(member))
-                    continue;
-
                 var memberId = context.MakeSymbolId(member);
-
                 if (memberId == null)
                     continue;
 
-                var key = (typeId, memberId, nameof(EdgeKind.Declares));
+                EmitMemberPart(typeId, member, memberId, edges);
 
-                if (!seen.Add(key))
-                    continue;
-
-                var loc = context.GetMemberSourceLocation(member);
-
-                // An edge without a resolvable document path (a declaration in a
-                // tree with no path) is useless for incremental scoping and forces
-                // the CrossDocumentEdgeRefresher's expensive fallback.
-                if (loc == null)
-                    continue;
-
-                edges.Add(context.MakeEdge(typeId, memberId, nameof(EdgeKind.Declares), ExtractorConstants.DeclaresExtractor, loc));
+                ISymbol? implPart = member switch
+                {
+                    IMethodSymbol { PartialImplementationPart: { } implMethod } => implMethod,
+                    IPropertySymbol { PartialImplementationPart: { } implProperty } => implProperty,
+                    _ => null
+                };
+                if (implPart != null && !SymbolEqualityComparer.Default.Equals(implPart, member))
+                    EmitMemberPart(typeId, implPart, memberId, edges);
             }
         }
 
         return edges;
+    }
+
+    private void EmitMemberPart(string typeId, ISymbol memberPart, string memberId, List<EdgeRecord> edges)
+    {
+        if (!context.IsMemberInScope(memberPart))
+            return;
+
+        var loc = context.GetMemberSourceLocation(memberPart);
+
+        // An edge without a resolvable document path (a declaration in a
+        // tree with no path) is useless for incremental scoping and forces
+        // the CrossDocumentEdgeRefresher's expensive fallback.
+        if (loc == null)
+            return;
+
+        edges.Add(context.MakeEdge(typeId, memberId, nameof(EdgeKind.Declares), ExtractorConstants.DeclaresExtractor, loc));
     }
 }

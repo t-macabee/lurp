@@ -128,10 +128,9 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var docCommand = _connection.CreateCommand();
         docCommand.Transaction = transaction;
         docCommand.CommandText = """
-            INSERT INTO documents (document_id, relative_path, last_changed_snapshot_id)
-            VALUES (@documentId, @relativePath, @snapshotId)
-            ON CONFLICT(document_id) DO UPDATE SET
-                last_changed_snapshot_id = excluded.last_changed_snapshot_id;
+            INSERT INTO documents (document_id, relative_path)
+            VALUES (@documentId, @relativePath)
+            ON CONFLICT(document_id) DO NOTHING;
             """;
 
         using var versionCommand = _connection.CreateCommand();
@@ -154,7 +153,6 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             docCommand.Parameters.Clear();
             docCommand.Parameters.AddWithValue("@documentId", doc.DocumentId);
             docCommand.Parameters.AddWithValue("@relativePath", doc.FilePath);
-            docCommand.Parameters.AddWithValue("@snapshotId", snapshotId);
             docCommand.ExecuteNonQuery();
 
             versionCommand.Parameters.Clear();

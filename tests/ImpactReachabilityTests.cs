@@ -401,6 +401,13 @@ public sealed class ImpactReachabilityTests
             return [.. edges.Where(e => e.SnapshotId == snapshotId && e.SourceSymbolId == symbolId)];
         }
 
+        public Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), List<EdgeSite>> GetEdgeSites(
+            string snapshotId,
+            IEnumerable<(string SourceSymbolId, string TargetSymbolId, string Kind)> edgeTriples)
+        {
+            return [];
+        }
+
         // Unused members — throw to catch accidental usage
         public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)
         {
@@ -533,6 +540,13 @@ public sealed class ImpactReachabilityTests
         public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
         {
             throw new NotSupportedException();
+        }
+
+        public Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), List<EdgeSite>> GetEdgeSites(
+            string snapshotId,
+            IEnumerable<(string SourceSymbolId, string TargetSymbolId, string Kind)> edgeTriples)
+        {
+            return [];
         }
 
         public int SaveEdges(string snapshotId, IEnumerable<EdgeRecord> edges)

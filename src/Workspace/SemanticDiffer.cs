@@ -179,9 +179,10 @@ public class SemanticDiffer
         var metaChanges = CompareMetadata(symbolId, fromInfo.MetadataJson, toInfo.MetadataJson, fromSnapshotId, toSnapshotId);
         changes.AddRange(metaChanges);
 
-        // Equal declaration document-version sets mean the same declaration rows are read
-        // for both snapshots (declarations is keyed by symbol_id + document_version_id), so
-        // source text and paths cannot differ. Skip the per-symbol blob reads entirely.
+        // Equal declaration document-version sets of one symbol still mean equal rows
+        // (declarations is keyed by symbol_id + document_version_id, and the reader returns
+        // only the linked rows of each snapshot), so source text and paths cannot differ.
+        // Skip the per-symbol blob reads entirely.
         var sharedDeclarationDocuments = fromDocumentVersionIds != null && toDocumentVersionIds != null &&
             fromDocumentVersionIds.SequenceEqual(toDocumentVersionIds, StringComparer.Ordinal);
 

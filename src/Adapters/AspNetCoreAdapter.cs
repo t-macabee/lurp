@@ -63,7 +63,7 @@ public sealed class AspNetCoreAdapter : IFrameworkAdapter
         {
             var routeSourceId = $"{GraphNodeIds.RoutePrefix}{httpMethod} /{template}";
             edges.Add(context.MakeEdge(routeSourceId, methodId, nameof(EdgeKind.RoutesTo), Provenance.FrameworkDerived, AdapterVersion, location,
-                sourceNodeKind: GraphNodeKind.Route));
+                sourceIsBoundary: true));
         }
     }
 

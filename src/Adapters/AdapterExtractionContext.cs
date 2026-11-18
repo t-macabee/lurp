@@ -101,11 +101,11 @@ public sealed class AdapterExtractionContext
         string provenance,
         string extractorVersion,
         (string? path, int? sl, int? sc, int? el, int? ec) location,
-        GraphNodeKind? sourceNodeKind = null,
-        GraphNodeKind? targetNodeKind = null)
+        bool sourceIsBoundary = false,
+        bool targetIsBoundary = false)
     {
         return _workspace.MakeEdge(sourceId, targetId, kind, extractorVersion, location, provenance,
-            sourceNodeKind: sourceNodeKind, targetNodeKind: targetNodeKind);
+            sourceIsBoundary: sourceIsBoundary, targetIsBoundary: targetIsBoundary);
     }
 
     private sealed class AdapterWorkspaceContext(ProjectExtractionInputs inputs) : ExtractionContextBase(inputs);

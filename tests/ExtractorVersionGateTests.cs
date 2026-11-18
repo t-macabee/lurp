@@ -101,7 +101,7 @@ public sealed class ExtractorVersionGateTests(
     private static string EdgeRow(EdgeRecord e) =>
         Join(e.SourceSymbolId, e.TargetSymbolId, e.Kind, e.Provenance, e.SourceDocumentPath,
             e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn, e.IsCrossGenerated,
-            e.TypeArgumentsJson, e.ReceiverTypeConstraintsJson, e.SourceNodeKind, e.TargetNodeKind);
+            e.TypeArgumentsJson, e.ReceiverTypeConstraintsJson, e.SourceIsBoundary, e.TargetIsBoundary);
 
     private static string DeclarationRow(SymbolDeclaration d) =>
         Join(d.SymbolId.Value, d.Kind, d.DocumentVersionId, d.FullSpan, d.SignatureSpan, d.BodySpan, d.NameSpan,

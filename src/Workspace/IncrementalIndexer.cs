@@ -243,7 +243,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
                 }
             }
 
-            PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, oldDocVersionIdSet, extractionScopePaths);
+            PrepareSnapshotData(previousSnapshotId, newSnapshotIdStr, affectedProjects, extractionScopePaths);
             sw5.Stop();
             timings.Add(new SnapshotTimingRow("stale_data_removal", sw5.ElapsedMilliseconds));
 
@@ -350,7 +350,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return result;
     }
 
-    private void PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> oldDocVersionIdSet, HashSet<string> extractionScopePaths)
+    private void PrepareSnapshotData(string previousSnapshotId, string newSnapshotIdStr, HashSet<string> affectedProjects, HashSet<string> extractionScopePaths)
     {
         _output.Write("Preparing snapshot data (copy forward, remove stale)... ");
 
@@ -382,10 +382,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         if (invalidatedOldVersionIds.Count > 0)
             _store.DeleteEdgesWithNullDocumentPathForSymbols(newSnapshotIdStr, changedSymbolIds);
 
-        if (oldDocVersionIdSet.Count > 0)
-            _store.DeleteDeclarationsByDocumentVersionIds(oldDocVersionIdSet);
-
         _store.CopySnapshotSymbols(previousSnapshotId, newSnapshotIdStr);
+        _store.CopySnapshotDeclarations(previousSnapshotId, newSnapshotIdStr);
+        if (invalidatedOldVersionIds.Count > 0)
+            _store.DeleteSnapshotDeclarationsByDocumentVersionIds(newSnapshotIdStr, invalidatedOldVersionIds);
         _store.CopySymbolTargetFrameworks(previousSnapshotId, newSnapshotIdStr);
 
         // The TFM copy above is a union: a symbol re-extracted in this run must

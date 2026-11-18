@@ -157,7 +157,7 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
     {
         string[] tables =
         [
-            "edges", "diagnostics", "annotations", "snapshot_symbols", "symbol_target_frameworks",
+            "edges", "diagnostics", "annotations", "snapshot_declarations", "snapshot_symbols", "symbol_target_frameworks",
             "projects", "snapshot_documents", "source_fts", "symbol_fts",
             "snapshot_timings", "snapshot_metrics", "snapshot_graph_nodes", "binding_incompleteness"
         ];
@@ -196,24 +196,12 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
         cmd.Parameters.Clear();
         cmd.ExecuteNonQuery();
 
-        // Clean up orphaned declarations whose document versions are no longer
-        // referenced by any snapshot
-        cmd.CommandText = """
-            DELETE FROM partial_declarations
-            WHERE declaration_id IN (
-                SELECT declaration_id FROM declarations
-                WHERE document_version_id NOT IN (
-                    SELECT DISTINCT document_version_id FROM snapshot_documents
-                )
-            );
-            """;
-        cmd.Parameters.Clear();
-        cmd.ExecuteNonQuery();
-
+        // Clean up orphaned declarations that no snapshot links to
         cmd.CommandText = """
             DELETE FROM declarations
-            WHERE document_version_id NOT IN (
-                SELECT DISTINCT document_version_id FROM snapshot_documents
+            WHERE NOT EXISTS (
+                SELECT 1 FROM snapshot_declarations sdecl
+                WHERE sdecl.declaration_id = declarations.declaration_id
             );
             """;
         cmd.Parameters.Clear();
@@ -246,42 +234,6 @@ internal sealed class SnapshotPruner(SqliteConnection connection)
             DELETE FROM documents
             WHERE document_id NOT IN (
                 SELECT DISTINCT document_id FROM document_versions
-            );
-            """;
-        cmd.Parameters.Clear();
-        cmd.ExecuteNonQuery();
-
-        // A document can outlive the snapshot recorded in last_changed_snapshot_id
-        // when that snapshot is pruned. Repair the pointer to the newest retained
-        // snapshot that still references the document, or leave it null when none
-        // remains.
-        cmd.CommandText = """
-            UPDATE documents
-            SET last_changed_snapshot_id = (
-                SELECT sd.snapshot_id
-                FROM snapshot_documents sd
-                JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
-                JOIN snapshots s ON s.snapshot_id = sd.snapshot_id
-                WHERE dv.document_id = documents.document_id
-                ORDER BY s.built_at_utc DESC
-                LIMIT 1
-            )
-            WHERE last_changed_snapshot_id IS NOT NULL
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM snapshot_documents sd
-                  JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
-                  WHERE sd.snapshot_id = documents.last_changed_snapshot_id
-                    AND dv.document_id = documents.document_id
-              );
-            """;
-        cmd.Parameters.Clear();
-        cmd.ExecuteNonQuery();
-
-        cmd.CommandText = """
-            DELETE FROM graph_nodes
-            WHERE node_id NOT IN (
-                SELECT DISTINCT node_id FROM snapshot_graph_nodes
             );
             """;
         cmd.Parameters.Clear();

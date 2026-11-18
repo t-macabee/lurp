@@ -958,6 +958,66 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
+    [Fact]
+    public async Task Capsule_PathHop_ShowsTheSitesOfItsEdge()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["C.cs"] = """
+                namespace N;
+                public class C
+                {
+                    public void Target() { }
+                    public void Twice()
+                    {
+                        Target();
+                        Target();
+                    }
+                }
+                """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var targetId = ResolveSymbolId(snapshotId, "global::N.C.Target");
+        var twiceId = ResolveSymbolId(snapshotId, "global::N.C.Twice");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, targetId, null, null);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, DefaultOptions(100_000, 2), store, store, store);
+
+            using var document = JsonDocument.Parse(ContextCapsuleJson.Serialize(capsule));
+            var callHop = document.RootElement.GetProperty("incoming_paths").EnumerateArray()
+                .SelectMany(p => p.GetProperty("hops").EnumerateArray())
+                .Single(h => h.GetProperty("source_symbol_id").GetString() == twiceId
+                             && h.GetProperty("target_symbol_id").GetString() == targetId
+                             && h.GetProperty("edge_kind").GetString() == "Calls");
+
+            Assert.Equal(7, callHop.GetProperty("source_line").GetInt32());
+            Assert.Equal(2, callHop.GetProperty("site_count").GetInt32());
+
+            var sites = callHop.GetProperty("sites").EnumerateArray()
+                .Select(s => (
+                    Line: s.GetProperty("line").GetInt32(),
+                    Column: s.GetProperty("column").GetInt32(),
+                    EndLine: s.GetProperty("end_line").GetInt32(),
+                    EndColumn: s.GetProperty("end_column").GetInt32()))
+                .ToList();
+
+            Assert.Equal(
+                [
+                    (7, 8, 7, 16),
+                    (8, 8, 8, 16)
+                ],
+                sites);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     // ── T7 ──────────────────────────────────────────────────────────────
 
     /// <summary>

@@ -10,6 +10,9 @@ public interface IEdgeStore
 
     List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null);
     List<EdgeRecord> GetEdgesTouchingSymbols(string snapshotId, IEnumerable<string> symbolIds);
+    Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), List<EdgeSite>> GetEdgeSites(
+        string snapshotId,
+        IEnumerable<(string SourceSymbolId, string TargetSymbolId, string Kind)> edges);
     List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null);
     List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null);
 
@@ -36,10 +39,10 @@ public interface IEdgeStore
 
     /// <summary>
     ///     Removes <c>snapshot_graph_nodes</c> rows whose node_id is no longer
-    ///     referenced by this snapshot's edges or declarations. Without this,
-    ///     <see cref="CopyEdgesToSnapshot" />'s blind copy-forward accumulates
-    ///     stale synthetic/route nodes across incremental passes, which keep
-    ///     masking genuinely orphaned edges in <see cref="DeleteOrphanEdges" />.
+    ///     referenced by this snapshot's edges or is a symbol declared in this snapshot
+    ///     (<c>snapshot_symbols</c>, D153.3). Without this, stale synthetic/route nodes
+    ///     linger across incremental passes and keep masking orphaned edges, and
+    ///     cross-project types remain marked as boundary nodes.
     /// </summary>
     void PruneSnapshotGraphNodes(string snapshotId);
 

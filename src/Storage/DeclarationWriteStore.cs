@@ -28,22 +28,18 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
     private static void SaveOne(SqliteCommand command, string snapshotId, SymbolDeclaration decl)
     {
         command.CommandText = """
-            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
-            VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind, @metadataJson, @fqn)
+            INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+            VALUES (@symbolId, @docCommentId, @assemblyIdentity, @kind)
             ON CONFLICT(symbol_id) DO UPDATE SET
                 doc_comment_id = excluded.doc_comment_id,
                 assembly_identity = excluded.assembly_identity,
-                kind = excluded.kind,
-                metadata_json = excluded.metadata_json,
-                fqn = excluded.fqn;
+                kind = excluded.kind;
             """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
         command.Parameters.AddWithValue("@docCommentId", decl.SymbolId.DocCommentId);
         command.Parameters.AddWithValue("@assemblyIdentity", decl.SymbolId.AssemblyIdentity);
         command.Parameters.AddWithValue("@kind", decl.Kind.ToString());
-        command.Parameters.AddWithValue("@metadataJson", (object?)decl.MetadataJson ?? DBNull.Value);
-        command.Parameters.AddWithValue("@fqn", (object?)decl.SymbolId.FullyQualifiedName ?? DBNull.Value);
         command.ExecuteNonQuery();
 
         command.CommandText = """
@@ -102,18 +98,16 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@generatorIdentity", (object?)decl.GeneratorIdentity ?? DBNull.Value);
         command.ExecuteNonQuery();
 
-        if (decl.IsPartial)
-        {
-            command.CommandText = """
-                INSERT OR IGNORE INTO partial_declarations (symbol_id, declaration_id)
-                SELECT @symbolId, declaration_id
-                FROM declarations
-                WHERE symbol_id = @symbolId AND document_version_id = @documentVersionId;
-                """;
-            command.Parameters.Clear();
-            command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
-            command.Parameters.AddWithValue("@documentVersionId", decl.DocumentVersionId);
-            command.ExecuteNonQuery();
-        }
+        command.CommandText = """
+            INSERT OR IGNORE INTO snapshot_declarations (snapshot_id, declaration_id)
+            SELECT @snapshotId, declaration_id
+            FROM declarations
+            WHERE symbol_id = @symbolId AND document_version_id = @documentVersionId;
+            """;
+        command.Parameters.Clear();
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
+        command.Parameters.AddWithValue("@documentVersionId", decl.DocumentVersionId);
+        command.ExecuteNonQuery();
     }
 }

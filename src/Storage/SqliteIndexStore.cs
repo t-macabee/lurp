@@ -527,10 +527,16 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _declReader!.GetSymbolDiffInfoBySymbol(snapshotId);
     }
 
-    public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
+    public void CopySnapshotDeclarations(string fromSnapshotId, string toSnapshotId)
     {
         EnsureOpen();
-        _declMaintenance!.DeleteDeclarationsByDocumentVersionIds(documentVersionIds);
+        _declMaintenance!.CopySnapshotDeclarations(fromSnapshotId, toSnapshotId);
+    }
+
+    public void DeleteSnapshotDeclarationsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
+    {
+        EnsureOpen();
+        _declMaintenance!.DeleteSnapshotDeclarationsByDocumentVersionIds(snapshotId, documentVersionIds);
     }
 
     public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
@@ -587,6 +593,14 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _edgeOps!.GetEdgesTouchingSymbols(snapshotId, symbolIds);
+    }
+
+    public Dictionary<(string SourceSymbolId, string TargetSymbolId, string Kind), List<EdgeSite>> GetEdgeSites(
+        string snapshotId,
+        IEnumerable<(string SourceSymbolId, string TargetSymbolId, string Kind)> edges)
+    {
+        EnsureOpen();
+        return _edgeOps!.GetEdgeSites(snapshotId, edges);
     }
 
     public List<DiagnosticRecord> GetDiagnostics(string snapshotId, string? projectName = null)

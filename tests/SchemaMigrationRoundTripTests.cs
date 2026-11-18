@@ -315,7 +315,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (037). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (040). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -327,8 +327,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 37;
-                DROP INDEX idx_document_versions_document_id;
+                DELETE FROM schema_metadata WHERE version = 40;
+                DROP TABLE edge_sites;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -340,9 +340,275 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var indexCommand = verify.CreateCommand();
-        indexCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_document_id';";
-        Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);
+        using var tableCommand = verify.CreateCommand();
+        tableCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'edge_sites';";
+        Assert.Equal(0L, (long)tableCommand.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV37_LinksDeclarationsToTheSnapshotsThatShowThem()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v37-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo37 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 37)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo37)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (37, '2025-01-01T00:00:00.0000000Z', 'Migration_037_DocumentVersionsDocumentIdIndex');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 37, 6),
+                           ('s2', 'ws1', '2025-01-02T00:00:00.0000000Z', '10.0.100', 37, 6);
+
+                    INSERT INTO documents (document_id, relative_path)
+                    VALUES ('doc1', 'src/A.cs'), ('doc2', 'src/B.cs');
+
+                    INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count)
+                    VALUES ('dv1', 'doc1', 'h1', X'01', 'utf-8', 1),
+                           ('dv2', 'doc2', 'h2', X'02', 'utf-8', 1);
+
+                    INSERT INTO snapshot_documents (snapshot_id, document_version_id)
+                    VALUES ('s1', 'dv1'), ('s2', 'dv1'), ('s2', 'dv2');
+
+                    INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+                    VALUES ('a', 'T:N.A', 'Asm', 'Class'),
+                           ('b', 'T:N.B', 'Asm', 'Class'),
+                           ('c', 'T:N.C', 'Asm', 'Class'),
+                           ('z', 'T:N.Z', 'Asm', 'Class');
+
+                    INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn)
+                    VALUES ('s1', 'a', 'global::N.A'),
+                           ('s2', 'b', 'global::N.B'),
+                           ('s2', 'c', 'global::N.C');
+
+                    INSERT INTO declarations (declaration_id, symbol_id, document_version_id, full_start, full_end)
+                    VALUES (1, 'a', 'dv1', 0, 10),
+                           (2, 'b', 'dv1', 0, 10),
+                           (3, 'c', 'dv2', 0, 10),
+                           (4, 'z', 'dv2', 0, 10);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var query = verify.CreateCommand();
+            query.CommandText = "SELECT snapshot_id, declaration_id FROM snapshot_declarations ORDER BY snapshot_id, declaration_id;";
+            var links = new List<(string SnapshotId, long DeclarationId)>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                links.Add((reader.GetString(0), reader.GetInt64(1)));
+
+            Assert.Equal(
+                new (string, long)[] { ("s1", 1), ("s2", 2), ("s2", 3) },
+                links);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV38_DropsTheWriteOnlyColumnsAndTables()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v38-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo38 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 38)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo38)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (38, '2025-01-01T00:00:00.0000000Z', 'Migration_038_SnapshotDeclarations');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 38, 6);
+
+                    INSERT INTO documents (document_id, relative_path, last_changed_snapshot_id)
+                    VALUES ('doc1', 'src/A.cs', 's1');
+
+                    INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind, metadata_json, fqn)
+                    VALUES ('sym1', 'T:N.A', 'Asm', 'NamedType', '{"access":"public"}', 'global::N.A');
+
+                    INSERT INTO graph_nodes (node_id, node_kind)
+                    VALUES ('route://GET /items', 'Route');
+
+                    INSERT INTO snapshot_graph_nodes (snapshot_id, node_id)
+                    VALUES ('s1', 'route://GET /items');
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+
+            var docCols = new List<string>();
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT name FROM pragma_table_info('documents') ORDER BY cid;";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) docCols.Add(r.GetString(0));
+            }
+            Assert.DoesNotContain("last_changed_snapshot_id", docCols);
+            Assert.Equal(["document_id", "relative_path"], docCols);
+
+            var symCols = new List<string>();
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT name FROM pragma_table_info('symbols') ORDER BY cid;";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) symCols.Add(r.GetString(0));
+            }
+            Assert.DoesNotContain("fqn", symCols);
+            Assert.DoesNotContain("metadata_json", symCols);
+            Assert.Equal(["symbol_id", "doc_comment_id", "assembly_identity", "kind"], symCols);
+
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('graph_nodes', 'partial_declarations', 'idx_symbols_fqn');";
+                Assert.Equal(0L, (long)cmd.ExecuteScalar()!);
+            }
+
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT relative_path FROM documents WHERE document_id = 'doc1';";
+                Assert.Equal("src/A.cs", cmd.ExecuteScalar());
+            }
+
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT doc_comment_id || '|' || assembly_identity || '|' || kind FROM symbols WHERE symbol_id = 'sym1';";
+                Assert.Equal("T:N.A|Asm|NamedType", cmd.ExecuteScalar());
+            }
+
+            using (var cmd = verify.CreateCommand())
+            {
+                cmd.CommandText = "SELECT node_id FROM snapshot_graph_nodes WHERE snapshot_id = 's1';";
+                Assert.Equal("route://GET /items", cmd.ExecuteScalar());
+            }
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV39_BackfillsOneSiteForEachLocatedEdge()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v39-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo39 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 39)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo39)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (39, '2025-01-01T00:00:00.0000000Z', 'Migration_039_DropWriteOnlyColumns');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 39, 6);
+
+                    INSERT INTO edges (edge_id, snapshot_id, source_symbol_id, target_symbol_id, kind, provenance,
+                                       source_document_path, source_start_line, source_start_column, source_end_line, source_end_column)
+                    VALUES (1, 's1', 'src1', 'tgt1', 'Calls', 'compiler_proved', 'a.cs', 1, 2, 1, 10),
+                           (2, 's1', 'src2', 'tgt2', 'Calls', 'compiler_proved', 'b.cs', 3, 4, 3, 12),
+                           (3, 's1', 'src3', 'tgt3', 'Declares', 'compiler_proved', NULL, NULL, NULL, NULL, NULL);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var query = verify.CreateCommand();
+            query.CommandText = """
+                SELECT edge_id, document_path, start_line, start_column, end_line, end_column
+                FROM edge_sites
+                ORDER BY edge_id, document_path, start_line, start_column, end_line, end_column;
+                """;
+            var rows = new List<(long EdgeId, string Doc, int Sl, int Sc, int El, int Ec)>();
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                rows.Add((reader.GetInt64(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5)));
+
+            Assert.Equal(
+                new (long, string, int, int, int, int)[]
+                {
+                    (1, "a.cs", 1, 2, 1, 10),
+                    (2, "b.cs", 3, 4, 3, 12)
+                },
+                rows);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
     }
 }
 

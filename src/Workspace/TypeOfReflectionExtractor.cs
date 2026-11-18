@@ -9,7 +9,6 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
     internal List<EdgeRecord> Extract(SyntaxNode root, SemanticModel semanticModel)
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var typeOfExpr in root.DescendantNodes().OfType<TypeOfExpressionSyntax>())
         {
@@ -28,10 +27,6 @@ internal sealed class TypeOfReflectionExtractor(ReflectionExtractionContext cont
 
             var sourceId = context.OwnerIdOf(typeOfExpr);
             if (sourceId == null)
-                continue;
-
-            var key = (sourceId, targetId, nameof(EdgeKind.ReflectionTypeRef));
-            if (!seen.Add(key))
                 continue;
 
             var loc = context.GetLocationInfo(typeOfExpr.GetLocation());

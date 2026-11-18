@@ -12,7 +12,8 @@ public interface IDeclarationStore
     Dictionary<string, List<string>> GetDocumentVersionIdsBySymbol(string snapshotId, IEnumerable<string> symbolIds);
     Dictionary<string, SymbolDiffInfo> GetSymbolDiffInfoBySymbol(string snapshotId);
 
-    void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds);
+    void CopySnapshotDeclarations(string fromSnapshotId, string toSnapshotId);
+    void DeleteSnapshotDeclarationsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);
     List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds);
     string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);
     NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false);

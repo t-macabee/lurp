@@ -8,15 +8,41 @@ namespace Lurp.Storage;
 
 internal sealed class SearchSymbolStore
 {
-    private const string ExcludeGeneratedClause = @"
+    private static readonly string ExcludeGeneratedClause = $"""
+
               AND EXISTS (
                     SELECT 1 FROM declarations d
-                    JOIN snapshot_documents sd
-                      ON sd.snapshot_id = @snapshotId
-                     AND sd.document_version_id = d.document_version_id
+                    {SnapshotDeclarationLink.Join("d", "sdecl")}
                     WHERE d.symbol_id = s.symbol_id
                       AND (d.is_generated = 0 OR d.is_generated IS NULL)
-                  )";
+                  )
+        """;
+
+    private static string ExcludeGeneratedOrExternalClause(string symbolIdColumn) => $"""
+
+              AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM declarations d
+                        {SnapshotDeclarationLink.Join("d", "sdecl")}
+                        WHERE d.symbol_id = {symbolIdColumn}
+                    )
+                 OR EXISTS (
+                        SELECT 1 FROM declarations d
+                        {SnapshotDeclarationLink.Join("d", "sdecl")}
+                        WHERE d.symbol_id = {symbolIdColumn}
+                          AND (d.is_generated = 0 OR d.is_generated IS NULL)
+                    )
+                  )
+        """;
+
+    private static string SymbolDeclarationAggregateColumns() => $"""
+                   (SELECT COUNT(*) FROM declarations d2
+                      {SnapshotDeclarationLink.Join("d2", "sdecl2")}
+                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
+                   (SELECT MAX(d3.is_partial) FROM declarations d3
+                      {SnapshotDeclarationLink.Join("d3", "sdecl3")}
+                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+        """;
 
     private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
     private readonly SqliteConnection _connection;
@@ -53,24 +79,7 @@ internal sealed class SearchSymbolStore
         // by ResolveSymbolByFqn below : that shape requires at least one declaration
         // and would silently drop external symbols here.
         if (!includeGenerated)
-            command.CommandText += @"
-              AND (
-                    NOT EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = symbol_fts.symbol_id
-                    )
-                 OR EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = symbol_fts.symbol_id
-                          AND (d.is_generated = 0 OR d.is_generated IS NULL)
-                    )
-                  )";
+            command.CommandText += ExcludeGeneratedOrExternalClause("symbol_fts.symbol_id");
 
         command.CommandText += @"
             ORDER BY rank
@@ -139,24 +148,7 @@ internal sealed class SearchSymbolStore
         }
 
         if (!includeGenerated)
-            command.CommandText += @"
-              AND (
-                    NOT EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = symbol_fts.symbol_id
-                    )
-                 OR EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = symbol_fts.symbol_id
-                          AND (d.is_generated = 0 OR d.is_generated IS NULL)
-                    )
-                  )";
+            command.CommandText += ExcludeGeneratedOrExternalClause("symbol_fts.symbol_id");
 
         if (cursor != null)
         {
@@ -211,24 +203,7 @@ internal sealed class SearchSymbolStore
         }
 
         if (!includeGenerated)
-            command.CommandText += @"
-              AND (
-                    NOT EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = s.symbol_id
-                    )
-                 OR EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = s.symbol_id
-                          AND (d.is_generated = 0 OR d.is_generated IS NULL)
-                    )
-                  )";
+            command.CommandText += ExcludeGeneratedOrExternalClause("s.symbol_id");
 
         if (cursor != null)
         {
@@ -305,24 +280,7 @@ internal sealed class SearchSymbolStore
         // See the identical comment in SearchSymbols above: keep the
         // NOT EXISTS / EXISTS disjunction so declaration-less symbols remain searchable.
         if (!includeGenerated)
-            command.CommandText += @"
-              AND (
-                    NOT EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = s.symbol_id
-                    )
-                 OR EXISTS (
-                        SELECT 1 FROM declarations d
-                        JOIN snapshot_documents sd
-                          ON sd.snapshot_id = @snapshotId
-                         AND sd.document_version_id = d.document_version_id
-                        WHERE d.symbol_id = s.symbol_id
-                          AND (d.is_generated = 0 OR d.is_generated IS NULL)
-                    )
-                  )";
+            command.CommandText += ExcludeGeneratedOrExternalClause("s.symbol_id");
 
         command.CommandText += @"
             ORDER BY ss.fqn
@@ -354,22 +312,14 @@ internal sealed class SearchSymbolStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-                   (SELECT COUNT(*) FROM declarations d2
-                      JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
-                                                 AND sd2.document_version_id = d2.document_version_id
-                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
-                   (SELECT MAX(d3.is_partial) FROM declarations d3
-                      JOIN snapshot_documents sd3 ON sd3.snapshot_id = @snapshotId
-                                                 AND sd3.document_version_id = d3.document_version_id
-                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+            {SymbolDeclarationAggregateColumns()}
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE (ss.fqn = @fqn OR ss.fqn = @globalFqn) AND ss.snapshot_id = @snapshotId
               AND EXISTS (SELECT 1 FROM declarations d
-                            JOIN snapshot_documents sd ON sd.snapshot_id = @snapshotId
-                                                      AND sd.document_version_id = d.document_version_id
+                            {SnapshotDeclarationLink.Join("d", "sdecl")}
                           WHERE d.symbol_id = s.symbol_id)
             """;
 
@@ -387,22 +337,14 @@ internal sealed class SearchSymbolStore
 
         reader.Close();
         command.Parameters.Clear();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-                   (SELECT COUNT(*) FROM declarations d2
-                      JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
-                                                 AND sd2.document_version_id = d2.document_version_id
-                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
-                   (SELECT MAX(d3.is_partial) FROM declarations d3
-                      JOIN snapshot_documents sd3 ON sd3.snapshot_id = @snapshotId
-                                                 AND sd3.document_version_id = d3.document_version_id
-                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+            {SymbolDeclarationAggregateColumns()}
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE (ss.fqn LIKE @pattern OR ss.fqn LIKE @globalPattern) AND ss.snapshot_id = @snapshotId
               AND EXISTS (SELECT 1 FROM declarations d
-                            JOIN snapshot_documents sd ON sd.snapshot_id = @snapshotId
-                                                      AND sd.document_version_id = d.document_version_id
+                            {SnapshotDeclarationLink.Join("d", "sdecl")}
                           WHERE d.symbol_id = s.symbol_id)
             """;
 
@@ -429,16 +371,9 @@ internal sealed class SearchSymbolStore
 
         using var command = _connection.CreateCommand();
 
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-                   (SELECT COUNT(*) FROM declarations d2
-                      JOIN snapshot_documents sd2 ON sd2.snapshot_id = @snapshotId
-                                                 AND sd2.document_version_id = d2.document_version_id
-                    WHERE d2.symbol_id = s.symbol_id) AS decl_count,
-                   (SELECT MAX(d3.is_partial) FROM declarations d3
-                      JOIN snapshot_documents sd3 ON sd3.snapshot_id = @snapshotId
-                                                 AND sd3.document_version_id = d3.document_version_id
-                    WHERE d3.symbol_id = s.symbol_id) AS is_partial
+            {SymbolDeclarationAggregateColumns()}
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
             WHERE s.doc_comment_id = @docCommentId AND ss.snapshot_id = @snapshotId

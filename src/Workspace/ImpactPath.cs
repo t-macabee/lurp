@@ -8,11 +8,21 @@ public enum ImpactDirection
     Upstream
 }
 
+public sealed record ImpactHopSite(
+    [property: JsonPropertyName("document")] string Document,
+    [property: JsonPropertyName("line")] int Line,
+    [property: JsonPropertyName("column")] int Column,
+    [property: JsonPropertyName("end_line")] int EndLine,
+    [property: JsonPropertyName("end_column")] int EndColumn);
+
 public sealed class ImpactHop
 {
+    public const int MaxSitesPerHop = 20;
+
     [JsonConstructor]
     public ImpactHop(string sourceSymbolId, string targetSymbolId, string edgeKind, string provenance, string? sourceDocument = null, int? sourceLine = null,
-        int? sourceColumn = null, int? sourceEndLine = null, int? sourceEndColumn = null)
+        int? sourceColumn = null, int? sourceEndLine = null, int? sourceEndColumn = null,
+        int siteCount = 0, List<ImpactHopSite>? sites = null)
     {
         SourceSymbolId = sourceSymbolId ?? throw new ArgumentNullException(nameof(sourceSymbolId));
         TargetSymbolId = targetSymbolId ?? throw new ArgumentNullException(nameof(targetSymbolId));
@@ -23,6 +33,8 @@ public sealed class ImpactHop
         SourceColumn = sourceColumn;
         SourceEndLine = sourceEndLine;
         SourceEndColumn = sourceEndColumn;
+        SiteCount = siteCount;
+        Sites = sites ?? [];
     }
 
     [JsonPropertyName("source_symbol_id")] public string SourceSymbolId { get; }
@@ -43,6 +55,10 @@ public sealed class ImpactHop
 
     [JsonPropertyName("source_end_column")]
     public int? SourceEndColumn { get; }
+
+    [JsonPropertyName("site_count")] public int SiteCount { get; internal set; }
+
+    [JsonPropertyName("sites")] public List<ImpactHopSite> Sites { get; internal set; }
 
     internal string OtherEnd(string symbolId) => string.Equals(SourceSymbolId, symbolId, StringComparison.Ordinal) ? TargetSymbolId : SourceSymbolId;
 }

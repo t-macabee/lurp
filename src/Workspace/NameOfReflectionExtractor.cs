@@ -9,14 +9,13 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
     internal List<EdgeRecord> Extract(SyntaxNode root, SemanticModel semanticModel)
     {
         var edges = new List<EdgeRecord>();
-        var seen = new HashSet<(string source, string target, string kind)>();
 
         foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
             if (!IsNameOfInvocation(invocation))
                 continue;
 
-            EmitNameOfEdge(invocation, semanticModel, edges, seen);
+            EmitNameOfEdge(invocation, semanticModel, edges);
         }
 
         return edges;
@@ -39,7 +38,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         return node.Ancestors().OfType<InvocationExpressionSyntax>().Any(IsNameOfInvocation);
     }
 
-    private void EmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void EmitNameOfEdge(InvocationExpressionSyntax invocation, SemanticModel semanticModel, List<EdgeRecord> edges)
     {
         var sourceId = context.OwnerIdOf(invocation);
         if (sourceId == null)
@@ -57,7 +56,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         }
 
         context.RecordFilteredExternal(resolvedSymbol, argument);
-        AddEdge(sourceId, resolvedSymbol, invocation, edges, seen);
+        AddEdge(sourceId, resolvedSymbol, invocation, edges);
 
         // R147: a nameof names every symbol in its chain at compile time. The
         // argument's own symbol is emitted above; the receivers of its member access
@@ -70,7 +69,7 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
                 continue;
 
             context.RecordFilteredExternal(receiverSymbol, receiver);
-            AddEdge(sourceId, receiverSymbol, invocation, edges, seen);
+            AddEdge(sourceId, receiverSymbol, invocation, edges);
         }
     }
 
@@ -79,14 +78,10 @@ internal sealed class NameOfReflectionExtractor(ReflectionExtractionContext cont
         return expression is MemberAccessExpressionSyntax memberAccess ? memberAccess.Expression : null;
     }
 
-    private void AddEdge(string sourceId, ISymbol targetSymbol, InvocationExpressionSyntax invocation, List<EdgeRecord> edges, HashSet<(string source, string target, string kind)> seen)
+    private void AddEdge(string sourceId, ISymbol targetSymbol, InvocationExpressionSyntax invocation, List<EdgeRecord> edges)
     {
         var targetId = context.MakeSymbolId(targetSymbol);
         if (targetId == null)
-            return;
-
-        var key = (sourceId, targetId, nameof(EdgeKind.ReflectionMemberRef));
-        if (!seen.Add(key))
             return;
 
         var loc = context.GetLocationInfo(invocation.GetLocation());

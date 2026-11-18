@@ -49,6 +49,7 @@ internal static class ImpactPaging
         ImpactDirection direction,
         int maxDepth,
         ImpactReachabilityResult reachability,
+        ImpactReachability siteLoader,
         int offset,
         int limit,
         string fingerprint,
@@ -58,6 +59,8 @@ internal static class ImpactPaging
     {
         var allSymbols = reachability.Symbols;
         var page = allSymbols.Skip(offset).Take(limit).ToList();
+        var pagePaths = page.Select(symbol => reachability.WitnessPath(symbol.SymbolId)).ToList();
+        siteLoader.PopulateSites(pagePaths.SelectMany(static path => path));
         var remaining = Math.Max(0, allSymbols.Count - (offset + page.Count));
         object? truncated = remaining > 0
             ? new
@@ -84,7 +87,7 @@ internal static class ImpactPaging
             groups: BuildFirstHopGroups(allSymbols, reachability),
             semantic_causes: reachability.SemanticCauses.Select(SemanticCauseJson.From).ToList(),
             truncated: truncated,
-            symbols: page.Select(symbol => ToSymbolJson(symbol, reachability.WitnessPath(symbol.SymbolId))).ToList());
+            symbols: page.Zip(pagePaths, ToSymbolJson).ToList());
     }
 
     /// <summary>
@@ -145,7 +148,9 @@ internal static class ImpactPaging
             edge_kind = hop.EdgeKind,
             provenance = hop.Provenance,
             source_document = hop.SourceDocument,
-            source_line = hop.SourceLine
+            source_line = hop.SourceLine,
+            site_count = hop.SiteCount,
+            sites = hop.Sites
         };
     }
 

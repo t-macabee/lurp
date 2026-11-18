@@ -130,6 +130,7 @@ internal sealed class ImpactTool
                 impactDirection,
                 maxDepth,
                 traced,
+                reachability,
                 offset,
                 limitValue,
                 fingerprint,

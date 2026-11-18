@@ -178,6 +178,8 @@ internal sealed class ContextAssembler
         var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
+        reachability.PopulateSites(
+            capsule.IncomingPaths.Concat(capsule.OutgoingPaths).SelectMany(static path => path.Hops));
         // Both traces return the anchor's causes; the capsule writes that list once, at the top level.
         capsule.SemanticCauses.AddRange(incoming.SemanticCauses.Select(SemanticCauseJson.From));
 

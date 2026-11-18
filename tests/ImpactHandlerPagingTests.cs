@@ -240,4 +240,108 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         }
     }
 
+    [Fact]
+    public async Task Impact_Upstream_HopShowsEverySiteOfTheCall()
+    {
+        // 1-based lines: Target() on line 4 (0-based 3), Twice() calls Target() on lines 7 and 8 (0-based 6 and 7).
+        var snapshotId = await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["C.cs"] = """
+                namespace N;
+                public class C
+                {
+                    public void Target() { }
+                    public void Twice()
+                    {
+                        Target();
+                        Target();
+                    }
+                }
+                """
+        });
+
+        var targetId = ResolveSymbolId(snapshotId, "global::N.C.Target");
+        var twiceId = ResolveSymbolId(snapshotId, "global::N.C.Twice");
+
+        var result = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
+            "--mode=impact",
+            $"--symbol={targetId}",
+            "--direction=upstream",
+            $"--output-dir={TestDir}",
+            "--output=json",
+            "--limit=50"
+        ], sink));
+
+        Assert.Null(result.Failure);
+        using var doc = JsonDocument.Parse(result.Stdout);
+        var twiceSymbol = doc.RootElement.GetProperty("symbols").EnumerateArray()
+            .Single(s => s.GetProperty("symbol_id").GetString() == twiceId);
+        var hop = Assert.Single(twiceSymbol.GetProperty("witness_path").GetProperty("hops").EnumerateArray());
+
+        Assert.Equal(7, hop.GetProperty("source_line").GetInt32());
+        Assert.Equal(2, hop.GetProperty("site_count").GetInt32());
+
+        var sites = hop.GetProperty("sites").EnumerateArray()
+            .Select(s => (
+                Line: s.GetProperty("line").GetInt32(),
+                Column: s.GetProperty("column").GetInt32(),
+                EndLine: s.GetProperty("end_line").GetInt32(),
+                EndColumn: s.GetProperty("end_column").GetInt32()))
+            .ToList();
+
+        Assert.Equal(
+            [
+                (7, 8, 7, 16),
+                (8, 8, 8, 16)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task Impact_HopWithManySites_IsCappedAndCounted()
+    {
+        var calls = string.Join(Environment.NewLine, Enumerable.Repeat("        Target();", 25));
+        var source = $$"""
+            namespace N;
+            public class C
+            {
+                public void Target() { }
+                public void Many()
+                {
+            {{calls}}
+                }
+            }
+            """;
+
+        var snapshotId = await IndexFullAsync("App", new Dictionary<string, string>
+        {
+            ["C.cs"] = source
+        });
+
+        var targetId = ResolveSymbolId(snapshotId, "global::N.C.Target");
+        var manyId = ResolveSymbolId(snapshotId, "global::N.C.Many");
+
+        var result = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
+            "--mode=impact",
+            $"--symbol={targetId}",
+            "--direction=upstream",
+            $"--output-dir={TestDir}",
+            "--output=json",
+            "--limit=50"
+        ], sink));
+
+        Assert.Null(result.Failure);
+        using var doc = JsonDocument.Parse(result.Stdout);
+        var manySymbol = doc.RootElement.GetProperty("symbols").EnumerateArray()
+            .Single(s => s.GetProperty("symbol_id").GetString() == manyId);
+        var hop = Assert.Single(manySymbol.GetProperty("witness_path").GetProperty("hops").EnumerateArray());
+
+        // First Target(); is on 1-based line 7; 20th is on 1-based line 26; 25th is on line 31.
+        Assert.Equal(25, hop.GetProperty("site_count").GetInt32());
+        var sites = hop.GetProperty("sites").EnumerateArray().ToList();
+        Assert.Equal(20, sites.Count);
+        Assert.Equal(7, sites[0].GetProperty("line").GetInt32());
+        Assert.Equal(26, sites[^1].GetProperty("line").GetInt32());
+    }
+
 }

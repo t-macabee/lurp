@@ -41,15 +41,6 @@ internal static class ReceiverTypeConstraints
         }
     }
 
-    internal static string? Merge(string? leftJson, string? rightJson)
-    {
-        var alternatives = Deserialize(leftJson);
-        foreach (var alternative in Deserialize(rightJson).Where(alternative => !alternatives.Any(existing => existing.SequenceEqual(alternative, StringComparer.Ordinal))))
-            alternatives.Add(alternative);
-
-        return alternatives.Count == 0 ? null : Serialize(alternatives);
-    }
-
     internal static List<List<string>> Deserialize(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -76,32 +67,5 @@ internal static class ReceiverTypeConstraints
             .OrderBy(static alternative => string.Join("\n", alternative), StringComparer.Ordinal)
             .ToList();
         return JsonSerializer.Serialize(canonical);
-    }
-
-    internal static EdgeRecord WithMergedConstraints(EdgeRecord edge, string? additionalConstraintsJson)
-    {
-        var merged = Merge(edge.ReceiverTypeConstraintsJson, additionalConstraintsJson);
-        if (string.Equals(merged, edge.ReceiverTypeConstraintsJson, StringComparison.Ordinal))
-            return edge;
-
-        return new EdgeRecord
-        {
-            SourceSymbolId = edge.SourceSymbolId,
-            TargetSymbolId = edge.TargetSymbolId,
-            Kind = edge.Kind,
-            Provenance = edge.Provenance,
-            SnapshotId = edge.SnapshotId,
-            ExtractorVersion = edge.ExtractorVersion,
-            SourceDocumentPath = edge.SourceDocumentPath,
-            SourceStartLine = edge.SourceStartLine,
-            SourceStartColumn = edge.SourceStartColumn,
-            SourceEndLine = edge.SourceEndLine,
-            SourceEndColumn = edge.SourceEndColumn,
-            IsCrossGenerated = edge.IsCrossGenerated,
-            TypeArgumentsJson = edge.TypeArgumentsJson,
-            ReceiverTypeConstraintsJson = merged,
-            SourceNodeKind = edge.SourceNodeKind,
-            TargetNodeKind = edge.TargetNodeKind
-        };
     }
 }

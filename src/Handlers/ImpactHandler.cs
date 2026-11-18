@@ -171,6 +171,7 @@ internal static class ImpactHandler
                 direction,
                 maxDepth,
                 traced,
+                reachability,
                 offset,
                 limit,
                 fingerprint,

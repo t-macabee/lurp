@@ -300,8 +300,8 @@ public sealed class EdgeWritePathTests : IDisposable
                 SourceStartColumn = 1,
                 SourceEndLine = 2,
                 SourceEndColumn = 10,
-                SourceNodeKind = GraphNodeKind.Route,
-                TargetNodeKind = GraphNodeKind.ExternalType
+                SourceIsBoundary = true,
+                TargetIsBoundary = true
             }
         ]);
 
@@ -378,10 +378,12 @@ public sealed class EdgeWritePathTests : IDisposable
 
         var edge = Assert.Single(store.GetEdges(SnapshotId));
 
-        // The persisted (copied-forward) values won the equal-rank collision.
-        Assert.Equal("src/Test.cs", edge.SourceDocumentPath);
-        Assert.Equal(10, edge.SourceStartLine);
-        Assert.Equal(11, edge.SourceEndLine);
+        // Equal rank keeps non-site columns from the persisted (copied-forward) row,
+        // while adding the incoming site and setting edges.source_* to the first site in
+        // source order (D155.3: "src/Other.cs" precedes "src/Test.cs" ordinally).
+        Assert.Equal("src/Other.cs", edge.SourceDocumentPath);
+        Assert.Equal(999, edge.SourceStartLine);
+        Assert.Equal(1000, edge.SourceEndLine);
         Assert.False(edge.IsCrossGenerated);
         Assert.Equal("compiler_proved", edge.Provenance);
     }
@@ -507,5 +509,268 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal(1, summary.CompilerSynthesized);
         Assert.Equal(1, summary.Other);
         Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.Other);
+    }
+
+    private List<(string Doc, int Sl, int Sc, int El, int Ec)> ReadSites(string snapshotId, string source, string target, string kind)
+    {
+        using var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT es.document_path, es.start_line, es.start_column, es.end_line, es.end_column
+            FROM edge_sites es
+            JOIN edges e ON e.edge_id = es.edge_id
+            WHERE e.snapshot_id = @s
+              AND e.source_symbol_id = @src
+              AND e.target_symbol_id = @tgt
+              AND e.kind = @k
+            ORDER BY es.document_path, es.start_line, es.start_column, es.end_line, es.end_column;
+            """;
+        cmd.Parameters.AddWithValue("@s", snapshotId);
+        cmd.Parameters.AddWithValue("@src", source);
+        cmd.Parameters.AddWithValue("@tgt", target);
+        cmd.Parameters.AddWithValue("@k", kind);
+        var result = new List<(string, int, int, int, int)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            result.Add((r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4)));
+        return result;
+    }
+
+    private long CountAllEdgeSites()
+    {
+        using var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM edge_sites;";
+        return Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    private static EdgeRecord MakeSiteEdge(string source, string target, string kind, string provenance,
+        string? docPath, int? sl, int? sc, int? el, int? ec)
+    {
+        return new EdgeRecord
+        {
+            SourceSymbolId = source,
+            TargetSymbolId = target,
+            Kind = kind,
+            Provenance = provenance,
+            ExtractorVersion = "1.0.0",
+            SourceDocumentPath = docPath,
+            SourceStartLine = sl,
+            SourceStartColumn = sc,
+            SourceEndLine = el,
+            SourceEndColumn = ec
+        };
+    }
+
+    [Fact]
+    public void SaveEdges_KeepsEverySiteOfARelation_InSourceOrder()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 9, 4, 9, 12),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 2, 8, 2, 16),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 2, 3, 2, 11)
+        ]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal("src/A.cs", edge.SourceDocumentPath);
+        Assert.Equal((2, 3, 2, 11), (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+
+        var sites = ReadSites(SnapshotId, "src", "tgt", "Calls");
+        Assert.Equal(
+            [
+                ("src/A.cs", 2, 3, 2, 11),
+                ("src/A.cs", 2, 8, 2, 16),
+                ("src/A.cs", 9, 4, 9, 12)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public void SaveEdges_SitesFollowProvenanceRank()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.NameCandidate, "src/A.cs", 1, 0, 1, 5),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 7, 0, 7, 5),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 3, 0, 3, 5)
+        ]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal(Provenance.CompilerProved, edge.Provenance);
+        Assert.Equal((3, 0, 3, 5), (edge.SourceStartLine, edge.SourceStartColumn, edge.SourceEndLine, edge.SourceEndColumn));
+        Assert.Equal(
+            [
+                ("src/A.cs", 3, 0, 3, 5),
+                ("src/A.cs", 7, 0, 7, 5)
+            ],
+            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+
+        // Lower rank adds no site.
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.Possible, "src/A.cs", 0, 0, 0, 5)
+        ]);
+
+        Assert.Equal(
+            [
+                ("src/A.cs", 3, 0, 3, 5),
+                ("src/A.cs", 7, 0, 7, 5)
+            ],
+            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+
+        // Equal rank adds one site and refreshes the first-site columns if earlier.
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 5, 0, 5, 5)
+        ]);
+
+        Assert.Equal(
+            [
+                ("src/A.cs", 3, 0, 3, 5),
+                ("src/A.cs", 5, 0, 5, 5),
+                ("src/A.cs", 7, 0, 7, 5)
+            ],
+            ReadSites(SnapshotId, "src", "tgt", "Calls"));
+
+        // D155.3: the edge columns hold the first site in source order, not the last one written.
+        var afterEqualRank = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal((3, 0, 3, 5),
+            (afterEqualRank.SourceStartLine, afterEqualRank.SourceStartColumn, afterEqualRank.SourceEndLine, afterEqualRank.SourceEndColumn));
+
+        // Higher rank against persisted row replaces existing sites.
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src2", "tgt2", "Calls", Provenance.NameCandidate, "src/A.cs", 1, 0, 1, 5)
+        ]);
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src2", "tgt2", "Calls", Provenance.CompilerProved, "src/A.cs", 4, 0, 4, 5)
+        ]);
+        Assert.Equal(
+            [
+                ("src/A.cs", 4, 0, 4, 5)
+            ],
+            ReadSites(SnapshotId, "src2", "tgt2", "Calls"));
+    }
+
+    [Fact]
+    public void EdgeSites_FollowTheirEdge()
+    {
+        using var store = OpenStore();
+        store.SaveSnapshot(new SnapshotRow
+        {
+            SnapshotId = "s2",
+            WorkspaceId = WorkspaceId,
+            GitRoot = "gitroot",
+            SolutionPath = "solution.sln",
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 2, 0, 2, 5),
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 8, 0, 8, 5)
+        ]);
+
+        store.CopyEdgesToSnapshot(SnapshotId, "s2");
+        Assert.Equal(2, ReadSites("s2", "src", "tgt", "Calls").Count);
+
+        store.DeleteEdgesByDocumentPaths("s2", ["src/A.cs"]);
+        Assert.Empty(ReadSites("s2", "src", "tgt", "Calls"));
+        Assert.Equal(2, ReadSites(SnapshotId, "src", "tgt", "Calls").Count);
+
+        store.DeleteSnapshotData(SnapshotId);
+        Assert.Equal(0L, CountAllEdgeSites());
+    }
+
+    [Fact]
+    public void SaveEdges_NullLocation_HasNoSite()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId,
+        [
+            MakeSiteEdge("src", "tgt", "Calls", Provenance.CompilerProved, null, null, null, null, null)
+        ]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Null(edge.SourceDocumentPath);
+        Assert.Empty(ReadSites(SnapshotId, "src", "tgt", "Calls"));
+    }
+
+    [Fact]
+    public void SaveEdges_LargeBulkBatchAcrossChunks_PreservesRanksAndSites()
+    {
+        using var store = OpenStore();
+        const int count = 2100;
+
+        var firstBatch = Enumerable.Range(0, count)
+            .Select(i => MakeSiteEdge($"src{i}", "tgt", "Calls",
+                i % 2 == 0 ? Provenance.NameCandidate : Provenance.CompilerProved,
+                "src/A.cs", i, 0, i, 5))
+            .ToList();
+
+        Assert.Equal(count, store.SaveEdges(SnapshotId, firstBatch));
+
+        var secondBatch = new List<EdgeRecord>
+        {
+            // Higher rank replaces NameCandidate for src0
+            MakeSiteEdge("src0", "tgt", "Calls", Provenance.CompilerProved, "src/B.cs", 99, 0, 99, 5),
+            // Equal rank adds site for src1
+            MakeSiteEdge("src1", "tgt", "Calls", Provenance.CompilerProved, "src/A.cs", 0, 0, 0, 5),
+            // Lower rank ignored for src3
+            MakeSiteEdge("src3", "tgt", "Calls", Provenance.NameCandidate, "src/Z.cs", 1, 0, 1, 5),
+            // Brand new edge
+            MakeSiteEdge("srcNew", "tgt", "Calls", Provenance.CompilerProved, "src/C.cs", 4, 0, 4, 5)
+        };
+
+        store.SaveEdges(SnapshotId, secondBatch);
+
+        var edgesBySource = store.GetEdges(SnapshotId).ToDictionary(e => e.SourceSymbolId);
+        Assert.Equal(count + 1, edgesBySource.Count);
+
+        Assert.Equal(Provenance.CompilerProved, edgesBySource["src0"].Provenance);
+        Assert.Equal([("src/B.cs", 99, 0, 99, 5)], ReadSites(SnapshotId, "src0", "tgt", "Calls"));
+
+        Assert.Equal(
+            [("src/A.cs", 0, 0, 0, 5), ("src/A.cs", 1, 0, 1, 5)],
+            ReadSites(SnapshotId, "src1", "tgt", "Calls"));
+        Assert.Equal(0, edgesBySource["src1"].SourceStartLine);
+
+        Assert.Equal(Provenance.CompilerProved, edgesBySource["src3"].Provenance);
+        Assert.Equal([("src/A.cs", 3, 0, 3, 5)], ReadSites(SnapshotId, "src3", "tgt", "Calls"));
+
+        Assert.Equal([("src/C.cs", 4, 0, 4, 5)], ReadSites(SnapshotId, "srcNew", "tgt", "Calls"));
+    }
+
+    [Fact]
+    public void SaveEdges_SplitEdgeLowerRank_UnionsPayloadsWithoutOverwritingProvenanceOrSites()
+    {
+        using var store = OpenStore();
+
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo", Provenance.CompilerProved,
+                typeArgs: """[["TA"]]""", receiverConstraints: """[["R1"]]""",
+                sourceStartLine: 10, sourceEndLine: 10)
+        ]);
+        store.SaveEdges(SnapshotId, [
+            MakeEdge("src", "tgt", "MayDispatchTo", Provenance.Possible,
+                typeArgs: """[["TB"]]""", receiverConstraints: """[["R2"]]""",
+                sourceStartLine: 1, sourceEndLine: 1)
+        ]);
+
+        var edge = Assert.Single(store.GetEdges(SnapshotId));
+        Assert.Equal(Provenance.CompilerProved, edge.Provenance);
+        Assert.Equal(10, edge.SourceStartLine);
+        Assert.Equal([("src/Test.cs", 10, 1, 10, 10)], ReadSites(SnapshotId, "src", "tgt", "MayDispatchTo"));
+        Assert.Equal([["TA"], ["TB"]], EdgeMerge.DeserializeTypeArguments(edge.TypeArgumentsJson));
+        Assert.Equal([["R1"], ["R2"]], EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson));
     }
 }

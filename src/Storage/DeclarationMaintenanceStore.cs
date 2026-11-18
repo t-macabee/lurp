@@ -6,9 +6,27 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 {
     private readonly SqliteConnection _connection = connection ?? throw new ArgumentNullException(nameof(connection));
 
-    internal void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds)
+    internal void CopySnapshotDeclarations(string fromSnapshotId, string toSnapshotId)
     {
-        var idList = documentVersionIds.ToList();
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            INSERT OR IGNORE INTO snapshot_declarations (snapshot_id, declaration_id)
+            SELECT @toSnapshotId, sd_link.declaration_id
+            FROM snapshot_declarations sd_link
+            JOIN declarations d ON d.declaration_id = sd_link.declaration_id
+            JOIN snapshot_documents sdoc
+              ON sdoc.snapshot_id = @toSnapshotId
+             AND sdoc.document_version_id = d.document_version_id
+            WHERE sd_link.snapshot_id = @fromSnapshotId;
+            """;
+        command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);
+        command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        command.ExecuteNonQuery();
+    }
+
+    internal void DeleteSnapshotDeclarationsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds)
+    {
+        var idList = documentVersionIds as IReadOnlyCollection<string> ?? [.. documentVersionIds];
         if (idList.Count == 0)
             return;
 
@@ -18,12 +36,15 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
-                DELETE FROM declarations
-                WHERE document_version_id IN (SELECT value FROM json_each(@documentVersionIds))
-                  AND document_version_id NOT IN (
-                      SELECT DISTINCT document_version_id FROM snapshot_documents
+                DELETE FROM snapshot_declarations
+                WHERE snapshot_id = @snapshotId
+                  AND declaration_id IN (
+                      SELECT d.declaration_id
+                      FROM declarations d
+                      WHERE d.document_version_id IN (SELECT value FROM json_each(@documentVersionIds))
                   );
                 """;
+            command.Parameters.AddWithValue("@snapshotId", snapshotId);
             SqlIdList.Bind(command, "@documentVersionIds", idList);
             command.ExecuteNonQuery();
             transaction.Commit();
@@ -37,9 +58,10 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 
     // CROSS JOIN pins declarations as the outer table: the JSON list has no row estimate, so the
     // planner would otherwise scan the whole snapshot's snapshot_symbols (B16 U1b).
-    internal static string SymbolIdsByDocumentVersionIdsSql() => """
+    internal static string SymbolIdsByDocumentVersionIdsSql() => $"""
         SELECT DISTINCT ss.symbol_id
         FROM declarations d
+        CROSS {SnapshotDeclarationLink.Join("d", "sdecl")}
         CROSS JOIN snapshot_symbols ss
         WHERE ss.symbol_id = d.symbol_id
           AND ss.snapshot_id = @snapshotId
@@ -79,10 +101,11 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
             return null;
 
         using var command = _connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT d.symbol_id, d.full_start, d.full_end, d.name_start, d.name_end,
                    doc.relative_path, d.document_version_id
             FROM declarations d
+            {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id

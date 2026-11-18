@@ -1307,8 +1307,11 @@ public sealed class SemanticDifferTests : IDisposable
             return inner.GetDeclarationLocations(symbolId, snapshotId, includeGenerated);
         }
 
-        public void DeleteDeclarationsByDocumentVersionIds(IEnumerable<string> documentVersionIds) =>
-            inner.DeleteDeclarationsByDocumentVersionIds(documentVersionIds);
+        public void CopySnapshotDeclarations(string fromSnapshotId, string toSnapshotId) =>
+            inner.CopySnapshotDeclarations(fromSnapshotId, toSnapshotId);
+
+        public void DeleteSnapshotDeclarationsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds) =>
+            inner.DeleteSnapshotDeclarationsByDocumentVersionIds(snapshotId, documentVersionIds);
 
         public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds) =>
             inner.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds);

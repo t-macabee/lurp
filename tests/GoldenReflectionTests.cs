@@ -235,8 +235,13 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
                                                 }
                                                 """));
 
-        var typeRef = extraction.SingleEdge("ReflectionTypeRef", "global::N.User.Use", "global::N.Target");
-        Assert.Equal("compiler_proved", typeRef.Provenance);
+        var sourceId = extraction.ResolveId("global::N.User.Use");
+        var targetTypeId = extraction.ResolveId("global::N.Target");
+        var typeRefs = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionTypeRef" && e.SourceSymbolId == sourceId && e.TargetSymbolId == targetTypeId)
+            .ToList();
+        Assert.Equal(2, typeRefs.Count);
+        Assert.All(typeRefs, edge => Assert.Equal("compiler_proved", edge.Provenance));
 
         var memberRef = extraction.SingleEdge("ReflectionMemberRef", "global::N.User.Use", "global::N.Target.Name");
         Assert.Equal("compiler_proved", memberRef.Provenance);
@@ -1000,5 +1005,141 @@ public sealed class GoldenReflectionTests : InMemoryTestBase
 
         AssertNoNameCandidate(extraction, "global::N.User.IsLogin");
         AssertNoNameCandidate(extraction, "global::N.User.Map");
+    }
+
+    [Fact]
+    public async Task ReflectionTypeRef_RepeatedTypeOf_GivesOneRecordForEachSite()
+    {
+        // Line 6: "        var a = typeof(X);" -> typeof(X) spans col 16..25.
+        // Line 7: "        var b = typeof(X);" -> typeof(X) spans col 16..25.
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class X { }
+            public class C
+            {
+                public void Use()
+                {
+                    var a = typeof(X);
+                    var b = typeof(X);
+                }
+            }
+            """));
+
+        var sourceId = extraction.ResolveId("global::N.C.Use");
+        var targetId = extraction.ResolveId("global::N.X");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionTypeRef" && e.SourceSymbolId == sourceId && e.TargetSymbolId == targetId)
+            .OrderBy(e => e.SourceStartLine)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)6, (int?)16, (int?)6, (int?)25),
+                ((int?)7, (int?)16, (int?)7, (int?)25)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task ReflectionMemberRef_RepeatedNameOf_GivesOneRecordForEachSite()
+    {
+        // Line 6: "        var a = nameof(X);" -> nameof(X) spans col 16..25.
+        // Line 7: "        var b = nameof(X);" -> nameof(X) spans col 16..25.
+        var extraction = await ExtractAsync(One("""
+            namespace N;
+            public class X { }
+            public class C
+            {
+                public void Use()
+                {
+                    var a = nameof(X);
+                    var b = nameof(X);
+                }
+            }
+            """));
+
+        var sourceId = extraction.ResolveId("global::N.C.Use");
+        var targetId = extraction.ResolveId("global::N.X");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionMemberRef" && e.SourceSymbolId == sourceId && e.TargetSymbolId == targetId)
+            .OrderBy(e => e.SourceStartLine)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)6, (int?)16, (int?)6, (int?)25),
+                ((int?)7, (int?)16, (int?)7, (int?)25)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task ReflectionNameCandidate_RepeatedStringLiteral_GivesOneRecordForEachSite()
+    {
+        // Line 7: '        typeof(Target).GetMethod("Run");' -> "Run" spans col 33..38.
+        // Line 8: '        typeof(Target).GetMethod("Run");' -> "Run" spans col 33..38.
+        var extraction = await ExtractAsync(One("""
+            using System;
+            namespace N;
+            public class Target { public void Run() { } }
+            public class User
+            {
+                public void Use()
+                {
+                    typeof(Target).GetMethod("Run");
+                    typeof(Target).GetMethod("Run");
+                }
+            }
+            """));
+
+        var sourceId = extraction.ResolveId("global::N.User.Use");
+        var targetId = extraction.ResolveId("global::N.Target.Run");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionNameCandidate" && e.SourceSymbolId == sourceId && e.TargetSymbolId == targetId)
+            .OrderBy(e => e.SourceStartLine)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)7, (int?)33, (int?)7, (int?)38),
+                ((int?)8, (int?)33, (int?)8, (int?)38)
+            ],
+            sites);
+    }
+
+    [Fact]
+    public async Task ReflectionTargetUnknown_RepeatedUnknownPattern_GivesOneRecordForEachSite()
+    {
+        // Line 6: "        Type.GetType(name);" -> Type.GetType(name) spans col 8..26 (18 chars).
+        // Line 7: "        Type.GetType(name);" -> Type.GetType(name) spans col 8..26 (18 chars).
+        var extraction = await ExtractAsync(One("""
+            using System;
+            namespace N;
+            public class User
+            {
+                public void Use(string name)
+                {
+                    Type.GetType(name);
+                    Type.GetType(name);
+                }
+            }
+            """));
+
+        var sourceId = extraction.ResolveId("global::N.User.Use");
+        var sites = extraction.Result.Edges
+            .Where(e => e.Kind == "ReflectionTargetUnknown" && e.SourceSymbolId == sourceId)
+            .OrderBy(e => e.SourceStartLine)
+            .Select(e => (e.SourceStartLine, e.SourceStartColumn, e.SourceEndLine, e.SourceEndColumn))
+            .ToList();
+
+        Assert.Equal(
+            [
+                ((int?)6, (int?)8, (int?)6, (int?)26),
+                ((int?)7, (int?)8, (int?)7, (int?)26)
+            ],
+            sites);
     }
 }

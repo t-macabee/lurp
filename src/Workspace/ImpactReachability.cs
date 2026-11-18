@@ -214,6 +214,44 @@ public sealed class ImpactReachability
     {
         return left > long.MaxValue - right ? long.MaxValue : left + right;
     }
+
+    /// <summary>
+    ///     Loads the ordered sites from <c>edge_sites</c> for every located hop in one
+    ///     query and sets <see cref="ImpactHop.SiteCount" /> and <see cref="ImpactHop.Sites" />
+    ///     (capped at <see cref="ImpactHop.MaxSitesPerHop" />, 1-based lines, D155.7).
+    /// </summary>
+    public void PopulateSites(IEnumerable<ImpactHop> hops)
+    {
+        var hopList = hops as IReadOnlyList<ImpactHop> ?? [.. hops];
+        var triples = new HashSet<(string Source, string Target, string Kind)>();
+        foreach (var hop in hopList)
+            if (hop.SourceDocument != null)
+                triples.Add((hop.SourceSymbolId, hop.TargetSymbolId, hop.EdgeKind));
+
+        if (triples.Count == 0)
+            return;
+
+        var sitesByTriple = _store.GetEdgeSites(_snapshotId, triples);
+        foreach (var hop in hopList)
+        {
+            if (hop.SourceDocument == null)
+                continue;
+
+            if (!sitesByTriple.TryGetValue((hop.SourceSymbolId, hop.TargetSymbolId, hop.EdgeKind), out var sites) || sites.Count == 0)
+                continue;
+
+            hop.SiteCount = sites.Count;
+            hop.Sites = sites
+                .Take(ImpactHop.MaxSitesPerHop)
+                .Select(static s => new ImpactHopSite(
+                    s.DocumentPath,
+                    LineNumbers.ToOneBased(s.StartLine),
+                    s.StartColumn,
+                    LineNumbers.ToOneBased(s.EndLine),
+                    s.EndColumn))
+                .ToList();
+        }
+    }
 }
 
 public sealed class ImpactReachedSymbol

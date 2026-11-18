@@ -580,7 +580,7 @@ public sealed class IncrementalParityTests : IntegrationTestBase
                 e.ExtractorVersion, e.SourceDocumentPath ?? "", e.SourceStartLine, e.SourceStartColumn,
                 e.SourceEndLine, e.SourceEndColumn, e.IsCrossGenerated,
                 e.TypeArgumentsJson ?? "", e.ReceiverTypeConstraintsJson ?? "",
-                e.SourceNodeKind?.ToString() ?? "", e.TargetNodeKind?.ToString() ?? ""))
+                e.SourceIsBoundary, e.TargetIsBoundary))
             .OrderBy(f => f, StringComparer.Ordinal)];
     }
 
@@ -1569,5 +1569,146 @@ public sealed class IncrementalParityTests : IntegrationTestBase
         SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
         Assert.Equal(Net10AndNet9,
             SnapshotAssertions.ReadTargetFrameworksForSymbol(DbPath, snapshotB, "T:TestProject.Calc"));
+    }
+
+    [Fact]
+    public async Task Scenario_ClosureDocumentWithNewSymbolIds_ShowsOnlyCurrentDeclarations()
+    {
+        CreateProject("Lib",
+            new Dictionary<string, string>
+            {
+                ["Marker.cs"] = "namespace A { public class MarkerA { } } namespace B { public class MarkerB { } }",
+                ["Widget.cs"] = "namespace A { public class Widget { } }"
+            });
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["C.cs"] = """
+                           using A;
+                           using B;
+
+                           public class C
+                           {
+                               public void M(Widget w) { }
+                           }
+                           """
+            },
+            projectReferences: ["Lib"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "Widget.cs", "namespace B { public class Widget { } }");
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        AssertCurrentWidgetDeclarationsOnly(snapshotB);
+        Assert.Equal(
+            SnapshotAssertions.ReadDeclarations(_cleanRebuildDbPath, snapshotC),
+            SnapshotAssertions.ReadDeclarations(DbPath, snapshotB));
+    }
+
+    [Fact]
+    public async Task Scenario_FullRunAfterSymbolIdChange_ShowsOnlyCurrentDeclarations()
+    {
+        CreateProject("Lib",
+            new Dictionary<string, string>
+            {
+                ["Marker.cs"] = "namespace A { public class MarkerA { } } namespace B { public class MarkerB { } }",
+                ["Widget.cs"] = "namespace A { public class Widget { } }"
+            });
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["C.cs"] = """
+                           using A;
+                           using B;
+
+                           public class C
+                           {
+                               public void M(Widget w) { }
+                           }
+                           """
+            },
+            projectReferences: ["Lib"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("Lib", "Widget.cs", "namespace B { public class Widget { } }");
+        var snapshotB = await RunFullIndexNoDeleteAsync(DbPath, force: true);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        AssertCurrentWidgetDeclarationsOnly(snapshotB);
+    }
+
+    [Fact]
+    public async Task Scenario_UnchangedPartialSiblingWithNewSymbolIds_ShowsOnlyCurrentDeclarations()
+    {
+        CreateProject("Lib",
+            new Dictionary<string, string>
+            {
+                ["Marker.cs"] = "namespace A { public class MarkerA { } } namespace B { public class MarkerB { } }",
+                ["Widget.cs"] = "namespace A { public class Widget { } }"
+            });
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["C.cs"] = """
+                           using A;
+                           using B;
+
+                           public partial class C
+                           {
+                               public void M(Widget w) { }
+                           }
+                           """,
+                ["C.Other.cs"] = """
+                                 public partial class C
+                                 {
+                                     public int One() => 1;
+                                 }
+                                 """
+            },
+            projectReferences: ["Lib"]);
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        // C.cs keeps its bytes. It enters the extraction scope because its partial sibling
+        // C.Other.cs changes, and its method gets a new symbol id because Widget moves to B.
+        WriteFile("Lib", "Widget.cs", "namespace B { public class Widget { } }");
+        WriteFile("App", "C.Other.cs", """
+                                       public partial class C
+                                       {
+                                           public int One() => 2;
+                                       }
+                                       """);
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        AssertCurrentWidgetDeclarationsOnly(snapshotB);
+        Assert.Equal(
+            SnapshotAssertions.ReadDeclarations(_cleanRebuildDbPath, snapshotC),
+            SnapshotAssertions.ReadDeclarations(DbPath, snapshotB));
+    }
+
+    private void AssertCurrentWidgetDeclarationsOnly(string snapshotId)
+    {
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var outline = store.GetDeclarationsOutline("src/App/C.cs", snapshotId, false, 100, null);
+            Assert.NotNull(outline);
+            Assert.Contains(outline.Items, d => d.SymbolId.StartsWith("M:C.M(B.Widget)|", StringComparison.Ordinal));
+            Assert.DoesNotContain(outline.Items, d => d.SymbolId.StartsWith("M:C.M(A.Widget)|", StringComparison.Ordinal));
+
+            var nav = store.NavigateToLocation("src/App/C.cs", 6, snapshotId);
+            Assert.NotNull(nav);
+            Assert.StartsWith("M:C.M(B.Widget)|", nav.SymbolId, StringComparison.Ordinal);
+        }
+        finally
+        {
+            store.Close();
+        }
     }
 }
