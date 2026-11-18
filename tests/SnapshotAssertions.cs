@@ -97,6 +97,18 @@ internal static class SnapshotAssertions
             Assert.Equal(
                 ReadSymbolFts(dbPathC, snapshotC),
                 ReadSymbolFts(dbPathB, snapshotB));
+
+            Assert.Equal(
+                ReadSnapshotGraphNodes(dbPathC, snapshotC),
+                ReadSnapshotGraphNodes(dbPathB, snapshotB));
+
+            Assert.Equal(
+                ReadProjects(dbPathC, snapshotC),
+                ReadProjects(dbPathB, snapshotB));
+
+            Assert.Equal(
+                ReadProjectReferences(dbPathC, snapshotC),
+                ReadProjectReferences(dbPathB, snapshotB));
         }
         finally
         {
@@ -211,6 +223,99 @@ internal static class SnapshotAssertions
                 reader.GetInt32(5),
                 reader.GetInt32(6),
                 reader.GetInt32(7)));
+        return result;
+    }
+
+    internal static List<string> ReadSnapshotGraphNodes(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT node_id
+            FROM snapshot_graph_nodes
+            WHERE snapshot_id = @snapshotId
+            ORDER BY node_id;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(reader.GetString(0));
+        result.Sort(StringComparer.Ordinal);
+        return result;
+    }
+
+    internal static List<ProjectSnapshot> ReadProjects(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT name, assembly_name, target_framework, metadata_reference_identities,
+                   compilation_options_fingerprint, document_paths_json
+            FROM projects
+            WHERE snapshot_id = @snapshotId
+            ORDER BY name, assembly_name, target_framework, metadata_reference_identities,
+                     compilation_options_fingerprint, document_paths_json;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<ProjectSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new ProjectSnapshot(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5)));
+        result.Sort((a, b) =>
+        {
+            var cmp = StringComparer.Ordinal.Compare(a.Name, b.Name);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.AssemblyName, b.AssemblyName);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.TargetFramework, b.TargetFramework);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.MetadataReferenceIdentities, b.MetadataReferenceIdentities);
+            if (cmp != 0) return cmp;
+            cmp = StringComparer.Ordinal.Compare(a.CompilationOptionsFingerprint, b.CompilationOptionsFingerprint);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.DocumentPathsJson, b.DocumentPathsJson);
+        });
+        return result;
+    }
+
+    internal static List<ProjectReferenceSnapshot> ReadProjectReferences(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT p.name, pr.referenced_project_name
+            FROM project_references pr
+            JOIN projects p ON p.project_id = pr.project_id
+            WHERE p.snapshot_id = @snapshotId
+            ORDER BY p.name, pr.referenced_project_name;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<ProjectReferenceSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new ProjectReferenceSnapshot(reader.GetString(0), reader.GetString(1)));
+        result.Sort((a, b) =>
+        {
+            var cmp = StringComparer.Ordinal.Compare(a.ProjectName, b.ProjectName);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.ReferencedProjectName, b.ReferencedProjectName);
+        });
         return result;
     }
 
@@ -385,7 +490,9 @@ internal static class SnapshotAssertions
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.Kind, b.Kind);
             if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.Value, b.Value);
+            cmp = StringComparer.Ordinal.Compare(a.Value, b.Value);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.DocumentPath, b.DocumentPath);
         });
     }
 
@@ -427,6 +534,7 @@ internal static class SnapshotAssertions
         Assert.Equal(expected.SymbolId, actual.SymbolId);
         Assert.Equal(expected.Kind, actual.Kind);
         Assert.Equal(expected.Value, actual.Value);
+        Assert.Equal(expected.DocumentPath, actual.DocumentPath);
     }
 
     private static (int SourceRows, int SymbolRows) GetFtsCounts(string dbPath, string snapshotId)
@@ -481,4 +589,14 @@ internal static class SnapshotAssertions
         int StartColumn,
         int EndLine,
         int EndColumn);
+
+    internal sealed record ProjectSnapshot(
+        string Name,
+        string? AssemblyName,
+        string? TargetFramework,
+        string? MetadataReferenceIdentities,
+        string? CompilationOptionsFingerprint,
+        string? DocumentPathsJson);
+
+    internal sealed record ProjectReferenceSnapshot(string ProjectName, string ReferencedProjectName);
 }

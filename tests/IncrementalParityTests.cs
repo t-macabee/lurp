@@ -1692,6 +1692,41 @@ public sealed class IncrementalParityTests : IntegrationTestBase
             SnapshotAssertions.ReadDeclarations(DbPath, snapshotB));
     }
 
+    [Fact]
+    public async Task ScenarioGraphNodes_LastEdgeToAnExternalTypeRemoved_DropsTheNode()
+    {
+        CreateProject("P", new Dictionary<string, string>
+        {
+            ["Colors.cs"] = """
+                            namespace P;
+
+                            public enum Color { Red }
+                            """,
+            ["Other.cs"] = """
+                           namespace P;
+
+                           public class Other { }
+                           """
+        });
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        WriteFile("P", "Colors.cs", """
+                                    namespace P;
+
+                                    public class Palette { }
+                                    """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+        var snapshotC = await RunFullIndexAsync(_cleanRebuildDbPath);
+
+        Assert.NotEqual(snapshotA, snapshotB);
+        SnapshotAssertions.CompareSnapshotsAreEquivalent(DbPath, snapshotB, _cleanRebuildDbPath, snapshotC);
+
+        var graphNodesB = SnapshotAssertions.ReadSnapshotGraphNodes(DbPath, snapshotB);
+        Assert.DoesNotContain(graphNodesB, id => id.StartsWith("T:System.Enum|", StringComparison.Ordinal));
+    }
+
     private void AssertCurrentWidgetDeclarationsOnly(string snapshotId)
     {
         using var store = OpenStore(DbPath);
