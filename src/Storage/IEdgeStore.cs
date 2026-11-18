@@ -23,8 +23,6 @@ public interface IEdgeStore
     List<EdgeRecord> GetIncomingEdges(string snapshotId, string symbolId);
     List<EdgeRecord> GetOutgoingEdges(string snapshotId, string symbolId);
 
-    void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
-    void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities);
     void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds);
     void CopyEdgesToSnapshot(string fromSnapshotId, string toSnapshotId);
 
@@ -33,7 +31,6 @@ public interface IEdgeStore
 
     void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
     bool TryRetractAnnotation(string snapshotId, long annotationId);
-    void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths);
 
     OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId);
 

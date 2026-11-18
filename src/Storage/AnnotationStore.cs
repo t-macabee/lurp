@@ -208,34 +208,6 @@ internal sealed class AnnotationStore
         command.ExecuteNonQuery();
     }
 
-    /// <summary>
-    ///     Deletes annotations produced by walks anchored to the given documents.
-    ///     Rows with a NULL <c>document_path</c> (user-authored annotations) are
-    ///     never matched and survive untouched.
-    /// </summary>
-    public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-    {
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
-        if (pathList.Count == 0)
-            return;
-
-        using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = DeleteAnnotationsByDocumentPathsSql();
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            SqlIdList.Bind(command, "@documentPaths", pathList);
-            command.ExecuteNonQuery();
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
-    }
     internal static string DeleteAnnotationsByDocumentPathsSql() => """
         DELETE FROM annotations
         WHERE snapshot_id = @snapshotId

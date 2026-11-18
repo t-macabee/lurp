@@ -454,17 +454,6 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
-        public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId,
-            IEnumerable<string> assemblyIdentities)
-        {
-            throw new NotSupportedException();
-        }
-
         public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
         {
             throw new NotSupportedException();
@@ -491,11 +480,6 @@ public sealed class ImpactReachabilityTests
         }
 
         public bool TryRetractAnnotation(string snapshotId, long annotationId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
         {
             throw new NotSupportedException();
         }
@@ -594,17 +578,6 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
-        public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId,
-            IEnumerable<string> assemblyIdentities)
-        {
-            throw new NotSupportedException();
-        }
-
         public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
         {
             throw new NotSupportedException();
@@ -631,11 +604,6 @@ public sealed class ImpactReachabilityTests
         }
 
         public bool TryRetractAnnotation(string snapshotId, long annotationId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
         {
             throw new NotSupportedException();
         }

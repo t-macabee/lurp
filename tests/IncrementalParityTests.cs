@@ -955,6 +955,106 @@ public sealed class IncrementalParityTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ScenarioR6_NullPathEdgeOfAnOutOfScopeSymbol_CarriesForward()
+    {
+        CreateProject("App",
+            new Dictionary<string, string>
+            {
+                ["Helper.cs"] = """
+                                namespace App;
+
+                                public class Helper
+                                {
+                                    public int Add(int a, int b) => a + b;
+                                }
+                                """,
+                ["Caller.cs"] = """
+                                namespace App;
+
+                                public class Caller
+                                {
+                                    public int Run() => new Helper().Add(1, 2);
+                                }
+                                """,
+                ["Other.cs"] = """
+                               namespace App;
+
+                               public class Other
+                               {
+                                   public void Ping() { }
+                               }
+                               """,
+                ["Third.cs"] = """
+                               namespace App;
+
+                               public class Third
+                               {
+                                   public void Y() { }
+                               }
+                               """
+            });
+
+        var snapshotA = await RunFullIndexAsync(DbPath);
+
+        var otherPingId = ResolveSymbolId(snapshotA, "global::App.Other.Ping");
+        var helperAddId = ResolveSymbolId(snapshotA, "global::App.Helper.Add");
+        var thirdYId = ResolveSymbolId(snapshotA, "global::App.Third.Y");
+
+        using (var store = OpenStore(DbPath))
+        {
+            store.SaveEdges(snapshotA,
+            [
+                new EdgeRecord
+                {
+                    SourceSymbolId = otherPingId,
+                    TargetSymbolId = thirdYId,
+                    Kind = nameof(EdgeKind.Calls),
+                    Provenance = Provenance.CompilerProved,
+                    SnapshotId = snapshotA,
+                    ExtractorVersion = VersionConstants.ExtractorVersion
+                },
+                new EdgeRecord
+                {
+                    SourceSymbolId = helperAddId,
+                    TargetSymbolId = thirdYId,
+                    Kind = nameof(EdgeKind.Calls),
+                    Provenance = Provenance.CompilerProved,
+                    SnapshotId = snapshotA,
+                    ExtractorVersion = VersionConstants.ExtractorVersion
+                }
+            ]);
+        }
+
+        WriteFile("App", "Helper.cs", """
+                                      namespace App;
+
+                                      public class Helper
+                                      {
+                                          public int Add(int a, int b) => b + a;
+                                      }
+                                      """);
+
+        var snapshotB = await RunIncrementalIndexAsync();
+
+        Assert.NotEqual(snapshotA, snapshotB);
+
+        // No parity compare: a clean rebuild cannot reproduce injected null-path edges.
+        using (var store = OpenStore(DbPath))
+        {
+            var edgesB = store.GetEdges(snapshotB);
+            Assert.Contains(edgesB, e =>
+                e.SourceSymbolId == otherPingId &&
+                e.TargetSymbolId == thirdYId &&
+                e.Kind == nameof(EdgeKind.Calls) &&
+                e.Provenance == Provenance.CompilerProved);
+            Assert.DoesNotContain(edgesB, e =>
+                e.SourceSymbolId == helperAddId &&
+                e.TargetSymbolId == thirdYId &&
+                e.Kind == nameof(EdgeKind.Calls));
+        }
+    }
+
+    [Fact]
     public async Task ScenarioR3_NewOverloadInNewFile_RebindsUneditedCaller()
     {
         // V1: only M(long) exists; c.M(42) binds to M(long) via implicit

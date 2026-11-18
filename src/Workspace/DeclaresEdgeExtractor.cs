@@ -53,7 +53,7 @@ internal sealed class DeclaresEdgeExtractor(MemberEdgeExtractionContext context)
 
         // An edge without a resolvable document path (a declaration in a
         // tree with no path) is useless for incremental scoping and forces
-        // the CrossDocumentEdgeRefresher's expensive fallback.
+        // ReverseEdgeClosure's expensive fallback.
         if (loc == null)
             return;
 

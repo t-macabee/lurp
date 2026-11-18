@@ -319,8 +319,5 @@ public sealed class SnapshotManifestJsonTests
 
         public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId) =>
             throw new NotSupportedException();
-
-        public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName) =>
-            throw new NotSupportedException();
     }
 }

@@ -447,12 +447,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         _bindingIncompletenessStore!.CopyBindingIncompleteness(fromSnapshotId, toSnapshotId);
     }
 
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName)
-    {
-        EnsureOpen();
-        _bindingIncompletenessStore!.DeleteBindingIncompletenessByDocumentPaths(snapshotId, documentPaths, projectName);
-    }
-
     // ── IDeclarationStore ──────────────────────────────────────────────
 
     public void SaveDeclarations(string snapshotId, IEnumerable<SymbolDeclaration> declarations)
@@ -664,18 +658,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _edgeOps!.GetOutgoingEdges(snapshotId, symbolId);
     }
 
-    public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-    {
-        EnsureOpen();
-        _edgeOps!.DeleteEdgesByDocumentPaths(snapshotId, documentPaths);
-    }
-
-    public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
-    {
-        EnsureOpen();
-        _edgeOps!.DeleteEdgesWithNullDocumentPathForAssemblies(snapshotId, assemblyIdentities);
-    }
-
     public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
     {
         EnsureOpen();
@@ -710,12 +692,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         return _annotations!.TryRetractAnnotation(snapshotId, annotationId);
-    }
-
-    public void DeleteAnnotationsByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-    {
-        EnsureOpen();
-        _annotations!.DeleteAnnotationsByDocumentPaths(snapshotId, documentPaths);
     }
 
     public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)

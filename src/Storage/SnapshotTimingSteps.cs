@@ -19,7 +19,7 @@ public static class SnapshotTimingSteps
     public const string OrphanEdgeCleanup = "orphan_edge_cleanup";
 
     /// <summary>
-    ///     Zero-duration marker rows recording which path CrossDocumentEdgeRefresher.FindAffectedDocPaths
+    ///     Zero-duration marker rows recording which path ReverseEdgeClosure.FindAffectedDocPaths
     ///     took for a given incremental run: narrowed document scope, or the
     ///     project-scope fallback when the reverse-edge closure outgrew its ratio
     ///     cutoff. Presence/absence of the fallback row across runs makes the

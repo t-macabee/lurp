@@ -23,7 +23,7 @@ public sealed class EfCoreAdapter : IFrameworkAdapter
     ///     five adapters: each walk is guarded by the declaring scope of the type it is
     ///     anchored to (the <c>DbContext</c> or <c>IEntityTypeConfiguration&lt;T&gt;</c>
     ///     class). Annotations carry the evidence document of the walk that produced
-    ///     them, and <c>IEdgeStore.DeleteAnnotationsByDocumentPaths</c> retires
+    ///     them, and <c>SqliteIndexStore.DeleteFactsByDocumentPaths</c> retires
     ///     copied-forward rows over exactly the extraction scope, so extraction and
     ///     deletion narrow in lockstep.
     /// </remarks>

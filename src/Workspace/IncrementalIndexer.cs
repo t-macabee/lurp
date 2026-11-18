@@ -13,13 +13,12 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
     // Incremental indexing strategy:
     //   1. Hash all documents and compare against the previous manifest to find changed/new/deleted files.
-    //   2. Identify which projects are affected by the changes.
+    //   2. Compute the one extraction scope (changed documents, reverse-edge closure, type parts, and R3 new-file project documents) and identify affected projects.
     //   3. Load compilations only for affected projects (skip unchanged ones).
-    //   4. Create a new snapshot manifest, copy forward edges/diagnostics/symbols from the previous snapshot.
-    //   5. Remove stale data (edges for changed documents, declarations by old version ids, diagnostics).
-    //   6. Re-extract declarations, edges, and diagnostics from affected compilations.
-    //   7. Refresh cross-document edges for documents that reference changed symbols.
-    //   8. Rebuild the FTS5 search index and compute a semantic diff against the previous snapshot.
+    //   4. Create a new snapshot manifest, copy forward edges/diagnostics/symbols/annotations from the previous snapshot.
+    //   5. Remove stale data (edges, annotations, binding-incompleteness, declarations, TFMs, diagnostics) for the extraction scope.
+    //   6. Re-extract declarations, edges, diagnostics, annotations and binding-incompleteness in one pass over the extraction scope.
+    //   7. Prune removed symbols, clean up orphan edges and graph nodes, rebuild FTS5, persist semantic diff, and complete the snapshot.
     public async Task<IncrementalResult> RunIncrementalAsync(Solution solution, WorkspaceInfo workspaceInfo, SnapshotRow previousManifest, long solutionLoadMs = 0, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -104,11 +103,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             : GetProjectDocumentPaths(solution, GetProjectsForPaths(solution, addedFilePaths));
 
         var invalidationPaths = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
-        var dependencyRefresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters, _output);
+        var closure = new ReverseEdgeClosure(_store, _gitRoot);
         var closureSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
         if (newFileProjectPaths != null)
             closureSeed.UnionWith(newFileProjectPaths);
-        var (closurePaths, fellBackToProjectScope) = dependencyRefresher.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
+        var (closurePaths, fellBackToProjectScope) = closure.FindAffectedDocPaths(solution, previousSnapshotId, closureSeed);
         invalidationPaths.UnionWith(closurePaths);
         if (newFileProjectPaths != null)
         {
@@ -118,64 +117,40 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
         if (newFileProjectPaths != null)
             _output.WriteLine($"  {addedFilePaths.Count} new file(s); widened closure to {newFileProjectPaths.Count} document(s) in the new files' project(s).");
-        var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, invalidationPaths);
-        var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
-        invalidationPaths.UnionWith(affectedDocumentPaths);
         timings.Add(new SnapshotTimingRow(
             fellBackToProjectScope ? SnapshotTimingSteps.ClosureFallback : SnapshotTimingSteps.ClosureNarrowed,
             0));
 
-        // Extraction scope: the set of documents that will be re-extracted, and
-        // whose copied-forward facts must therefore be deleted before re-extraction.
-        // Kept distinct from invalidationPaths — the wide set driving FTS refresh
-        // and the semantic diff — because extraction and deletion must narrow in
-        // lockstep while those consumers stay project-wide.  Step 7 receives the
-        // pre-computed reverse-edge closure (closurePaths) directly, not a seed.
+        // Extraction scope: the one set of documents that will be deleted and
+        // re-extracted in lockstep in steps 5 and 6.
         //
-        // Contents: changed documents plus every document declaring any part of a
-        // type whose declaring syntax appears in a changed document. The type-part
-        // expansion is required because two extraction guards are type-level
+        // Contents: changed documents, the reverse-edge closure (closurePaths),
+        // R3 new-file project documents (when any file was added), and every
+        // document declaring any part of a type whose declaring syntax appears
+        // in that seed (ExpandToDeclaringTypeParts). The type-part expansion is
+        // required because two extraction guards are type-level
         // (SymbolStructuralEdgeExtractor.IsTypeInScope, PolymorphismExtractionContext
         // .IsTypeInScope), so a purely file-granular scope would leave partial types
         // half in and half out of scope while whole-symbol properties such as
         // is_partial stay computed across all parts.
         //
-        // The reverse-edge closure (closurePaths) is intentionally excluded from the
-        // extraction-scope seed: documents reached only through the closure did not
-        // change — they only reference changed symbols.  Their own declarations are
-        // untouched and their cross-document edges are handled by the step-7
-        // cross-document edge refresh, not by re-extraction.  Expanding type parts
-        // from the full closure seed was measured to pull 41 % of the tree into
-        // re-extraction for a single-document change because every partial type
-        // transitively touched through the call graph adds all of its partial parts.
-        //
-        // On the project-scope fallback, closurePaths already IS every document
-        // in every touched project (CrossDocumentEdgeRefresher widened it before
-        // returning), so this seed stays at changed-only and extraction stays
-        // correspondingly narrow even though invalidationPaths is project-wide.
-        //
-        // Add-file exception (R3): the closure-exclusion premise breaks when a
-        // NEW file is added — documents reached through the closure may rebind
-        // to the new file's overloads even though their own text did not change.
-        // The affected caller must land in the extraction scope (re-extraction),
-        // not just invalidation (FTS/diff), so for this run only the seed is
-        // widened to changed + new-file project documents + the closure. The
-        // widening is guarded to added files; plain edits keep the narrow seed.
-        var extractionScopeSeed = changedPaths;
+        // Keeping the changed documents together with the closure in the one
+        // extraction pass ensures every contributor's type to an aggregated
+        // MayDispatchTo edge is visible alongside the dispatch target's document,
+        // without needing a second extraction pass.
+        var extractionScopeSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
+        extractionScopeSeed.UnionWith(closurePaths);
         if (newFileProjectPaths != null)
-        {
-            extractionScopeSeed = new HashSet<string>(changedPaths, PathNormalizer.PathComparer);
             extractionScopeSeed.UnionWith(newFileProjectPaths);
-            extractionScopeSeed.UnionWith(closurePaths);
-        }
 
         var extractionScopePaths = ExpandToDeclaringTypeParts(previousSnapshotId, extractionScopeSeed);
+        var affectedProjects = _changeDetector.IdentifyAffectedProjects(solution, extractionScopePaths);
+        var affectedDocumentPaths = GetProjectDocumentPaths(solution, affectedProjects);
+        invalidationPaths.UnionWith(affectedDocumentPaths);
 
         // Extraction guards compare against SyntaxTree.FilePath, which is absolute
         // and forward-slash normalized. Passing the git-root-relative form matches
-        // no tree and silently extracts almost nothing, so convert here — the same
-        // conversion CrossDocumentEdgeRefresher.ProcessCompilationsAsync performs
-        // for its own scope set.
+        // no tree and silently extracts almost nothing, so convert here.
         var extractionScopeAbsolutePaths = ToAbsoluteNormalizedPaths(extractionScopePaths);
         _output.WriteLine($"{affectedProjects.Count} affected: {string.Join(", ", affectedProjects)}");
 
@@ -259,25 +234,18 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             var diffAndSearchSymbolIds = new HashSet<string>(changedSymbolIds);
             var changeScope = new IncrementalChangeScope(
                 invalidationPaths,
-                diffAndSearchSymbolIds,
-                new HashSet<string>(affectedProjects),
-                closurePaths,
-                extractionScopePaths);
+                diffAndSearchSymbolIds);
 
             var finalizationContext = new SnapshotFinalizationContext(
-                solution,
-                workspaceInfo,
                 new SnapshotPair(previousSnapshotId, newSnapshotIdStr),
                 changeScope);
 
             swScope.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.ChangeScope, swScope.ElapsedMilliseconds));
 
-            // Step 7: Cross-doc Edge Refresh + Step 8: FTS Rebuild + Diff (in FinalizeSnapshotAsync)
+            // Step 7: Orphan cleanup + FTS Rebuild + Diff + Complete
             cancellationToken.ThrowIfCancellationRequested();
-            int crossDocEdgesProcessed;
-            (crossDocEdgesProcessed, orphanEdgesDropped) = await FinalizeSnapshotAsync(finalizationContext, timings, cancellationToken);
-            totalEdges += crossDocEdgesProcessed;
+            orphanEdgesDropped = FinalizeSnapshot(finalizationContext, timings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -407,7 +375,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
             {
                 _store.SaveBindingIncompleteness(
                     newSnapshotIdStr,
-                    WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot));
+                    ScopeToDocuments(
+                        WorkspaceLoadGate.DescribeBlindProject(compilation, projectName, workspaceInfo.Id.GitRoot),
+                        r => r.DocumentPath,
+                        extractionScopeRelativePaths));
                 _output.WriteLine("UNREADABLE: no metadata references resolved; skipped.");
                 continue;
             }
@@ -516,20 +487,17 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return removedSymbolIds;
     }
 
-    private async Task<(int crossDocEdgesProcessed, OrphanEdgeDropSummary orphanEdgesDropped)> FinalizeSnapshotAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
+    private OrphanEdgeDropSummary FinalizeSnapshot(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
     {
-        // Phase order is load-bearing: reverse refresh → orphan cleanup → FTS → semantic diff → complete.
+        // Phase order is load-bearing: orphan cleanup → FTS → semantic diff → complete.
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Step 7: Cross-doc Edge Refresh
-        var crossDocEdgesProcessed = await RefreshCrossDocumentEdgesAsync(context, timings, cancellationToken);
-
-        // Step 7b: Remove edges targeting symbols not declared in this snapshot
+        // Remove edges targeting symbols not declared in this snapshot
         var swOrphans = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
         var orphanEdgesDropped = _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
 
-        // Step 7c: Drop stale synthetic/route graph nodes carried forward by
+        // Drop stale synthetic/route graph nodes carried forward by
         // CopyEdgesToSnapshot that no longer have any edge or declaration in this
         // snapshot. Without this they linger in snapshot_graph_nodes and keep
         // masking genuinely orphaned edges in DeleteOrphanEdges (ARCH-006).
@@ -538,10 +506,10 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         swOrphans.Stop();
         timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));
 
-        // Step 8a: FTS Rebuild (incremental)
+        // FTS Rebuild (incremental)
         RebuildSearchIndex(context, timings);
 
-        // Step 8b: Semantic diff persistence — skipped when the caller passed
+        // Semantic diff persistence — skipped when the caller passed
         // --skip-diff. Only --mode=diff (which recomputes live) and --mode=impact's
         // semantic-causes annotation (which degrades to an empty list when absent)
         // consume this; a run that needs neither shouldn't pay for it.
@@ -554,44 +522,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         _store.MarkSnapshotComplete(context.Snapshots.ToSnapshotId);
 
         IndexFinalization.RefreshPlannerStatistics(_store, _output, timings);
-        return (crossDocEdgesProcessed, orphanEdgesDropped);
-    }
-
-    private async Task<int> RefreshCrossDocumentEdgesAsync(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
-    {
-        var sw = Stopwatch.StartNew();
-        _output.Write("Updating cross-document edges... ");
-        var refresher = new CrossDocumentEdgeRefresher(_store, _gitRoot, skipAdapters, _output);
-        // The reverse-edge closure was already computed in step 2 via
-        // FindAffectedDocPaths on the genuinely-changed documents plus
-        // binding-incompleteness seeding. Union in the documents step 6 already
-        // re-extracted (changed documents + type-part expansion): an aggregated
-        // cross-document edge — a MayDispatchTo edge whose TypeArgumentsJson holds
-        // one type-argument variant per implementing type — is anchored on the
-        // dispatch TARGET (the base/interface method's document) yet draws a
-        // variant from EACH implementor. When an implementor's own document is the
-        // change, the target document enters the closure through the reverse edge
-        // and step 7 deletes-and-rebuilds the aggregated edge; if the changed
-        // implementor were excluded from the extraction scope its variant would be
-        // dropped, diverging from a full rebuild (only the changed implementor's
-        // tuple, never its unchanged siblings, since those stay in the closure).
-        // Keeping the changed documents in scope makes every contributor's type
-        // visible; their own facts were written in step 6 and are deleted then
-        // re-saved idempotently here, so extraction and deletion stay in lockstep.
-        var refreshPaths = new HashSet<string>(
-            (HashSet<string>)context.Changes.CrossDocumentClosurePaths,
-            PathNormalizer.PathComparer);
-        refreshPaths.UnionWith(context.Changes.ExtractedPaths);
-        var crossDocEdgesProcessed = await refresher.RefreshWithAffectedPathsAsync(
-            context.Solution, context.Workspace,
-            context.Snapshots.ToSnapshotId,
-            refreshPaths,
-            cancellationToken,
-            context.Changes.AffectedProjects);
-        _output.WriteLine($"done ({crossDocEdgesProcessed} cross-document edges processed).");
-        sw.Stop();
-        timings.Add(new SnapshotTimingRow("cross_doc_edge_refresh", sw.ElapsedMilliseconds));
-        return crossDocEdgesProcessed;
+        return orphanEdgesDropped;
     }
 
     private void RebuildSearchIndex(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings)
@@ -736,14 +667,9 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
     private sealed record IncrementalChangeScope(
         IReadOnlySet<string> ChangedPaths,
-        IReadOnlySet<string> DiffAndSearchSymbolIds,
-        IReadOnlySet<string> AffectedProjects,
-        IReadOnlySet<string> CrossDocumentClosurePaths,
-        IReadOnlySet<string> ExtractedPaths);
+        IReadOnlySet<string> DiffAndSearchSymbolIds);
 
     private sealed record SnapshotFinalizationContext(
-        Solution Solution,
-        WorkspaceInfo Workspace,
         SnapshotPair Snapshots,
         IncrementalChangeScope Changes);
 

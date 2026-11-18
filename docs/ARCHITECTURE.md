@@ -89,7 +89,7 @@ unreadable (`project_unreadable`). Every other stage (structural edges, member
 edges, polymorphism, reflection, each framework adapter) degrades: the facts of
 the stages that succeeded are saved, each document of the project gets an
 `extractor_failure` binding-incompleteness row, and the run prints a warning. The
-full, incremental and cross-document pipelines follow the same rule.
+full and incremental pipelines follow the same rule.
 
 Incremental indexing (`IncrementalIndexer.RunIncrementalAsync`) re-extracts only
 changed documents and creates a new snapshot when content changes; it never

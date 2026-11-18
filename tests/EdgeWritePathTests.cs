@@ -682,7 +682,7 @@ public sealed class EdgeWritePathTests : IDisposable
         store.CopyEdgesToSnapshot(SnapshotId, "s2");
         Assert.Equal(2, ReadSites("s2", "src", "tgt", "Calls").Count);
 
-        store.DeleteEdgesByDocumentPaths("s2", ["src/A.cs"]);
+        store.DeleteFactsByDocumentPaths("s2", ["src/A.cs"]);
         Assert.Empty(ReadSites("s2", "src", "tgt", "Calls"));
         Assert.Equal(2, ReadSites(SnapshotId, "src", "tgt", "Calls").Count);
 

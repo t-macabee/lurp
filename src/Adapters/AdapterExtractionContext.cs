@@ -28,7 +28,7 @@ public sealed class AdapterExtractionContext
     ///     Absolute, forward-slash-normalized document paths; null means the whole compilation.
     ///     Honored by every adapter, including <c>EfCoreAdapter</c>, whose annotations carry
     ///     the evidence document and are retired by
-    ///     <c>IEdgeStore.DeleteAnnotationsByDocumentPaths</c> over the same scope.
+    ///     <c>SqliteIndexStore.DeleteFactsByDocumentPaths</c> over the same scope.
     /// </summary>
     public IReadOnlySet<string>? ScopeDocuments => _workspace.ScopeDocuments;
 

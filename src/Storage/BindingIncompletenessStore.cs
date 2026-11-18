@@ -7,7 +7,6 @@ public interface IBindingIncompletenessStore
     void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records);
     List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName = null);
     void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId);
-    void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName);
 }
 
 internal sealed class BindingIncompletenessStore(SqliteConnection connection) : IBindingIncompletenessStore
@@ -89,17 +88,4 @@ SELECT project_name, NULLIF(document_path, ''), reason, occurrence_count, extrac
           AND project_name = @projectName
           AND document_path IN (SELECT value FROM json_each(@documentPaths));
         """;
-
-    public void DeleteBindingIncompletenessByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths, string projectName)
-    {
-        var paths = documentPaths.ToList();
-        if (paths.Count == 0)
-            return;
-        using var command = _connection.CreateCommand();
-        command.CommandText = DeleteByProjectAndDocumentPathsSql();
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        command.Parameters.AddWithValue("@projectName", projectName);
-        SqlIdList.Bind(command, "@documentPaths", paths);
-        command.ExecuteNonQuery();
-    }
 }

@@ -619,58 +619,6 @@ internal sealed class EdgeOperationsStore
           AND source_document_path IN (SELECT value FROM json_each(@documentPaths));
         """;
 
-    public void DeleteEdgesByDocumentPaths(string snapshotId, IEnumerable<string> documentPaths)
-    {
-        var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];
-        if (pathList.Count == 0)
-            return;
-
-        using var transaction = _connection.BeginTransaction();
-        try
-        {
-            using var command = _connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = DeleteEdgesByDocumentPathsSql();
-            command.Parameters.AddWithValue("@snapshotId", snapshotId);
-            SqlIdList.Bind(command, "@documentPaths", pathList);
-            command.ExecuteNonQuery();
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
-    }
-
-    public void DeleteEdgesWithNullDocumentPathForAssemblies(string snapshotId, IEnumerable<string> assemblyIdentities)
-    {
-        var identityList = assemblyIdentities as IReadOnlyCollection<string> ?? [.. assemblyIdentities];
-        if (identityList.Count == 0)
-            return;
-
-        using var command = _connection.CreateCommand();
-        command.CommandText = """
-            DELETE FROM edges
-            WHERE snapshot_id = @snapshotId
-              AND source_document_path IS NULL
-              AND EXISTS (
-                  SELECT 1 FROM json_each(@patterns)
-                  WHERE edges.source_symbol_id LIKE json_each.value ESCAPE '\'
-              );
-            """;
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-        var patterns = new List<string>(identityList.Count);
-        foreach (var identity in identityList)
-        {
-            var escaped = identity.Replace(@"\", @"\\").Replace(@"%", @"\%").Replace(@"_", @"\_");
-            patterns.Add("%|" + escaped);
-        }
-
-        SqlIdList.Bind(command, "@patterns", patterns);
-        command.ExecuteNonQuery();
-    }
-
     public void DeleteEdgesWithNullDocumentPathForSymbols(string snapshotId, IEnumerable<string> symbolIds)
     {
         var idList = symbolIds as IReadOnlyCollection<string> ?? [.. symbolIds];

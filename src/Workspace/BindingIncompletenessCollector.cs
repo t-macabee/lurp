@@ -65,7 +65,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
 
     /// <summary>
     ///     Records that a DI convention scan site has an open match set. The row seeds
-    ///     the cross-document refresh frontier (<see cref="BindingIncompletenessReason.UnobservableReasons" />),
+    ///     the reverse-edge closure frontier (<see cref="BindingIncompletenessReason.UnobservableReasons" />),
     ///     so the registration document is re-examined on any change even though no
     ///     previous edge points at a type the convention could newly match.
     /// </summary>
@@ -84,7 +84,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     ///     whole-compilation aggregate: no document-scoped delete can retire it and no
     ///     document-scoped re-extraction can reproduce it, so a scoped incremental pass
     ///     could not converge on the clean-rebuild value. Same resolution B4 applies to
-    ///     null-path edges in <see cref="CrossDocumentEdgeRefresher" />.
+    ///     null-path edges in <see cref="ReverseEdgeClosure" />.
     /// </remarks>
     internal static SyntaxNode? DeclaringSyntaxOrContainingType(ISymbol? symbol)
     {

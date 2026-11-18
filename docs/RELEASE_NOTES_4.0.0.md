@@ -269,6 +269,11 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   newer schema with the same message as the read modes, and do not touch it. A
   store error no longer prints `ERROR: ERROR:`.
 
+## Incremental indexing
+
+- An incremental run extracts each document once. A null-path edge of a
+  document outside the run's scope is kept; before, a run could drop it.
+
 ## Breaking changes (CLI/MCP contract version 7)
 
 - `status` and `pin-snapshot` JSON: the key `built_at_latest_snapshot_id` is
