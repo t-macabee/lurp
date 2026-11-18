@@ -127,10 +127,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         using var connection = TestDatabase.Open(_dbPath);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version_generated', 'idx_edges_snapshot_id', 'idx_annotations_snapshot_id');";
-        Assert.Equal(3L, (long)command.ExecuteScalar()!);
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_edges_snapshot_id', 'idx_annotations_snapshot_id');";
+        Assert.Equal(2L, (long)command.ExecuteScalar()!);
 
-        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version', 'idx_declarations_generated', 'idx_declarations_symbol_id', 'idx_snapshot_symbols_snapshot_id', 'idx_snapshot_documents_snapshot_id');";
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('idx_declarations_doc_version_generated', 'idx_declarations_doc_version', 'idx_declarations_generated', 'idx_declarations_symbol_id', 'idx_snapshot_symbols_snapshot_id', 'idx_snapshot_documents_snapshot_id');";
         Assert.Equal(0L, (long)command.ExecuteScalar()!);
     }
 
@@ -322,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (043). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (044). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -334,8 +334,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 43;
-                DROP INDEX idx_annotations_extractor_fact;
+                DELETE FROM schema_metadata WHERE version = 44;
+                DROP INDEX idx_document_versions_generated;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -348,7 +348,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
         using var indexCommand = verify.CreateCommand();
-        indexCommand.CommandText = "SELECT COUNT(*) FROM pragma_index_list('annotations') WHERE name = 'idx_annotations_extractor_fact';";
+        indexCommand.CommandText = "SELECT COUNT(*) FROM pragma_index_list('document_versions') WHERE name = 'idx_document_versions_generated';";
         Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);
     }
 
@@ -432,6 +432,106 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             Assert.Equal(
                 new (string, long)[] { ("s1", 1), ("s2", 2), ("s2", 3) },
                 links);
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void ForwardMigration_FromV37_BackfillsDocumentIsGenerated()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v37-gen-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo37 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 37)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo37)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (37, '2025-01-01T00:00:00.0000000Z', 'Migration_037_DocumentVersionsDocumentIdIndex');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 37, 6);
+
+                    INSERT INTO documents (document_id, relative_path)
+                    VALUES ('doc1', 'src/Normal.cs'),
+                           ('doc2', 'src/HeaderGen.cs'),
+                           ('doc3', 'src/Empty.g.cs'),
+                           ('doc4', 'src/Temporary_GeneratedFileX.cs');
+
+                    INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count)
+                    VALUES ('dv1', 'doc1', 'h1', X'01', 'utf-8', 1),
+                           ('dv2', 'doc2', 'h2', X'02', 'utf-8', 1),
+                           ('dv3', 'doc3', 'h3', X'03', 'utf-8', 1),
+                           ('dv4', 'doc4', 'h4', X'04', 'utf-8', 1);
+
+                    INSERT INTO snapshot_documents (snapshot_id, document_version_id)
+                    VALUES ('s1', 'dv1'), ('s1', 'dv2'), ('s1', 'dv3'), ('s1', 'dv4');
+
+                    INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+                    VALUES ('sym1', 'T:N.Normal', 'Asm', 'Class'),
+                           ('sym2', 'T:N.HeaderGen', 'Asm', 'Class');
+
+                    INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn)
+                    VALUES ('s1', 'sym1', 'global::N.Normal'),
+                           ('s1', 'sym2', 'global::N.HeaderGen');
+
+                    INSERT INTO declarations (declaration_id, symbol_id, document_version_id, full_start, full_end, is_generated)
+                    VALUES (1, 'sym1', 'dv1', 0, 10, 0),
+                           (2, 'sym2', 'dv2', 0, 10, 1);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            Assert.Equal(44, MigrationRunner.LatestVersion);
+            new MigrationRunner(dbPath).RunMigrations();
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var query = verify.CreateCommand();
+            query.CommandText = """
+                SELECT dv.document_version_id, dv.is_generated
+                FROM document_versions dv
+                ORDER BY dv.document_version_id;
+                """;
+            var flags = new List<(string Id, int IsGenerated)>();
+            using (var reader = query.ExecuteReader())
+            {
+                while (reader.Read())
+                    flags.Add((reader.GetString(0), reader.GetInt32(1)));
+            }
+
+            Assert.Equal(
+                new (string, int)[] { ("dv1", 0), ("dv2", 1), ("dv3", 1), ("dv4", 0) },
+                flags);
+
+            using var idxQuery = verify.CreateCommand();
+            idxQuery.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_document_versions_generated';";
+            Assert.Equal(1L, (long)idxQuery.ExecuteScalar()!);
+
+            idxQuery.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_declarations_doc_version_generated';";
+            Assert.Equal(0L, (long)idxQuery.ExecuteScalar()!);
         }
         finally
         {
@@ -793,8 +893,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
             var runner = new MigrationRunner(dbPath);
             runner.RunMigrations();
-            Assert.Equal(43, MigrationRunner.LatestVersion);
-            Assert.Equal(43, runner.GetCurrentSchemaVersion());
+            Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
             using var verify = TestDatabase.OpenReadOnly(dbPath);
             using var idsCmd = verify.CreateCommand();

@@ -57,7 +57,7 @@ public static class IndexRunner
             }
         }
 
-        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, cancellationToken);
+        var (solution, loadElapsed) = await loader.LoadAsync(solutionPath, gitRoot, cancellationToken);
 
         var swWorkspaceInfo = Stopwatch.StartNew();
         sink.Write("Building workspace info... ");
@@ -280,7 +280,8 @@ public static class IndexRunner
             // matching the incremental path's phase order.
             var swOrphans = Stopwatch.StartNew();
             cancellationToken.ThrowIfCancellationRequested();
-            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr);
+            var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
+            var orphanEdgesDropped = store.DeleteOrphanEdges(snapshotIdStr, excludedSymbolIds);
             store.PruneSnapshotGraphNodes(snapshotIdStr);
             swOrphans.Stop();
             timings.Add(new SnapshotTimingRow(SnapshotTimingSteps.OrphanEdgeCleanup, swOrphans.ElapsedMilliseconds));

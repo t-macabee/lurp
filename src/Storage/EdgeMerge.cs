@@ -263,7 +263,6 @@ public static class EdgeMerge
         {
             Provenance.CompilerProved => 6,
             Provenance.FrameworkDerived => 5,
-            Provenance.GlobalImplementationRelation => 4,
             Provenance.Possible => 3,
             Provenance.Convention => 2,
             Provenance.NameCandidate => 1,

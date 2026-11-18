@@ -227,7 +227,8 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
 
             // Step 7: Orphan cleanup + FTS Rebuild + Diff + Complete
             cancellationToken.ThrowIfCancellationRequested();
-            orphanEdgesDropped = FinalizeSnapshot(finalizationContext, timings, cancellationToken);
+            var excludedSymbolIds = await ExcludedDocumentSymbols.CollectAsync(solution, workspaceInfo, cancellationToken);
+            orphanEdgesDropped = FinalizeSnapshot(finalizationContext, excludedSymbolIds, timings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -410,7 +411,11 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         return (totalDecl, totalEdge, totalDiag);
     }
 
-    private OrphanEdgeDropSummary FinalizeSnapshot(SnapshotFinalizationContext context, List<SnapshotTimingRow> timings, CancellationToken cancellationToken)
+    private OrphanEdgeDropSummary FinalizeSnapshot(
+        SnapshotFinalizationContext context,
+        IReadOnlyCollection<string> excludedSymbolIds,
+        List<SnapshotTimingRow> timings,
+        CancellationToken cancellationToken)
     {
         // Phase order is load-bearing: orphan cleanup → FTS → semantic diff → complete.
         cancellationToken.ThrowIfCancellationRequested();
@@ -418,7 +423,7 @@ public sealed class IncrementalIndexer(SqliteIndexStore store, string gitRoot, H
         // Remove edges targeting symbols not declared in this snapshot
         var swOrphans = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
-        var orphanEdgesDropped = _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId);
+        var orphanEdgesDropped = _store.DeleteOrphanEdges(context.Snapshots.ToSnapshotId, excludedSymbolIds);
 
         // Drop stale synthetic/route graph nodes carried forward by
         // CopyEdgesToSnapshot that no longer have any edge or declaration in this

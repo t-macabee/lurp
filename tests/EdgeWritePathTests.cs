@@ -421,7 +421,7 @@ public sealed class EdgeWritePathTests : IDisposable
             MakeEdge(generated, "T:Ns.Foo|asm1", "Calls")
         ]);
 
-        var summary = store.DeleteOrphanEdges(SnapshotId);
+        var summary = store.DeleteOrphanEdges(SnapshotId, []);
 
         Assert.Equal(2, summary.Total);
         Assert.Equal(0, summary.External);
@@ -443,7 +443,7 @@ public sealed class EdgeWritePathTests : IDisposable
             MakeEdge(generated, "T:Ns.Foo|asm1", "Calls")
         ]);
 
-        var summary = store.DeleteOrphanEdges(SnapshotId);
+        var summary = store.DeleteOrphanEdges(SnapshotId, []);
 
         Assert.Equal(2, summary.Total);
         Assert.Equal(0, summary.External);
@@ -462,7 +462,7 @@ public sealed class EdgeWritePathTests : IDisposable
             MakeEdge("T:Ns.Foo|asm1", "T:System.Console|System.Console", "Calls")
         ]);
 
-        var summary = store.DeleteOrphanEdges(SnapshotId);
+        var summary = store.DeleteOrphanEdges(SnapshotId, []);
 
         Assert.Equal(1, summary.Total);
         Assert.Equal(1, summary.External);
@@ -481,7 +481,7 @@ public sealed class EdgeWritePathTests : IDisposable
             MakeEdge("T:Ns.Foo|asm1", "T:Ns.Vanished|asm1", "Calls")
         ]);
 
-        var summary = store.DeleteOrphanEdges(SnapshotId);
+        var summary = store.DeleteOrphanEdges(SnapshotId, []);
 
         Assert.Equal(1, summary.Total);
         Assert.Equal(0, summary.External);
@@ -499,16 +499,18 @@ public sealed class EdgeWritePathTests : IDisposable
         [
             MakeEdge("T:Ns.Foo|asm1", "T:Ns.<>c__DisplayClass0_0|asm1", "Calls"),
             MakeEdge("T:Ns.Foo|asm1", "T:System.Console|System.Console", "Calls"),
+            MakeEdge("T:Ns.Foo|asm1", "T:Ns.ExcludedGen|asm1", "Calls"),
             MakeEdge("T:Ns.Foo|asm1", "T:Ns.Vanished|asm1", "Calls")
         ]);
 
-        var summary = store.DeleteOrphanEdges(SnapshotId);
+        var summary = store.DeleteOrphanEdges(SnapshotId, ["T:Ns.ExcludedGen|asm1"]);
 
-        Assert.Equal(3, summary.Total);
+        Assert.Equal(4, summary.Total);
         Assert.Equal(1, summary.External);
         Assert.Equal(1, summary.CompilerSynthesized);
+        Assert.Equal(1, summary.ExcludedDocument);
         Assert.Equal(1, summary.Other);
-        Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.Other);
+        Assert.Equal(summary.Total, summary.External + summary.CompilerSynthesized + summary.ExcludedDocument + summary.Other);
     }
 
     private List<(string Doc, int Sl, int Sc, int El, int Ec)> ReadSites(string snapshotId, string source, string target, string kind)
@@ -772,5 +774,32 @@ public sealed class EdgeWritePathTests : IDisposable
         Assert.Equal([("src/Test.cs", 10, 1, 10, 10)], ReadSites(SnapshotId, "src", "tgt", "MayDispatchTo"));
         Assert.Equal([["TA"], ["TB"]], EdgeMerge.DeserializeTypeArguments(edge.TypeArgumentsJson));
         Assert.Equal([["R1"], ["R2"]], EdgeMerge.DeserializeTypeArguments(edge.ReceiverTypeConstraintsJson));
+    }
+
+    [Fact]
+    public void ProvenanceAll_IsTheSixEdgeLevels_InStrictlyDescendingRank()
+    {
+        string[] expected =
+        [
+            "compiler_proved",
+            "framework_derived",
+            "possible",
+            "convention",
+            "name_candidate",
+            "runtime_unknown"
+        ];
+
+        Assert.Equal(expected, Provenance.All);
+
+        for (var i = 1; i < Provenance.All.Count; i++)
+        {
+            var higher = EdgeMerge.ProvenanceRank(Provenance.All[i - 1]);
+            var lower = EdgeMerge.ProvenanceRank(Provenance.All[i]);
+            Assert.True(higher > lower, $"Expected rank({Provenance.All[i - 1]})={higher} > rank({Provenance.All[i]})={lower}");
+        }
+
+        Assert.True(
+            EdgeMerge.ProvenanceRank("global_implementation_relation") < EdgeMerge.ProvenanceRank(Provenance.RuntimeUnknown),
+            "Capsule grade global_implementation_relation must rank below runtime_unknown.");
     }
 }

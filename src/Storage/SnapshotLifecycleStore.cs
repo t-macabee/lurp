@@ -149,7 +149,9 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var versionCommand = _connection.CreateCommand();
         versionCommand.Transaction = transaction;
         versionCommand.CommandText = """
-            INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts) VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts);
+            INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
+            VALUES (@documentVersionId, @documentId, @contentHash, @content, @encoding, @byteCount, @lineStarts, @isGenerated)
+            ON CONFLICT(document_version_id) DO UPDATE SET is_generated = excluded.is_generated;
             """;
 
         using var bindingCommand = _connection.CreateCommand();
@@ -176,6 +178,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             versionCommand.Parameters.AddWithValue("@encoding", string.IsNullOrEmpty(doc.Encoding) ? DBNull.Value : doc.Encoding);
             versionCommand.Parameters.AddWithValue("@byteCount", doc.ByteCount > 0 ? doc.ByteCount : DBNull.Value);
             versionCommand.Parameters.AddWithValue("@lineStarts", string.IsNullOrEmpty(doc.LineStarts) ? DBNull.Value : doc.LineStarts);
+            versionCommand.Parameters.AddWithValue("@isGenerated", doc.IsGenerated ? 1 : 0);
             versionCommand.ExecuteNonQuery();
 
             bindingCommand.Parameters.Clear();
@@ -461,7 +464,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
         using var command = _connection.CreateCommand();
         command.CommandText = """
             SELECT d.document_id, d.relative_path, dv.content_hash, dv.encoding,
-                   dv.line_starts
+                   dv.line_starts, dv.is_generated
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents d ON d.document_id = dv.document_id
@@ -477,7 +480,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                 DocumentId = reader.GetString(0),
                 FilePath = reader.GetString(1),
                 ContentHash = reader.GetString(2),
-                Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3)
+                Encoding = reader.IsDBNull(3) ? "" : reader.GetString(3),
+                IsGenerated = reader.GetInt32(5) != 0
             });
         }
 

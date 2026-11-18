@@ -146,6 +146,15 @@ public sealed class CliExitSmokeTests : IDisposable
     }
 
     [Fact]
+    public void Impact_GlobalImplementationRelationProvenance_FailsWithUnknownProvenance()
+    {
+        var ex = Assert.Throws<CliExitException>(() => ImpactHandler.Run(["--symbol=x", "--provenance=global_implementation_relation"], new CapturingOutputSink()));
+        Assert.Equal(1, ex.ExitCode);
+        Assert.Contains("Unknown provenance 'global_implementation_relation' in --provenance", ex.Message);
+        Assert.Contains("compiler_proved, framework_derived, possible, convention, name_candidate, runtime_unknown", ex.Message);
+    }
+
+    [Fact]
     public void ContextHandler_BadIntent_ThrowsCliExit()
     {
         var ex = Assert.Throws<CliExitException>(() => ContextHandler.Run(["--symbol=T:Crash.Probe|probe", "--intent=banana", $"--output-dir={NoIndexOutputDir()}"], new CapturingOutputSink()));

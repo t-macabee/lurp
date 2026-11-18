@@ -1,3 +1,4 @@
+using Lurp.Workspace;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Diagnostics.CodeAnalysis;
@@ -75,7 +76,7 @@ public sealed class EdgeLocationResolver
     public static SyntaxReference? PrimaryDeclaration(ISymbol symbol)
     {
         return symbol.DeclaringSyntaxReferences
-            .OrderBy(static r => GeneratedFilePaths.IsGenerated(PathNormalizer.ToForwardSlash(r.SyntaxTree.FilePath)))
+            .OrderBy(static r => GeneratedCode.IsGenerated(r.SyntaxTree))
             .ThenBy(static r => r.SyntaxTree.FilePath, StringComparer.Ordinal)
             .ThenBy(static r => r.Span.Start)
             .FirstOrDefault();

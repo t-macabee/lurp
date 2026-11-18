@@ -22,7 +22,7 @@ public sealed class WorkspaceLoaderDiagnosticsTests
 
         using var workspace = new AdhocWorkspace();
         using var loader = CreateLoader(workspace, sink, diagnostics);
-        await loader.LoadAsync("unused.sln", CancellationToken.None);
+        await loader.LoadAsync("unused.sln", Path.GetTempPath(), CancellationToken.None);
 
         Assert.Contains(sink.ErrorLines, l => l.Contains("workspace load reported 1 failure-level diagnostic(s):"));
         Assert.Contains(sink.ErrorLines, l => l.Contains("  WARNING: design-time build failed"));
@@ -40,7 +40,7 @@ public sealed class WorkspaceLoaderDiagnosticsTests
 
         using var workspace = new AdhocWorkspace();
         using var loader = CreateLoader(workspace, sink, diagnostics);
-        await loader.LoadAsync("unused.sln", CancellationToken.None);
+        await loader.LoadAsync("unused.sln", Path.GetTempPath(), CancellationToken.None);
 
         Assert.Empty(sink.ErrorLines);
     }

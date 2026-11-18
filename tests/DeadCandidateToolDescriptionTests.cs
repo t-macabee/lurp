@@ -29,8 +29,7 @@ public sealed class DeadCandidateToolDescriptionTests
         foreach (var kind in DeadCandidateLiveness.LiveEdgeKinds)
             Assert.Contains(kind, text);
 
-        foreach (var provenance in DeadCandidateLiveness.StrongProvenance)
-            Assert.Contains(provenance, text);
+        Assert.Equal(["compiler_proved", "framework_derived"], DeadCandidateLiveness.StrongProvenance);
 
         // B25 output: the description names the type-use kinds too.
         foreach (var kind in DeadCandidateLiveness.TypeUseEdgeKinds)
@@ -48,6 +47,17 @@ public sealed class DeadCandidateToolDescriptionTests
         // An exact compare catches a removed kind, a reordered list and a duplicate; a
         // substring check would miss all three.
         Assert.Equal(DeadCandidateLiveness.LiveEdgeKinds, listed.Split(", "));
+
+        const string strongAnchor = "of strong provenance (";
+        var strongStart = text.IndexOf(strongAnchor, StringComparison.Ordinal);
+        Assert.True(strongStart >= 0, $"description is missing '{strongAnchor}'");
+        strongStart += strongAnchor.Length;
+        var strongEnd = text.IndexOf(')', strongStart);
+        Assert.True(strongEnd > strongStart, "description has no closing ')' after the strong-provenance list");
+        var strongListed = text.Substring(strongStart, strongEnd - strongStart);
+        Assert.Equal(DeadCandidateLiveness.StrongProvenance, strongListed.Split(", "));
+
+        Assert.Contains($"live_provenance_rank[{DeadCandidateLiveness.StrongProvenance.Count}]", text);
 
         // F14: the description states the reference rule, not a project-name rule.
         Assert.Contains("references a test framework", text);

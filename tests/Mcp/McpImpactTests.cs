@@ -361,6 +361,19 @@ public sealed class McpImpactTests : ImpactIndexFixture
     }
 
     [Fact]
+    public async Task Impact_GlobalImplementationRelationProvenance_ThrowsInvalidParams()
+    {
+        await IndexInitialAsync();
+        await using var session = CreateSession();
+        var tool = new ImpactTool(session);
+
+        var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: ["global_implementation_relation"]));
+        Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        Assert.Contains("unknown provenance 'global_implementation_relation'", ex.Message);
+        Assert.Contains("compiler_proved, framework_derived, possible, convention, name_candidate, runtime_unknown", ex.Message);
+    }
+
+    [Fact]
     public async Task Mcp_KindsAreCaseInsensitive()
     {
         var snap = await IndexInitialAsync();

@@ -574,15 +574,109 @@ public sealed class SemanticDifferTests : IDisposable
         var differ = MakeDiffer(store);
         var (changes, _) = differ.ComputeDiff(fromSnapshotId, toSnapshotId);
 
-        var edgeAdded = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeAdded);
-        Assert.NotNull(edgeAdded);
+        var edgeAdded = Assert.Single(changes, c => c.ChangeType == ChangeType.EdgeAdded);
         Assert.Equal("M:Ns.Bar|asm1", edgeAdded.SymbolId);
-        Assert.Contains("\"target\":\"M:Ns.Baz|asm1\"", edgeAdded.DetailJson!);
+        AssertEdgeDetail(edgeAdded.DetailJson!, "M:Ns.Bar|asm1", "M:Ns.Baz|asm1", "Calls");
 
-        var edgeRemoved = changes.FirstOrDefault(c => c.ChangeType == ChangeType.EdgeRemoved);
-        Assert.NotNull(edgeRemoved);
+        var edgeRemoved = Assert.Single(changes, c => c.ChangeType == ChangeType.EdgeRemoved);
         Assert.Equal("M:Ns.Foo|asm1", edgeRemoved.SymbolId);
-        Assert.Contains("\"target\":\"M:Ns.Bar|asm1\"", edgeRemoved.DetailJson!);
+        AssertEdgeDetail(edgeRemoved.DetailJson!, "M:Ns.Foo|asm1", "M:Ns.Bar|asm1", "Calls");
+    }
+
+    private static void AssertEdgeDetail(string detailJson, string expectedSource, string expectedTarget, string expectedKind)
+    {
+        using var detail = JsonDocument.Parse(detailJson);
+        var properties = detail.RootElement.EnumerateObject()
+            .Select(p => p.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(["kind", "source", "target"], properties);
+        Assert.Equal(expectedSource, detail.RootElement.GetProperty("source").GetString());
+        Assert.Equal(expectedTarget, detail.RootElement.GetProperty("target").GetString());
+        Assert.Equal(expectedKind, detail.RootElement.GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void AttributeChanged_FirstAttributeAdded_AndLastAttributeRemoved_AreReported()
+    {
+        using var store = OpenStore();
+
+        const string snap1 = "snap-attr-1";
+        const string snap2 = "snap-attr-2";
+        const string snap3 = "snap-attr-3";
+        CreateSnapshotWithDocument(store, snap1);
+        CreateSnapshotWithDocument(store, snap2);
+        CreateSnapshotWithDocument(store, snap3);
+
+        const string symbolId = "M:Ns.Api.Target|asm1";
+        const string obsoleteAttr = """global::System.ObsoleteAttribute("x")""";
+        const string plainMetadata = """{"accessibility":"Public","signature":"public void Target()"}""";
+        const string attributedMetadata = """{"accessibility":"Public","signature":"public void Target()","attributes":["global::System.ObsoleteAttribute(\"x\")"]}""";
+
+        store.SaveDeclarations(snap1, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Api.Target",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-attr-1:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: plainMetadata)
+        ]);
+
+        store.SaveDeclarations(snap2, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Api.Target",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-attr-2:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: attributedMetadata)
+        ]);
+
+        store.SaveDeclarations(snap3, [
+            MakeDecl(
+                symbolId: symbolId,
+                docCommentId: "M:Ns.Api.Target",
+                assembly: "asm1",
+                kind: IndexedSymbolKind.Method,
+                docVersionId: "doc-snap-attr-3:hash1",
+                fullS: 0, fullE: 10,
+                sigS: 0, sigE: 5,
+                bodyS: 6, bodyE: 10,
+                nameS: 0, nameE: 5,
+                metadataJson: plainMetadata)
+        ]);
+
+        var differ = MakeDiffer(store);
+
+        var (addedChanges, _) = differ.ComputeDiff(snap1, snap2);
+        var addedAttr = Assert.Single(addedChanges, c => c.ChangeType == ChangeType.AttributeChanged);
+        Assert.Equal(symbolId, addedAttr.SymbolId);
+        using (var detail = JsonDocument.Parse(addedAttr.DetailJson!))
+        {
+            Assert.Empty(detail.RootElement.GetProperty("before").EnumerateArray().Select(e => e.GetString()));
+            Assert.Equal([obsoleteAttr], detail.RootElement.GetProperty("after").EnumerateArray().Select(e => e.GetString()));
+        }
+
+        var (removedChanges, _) = differ.ComputeDiff(snap2, snap3);
+        var removedAttr = Assert.Single(removedChanges, c => c.ChangeType == ChangeType.AttributeChanged);
+        Assert.Equal(symbolId, removedAttr.SymbolId);
+        using (var detail = JsonDocument.Parse(removedAttr.DetailJson!))
+        {
+            Assert.Equal([obsoleteAttr], detail.RootElement.GetProperty("before").EnumerateArray().Select(e => e.GetString()));
+            Assert.Empty(detail.RootElement.GetProperty("after").EnumerateArray().Select(e => e.GetString()));
+        }
+
+        var (neitherChanges, _) = differ.ComputeDiff(snap1, snap3);
+        Assert.DoesNotContain(neitherChanges, c => c.ChangeType == ChangeType.AttributeChanged);
     }
 
     // ── SymbolRelocated change type ───────────────────────────────────────────

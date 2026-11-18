@@ -23,6 +23,10 @@ public sealed partial class SnapshotManifest
     public Dictionary<DocumentId, DocumentVersionId> DocumentVersions { get; init; }
         = [];
 
+    [JsonIgnore]
+    public IReadOnlySet<DocumentId> GeneratedDocuments { get; init; }
+        = new HashSet<DocumentId>();
+
     [JsonPropertyName("sdk_version")] public string SdkVersion { get; init; } = "";
 
     [JsonPropertyName("compiler_version")] public string CompilerVersion { get; init; } = "";
@@ -78,6 +82,7 @@ public sealed partial class SnapshotManifest
             WorkspaceId = workspace.Id,
             BuiltAtUtc = DateTime.UtcNow,
             DocumentVersions = new Dictionary<DocumentId, DocumentVersionId>(workspace.Documents),
+            GeneratedDocuments = new HashSet<DocumentId>(workspace.GeneratedDocuments),
             SdkVersion = workspace.SdkVersion,
             CompilerVersion = workspace.CompilerVersion.ToString(),
             TargetFrameworks = new Dictionary<string, string>(workspace.TargetFrameworks),
@@ -142,7 +147,8 @@ public sealed partial class SnapshotManifest
                 FilePath = docPath,
                 ContentHash = kvp.Value.Hash,
                 Encoding = encoding,
-                LineStarts = lineStarts
+                LineStarts = lineStarts,
+                IsGenerated = GeneratedDocuments.Contains(docId)
             };
         }).ToList();
 
@@ -202,6 +208,7 @@ public sealed partial class SnapshotManifest
             : selectedProjects.SelectMany(project => project.DocumentPaths ?? []).ToHashSet(StringComparer.Ordinal);
 
         var documentVersions = new Dictionary<DocumentId, DocumentVersionId>();
+        var generatedDocuments = new HashSet<DocumentId>();
         foreach (var doc in storage.Documents)
         {
             if (selectedDocuments != null && !selectedDocuments.Contains(doc.FilePath))
@@ -210,6 +217,8 @@ public sealed partial class SnapshotManifest
             var docId = new DocumentId(doc.FilePath);
             var versionId = new DocumentVersionId(doc.FilePath, doc.ContentHash);
             documentVersions[docId] = versionId;
+            if (doc.IsGenerated)
+                generatedDocuments.Add(docId);
         }
 
         var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -239,6 +248,7 @@ public sealed partial class SnapshotManifest
             WorkspaceId = WorkspaceId.Create(storage.GitRoot, storage.SolutionPath),
             BuiltAtUtc = storage.CreatedAtUtc,
             DocumentVersions = documentVersions,
+            GeneratedDocuments = generatedDocuments,
             SdkVersion = storage.SdkVersion,
             CompilerVersion = storage.CompilerVersion,
             TargetFrameworks = targetFrameworks,

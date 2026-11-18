@@ -1,31 +1,30 @@
 namespace Lurp.Shared;
 
 /// <summary>
-///     The single owner of the "is this document generated?" path rule. It lives next to
-///     <see cref="PathNormalizer" /> so the persistence layer and the extraction-scope
-///     guards share one definition instead of two hand-synced copies.
+///     The single owner of the file-name half of the generated-code rule (D4, D167.1):
+///     Roslyn's <c>GeneratedCodeUtilities</c> file-name patterns plus EF Core's
+///     <c>ModelSnapshot.cs</c>, all matched case-insensitively on the file name.
+///     The leading-comment half lives in <c>Lurp.Workspace.GeneratedCode</c>, which
+///     has access to Roslyn.
 /// </summary>
 public static class GeneratedFilePaths
 {
-    /// <summary>
-    ///     <c>ModelSnapshot.cs</c> (e.g. <c>AppDbContextModelSnapshot.cs</c>) is scaffolded by
-    ///     <c>dotnet ef migrations add</c> alongside each migration's own <c>.Designer.cs</c>,
-    ///     and hand-editing it is discouraged the same way hand-editing a designer file is —
-    ///     so it counts as generated here even though, unlike <c>obj/**</c>, it is normally
-    ///     committed to source control rather than gitignored.
-    /// </summary>
-    public static bool IsGenerated(string normalizedPath)
+    public static bool IsGenerated(string? path)
     {
-        if (normalizedPath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
-            return true;
+        if (string.IsNullOrEmpty(path))
+            return false;
 
-        if (normalizedPath.Contains("/obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.Contains("/generated/", StringComparison.OrdinalIgnoreCase))
-            return true;
+        var normalized = PathNormalizer.ToForwardSlash(path);
+        var lastSlash = normalized.LastIndexOf('/');
+        var fileName = lastSlash >= 0 ? normalized.AsSpan(lastSlash + 1) : normalized.AsSpan();
+        if (fileName.IsEmpty)
+            return false;
 
-        return false;
+        return fileName.StartsWith("TemporaryGeneratedFile_", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith(".designer.cs", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith(".g.i.cs", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -41,13 +41,13 @@ public sealed class ProjectRow
     public IReadOnlyList<string>? DocumentPaths { get; init; }
 }
 
-public sealed record OrphanEdgeDropSummary(int Total, int External, int CompilerSynthesized, int Other)
+public sealed record OrphanEdgeDropSummary(int Total, int External, int CompilerSynthesized, int ExcludedDocument, int Other)
 {
-    public static readonly OrphanEdgeDropSummary Empty = new(0, 0, 0, 0);
+    public static readonly OrphanEdgeDropSummary Empty = new(0, 0, 0, 0, 0);
 
     public string FormatDropSummary()
     {
-        return $"{Total} (external={External}, compiler_synthesized={CompilerSynthesized}, other={Other})";
+        return $"{Total} (external={External}, compiler_synthesized={CompilerSynthesized}, excluded_document={ExcludedDocument}, other={Other})";
     }
 
     public string? FormatWarning()
@@ -299,4 +299,5 @@ public class DocumentVersion
     public byte[]? Content { get; }
     public int ByteCount => Content?.Length ?? 0;
     public string? LineStarts { get; init; }
+    public bool IsGenerated { get; init; }
 }

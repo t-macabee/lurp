@@ -96,8 +96,14 @@ public static class CompilationFactExtractor
         var failures = new List<ExtractionFailure>();
         var measurements = new List<ExtractionMeasurement>();
         var incompleteness = new BindingIncompletenessCollector(projectName, workspaceInfo.Id.GitRoot);
+        foreach (var excludedPath in workspaceInfo.GetExcludedDocuments(project, projectName))
+            incompleteness.RecordExcludedDocument(excludedPath);
+
+        var normalizedRoot = PathNormalizer.NormalizeRoot(workspaceInfo.Id.GitRoot);
         var documentPaths = compilation.SyntaxTrees
-            .Where(tree => !string.IsNullOrEmpty(tree.FilePath) && ExtractionUtils.IsInScope(scopeDocuments, tree))
+            .Where(tree => !string.IsNullOrEmpty(tree.FilePath)
+                           && ExtractionUtils.IsInScope(scopeDocuments, tree)
+                           && !BuildOutputPaths.IsBuildOutputPath(PathNormalizer.ToGitRelativeFromNormalizedRoot(tree.FilePath, normalizedRoot)))
             .Select(static tree => tree.FilePath)
             .ToList();
         var ctx = new StageContext(projectName, failures, incompleteness, documentPaths);

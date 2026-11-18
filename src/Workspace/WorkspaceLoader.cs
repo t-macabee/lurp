@@ -55,7 +55,7 @@ internal sealed class WorkspaceLoader : IDisposable
     ///     and <c>OpenSolutionAsync</c>, and "Loading solution... done (N
     ///     projects)." is written before recovery lines.
     /// </summary>
-    public async Task<LoadedSolution> LoadAsync(string solutionPath, CancellationToken cancellationToken)
+    public async Task<LoadedSolution> LoadAsync(string solutionPath, string gitRoot, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -71,9 +71,10 @@ internal sealed class WorkspaceLoader : IDisposable
 
         // Restore compiler fidelity: MSBuildWorkspace can silently fall back to
         // C# 7.3 parse options when a project fails to evaluate. Derive each
-        // affected project's effective language version from its own inputs
-        // (explicit LangVersion, or the SDK-style default) so modern C# binds.
-        var recovered = LanguageVersionRecovery.Apply(solution, _output);
+        // failed project's effective language version from its own inputs
+        // (explicit LangVersion, or the target-framework default) without
+        // altering projects that evaluated cleanly.
+        var recovered = LanguageVersionRecovery.Apply(solution, gitRoot, _loadDiagnostics, _output);
 
         return new LoadedSolution(recovered, sw.ElapsedMilliseconds);
     }

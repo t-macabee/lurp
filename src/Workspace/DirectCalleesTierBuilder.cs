@@ -83,7 +83,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
                 // implementations are candidates but does not prove this call
                 // selects it at runtime. The projected item is a
                 // global_implementation_relation, never a direct callee.
-                AddItem(edge.TargetSymbolId, edge.Kind, Provenance.GlobalImplementationRelation,
+                AddItem(edge.TargetSymbolId, edge.Kind, CapsuleProvenance.GlobalImplementationRelation,
                     "Dispatch-projected implementation of a called interface or virtual member: the anchor " +
                     $"calls the interface/abstract member via a Calls edge ({callEdge.Provenance}), which may " +
                     $"dispatch to this implementation at runtime via a MayDispatchTo edge ({edge.Provenance}). " +

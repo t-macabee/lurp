@@ -20,6 +20,14 @@ public static class BindingIncompletenessReason
     public const string ProjectUnreadable = "project_unreadable";
 
     /// <summary>
+    ///     A compile item under <c>bin/</c> or <c>obj/</c> was excluded from the
+    ///     snapshot (declared boundary <c>source_generators</c>, D4). Not in
+    ///     <see cref="UnobservableReasons" />: like <see cref="FilteredExternal" />,
+    ///     it is a declared boundary rather than an unknown gap.
+    /// </summary>
+    public const string ExcludedDocument = "excluded_document";
+
+    /// <summary>
     ///     Reasons under which a missing relation proves nothing, because the relation was
     ///     never observable. Excludes <see cref="FilteredExternal" />: there the target was
     ///     resolved and is knowably outside the snapshot, which is an explained absence
@@ -57,6 +65,8 @@ public static class BindingIncompletenessReason
                 $"{count} binding(s) in {scope} could not be completed because the project was unreadable.",
             ConventionScan =>
                 $"{count} binding(s) in {scope} are convention-scan sites with an open match set.",
+            ExcludedDocument =>
+                $"{count} compile item(s) in {scope} under bin/ or obj/ are excluded from the snapshot (declared boundary: source_generators). Edges to symbols declared only in those excluded documents are dropped as excluded_document.",
             _ =>
                 $"{count} binding-incompleteness record(s) (reason '{reason}') affect {scope}. Relations in that code may be incomplete."
         };

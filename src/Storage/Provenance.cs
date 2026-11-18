@@ -27,15 +27,7 @@ public static class Provenance
     /// <summary>Framework convention-based inference (e.g. ASP.NET controller naming).</summary>
     public const string Convention = "convention";
 
-    /// <summary>
-    ///     A true global implementation/override relation (proven by the compiler) projected
-    ///     into a specific call site without filtering by that call site's static receiver
-    ///     type. The relation itself is real; whether it is reachable from this particular
-    ///     call is not established.
-    /// </summary>
-    public const string GlobalImplementationRelation = "global_implementation_relation";
-
-    /// <summary>Every provenance value, in the evidence-ladder order of the architecture doc.</summary>
-    public static readonly IReadOnlyList<string> All = [CompilerProved, FrameworkDerived, GlobalImplementationRelation, Possible, Convention, NameCandidate, RuntimeUnknown];
+    /// <summary>Every edge provenance value, in the evidence-ladder order of the architecture doc.</summary>
+    public static readonly IReadOnlyList<string> All = [CompilerProved, FrameworkDerived, Possible, Convention, NameCandidate, RuntimeUnknown];
 
 }

@@ -188,9 +188,26 @@ public sealed class IncrementalNoOpPrecheckTests : IntegrationTestBase
         var precheckWorkspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(SolutionPath));
 
         using var loader = new WorkspaceLoader();
-        var (solution, _) = await loader.LoadAsync(SolutionPath, CancellationToken.None);
+        var (solution, _) = await loader.LoadAsync(SolutionPath, gitRoot, CancellationToken.None);
         var workspaceInfo = new WorkspaceInfo(solution, gitRoot);
 
         Assert.Equal(workspaceInfo.Id.Value, precheckWorkspaceId.Value);
+    }
+
+    [Fact]
+    public async Task NewGitIgnoredCompileItem_DisablesTheSkip()
+    {
+        File.WriteAllText(Path.Combine(TestDir, ".gitignore"), "Late.cs\n");
+        Seed();
+        await RunFullIndexAsync(DbPath);
+
+        WriteFile(Project, "Late.cs", "namespace Core; public class Late { }\n");
+
+        using var store = OpenStore(DbPath);
+        var gitRoot = Path.GetDirectoryName(Path.GetFullPath(SolutionPath))!;
+        var workspaceId = WorkspaceId.Create(gitRoot, Path.GetFullPath(SolutionPath));
+        var result = WorkspaceFreshness.CanSkipIncrementalIndex(store, workspaceId, gitRoot);
+
+        Assert.Null(result);
     }
 }

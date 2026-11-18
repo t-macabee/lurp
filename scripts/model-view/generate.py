@@ -214,12 +214,21 @@ def parse_index_log(text):
         m = re.search(pattern, text, re.M)
         return int(m.group(1)) if m else None
 
-    dropped = re.search(r"edges_dropped_outside_snapshot_scope:\s*(\d+) \(external=(\d+), compiler_synthesized=(\d+), other=(\d+)\)", text)
+    dropped = re.search(
+        r"edges_dropped_outside_snapshot_scope:\s*(\d+) \(external=(\d+), compiler_synthesized=(\d+)(?:, excluded_document=(\d+))?, other=(\d+)\)",
+        text,
+    )
     return {
         "projects": projects,
         "after_dedup": grab(r"edge_relations_after_dedup_this_run:\s*(\d+)"),
         "kept": grab(r"edge_relations_in_snapshot:\s*(\d+)"),
-        "dropped": tuple(int(g) for g in dropped.groups()) if dropped else None,
+        "dropped": (
+            int(dropped.group(1)),
+            int(dropped.group(2)),
+            int(dropped.group(3)),
+            int(dropped.group(4)) if dropped.group(4) is not None else 0,
+            int(dropped.group(5)),
+        ) if dropped else None,
         "total_ms": grab(r"Total time \(full rebuild\):\s*(\d+) ms"),
     }
 
@@ -604,9 +613,10 @@ def render(index, log, info, style, out_path, contract):
                      f'<td class="num">{num(raw[1])}</td><td class="num">{num(raw[2])}</td></tr>')
         if log["after_dedup"] is not None and log["dropped"] and log["kept"] is not None:
             d = log["dropped"]
+            excl_part = f", {num(d[3])} excluded-document" if d[3] else ""
             total_row += (f'<tr class="muted-row"><td colspan="4">After cross-project dedup: {num(log["after_dedup"])} edges. '
-                          f'Scope filtering then drops {num(d[0])} ({num(d[1])} to external symbols, {num(d[2])} compiler-synthesized, '
-                          f'{num(d[3])} other), so {num(log["kept"])} edges are kept in the snapshot.</td></tr>')
+                          f'Scope filtering then drops {num(d[0])} ({num(d[1])} to external symbols, {num(d[2])} compiler-synthesized'
+                          f'{excl_part}, {num(d[4])} other), so {num(log["kept"])} edges are kept in the snapshot.</td></tr>')
         per_project = (f'    <p class="section-lede">Raw figures from the index run, one row per project, before cross-project dedup '
                        f'collapses them into the snapshot\'s {num(total_edges)} kept edges.</p>\n'
                        f'    <div class="panel">{table(["Project", "#Symbols", "#Edges extracted", "#Diagnostics"], proj_rows, total_row)}</div>')

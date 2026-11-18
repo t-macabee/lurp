@@ -121,6 +121,31 @@ internal sealed class SnapshotDocumentStore(SqliteConnection connection)
         return result;
     }
 
+    internal (HashSet<string> DocumentPaths, HashSet<string> GeneratedDocumentPaths) GetSnapshotDocumentPaths(string snapshotId)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.relative_path, dv.is_generated
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents d ON d.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        var documentPaths = new HashSet<string>(StringComparer.Ordinal);
+        var generatedPaths = new HashSet<string>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var path = reader.GetString(0);
+            documentPaths.Add(path);
+            if (reader.GetInt32(1) != 0)
+                generatedPaths.Add(path);
+        }
+
+        return (documentPaths, generatedPaths);
+    }
+
     internal List<string> GetDocumentVersionIdsForDocuments(string snapshotId, IEnumerable<string> documentPaths)
     {
         var pathList = documentPaths as IReadOnlyCollection<string> ?? [.. documentPaths];

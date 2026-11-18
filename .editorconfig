@@ -31,6 +31,9 @@ dotnet_diagnostic.CA1716.severity = none
 [src/Storage/GeneratedFilePaths.cs]
 dotnet_diagnostic.CA1716.severity = none
 
+[src/Storage/BuildOutputPaths.cs]
+dotnet_diagnostic.CA1716.severity = none
+
 # The parity shared project carries the same 'Lurp.Parity.Shared' namespace;
 # CA1716 is the same false positive there.
 [scripts/parity/**]

@@ -484,7 +484,7 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
-        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
+        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
         {
             throw new NotSupportedException();
         }
@@ -608,7 +608,7 @@ public sealed class ImpactReachabilityTests
             throw new NotSupportedException();
         }
 
-        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
+        public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
         {
             throw new NotSupportedException();
         }

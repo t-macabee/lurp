@@ -6,7 +6,6 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Xml.Linq;
 
 namespace Lurp.Workspace;
 
@@ -17,12 +16,6 @@ public sealed class WorkspaceInfo
     private static readonly Encoding Utf16Le = new UnicodeEncoding(false, false, true);
     private static readonly Encoding Utf16Be = new UnicodeEncoding(true, false, true);
 
-    // Used only for the generated-file header sniff, which just scans a 512-byte
-    // prefix for plain-ASCII markers. Replacement (not throwing) fallback is safe
-    // there: the markers can't be produced by a replacement char, and the decoded
-    // string is discarded, never stored. See IsGeneratedHeader.
-    private static readonly Encoding Utf8Lenient = new UTF8Encoding(false, false);
-
     internal static Version CurrentCompilerVersion { get; } = typeof(CSharpCompilation).Assembly.GetName().Version
                                                               ?? new Version(0, 0);
 
@@ -31,7 +24,7 @@ public sealed class WorkspaceInfo
         var sink = output ?? ConsoleOutputSink.Instance;
         Id = WorkspaceId.Create(gitRoot, solution.FilePath ?? "");
 
-        var (documents, contents, generatedDocs, projectDocuments) = BuildDocumentMap(solution, gitRoot, sink);
+        var (documents, contents, generatedDocs, projectDocuments, excludedDocuments) = BuildDocumentMap(solution, gitRoot, sink);
         Documents = documents;
         DocumentContents = contents;
         GeneratedDocuments = generatedDocs;
@@ -47,6 +40,26 @@ public sealed class WorkspaceInfo
         ProjectDocuments = projectDocuments.ToDictionary(
             kvp => kvp.Key,
             kvp => (IReadOnlyList<string>)[.. kvp.Value.OrderBy(static path => path, StringComparer.Ordinal)],
+            StringComparer.Ordinal);
+
+        ExcludedDocuments = excludedDocuments.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlyList<string>)[.. kvp.Value.Distinct(StringComparer.Ordinal).OrderBy(static path => path, StringComparer.Ordinal)]);
+
+        var projectIdToName = solution.Projects.ToDictionary(static p => p.Id, static p => p.Name);
+        var excludedByName = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var (projectId, paths) in ExcludedDocuments)
+        {
+            if (!projectIdToName.TryGetValue(projectId, out var name))
+                continue;
+            if (!excludedByName.TryGetValue(name, out var list))
+                excludedByName[name] = list = [];
+            list.AddRange(paths);
+        }
+
+        _excludedDocumentsByName = excludedByName.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlyList<string>)[.. kvp.Value.Distinct(StringComparer.Ordinal).OrderBy(static path => path, StringComparer.Ordinal)],
             StringComparer.Ordinal);
 
         ProjectGraph = BuildProjectGraph(solution);
@@ -90,31 +103,48 @@ public sealed class WorkspaceInfo
 
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; }
 
+    private readonly Dictionary<string, IReadOnlyList<string>> _excludedDocumentsByName;
+
+    public IReadOnlyDictionary<ProjectId, IReadOnlyList<string>> ExcludedDocuments { get; }
+
+    internal IReadOnlyList<string> GetExcludedDocuments(Project? project, string projectName)
+    {
+        if (project != null)
+            return ExcludedDocuments.TryGetValue(project.Id, out var byId) ? byId : [];
+
+        return _excludedDocumentsByName.TryGetValue(projectName, out var byName) ? byName : [];
+    }
+
     private static (Dictionary<DocumentId, DocumentVersionId> Hashes, Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)> Contents,
-        IReadOnlySet<DocumentId> GeneratedDocuments, Dictionary<string, List<string>> ProjectDocuments)
+        IReadOnlySet<DocumentId> GeneratedDocuments, Dictionary<string, List<string>> ProjectDocuments, Dictionary<ProjectId, List<string>> ExcludedDocuments)
         BuildDocumentMap(Solution solution, string gitRoot, IOutputSink sink)
     {
         var map = new Dictionary<DocumentId, DocumentVersionId>();
         var contentMap = new Dictionary<DocumentId, (byte[] Content, string Encoding, string LineStarts)>();
         var generatedDocs = new HashSet<DocumentId>(DocumentIdComparer.Instance);
         var projectDocuments = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var excludedDocuments = new Dictionary<ProjectId, List<string>>();
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
 
-        var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
         var skipped = new List<string>();
 
         foreach (var project in solution.Projects)
         {
             var documentPaths = new List<string>();
+            var excludedPaths = new List<string>();
             foreach (var document in project.Documents)
             {
                 if (document.FilePath == null) continue;
 
                 var relPath = GetRelativePath(document.FilePath, normalizedRoot);
 
-                // Skip build output directories and .gitignore-matched paths
-                if (IsBuildOutputPath(relPath) || gitIgnore.IsIgnored(relPath))
+                // Skip build output directories (bin/ and obj/); record repository-local ones as excluded documents.
+                if (BuildOutputPaths.IsBuildOutputPath(relPath))
+                {
+                    if (!relPath.StartsWith("..", StringComparison.Ordinal))
+                        excludedPaths.Add(relPath);
                     continue;
+                }
 
                 var docId = new DocumentId(relPath);
 
@@ -124,8 +154,7 @@ public sealed class WorkspaceInfo
                     // Not valid UTF-8/UTF-16 text (binary content, wrong encoding,
                     // truncated multi-byte sequence). Indexing the whole workspace
                     // must not die on one bad file: drop it from the document set
-                    // exactly as a gitignored/build-output file would be, and warn
-                    // once at the end. Every downstream consumer of Documents /
+                    // and warn once at the end. Every downstream consumer of Documents /
                     // DocumentContents already tolerates a missing DocumentId.
                     skipped.Add(relPath);
                     continue;
@@ -138,10 +167,12 @@ public sealed class WorkspaceInfo
                 contentMap[docId] = (normalized, "utf-8", lineStarts);
                 documentPaths.Add(relPath);
 
-                if (IsGeneratedDocument(normalized, relPath)) generatedDocs.Add(docId);
+                if (GeneratedCode.IsGenerated(relPath, normalized)) generatedDocs.Add(docId);
             }
 
             projectDocuments[project.Name] = documentPaths;
+            if (excludedPaths.Count > 0)
+                excludedDocuments[project.Id] = excludedPaths;
         }
 
         if (skipped.Count > 0)
@@ -149,56 +180,7 @@ public sealed class WorkspaceInfo
                 $"WARNING: Skipped {skipped.Count} document(s) that are not valid UTF-8/UTF-16 text (excluded from indexing): "
                 + string.Join(", ", skipped.Take(10)) + (skipped.Count > 10 ? $", … +{skipped.Count - 10} more" : ""));
 
-        return (map, contentMap, generatedDocs, projectDocuments);
-    }
-
-    internal static bool IsBuildOutputPath(string relPath)
-    {
-        var normalized = PathNormalizer.ToForwardSlash(relPath);
-
-        if (normalized.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("obj/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("/obj/", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
-
-    private static bool IsGeneratedDocument(byte[] bytes, string relPath)
-    {
-        if (IsGeneratedPath(relPath))
-            return true;
-
-        if (IsGeneratedHeader(bytes))
-            return true;
-
-        return false;
-    }
-
-    private static bool IsGeneratedPath(string relPath)
-    {
-        var normalized = PathNormalizer.ToForwardSlash(relPath);
-        return GeneratedFilePaths.IsGenerated(normalized);
-    }
-
-    private static bool IsGeneratedHeader(byte[] bytes)
-    {
-        if (bytes.Length == 0)
-            return false;
-
-        // Lenient/replacement decode: this only scans for plain-ASCII markers, so
-        // a replacement character can never manufacture a false match, and can
-        // only suppress one in the (already-broken) case of a marker straddling
-        // the 512-byte cutoff mid-character. The decoded string is discarded.
-        var headerLength = Math.Min(512, bytes.Length);
-        var headerText = Utf8Lenient.GetString(bytes, 0, headerLength);
-
-        if (headerText.Contains("<auto-generated>", StringComparison.OrdinalIgnoreCase) ||
-            headerText.Contains("[GeneratedCode(", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        return (map, contentMap, generatedDocs, projectDocuments, excludedDocuments);
     }
 
     /// <summary>
@@ -286,59 +268,6 @@ public sealed class WorkspaceInfo
         }
     }
 
-    private static string? ParseTfmFromProjectFile(string projectFilePath)
-    {
-        var doc = XDocument.Load(projectFilePath);
-        var root = doc.Root;
-        if (root == null) return null;
-
-        var ns = root.GetDefaultNamespace();
-
-        return root
-                   .Elements(ns + "PropertyGroup")
-                   .SelectMany(pg => pg.Elements(ns + "TargetFramework"))
-                   .Select(e => e.Value.Trim())
-                   .FirstOrDefault()
-               ?? root
-                   .Elements(ns + "PropertyGroup")
-                   .SelectMany(pg => pg.Elements(ns + "TargetFrameworks"))
-                   .Select(e => e.Value.Trim())
-                   .FirstOrDefault();
-    }
-
-    private static string? FindTfmInDirectoryBuildProps(string projectFilePath, string repoRoot)
-    {
-        var dir = Path.GetDirectoryName(projectFilePath);
-        if (dir == null) return null;
-
-        var normalizedRoot = PathNormalizer.NormalizeRoot(repoRoot);
-
-        while (dir.Length >= normalizedRoot.Length)
-        {
-            var propsPath = Path.Combine(dir, "Directory.Build.props");
-            if (File.Exists(propsPath))
-                try
-                {
-                    var tfm = ParseTfmFromProjectFile(propsPath);
-                    if (tfm != null)
-                        return tfm;
-                }
-                catch
-                {
-                }
-
-            if (string.Equals(dir, normalizedRoot, PathNormalizer.PathComparison))
-                break;
-
-            var parent = Path.GetDirectoryName(dir);
-            if (parent == null || parent == dir)
-                break;
-            dir = parent;
-        }
-
-        return null;
-    }
-
     private static Dictionary<string, string> BuildTargetFrameworkMap(Solution solution, string gitRoot, IOutputSink? output = null)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
@@ -354,10 +283,7 @@ public sealed class WorkspaceInfo
 
             try
             {
-                var tf = ParseTfmFromProjectFile(project.FilePath);
-
-                tf ??= FindTfmInDirectoryBuildProps(project.FilePath, gitRoot);
-
+                var tf = ProjectTargetFramework.Read(project.FilePath, gitRoot);
                 map[project.Name] = tf ?? UnknownValue;
             }
             catch (Exception ex)

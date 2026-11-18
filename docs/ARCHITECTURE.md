@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v43, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v44, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -19,9 +19,12 @@ the non-negotiable rules, and what the system explicitly does not do. It is a
 
 It loads a .NET solution through Roslyn, discovers types and dependencies,
 tracks stale semantic data, and assembles bounded context capsules for agent
-tasks. All capabilities share one document identity, one symbol identity, one
-workspace snapshot, one freshness model, one persistent database, and one query
-interface.
+tasks. A project that evaluated correctly is never changed; language-version
+recovery runs only after a failed evaluation and uses the explicit
+`LangVersion`, else the target-framework default (from the project file or
+`Directory.Build.props`), else `LatestMajor`. All capabilities share one
+document identity, one symbol identity, one workspace snapshot, one freshness
+model, one persistent database, and one query interface.
 
 ## 2. The Product Model
 
@@ -44,13 +47,18 @@ There is no translation layer between a symbol ID and its source.
 One primary SQLite database (`index.db` in the output directory) is the
 canonical persisted state. JSON is appropriate for CLI response output and
 one-way export, but it is never a parallel authority. Snapshot identity is
-content-derived and content-addressed: when source content and compilation
-inputs are unchanged, a re-index reuses the existing snapshot, except
-`--strategy=full` reuses a snapshot only when a full run built it. Source
-content, compilation inputs and the version of each extractor and adapter make
-up the identity, so a version bump also gives a new snapshot id. The latest
-snapshot of a workspace is the one that the most recent successful index run
-built or reused.
+content-derived and content-addressed (`SnapshotIdentity`): when every identity
+input is unchanged, a re-index reuses the existing snapshot, except
+`--strategy=full` reuses a snapshot only when a full run built it. The identity
+hashes the workspace id (git root and solution path, so a clone at another path
+gets other snapshot ids), the .NET SDK and Roslyn compiler versions,
+`ExtractorVersion` and each extractor and adapter version, the per-project
+target frameworks, assembly names, project references, metadata reference
+identities, compilation-options fingerprints (including the language version and
+preprocessor symbols) and project document lists, each document's path and
+content hash, and the skipped adapters. A change to any of those inputs gives a
+new snapshot id. The latest snapshot of a workspace is the one that the most
+recent successful index run built or reused.
 
 Logical boundaries:
 
@@ -121,15 +129,18 @@ capsule path hops list up to 20 sites with `site_count`.
 
 ### 4.2 Evidence ladder
 
+Stored edges carry one of six provenance levels, ranked in this order:
+
 | Level | Meaning |
 |---|---|
 | `compiler_proved` | Directly verified by the compiler |
 | `framework_derived` | Derived from framework conventions |
-| `global_implementation_relation` | Capsule-only grade: an implementation of a called interface or virtual member, projected to a call site. The relation is real; that the call reaches it is not established. Not stored on edges. |
 | `possible` | Possible target (e.g. `MayDispatchTo` inherited-only) |
 | `convention` | Convention-based inference |
 | `name_candidate` | Name argument of a runtime name-binding API (reflection lookup, `PropertyChanged`/`[CallerMemberName]`, EF Core string APIs, binding attributes, MVC action names), resolved semantically |
 | `runtime_unknown` | Runtime target not observable statically |
+
+`global_implementation_relation` is a capsule grade, never an edge: context assembly assigns it to an implementation of a called interface or virtual member projected through `MayDispatchTo` into `direct_callees`. The global relation is real; that the call reaches it at run time is not established.
 
 ### 4.3 Edge kinds
 

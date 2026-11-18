@@ -45,8 +45,7 @@ public static class DeadCandidateLiveness
     public static IReadOnlyList<string> StrongProvenance { get; } = new[]
     {
         Provenance.CompilerProved,
-        Provenance.FrameworkDerived,
-        Provenance.GlobalImplementationRelation
+        Provenance.FrameworkDerived
     };
 
     public static IReadOnlyList<string> UncertainProvenance { get; } = new[]

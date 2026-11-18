@@ -122,7 +122,8 @@ internal sealed class DiagnosticStore
         int limit,
         DiagnosticsCursor? cursor,
         string? gitRoot,
-        HashSet<string> snapshotDocumentPaths)
+        HashSet<string> snapshotDocumentPaths,
+        HashSet<string> generatedDocumentPaths)
     {
         if (string.IsNullOrEmpty(snapshotId))
             throw new ArgumentException("snapshotId is required.", nameof(snapshotId));
@@ -241,8 +242,7 @@ internal sealed class DiagnosticStore
         if (documentPath != null)
             filtered = all.Where(x => string.Equals(x.Entry.NormalizedDocumentPath, documentPath, StringComparison.Ordinal));
         if (!includeGenerated)
-            filtered = filtered.Where(x => string.IsNullOrEmpty(x.Entry.NormalizedDocumentPath) ||
-                                           !GeneratedFilePaths.IsGenerated(PathNormalizer.ToForwardSlash(x.Entry.NormalizedDocumentPath)));
+            filtered = filtered.Where(x => !IsGeneratedDiagnostic(x.Entry, generatedDocumentPaths));
 
         // Keyset pagination: skip past cursor, take limit + 1.
         var windowed = filtered;
@@ -263,6 +263,18 @@ internal sealed class DiagnosticStore
         var totalCount = filtered.Count();
         var items = rows.Select(r => r.Entry).ToList();
         return new DiagnosticsPage(items, nextCursor, totalCount);
+    }
+
+    private static bool IsGeneratedDiagnostic(DiagnosticEntry entry, HashSet<string> generatedDocumentPaths)
+    {
+        if (string.IsNullOrEmpty(entry.NormalizedDocumentPath))
+            return false;
+
+        if (entry.InSnapshot == true)
+            return generatedDocumentPaths.Contains(entry.NormalizedDocumentPath);
+
+        var normalized = PathNormalizer.ToForwardSlash(entry.NormalizedDocumentPath);
+        return GeneratedFilePaths.IsGenerated(normalized) || BuildOutputPaths.IsBuildOutputPath(normalized);
     }
 
     public void CopySnapshotDiagnostics(string fromSnapshotId, string toSnapshotId)

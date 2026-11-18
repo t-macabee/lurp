@@ -4,7 +4,7 @@ namespace Lurp.Tests;
 
 /// <summary>
 ///     Pins the plan of the generated-document filter that source search and grep append (B38).
-///     The filter must use the covering index idx_declarations_doc_version_generated with and
+///     The filter must use the covering index idx_document_versions_generated with and
 ///     without planner statistics, so the plan does not depend on the statistics. The SQL texts
 ///     are the stores' own <see cref="Lurp.Storage.SearchSourceStore.FtsMatchSql" />,
 ///     <see cref="Lurp.Storage.SearchSourceStore.FallbackSql" /> and
@@ -36,7 +36,7 @@ public sealed class SourceSearchQueryPlanTests : IntegrationTestBase
 
     private static void AssertGeneratedFilterPlans(SqliteConnection connection, string snapshotId)
     {
-        const string covering = "COVERING INDEX idx_declarations_doc_version_generated (document_version_id=? AND is_generated=?)";
+        const string covering = "COVERING INDEX idx_document_versions_generated (document_version_id=? AND is_generated=?)";
 
         var ftsPlan = QueryPlanFixture.Explain(connection, FtsMatchQuerySql, new Dictionary<string, object>
         {

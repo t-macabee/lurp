@@ -32,7 +32,7 @@ public interface IEdgeStore
     void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId);
     bool TryRetractAnnotation(string snapshotId, long annotationId);
 
-    OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId);
+    OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds);
 
     /// <summary>
     ///     Removes <c>snapshot_graph_nodes</c> rows whose node_id is no longer

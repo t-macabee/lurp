@@ -682,8 +682,9 @@ internal sealed class EdgeOperationsStore
         memberCmd.ExecuteNonQuery();
     }
 
-    public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
+    public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
     {
+        ArgumentNullException.ThrowIfNull(excludedSymbolIds);
         using var command = _connection.CreateCommand();
         command.CommandText = """
             WITH valid_ids(id) AS (
@@ -701,6 +702,9 @@ internal sealed class EdgeOperationsStore
                 SELECT DISTINCT substr(symbol_id, instr(symbol_id,'|')+1)
                 FROM snapshot_symbols
                 WHERE snapshot_id = @snapshotId AND instr(symbol_id,'|') > 0
+            ),
+            excluded_ids(id) AS (
+                SELECT value FROM json_each(@excludedSymbolIds)
             )
             DELETE FROM edges
             WHERE snapshot_id = @snapshotId
@@ -764,23 +768,30 @@ internal sealed class EdgeOperationsStore
                       OR (target_symbol_id NOT IN (SELECT id FROM valid_ids)
                           AND substr(target_symbol_id, instr(target_symbol_id,'|')+1) NOT IN (SELECT identity FROM in_scope_assemblies))
                     THEN 'external'
+                    WHEN (source_symbol_id NOT IN (SELECT id FROM valid_ids)
+                          AND source_symbol_id IN (SELECT id FROM excluded_ids))
+                      OR (target_symbol_id NOT IN (SELECT id FROM valid_ids)
+                          AND target_symbol_id IN (SELECT id FROM excluded_ids))
+                    THEN 'excluded_document'
                     ELSE 'other'
                 END;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        SqlIdList.Bind(command, "@excludedSymbolIds", excludedSymbolIds);
 
-        int external = 0, compilerSynthesized = 0, other = 0;
+        int external = 0, compilerSynthesized = 0, excludedDocument = 0, other = 0;
         using var reader = command.ExecuteReader();
         while (reader.Read())
             switch (reader.GetString(0))
             {
                 case "compiler_synthesized": compilerSynthesized++; break;
                 case "external": external++; break;
+                case "excluded_document": excludedDocument++; break;
                 case "other": other++; break;
             }
 
-        var total = external + compilerSynthesized + other;
-        return new OrphanEdgeDropSummary(total, external, compilerSynthesized, other);
+        var total = external + compilerSynthesized + excludedDocument + other;
+        return new OrphanEdgeDropSummary(total, external, compilerSynthesized, excludedDocument, other);
     }
 
     public void PruneSnapshotGraphNodes(string snapshotId)

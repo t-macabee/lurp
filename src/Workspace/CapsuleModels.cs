@@ -76,6 +76,20 @@ internal static class CapsuleRelationship
     public const string IndirectDispatchCandidate = "indirect_dispatch_candidate";
 }
 
+/// <summary>
+///     Evidence grades produced only during capsule projection (never stored on graph edges).
+/// </summary>
+internal static class CapsuleProvenance
+{
+    /// <summary>
+    ///     A true global implementation/override relation (proven by the compiler) projected
+    ///     into a specific call site without filtering by that call site's static receiver
+    ///     type. The relation itself is real; whether it is reachable from this particular
+    ///     call is not established.
+    /// </summary>
+    public const string GlobalImplementationRelation = "global_implementation_relation";
+}
+
 internal sealed class CapsuleItem
 {
     // Capsule items are ordinarily authored through the invariant-enforcing

@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using System.Globalization;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -10,18 +11,15 @@ namespace Lurp.Workspace;
 ///     MSBuildWorkspace silently falls back to C# 7.3 parse options whenever its
 ///     project evaluation fails (for example, an SDK-style project with no
 ///     <c>&lt;TargetFramework&gt;</c> fails evaluation, which also leaves package
-///     and metadata references unresolved). That hard-coded fallback compiles
-///     modern C# source (file-scoped namespaces, records, global usings) as C# 7.3,
-///     producing mass CS8370 diagnostics and suppressing semantic edges that depend
-///     on those features binding.
-///     This recovery derives each affected project's effective language version
-///     from its own inputs instead of the fallback: an explicit
-///     <c>&lt;LangVersion&gt;</c> property is authoritative, and an SDK-style
-///     project with no explicit <c>LangVersion</c> uses the SDK default
-///     (<c>latest</c>, mapped to <see cref="LanguageVersion.LatestMajor" />).
-///     Non-SDK (legacy) projects are left untouched : C# 7.3 is their correct
-///     default. Projects whose parse options were already resolved to a language
-///     version other than the C# 7.3 fallback are also untouched.
+///     and metadata references unresolved). A project that evaluated cleanly is
+///     never changed — MSBuild itself selects C# 7.3 for <c>netstandard2.0</c>,
+///     .NET Framework targets, and projects inheriting <c>LangVersion=7.3</c> from
+///     <c>Directory.Build.props</c>.
+///     For a project whose evaluation failed, recovery uses an explicit
+///     <c>&lt;LangVersion&gt;</c> when present and parseable; otherwise an
+///     SDK-style project uses the target-framework default (or
+///     <see cref="LanguageVersion.LatestMajor" /> when no target framework is
+///     declared), and a non-SDK project stays at C# 7.3.
 /// </summary>
 internal static class LanguageVersionRecovery
 {
@@ -32,11 +30,16 @@ internal static class LanguageVersionRecovery
     private const LanguageVersion FallbackLanguageVersion = LanguageVersion.CSharp7_3;
 
     /// <summary>
-    ///     Return a copy of <paramref name="solution" /> whose projects use their
-    ///     effective language version instead of the C# 7.3 fallback. Projects
-    ///     whose parse options are already correct are returned unchanged.
+    ///     Return a copy of <paramref name="solution" /> whose projects that failed
+    ///     evaluation use their effective language version instead of the C# 7.3
+    ///     fallback. Projects that evaluated cleanly or already resolved to another
+    ///     language version are returned unchanged.
     /// </summary>
-    public static Solution Apply(Solution solution, IOutputSink? output = null)
+    public static Solution Apply(
+        Solution solution,
+        string gitRoot,
+        IReadOnlyList<WorkspaceDiagnostic> loadDiagnostics,
+        IOutputSink? output = null)
     {
         var sink = output ?? ConsoleOutputSink.Instance;
         var corrected = solution;
@@ -49,7 +52,7 @@ internal static class LanguageVersionRecovery
             if (parseOptions.SpecifiedLanguageVersion != FallbackLanguageVersion)
                 continue;
 
-            if (!TryDetermineEffectiveLanguageVersion(project, out var effective, out var reason))
+            if (!TryDetermineEffectiveLanguageVersion(project, gitRoot, loadDiagnostics, out var effective, out var reason))
                 continue;
 
             var recovered = parseOptions.WithLanguageVersion(effective);
@@ -64,11 +67,17 @@ internal static class LanguageVersionRecovery
     }
 
     /// <summary>
-    ///     Derive the language version a project actually targets. Returns false
-    ///     when the fallback is already the correct version (a non-SDK project with
-    ///     no explicit <c>LangVersion</c>, or a project whose file cannot be read).
+    ///     Derive the language version a project actually targets after a failed
+    ///     evaluation. Returns false when the project evaluated cleanly, when it is
+    ///     not SDK-style and has no explicit <c>LangVersion</c>, or when its project
+    ///     file cannot be read.
     /// </summary>
-    private static bool TryDetermineEffectiveLanguageVersion(Project project, out LanguageVersion effective, out string reason)
+    private static bool TryDetermineEffectiveLanguageVersion(
+        Project project,
+        string gitRoot,
+        IReadOnlyList<WorkspaceDiagnostic> loadDiagnostics,
+        out LanguageVersion effective,
+        out string reason)
     {
         effective = LanguageVersion.CSharp7_3;
         reason = "";
@@ -90,6 +99,13 @@ internal static class LanguageVersionRecovery
         if (root == null)
             return false;
 
+        var rawTfm = ProjectTargetFramework.Read(root, project.FilePath, gitRoot);
+        var firstTfmFromFile = ExtractFirstTargetFramework(rawTfm);
+
+        var evaluationFailed = HasLoadFailure(project, loadDiagnostics) || firstTfmFromFile == null;
+        if (!evaluationFailed)
+            return false;
+
         var ns = root.GetDefaultNamespace();
 
         // An explicit <LangVersion> in the project file is authoritative.
@@ -97,27 +113,125 @@ internal static class LanguageVersionRecovery
             .Elements(ns + "PropertyGroup")
             .SelectMany(pg => pg.Elements(ns + "LangVersion"))
             .Select(e => e.Value.Trim())
-            .FirstOrDefault(v => v.Length > 0);
+            .FirstOrDefault(static v => v.Length > 0);
 
-        if (explicitLangVersion != null)
-            if (TryParse(explicitLangVersion, out var parsed))
-            {
-                effective = parsed;
-                reason = $"explicit LangVersion={explicitLangVersion}";
-                return true;
-            }
+        if (explicitLangVersion != null && TryParse(explicitLangVersion, out var parsed))
+        {
+            effective = parsed;
+            reason = $"explicit LangVersion={explicitLangVersion}";
+            return true;
+        }
 
-        // Unparseable explicit value: fall through to the SDK default so we
-        // do not silently keep the C# 7.3 fallback for an SDK-style project.
-        // SDK-style projects (Sdk="Microsoft.NET.Sdk*") default LangVersion to
-        // "latest" when unset; that is what dotnet build would evaluate.
-        var sdk = root.Attribute("Sdk")?.Value ?? "";
-        if (!sdk.StartsWith("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase))
+        if (!IsSdkStyle(root, ns))
             return false;
 
-        effective = LanguageVersion.LatestMajor;
-        reason = "SDK-style project with unset LangVersion; SDK default is latest";
+        var tfm = ExtractTargetFrameworkSuffix(project.Name) ?? firstTfmFromFile;
+        if (tfm == null)
+        {
+            effective = LanguageVersion.LatestMajor;
+            reason = "SDK-style project without TargetFramework";
+            return true;
+        }
+
+        effective = MapTargetFrameworkDefault(tfm);
+        reason = $"target framework {tfm} default";
         return true;
+    }
+
+    private static bool HasLoadFailure(Project project, IReadOnlyList<WorkspaceDiagnostic> loadDiagnostics)
+    {
+        var normalizedProjectPath = project.FilePath != null
+            ? PathNormalizer.ToForwardSlash(Path.GetFullPath(project.FilePath))
+            : null;
+        foreach (var diagnostic in loadDiagnostics)
+        {
+            if (diagnostic.Kind != WorkspaceDiagnosticKind.Failure)
+                continue;
+
+            if (diagnostic is ProjectDiagnostic projectDiagnostic && projectDiagnostic.ProjectId == project.Id)
+                return true;
+
+            if (project.FilePath != null && diagnostic.Message.Contains(project.FilePath, PathNormalizer.PathComparison))
+                return true;
+
+            if (normalizedProjectPath != null
+                && PathNormalizer.ToForwardSlash(diagnostic.Message).Contains(normalizedProjectPath, PathNormalizer.PathComparison))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSdkStyle(XElement root, XNamespace ns)
+    {
+        var sdkAttribute = root.Attribute("Sdk")?.Value;
+        if (sdkAttribute != null && sdkAttribute.StartsWith("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return root.Elements(ns + "Sdk")
+            .Select(static e => e.Attribute("Name")?.Value)
+            .Any(static name => name != null && name.StartsWith("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ExtractTargetFrameworkSuffix(string projectName)
+    {
+        var open = projectName.LastIndexOf('(');
+        if (open >= 0 && projectName.EndsWith(')') && open < projectName.Length - 2)
+        {
+            var suffix = projectName[(open + 1)..^1].Trim();
+            if (suffix.Length > 0)
+                return suffix;
+        }
+
+        return null;
+    }
+
+    private static string? ExtractFirstTargetFramework(string? rawTfm)
+    {
+        if (string.IsNullOrWhiteSpace(rawTfm))
+            return null;
+
+        foreach (var entry in rawTfm.Split(';'))
+        {
+            var trimmed = entry.Trim();
+            if (trimmed.Length > 0)
+                return trimmed;
+        }
+
+        return null;
+    }
+
+    private static LanguageVersion MapTargetFrameworkDefault(string tfm)
+    {
+        var normalized = tfm.Trim().ToLowerInvariant();
+        var dash = normalized.IndexOf('-');
+        if (dash >= 0)
+            normalized = normalized[..dash];
+
+        if (normalized.StartsWith("netcoreapp3.", StringComparison.Ordinal))
+            return LanguageVersion.CSharp8;
+
+        if (normalized == "netstandard2.1")
+            return LanguageVersion.CSharp8;
+
+        if (normalized.StartsWith("net", StringComparison.Ordinal)
+            && normalized.EndsWith(".0", StringComparison.Ordinal)
+            && int.TryParse(normalized[3..^2], NumberStyles.None, CultureInfo.InvariantCulture, out var major))
+        {
+            return major switch
+            {
+                5 => LanguageVersion.CSharp9,
+                6 => LanguageVersion.CSharp10,
+                7 => LanguageVersion.CSharp11,
+                8 => LanguageVersion.CSharp12,
+                9 => LanguageVersion.CSharp13,
+                10 => LanguageVersion.CSharp14,
+                >= 11 => LanguageVersion.LatestMajor,
+                _ => LanguageVersion.CSharp7_3
+            };
+        }
+
+        return LanguageVersion.CSharp7_3;
     }
 
     private static bool TryParse(string value, out LanguageVersion version)

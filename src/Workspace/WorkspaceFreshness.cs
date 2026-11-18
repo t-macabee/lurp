@@ -197,7 +197,6 @@ public static class WorkspaceFreshness
         var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
         var pathComparer = PathNormalizer.PathComparer;
         var knownDocuments = new HashSet<string>(store.GetDocumentVersionIdsByPath(snapshotId).Keys, pathComparer);
-        var gitIgnore = GitIgnoreMatcher.Load(normalizedRoot);
 
         var dirs = new Stack<string>();
         dirs.Push(normalizedRoot);
@@ -220,9 +219,6 @@ public static class WorkspaceFreshness
                 if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (gitIgnore.IsIgnored(relativePath))
-                    continue;
-
                 if (!knownDocuments.Contains(relativePath))
                     return false;
             }
@@ -235,7 +231,7 @@ public static class WorkspaceFreshness
                     relSubDir.StartsWith(".git/", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (WorkspaceInfo.IsBuildOutputPath(relSubDir + "/"))
+                if (BuildOutputPaths.IsBuildOutputPath(relSubDir + "/"))
                 {
                     if (Path.GetFileName(subDir).Equals("obj", StringComparison.OrdinalIgnoreCase))
                     {
@@ -286,18 +282,19 @@ public static class WorkspaceFreshness
     {
         var currentDocs = current.Documents;
         var storedDocs = stored.DocumentVersions;
-        var generatedDocs = current.GeneratedDocuments;
+        var currentGenerated = current.GeneratedDocuments;
+        var storedGenerated = stored.GeneratedDocuments;
 
         foreach (var (docId, _) in storedDocs)
         {
-            if (generatedDocs.Contains(docId))
+            if (currentGenerated.Contains(docId) || storedGenerated.Contains(docId))
                 continue;
             if (!currentDocs.ContainsKey(docId)) yield return new SnapshotMismatch(MismatchKind.DocumentRemoved, $"Document removed: '{docId}'.", docId, null);
         }
 
         foreach (var (docId, currentHash) in currentDocs)
         {
-            if (generatedDocs.Contains(docId))
+            if (currentGenerated.Contains(docId) || storedGenerated.Contains(docId))
                 continue;
             if (!storedDocs.TryGetValue(docId, out var storedHash))
                 yield return new SnapshotMismatch(MismatchKind.DocumentAdded, $"Document added: '{docId}'.", docId, $"hash (new) = {currentHash}");

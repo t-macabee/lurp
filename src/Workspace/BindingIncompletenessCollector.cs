@@ -64,6 +64,20 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
     }
 
     /// <summary>
+    ///     Records a compile item under <c>bin/</c> or <c>obj/</c> excluded from the
+    ///     snapshot (D4, D165.5). <paramref name="relativeDocumentPath" /> is already
+    ///     git-root-relative.
+    /// </summary>
+    internal void RecordExcludedDocument(string relativeDocumentPath)
+    {
+        var normalized = PathNormalizer.ToForwardSlash(relativeDocumentPath);
+        var key = ((string?)normalized, BindingIncompletenessReason.ExcludedDocument);
+        if (!_sites.TryGetValue(key, out var sites))
+            _sites[key] = sites = new HashSet<string>(StringComparer.Ordinal);
+        sites.Add(normalized);
+    }
+
+    /// <summary>
     ///     Records that a DI convention scan site has an open match set. The row seeds
     ///     the reverse-edge closure frontier (<see cref="BindingIncompletenessReason.UnobservableReasons" />),
     ///     so the registration document is re-examined on any change even though no

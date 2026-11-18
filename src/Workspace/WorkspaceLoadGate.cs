@@ -51,11 +51,14 @@ internal static class WorkspaceLoadGate
     internal static List<BindingIncompletenessRecord> DescribeBlindProject(
         Compilation compilation, string projectName, string gitRoot)
     {
+        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
         var records = compilation.SyntaxTrees
-            .Where(tree => !string.IsNullOrEmpty(tree.FilePath))
-            .Select(tree => new BindingIncompletenessRecord(
+            .Where(static tree => !string.IsNullOrEmpty(tree.FilePath))
+            .Select(tree => PathNormalizer.ToGitRelativeFromNormalizedRoot(tree.FilePath, normalizedRoot))
+            .Where(static relPath => !BuildOutputPaths.IsBuildOutputPath(relPath))
+            .Select(relPath => new BindingIncompletenessRecord(
                 projectName,
-                PathNormalizer.ToGitRelative(tree.FilePath, gitRoot),
+                relPath,
                 BindingIncompletenessReason.ProjectUnreadable,
                 1,
                 VersionConstants.ExtractorVersion))

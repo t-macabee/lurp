@@ -219,6 +219,11 @@ public abstract class IntegrationTestBase : IDisposable
 
     public async Task<string> RunIncrementalIndexAsync()
     {
+        return (await RunIncrementalIndexWithResultAsync()).NewSnapshotId;
+    }
+
+    public async Task<IncrementalIndexer.IncrementalResult> RunIncrementalIndexWithResultAsync()
+    {
         using var store = OpenStore(DbPath);
 
         using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));
@@ -234,7 +239,7 @@ public abstract class IntegrationTestBase : IDisposable
         var result = await incrementalIndexer.RunIncrementalAsync(solution, workspaceInfo, previousManifest);
 
         store.PruneOldSnapshots(3);
-        return result.NewSnapshotId;
+        return result;
     }
 
     /// <summary>Resolves a symbol's snapshot symbol_id by exact FQN match.</summary>

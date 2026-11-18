@@ -117,8 +117,9 @@ public sealed class CustomBeforeHookTests
 
     private static async Task<Probe> ProbeLurpAsync(string solutionPath, CapturingOutputSink sink)
     {
+        var gitRoot = Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
         using var loader = new WorkspaceLoader(sink);
-        var loaded = await loader.LoadAsync(solutionPath, CancellationToken.None);
+        var loaded = await loader.LoadAsync(solutionPath, gitRoot, CancellationToken.None);
         var redirectWarnings = sink.ErrorLines
             .Where(line => line.Contains("intermediate_redirect_not_applied", StringComparison.Ordinal))
             .ToList();

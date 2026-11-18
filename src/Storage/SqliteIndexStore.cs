@@ -599,9 +599,8 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         EnsureOpen();
         var snapshot = _lifecycle!.LoadSnapshot(snapshotId);
         var gitRoot = snapshot?.GitRoot;
-        var docPaths = _documents!.GetDocumentVersionIdsByPath(snapshotId);
-        var pathSet = new HashSet<string>(docPaths.Keys, StringComparer.Ordinal);
-        return _diagnostics!.GetDiagnosticsPage(snapshotId, projectName, documentPath, severity, excludeHidden, includeGenerated, id, limit, cursor, gitRoot, pathSet);
+        var (pathSet, generatedPathSet) = _documents!.GetSnapshotDocumentPaths(snapshotId);
+        return _diagnostics!.GetDiagnosticsPage(snapshotId, projectName, documentPath, severity, excludeHidden, includeGenerated, id, limit, cursor, gitRoot, pathSet, generatedPathSet);
     }
 
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
@@ -694,10 +693,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _annotations!.TryRetractAnnotation(snapshotId, annotationId);
     }
 
-    public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId)
+    public OrphanEdgeDropSummary DeleteOrphanEdges(string snapshotId, IEnumerable<string> excludedSymbolIds)
     {
         EnsureOpen();
-        return _edgeOps!.DeleteOrphanEdges(snapshotId);
+        return _edgeOps!.DeleteOrphanEdges(snapshotId, excludedSymbolIds);
     }
 
     public void PruneSnapshotGraphNodes(string snapshotId)

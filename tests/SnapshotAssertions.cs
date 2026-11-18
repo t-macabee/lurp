@@ -31,6 +31,10 @@ internal static class SnapshotAssertions
                 $"  Only in C: {string.Join(", ", symbolsC.Except(symbolsB, StringComparer.Ordinal).Take(10))}");
 
             Assert.Equal(
+                ReadDocuments(dbPathC, snapshotC),
+                ReadDocuments(dbPathB, snapshotB));
+
+            Assert.Equal(
                 ReadSymbols(dbPathC, snapshotC),
                 ReadSymbols(dbPathB, snapshotB));
 
@@ -122,6 +126,33 @@ internal static class SnapshotAssertions
         var store = new SqliteIndexStore(dbPath);
         store.Open();
         return store;
+    }
+
+    internal static List<DocumentSnapshot> ReadDocuments(string dbPath, string snapshotId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.relative_path, dv.content_hash, dv.is_generated
+            FROM snapshot_documents sd
+            JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
+            JOIN documents d ON d.document_id = dv.document_id
+            WHERE sd.snapshot_id = @snapshotId
+            ORDER BY d.relative_path, dv.content_hash, dv.is_generated;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        var result = new List<DocumentSnapshot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result.Add(new DocumentSnapshot(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2) != 0));
+
+        return result;
     }
 
     internal static List<SymbolSnapshot> ReadSymbols(string dbPath, string snapshotId)
@@ -552,6 +583,8 @@ internal static class SnapshotAssertions
 
         return (sourceRows, symbolRows);
     }
+
+    internal sealed record DocumentSnapshot(string RelativePath, string ContentHash, bool IsGenerated);
 
     internal sealed record SymbolSnapshot(string SymbolId, string? FullyQualifiedName, string? MetadataJson);
 

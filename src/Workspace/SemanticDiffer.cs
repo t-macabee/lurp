@@ -25,7 +25,7 @@ public class SemanticDiffer
         new(SymbolMetadataKeys.IsWriteOnly, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
         new(SymbolMetadataKeys.IsConst, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
         new(SymbolMetadataKeys.IsVolatile, ChangeType.MetadataChanged, MetadataComparisonKind.Scalar),
-        new(SymbolMetadataKeys.Attributes, ChangeType.AttributeChanged, MetadataComparisonKind.Array)
+        new(SymbolMetadataKeys.Attributes, ChangeType.AttributeChanged, MetadataComparisonKind.Array, AbsentMeansEmpty: true)
     ];
 
     // Reading only the changed symbols' edges and declaration document versions costs about
@@ -381,7 +381,7 @@ public class SemanticDiffer
                     CompareStringMetadata(entry.Key, entry.ChangeType);
                     break;
                 case MetadataComparisonKind.Array:
-                    CompareArrayMetadata(entry.Key, entry.ChangeType);
+                    CompareArrayMetadata(entry.Key, entry.ChangeType, entry.AbsentMeansEmpty);
                     break;
                 case MetadataComparisonKind.Scalar:
                     CompareScalarMetadata(entry.Key, entry.ChangeType);
@@ -397,10 +397,10 @@ public class SemanticDiffer
             if (from != null && to != null && from != to) changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId, new { before = from, after = to }));
         }
 
-        void CompareArrayMetadata(string key, string changeType)
+        void CompareArrayMetadata(string key, string changeType, bool absentMeansEmpty)
         {
-            var from = GetMetaArray(fromMeta, key);
-            var to = GetMetaArray(toMeta, key);
+            var from = GetMetaArray(fromMeta, key, absentMeansEmpty);
+            var to = GetMetaArray(toMeta, key, absentMeansEmpty);
             if (from != null && to != null && !from.SequenceEqual(to)) changes.Add(MakeChange(fromSnapshotId, toSnapshotId, changeType, symbolId, new { before = from, after = to }));
         }
 
@@ -461,13 +461,15 @@ public class SemanticDiffer
         return null;
     }
 
-    private static List<string>? GetMetaArray(Dictionary<string, JsonElement> meta, string key)
+    private static List<string>? GetMetaArray(Dictionary<string, JsonElement> meta, string key, bool absentMeansEmpty = false)
     {
-        if (meta.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array)
-            return [.. el.EnumerateArray()
-                .Where(e => e.ValueKind == JsonValueKind.String)
-                .Select(e => e.GetString()!)];
-        return null;
+        if (meta.TryGetValue(key, out var el))
+            return el.ValueKind == JsonValueKind.Array
+                ? [.. el.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.String)
+                    .Select(e => e.GetString()!)]
+                : null;
+        return absentMeansEmpty && meta.Count > 0 ? [] : null;
     }
 
     private static SemanticChange MakeChange(string? fromSnapshotId, string? toSnapshotId, string changeType, string symbolId, object? detail)
@@ -494,5 +496,6 @@ public class SemanticDiffer
     private readonly record struct MetadataComparisonEntry(
         string Key,
         string ChangeType,
-        MetadataComparisonKind Kind);
+        MetadataComparisonKind Kind,
+        bool AbsentMeansEmpty = false);
 }
