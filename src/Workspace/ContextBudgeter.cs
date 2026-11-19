@@ -6,24 +6,18 @@ namespace Lurp.Workspace;
 
 internal static class ContextBudgeter
 {
-    internal static int Apply(ContextCapsule capsule, IEnumerable<IContextTierBuilder> tiers, int budget, int runningTotal, bool anchorBindingIsIncomplete = false)
+    internal static int Apply(ContextCapsule capsule, IEnumerable<IContextTierBuilder> tiers, int budget, int runningTotal, BindingObservation observation)
     {
         var truncatedCategories = new List<string>();
         var omittedTiers = new List<TruncationEntry>();
         var budgetExhausted = runningTotal > budget;
-
-        // An empty tier carries one of two very different meanings, and collapsing
-        // them is what lets a capsule assert "nothing calls this" when the truth is
-        // "the compiler could not tell". "empty" is a proved absence and consumers
-        // may act on it; "unresolved" is an unobservable region and proves nothing.
-        var emptyReason = anchorBindingIsIncomplete ? "unresolved" : "empty";
 
         foreach (var tier in tiers)
         {
             var items = tier.Build();
             if (items.Count == 0)
             {
-                var reason = tier.EmptyReason ?? emptyReason;
+                var reason = tier.EmptyReason ?? (observation.IsUnobservable(tier.BindingScope) ? "unresolved" : "empty");
                 omittedTiers.Add(new TruncationEntry(tier.Name, reason));
                 continue;
             }

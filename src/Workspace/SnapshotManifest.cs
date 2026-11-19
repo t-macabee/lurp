@@ -206,6 +206,21 @@ public sealed partial class SnapshotManifest
     ///     Rebuilds the rich manifest from a stored snapshot row. With <paramref name="projects" />,
     ///     the manifest holds only those projects, their documents and their TFMs.
     /// </summary>
+    internal static SnapshotCompleteness StorageCompleteness(SnapshotRow storage, IEnumerable<ProjectRow> projects)
+    {
+        var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var project in projects)
+            targetFrameworks[project.Name] = project.TargetFramework;
+
+        return new SnapshotCompleteness
+        {
+            GeneratedTreesIncluded = false,
+            SkippedAdapters = storage.SkippedAdapters,
+            ActiveTfms = targetFrameworks,
+            ExtractorVersion = storage.ExtractorVersion
+        };
+    }
+
     internal static SnapshotManifest FromStorageManifest(SnapshotRow storage, IReadOnlySet<string>? projects = null)
     {
         var selectedProjects = projects == null
@@ -229,7 +244,7 @@ public sealed partial class SnapshotManifest
                 generatedDocuments.Add(docId);
         }
 
-        var targetFrameworks = new Dictionary<string, string>(StringComparer.Ordinal);
+        var completeness = StorageCompleteness(storage, selectedProjects);
         var projectGraph = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var assemblyNames = new Dictionary<string, string>(StringComparer.Ordinal);
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
@@ -238,7 +253,6 @@ public sealed partial class SnapshotManifest
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var project in selectedProjects)
         {
-            targetFrameworks[project.Name] = project.TargetFramework;
             projectGraph[project.Name] = [.. project.References];
             if (project.AssemblyName != null)
                 assemblyNames[project.Name] = project.AssemblyName;
@@ -266,7 +280,7 @@ public sealed partial class SnapshotManifest
             GeneratedDocuments = generatedDocuments,
             SdkVersion = storage.SdkVersion,
             CompilerVersion = storage.CompilerVersion,
-            TargetFrameworks = targetFrameworks,
+            TargetFrameworks = new Dictionary<string, string>(completeness.ActiveTfms),
             ProjectGraph = projectGraph,
             AssemblyNames = assemblyNames,
             MetadataReferenceIdentities = metadataReferenceIdentities,
@@ -280,13 +294,7 @@ public sealed partial class SnapshotManifest
             PreviousSnapshotId = storage.PreviousSnapshotId != null
                 ? SnapshotId.Parse(storage.PreviousSnapshotId)
                 : null,
-            Completeness = new SnapshotCompleteness
-            {
-                GeneratedTreesIncluded = false,
-                SkippedAdapters = storage.SkippedAdapters,
-                ActiveTfms = new Dictionary<string, string>(targetFrameworks),
-                ExtractorVersion = storage.ExtractorVersion
-            }
+            Completeness = completeness
         };
     }
 }

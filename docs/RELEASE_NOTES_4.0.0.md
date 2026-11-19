@@ -370,6 +370,14 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `implements_external_interface` is renamed `implements_external_member`. Read
   `implements_external_member`.
 
+- Recompute incoming topology before comparing capsules across versions. Incoming paths now use the default upstream impact filter.
+
+- Read callers at depth two or more from `second_degree_context`. Restart tier paging after upgrade.
+- Check `omitted_tiers` for `unresolved` before acting on an empty list. Each tier has a binding scope.
+- Read proved interface members implemented by the anchor from `contracts`.
+- Read `affected_public_surfaces` using the effective-access and outside-friend rules. Instance constructors, properties, fields and property accessors still use declared access.
+- Query snapshot annotations directly for facts outside the capsule scope.
+
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |
@@ -378,4 +386,4 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 | Database schema | v37 | v45 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
-| Output schema | v6 | v6 |
+| Output schema | v6 | v7 |

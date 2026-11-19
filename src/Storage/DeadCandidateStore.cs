@@ -377,7 +377,8 @@ internal sealed class DeadCandidateStore
             reason = DeadCandidateReason.ExternalInterfaceImplementation;
             uncertainties = [MakeExternalInterfaceImplementationUncertainty(cand.SymbolId)];
         }
-        else if (IsPublicSurface(cand, projectFacts))
+        else if (PublicSurface.IsExposed(cand.Kind, cand.Row.DocCommentId, cand.AccessorKind,
+                     cand.Accessibility, cand.EffectiveAccessibility, cand.AssemblyName, projectFacts) == true)
         {
             if (!includePublic)
                 return null;
@@ -533,7 +534,7 @@ internal sealed class DeadCandidateStore
             return true;
         }
 
-        if (IsInstanceConstructor(cand))
+        if (PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId))
         {
             var enclosing = SymbolId.DeriveContainingTypeSymbolId(cand.SymbolId);
             if (enclosing != null &&
@@ -552,7 +553,7 @@ internal sealed class DeadCandidateStore
     {
         if (typeFacts.Kind != nameof(IndexedSymbolKind.Type))
             return false;
-        var typeKind = GetString(typeFacts.Metadata, SymbolMetadataKeys.TypeKind);
+        var typeKind = SymbolMetadata.GetString(typeFacts.Metadata, SymbolMetadataKeys.TypeKind);
         if (typeKind is not ("Class" or "Delegate"))
             return false;
         return !SymbolMetadata.IsTrue(typeFacts.Metadata, SymbolMetadataKeys.IsAbstract) &&
@@ -786,14 +787,14 @@ internal sealed class DeadCandidateStore
         // One metadata parse per candidate row (R5.1). A row that does not parse still fails
         // loudly and names the offending symbol (SymbolMetadata.Parse).
         var metadata = SymbolMetadata.Parse(row.MetadataJson, row.SymbolId);
-        var accessorKind = GetString(metadata, SymbolMetadataKeys.AccessorKind);
-        var associatedSymbol = GetString(metadata, SymbolMetadataKeys.AssociatedSymbol);
+        var accessorKind = SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AccessorKind);
+        var associatedSymbol = SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AssociatedSymbol);
         var assemblyName = MetadataReferenceIdentity.SimpleName(row.AssemblyIdentity);
         return new CandidateFacts(
             row,
             metadata,
-            GetString(metadata, SymbolMetadataKeys.Accessibility),
-            GetString(metadata, SymbolMetadataKeys.EffectiveAccessibility),
+            SymbolMetadata.GetString(metadata, SymbolMetadataKeys.Accessibility),
+            SymbolMetadata.GetString(metadata, SymbolMetadataKeys.EffectiveAccessibility),
             assemblyName,
             projectFacts.IsTestProject(assemblyName),
             SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsExtensionBlock),
@@ -806,14 +807,6 @@ internal sealed class DeadCandidateStore
                 : null,
             SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.ContainsEntryPoint),
             SymbolMetadata.IsTrue(metadata, SymbolMetadataKeys.IsEntryPoint));
-    }
-
-    private static string? GetString(JsonElement? metadata, string key)
-    {
-        if (metadata is null) return null;
-        if (metadata.Value.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
-            return el.GetString();
-        return null;
     }
 
     /// <summary>
@@ -923,7 +916,7 @@ internal sealed class DeadCandidateStore
             if (incomingByTarget.TryGetValue(cand.AssociatedSymbolId, out var associated))
             {
                 foreach (var edge in associated)
-                    if (!selfSources.Contains(edge.SourceSymbolId) && InheritsForAccessor(cand.AccessorKind, edge.Kind))
+                    if (!selfSources.Contains(edge.SourceSymbolId) && AccessorEdges.Inherits(cand.AccessorKind, edge.Kind))
                         effective.Add(edge);
             }
         }
@@ -951,52 +944,6 @@ internal sealed class DeadCandidateStore
         return effective;
     }
 
-    private static bool InheritsForAccessor(string accessorKind, string edgeKind)
-    {
-        return accessorKind switch
-        {
-            "get" => edgeKind != nameof(EdgeKind.Writes),
-            "set" or "init" => edgeKind == nameof(EdgeKind.Writes),
-            "add" or "remove" or "raise" => true,
-            _ => false
-        };
-    }
-
-    internal static bool IsInstanceConstructor(CandidateFacts cand)
-    {
-        if (cand.Kind != nameof(IndexedSymbolKind.Method))
-            return false;
-        var docId = cand.Row.DocCommentId;
-        var paren = docId.IndexOf('(', StringComparison.Ordinal);
-        var namePart = paren >= 0 ? docId[..paren] : docId;
-        return namePart.EndsWith(".#ctor", StringComparison.Ordinal);
-    }
-
-    private static string? PublicSurfaceAccessibility(CandidateFacts cand)
-    {
-        // D168.2: instance constructors, properties, property accessors and fields use declared
-        // accessibility because activators, serializers and binders reach them by reflection.
-        if (IsInstanceConstructor(cand) ||
-            cand.Kind is nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field) ||
-            cand.AccessorKind is "get" or "set" or "init")
-            return cand.Accessibility;
-
-        // D168.1: types, ordinary methods, events and event accessors use effective accessibility
-        // (falling back to declared accessibility for snapshots built before effective_accessibility existed).
-        return cand.EffectiveAccessibility ?? cand.Accessibility;
-    }
-
-    private static bool IsPublicSurface(CandidateFacts cand, ProjectFacts? projectFacts)
-    {
-        var accessibility = PublicSurfaceAccessibility(cand);
-        if (accessibility is "Public" or "Protected" or "ProtectedOrInternal")
-            return true;
-
-        return accessibility is "Internal" or "ProtectedAndInternal"
-               && projectFacts != null
-               && projectFacts.GrantsInternalsOutsideSnapshot(cand.AssemblyName);
-    }
-
     /// <summary>
     ///     True when this candidate is the compilation's own process entry point: an entry-point
     ///     method (an explicit <c>static void Main</c> or the compiler-synthesized
@@ -1018,7 +965,7 @@ internal sealed class DeadCandidateStore
     {
         // D52: EF Core binds/materializes fields, properties and instance constructors by reflection;
         // ordinary methods follow the normal ladder.
-        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) && !IsInstanceConstructor(cand))
+        if (cand.Kind is not (nameof(IndexedSymbolKind.Property) or nameof(IndexedSymbolKind.Field)) && !PublicSurface.IsInstanceConstructor(cand.Kind, cand.Row.DocCommentId))
             return false;
         if (cand.Accessibility is not ("Private" or "PrivateProtected"))
             return false;

@@ -8,6 +8,8 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
 
     string IContextTierBuilder.InclusionReason => "Persisted dispatch, registration, or handler targets relevant at runtime.";
 
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.CallerProjects;
+
     string? IContextTierBuilder.EmptyReason =>
         context.HasUnmodeledRegistrations() ? "unmodeled_construct" : null;
 
@@ -38,11 +40,12 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
         foreach (var symbolId in RegistrationScopeIds())
         {
             context.ThrowIfCancellationRequested();
-            var incomingEdges = context.EdgeStore.GetIncomingEdges(context.SnapshotId, symbolId);
+            var incomingEdges = context.GetIncomingEdges(symbolId);
             foreach (var edge in incomingEdges)
             {
                 // D134: a self edge (a type registered as its own implementation) is no neighbour.
-                if (!incomingKinds.Contains(edge.Kind) || edge.SourceSymbolId == symbolId)
+                if (!incomingKinds.Contains(edge.Kind) || edge.SourceSymbolId == symbolId ||
+                    context.IsProvedInterfaceDispatch(edge))
                     continue;
 
                 var sourceId = edge.SourceSymbolId;
@@ -54,7 +57,7 @@ internal sealed class RegisteredImplementationsTierBuilder(ContextTierContext co
                 if (item != null) results.Add(item);
             }
 
-            var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
+            var outgoingEdges = context.GetOutgoingEdges(symbolId);
             foreach (var edge in outgoingEdges)
             {
                 if (!outgoingKinds.Contains(edge.Kind) || edge.TargetSymbolId == symbolId)

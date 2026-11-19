@@ -11,6 +11,13 @@ internal interface IContextTierBuilder
     /// </summary>
     string InclusionReason { get; }
 
+    /// <summary>
+    ///     The binding region that must be observable before an empty result of this tier
+    ///     is a proved absence (D57). Each tier states it, so a new tier cannot fall into a
+    ///     scope by default.
+    /// </summary>
+    TierBindingScope BindingScope { get; }
+
     string? EmptyReason => null;
     List<CapsuleItem> Build();
 }

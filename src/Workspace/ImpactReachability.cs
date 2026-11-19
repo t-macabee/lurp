@@ -31,7 +31,11 @@ public sealed class ImpactReachability
     ///     sum saturates at <see cref="long.MaxValue" /> instead of overflowing.
     ///     </para>
     /// </summary>
-    public ImpactReachabilityResult Trace(string symbolId, ImpactDirection direction, HashSet<string>? allowedEdgeKinds = null,
+    internal static readonly IReadOnlySet<string> UpstreamDefaultKinds = Enum.GetNames<EdgeKind>()
+        .Where(name => name is not nameof(EdgeKind.Declares) and not nameof(EdgeKind.Contains) and not nameof(EdgeKind.TestedBy))
+        .ToHashSet(StringComparer.Ordinal);
+
+    public ImpactReachabilityResult Trace(string symbolId, ImpactDirection direction, IReadOnlySet<string>? allowedEdgeKinds = null,
         HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true,
         CancellationToken cancellationToken = default)
     {
@@ -117,7 +121,7 @@ public sealed class ImpactReachability
     }
 
     private bool HasFilteredEdgeOffWitnessPath(string symbolId, ImpactDirection direction, string anchorId,
-        IReadOnlyDictionary<string, ImpactHop> parentHops, HashSet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
+        IReadOnlyDictionary<string, ImpactHop> parentHops, IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
     {
         var edges = GetEdges(symbolId, direction);
         var witnessSymbols = WitnessSymbols(symbolId, anchorId, parentHops);
@@ -141,14 +145,14 @@ public sealed class ImpactReachability
     }
 
     private static List<EdgeRecord> FilterAndSort(List<EdgeRecord> edges, ImpactDirection direction,
-        HashSet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
+        IReadOnlySet<string>? allowedEdgeKinds, HashSet<string>? allowedProvenance)
     {
         var filtered = FilteredEdges(edges, allowedEdgeKinds, allowedProvenance);
         filtered.Sort((left, right) => CompareForExpansion(left, right, direction));
         return filtered;
     }
 
-    private static List<EdgeRecord> FilteredEdges(List<EdgeRecord> edges, HashSet<string>? allowedEdgeKinds,
+    private static List<EdgeRecord> FilteredEdges(List<EdgeRecord> edges, IReadOnlySet<string>? allowedEdgeKinds,
         HashSet<string>? allowedProvenance)
     {
         var filtered = new List<EdgeRecord>(edges.Count);

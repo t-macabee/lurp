@@ -3,11 +3,14 @@ using System.Text;
 using System.Text.Json;
 using Lurp.Storage;
 using Lurp.Workspace;
+using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
 public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 {
+    private static readonly string[] PagedCallers = ["CallerA.A", "CallerB.B", "CallerC.C"];
+
     private const string AnchorSource = """
                                         namespace TestProject;
 
@@ -231,6 +234,81 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     // ── D4 ──────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task Capsule_EmptyTier_UsesTheProjectsThatCanCallTheAnchor()
+    {
+        CreateProject("Core", new Dictionary<string, string>
+        {
+            ["Good.cs"] = "namespace Core; class Owner { private void Unused() { } }",
+            ["Second.cs"] = "namespace Core; class Second { }"
+        }, msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = "CoreAssembly" });
+        CreateProject("Client", new Dictionary<string, string> { ["Client.cs"] = "class Client { }" },
+            projectReferences: ["Core"]);
+        CreateProject("Tests", new Dictionary<string, string> { ["Tests.cs"] = "class Tests { }" },
+            projectReferences: ["Client"]);
+        CreateProject("Other", new Dictionary<string, string> { ["Other.cs"] = "class Other { }" });
+        RestoreSolution();
+        var snapshot = await RunFullIndexAsync(DbPath);
+        var anchor = ResolveSymbolId(snapshot, "global::Core.Owner.Unused");
+        using var store = OpenStore(DbPath);
+
+        Check([], "empty", "empty");
+        Check([Loss("Core", "src/Core/Second.cs")], "unresolved", "empty");
+        Check([Loss("Client", "src/Client/Client.cs")], "unresolved", "empty");
+        Check([Loss("Tests", "src/Tests/Tests.cs")], "unresolved", "empty");
+        Check([Loss("Other", "src/Other/Other.cs")], "empty", "empty");
+        Check([Loss("Other", "src/Other/Other.cs")], "unresolved", "empty", hasProjectFacts: false);
+        Check([Loss("Client", null, BindingIncompletenessReason.ProjectUnreadable)], "unresolved", "empty");
+        Check([Loss("Core", "src/Core/Good.cs", BindingIncompletenessReason.ConventionScan)], "empty", "empty");
+        Check([Loss("Core", @"src\Core\Good.cs")], "unresolved", "unresolved");
+        // A project-wide loss without project facts cannot be mapped to documents, so no scope can prove absence.
+        Check([Loss("Core", null)], "unresolved", "unresolved", hasProjectFacts: false);
+        Check([Loss("Core", null)], "unresolved", "unresolved");
+        Check([Loss("Other", null)], "empty", "empty");
+
+        // Assembly names are case-insensitive. A row whose stored name differs only in case still owns the anchor.
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE projects SET assembly_name = 'coreassembly' WHERE snapshot_id = $snapshot AND name = 'Core';";
+            command.Parameters.AddWithValue("$snapshot", snapshot);
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+        Check([Loss("Other", "src/Other/Other.cs")], "empty", "empty");
+        Check([Loss("Client", "src/Client/Client.cs")], "unresolved", "empty");
+
+        static BindingIncompletenessRecord Loss(string project, string? path,
+            string reason = BindingIncompletenessReason.CompilerError) => new(project, path, reason, 1, "0.0.0");
+
+        void Check(List<BindingIncompletenessRecord> records, string upstream, string downstream, bool hasProjectFacts = true)
+        {
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, anchor, null, null),
+                DefaultOptions(50_000, 2), new CapsuleBindingReader(records), hasProjectFacts ? store : null);
+            foreach (var tier in new[] { "direct_callers", "second_degree_context", "relevant_tests", "registered_implementations", "affected_public_surfaces" })
+                Assert.Equal(upstream, Assert.Single(capsule.OmittedTiers, entry => entry.Category == tier).Reason);
+            foreach (var tier in new[] { "contracts", "direct_callees", "surrounding_source" })
+                Assert.Equal(downstream, Assert.Single(capsule.OmittedTiers, entry => entry.Category == tier).Reason);
+            Assert.Equal(upstream == "unresolved" || downstream == "unresolved",
+                capsule.InclusionReasons.ContainsKey("omitted_tiers_unresolved"));
+            if (capsule.InclusionReasons.TryGetValue("omitted_tiers_unresolved", out var explanation))
+            {
+                // The private anchor needs no friend facts, so the explanation must not name them.
+                Assert.Contains("Only tiers marked 'empty' are a proved absence.", explanation);
+                Assert.DoesNotContain("friend", explanation);
+            }
+        }
+    }
+
+    private sealed class CapsuleBindingReader(List<BindingIncompletenessRecord> records) : IBindingIncompletenessStore
+    {
+        public List<BindingIncompletenessRecord> GetBindingIncompleteness(string snapshotId, string? projectName) => records;
+        public void SaveBindingIncompleteness(string snapshotId, IEnumerable<BindingIncompletenessRecord> records) =>
+            throw new NotSupportedException();
+        public void CopyBindingIncompleteness(string fromSnapshotId, string toSnapshotId) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task Capsule_UnresolvedTier_WhenAnchorRegionHasLostBindings()
     {
         var (snapshotId, unusedId, _, _, _, anchorFile) = await IndexFixtureAsync();
@@ -239,8 +317,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             // Seed a binding_incompleteness row for the anchor's document.
-            // project_unreadable is in BindingIncompletenessReason.UnobservableReasons,
-            // so AnchorRegionHasLostBindings returns true for this anchor.
+            // The project_unreadable row covers this anchor's document.
             store.SaveBindingIncompleteness(snapshotId,
             [
                 new BindingIncompletenessRecord(
@@ -476,12 +553,15 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             offsets.Add(root.GetProperty("offset").GetInt32());
             var items = root.GetProperty("items");
             Assert.Equal(1, items.GetArrayLength());
-            itemsSeen.Add(items[0].GetRawText());
+            itemsSeen.Add(items[0].GetProperty("symbol_id").GetString()!);
             cursor = root.GetProperty("next_cursor").GetString();
         } while (cursor != null && offsets.Count < 10);
 
         Assert.Equal([0, 1, 2], offsets);
-        Assert.Equal(3, itemsSeen.Distinct().Count());
+        Assert.Equal(
+            PagedCallers.Select(name => ResolveSymbolId(snapshotId, $"global::TestProject.{name}")),
+            itemsSeen);
+        Assert.Null(cursor);
     }
 
     // ── A1 ──────────────────────────────────────────────────────────────
@@ -578,7 +658,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     ///     The fixture is 6 layers of 12 static methods; every method calls all
     ///     12 methods of the layer above, and the top layer calls Root. At
     ///     MaxHops = 5 the incoming direction reaches 5 x 12 = 60 synthetic
-    ///     symbols (plus the containing type), while the old per-path enumerator
+    ///     symbols, while the old per-path enumerator
     ///     had about 12^5 ≈ 249k terminal paths.
     ///     Assembly must complete, and topology must report the reached-symbol
     ///     and witness-leaf counts, not enumerated path counts.
@@ -601,29 +681,70 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
             Assert.NotNull(capsule.Topology);
             var topology = capsule.Topology!.Current;
-            // 5 reachable layers x 12 nodes, plus the containing Graph type:
-            // the capsule path trace uses no kind filter, so the type is
-            // reached at depth 1 by its Declares edge (type -> member).
-            Assert.Equal(61, topology.IncomingSymbolCount);
-            // Witness tree: the ordinal-first node of each layer (_0) is the
-            // single parent its whole next layer is discovered through, so the
-            // leaves are the Graph type, the 11 siblings per layer above the
-            // depth bound, and all 12 depth-5 nodes: 1 + 4*11 + 12 = 57.
-            Assert.Equal(57, topology.IncomingWitnessPathCount);
+            Assert.Equal(60, topology.IncomingSymbolCount);
+            // One parent in each of the first four layers has children.
+            // The other 11 nodes in each layer and all 12 nodes at depth five are leaves.
+            Assert.Equal(56, topology.IncomingWitnessPathCount);
             Assert.True(topology.IncomingWitnessPathCount <= topology.IncomingSymbolCount);
-            // Leaf depths: 1 + 11*1 + 11*2 + 11*3 + 11*4 + 12*5 = 171 hops.
-            Assert.Equal(171, topology.TotalHopCount);
+            Assert.Equal(170, topology.TotalHopCount);
 
             var leafPaths = capsule.IncomingPaths;
             Assert.Equal(12, leafPaths.Count(path => path.TotalSteps == 5));
-            Assert.Contains(leafPaths, path => path is { TotalSteps: 1 } &&
-                                               path.Hops[0].EdgeKind == nameof(EdgeKind.Declares) &&
-                                               path.Hops[0].TargetSymbolId == anchorId);
+            Assert.Equal(170, leafPaths.Sum(path => path.TotalSteps));
+            Assert.DoesNotContain(leafPaths.SelectMany(path => path.Hops),
+                hop => hop.EdgeKind is nameof(EdgeKind.Declares) or nameof(EdgeKind.Contains) or nameof(EdgeKind.TestedBy));
         }
         finally
         {
             store.Close();
         }
+    }
+
+    [Fact]
+    public async Task Capsule_ImplementedInterfaceMember_IsAContract()
+    {
+        CreateProject("Contracts", new Dictionary<string, string>
+        {
+            ["Contracts.cs"] = """
+                               namespace Contracts;
+                               public interface I { void Run(); }
+                               public interface IPossible { void Run(); }
+                               public class Base { public virtual void Run() { } }
+                               public class Impl : Base, I { public override void Run() { } }
+                               public class Inherited : Impl { }
+                               public class Explicit : I { void I.Run() { } }
+                               """
+        });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        string Id(string name) => ResolveSymbolId(snapshot, $"global::Contracts.{name}");
+        var contract = Id("I.Run");
+        var possible = Id("IPossible.Run");
+        var implementation = Id("Impl.Run");
+        store.SaveEdges(snapshot, [new EdgeRecord
+        {
+            SourceSymbolId = possible, TargetSymbolId = implementation, Kind = nameof(EdgeKind.MayDispatchTo),
+            Provenance = Provenance.Possible, ExtractorVersion = VersionConstants.ExtractorVersion
+        }]);
+        var explicitId = SymbolId.Compose("M:Contracts.Explicit.Contracts#I#Run", SymbolId.Parse(contract).AssemblyIdentity);
+
+        foreach (var id in new[] { implementation, explicitId, Id("Impl"), Id("Explicit") })
+        {
+            var capsule = Capsule(id);
+            var fact = Assert.Single(capsule.Contracts, item => item.SymbolId == contract);
+            Assert.Equal(nameof(EdgeKind.MayDispatchTo), fact.EdgeKind);
+            Assert.Equal(Provenance.CompilerProved, fact.Provenance);
+            Assert.DoesNotContain(capsule.RegisteredImplementations, item => item.SymbolId == contract);
+            Assert.DoesNotContain(capsule.Contracts, item => item.SymbolId == possible);
+        }
+
+        var overrideCapsule = Capsule(implementation);
+        Assert.Contains(overrideCapsule.Contracts, item => item.SymbolId == Id("Base.Run") && item.EdgeKind == "Overrides");
+        Assert.Contains(overrideCapsule.RegisteredImplementations, item => item.SymbolId == possible);
+        Assert.DoesNotContain(Capsule(Id("Inherited")).Contracts, item => item.SymbolId == contract);
+
+        ContextCapsule Capsule(string id) => ContextAssembler.ResolveAndAssemble(store, store,
+            new ContextLookup(snapshot, id, null, null), DefaultOptions(50_000, 2), store, store);
     }
 
     private static string LayeredGraphSource()
@@ -753,7 +874,8 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                 new FixedTierBuilder("contracts", pathItem)
             ],
             budget,
-            anchorCost);
+            anchorCost,
+            new BindingObservation(false, false, false, false));
 
         // The source-bearing tier (higher priority) is admitted at the boundary...
         Assert.NotEmpty(capsule.DirectCallers);
@@ -767,10 +889,6 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             entry => entry is { Category: "contracts", Reason: "budget_exhausted" });
     }
 
-    /// <summary>
-    ///     A capsule assembled over any symbol in a project that contains pipeline
-    ///     behaviors includes an uncertainty entry for the skipped MediatR pattern.
-    /// </summary>
     [Fact]
     public async Task Capsule_PipelineBehavior_SurfacesUnmodeledMediatRUncertainty()
     {
@@ -795,26 +913,126 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                               """
             },
             ["MediatR@12.4.1"]);
+        CreateProject("Other", new Dictionary<string, string> { ["Other.cs"] = "namespace Other; public class Unrelated { }" });
 
         RestoreSolution();
         var snapshotId = await RunFullIndexAsync(DbPath);
         using var store = OpenStore(DbPath);
 
-        // Resolve anchor = PingHandler
-        var symbols = store.SearchSymbols("PingHandler", snapshotId);
-        Assert.True(symbols.Count > 0,
-            "PingHandler was not found in the snapshot. The fixture or the indexer lost a symbol the test depends on.");
-        var anchor = symbols.First();
+        var ping = ResolveSymbolId(snapshotId, "global::App.Ping");
+        var behavior = SymbolId.Compose("T:App.LoggingBehavior`2", SymbolId.Parse(ping).AssemblyIdentity);
+        var handler = ResolveSymbolId(snapshotId, "global::App.PingHandler");
+        var handlerCapsule = Capsule(handler);
+        Assert.Contains(handlerCapsule.DirectCallers, item => item.SymbolId == ping && item.EdgeKind == "Handles");
 
-        // Assemble capsule
-        var lookup = new ContextLookup(snapshotId, anchor.SymbolId, null, null);
-        var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
-        var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+        foreach (var id in new[]
+                 {
+                     handler,
+                     ResolveSymbolId(snapshotId, "global::App.PingHandler.Handle"),
+                     ping, behavior
+                 })
+            Assert.Equal([behavior], Assert.Single(Warnings(id)).SymbolIds);
 
-        Assert.Contains(capsule.Uncertainties, u => u.RelationshipKind == "unmodeled_mediatr_pattern");
+        Assert.Empty(Warnings(ResolveSymbolId(snapshotId, "global::Other.Unrelated")));
+
+        ContextCapsule Capsule(string id) => ContextAssembler.ResolveAndAssemble(store, store,
+            new ContextLookup(snapshotId, id, null, null), DefaultOptions(50_000, 1), store, store);
+
+        IEnumerable<UncertaintyEntry> Warnings(string id) =>
+            Capsule(id).Uncertainties.Where(entry => entry.RelationshipKind == "unmodeled_mediatr_pattern");
     }
 
     // ── B23 ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Capsule_Annotations_RequireAnEmittedSymbolAndAConstraintKind()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["App.cs"] = """
+                         namespace App;
+                         public class Outer
+                         {
+                             public class Inner
+                             {
+                                 public void Anchor() => Helper.Entry();
+                             }
+                         }
+                         public static class Helper
+                         {
+                             public static void Entry() => Middle();
+                             public static void Middle() => End();
+                             public static void End() { }
+                         }
+                         """
+        });
+        CreateProject("Other", new Dictionary<string, string> { ["Other.cs"] = "namespace Other; public class Unrelated { }" });
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+        string Id(string name) => ResolveSymbolId(snapshot, $"global::{name}");
+        var anchor = Id("App.Outer.Inner.Anchor");
+        var middle = Id("App.Helper.Middle");
+        var unrelated = Id("Other.Unrelated");
+        (string Id, string Kind)[] expected =
+        [
+            (anchor, "constraint"), (Id("App.Outer.Inner"), "invariant"),
+            (Id("App.Outer"), "ef_query_filter_constraint"), (middle, "app_invariant")
+        ];
+        store.SaveAnnotations(snapshot, expected.Select(pair => new AnnotationRecord(pair.Id, pair.Kind, pair.Kind))
+            .Concat([
+                new AnnotationRecord(unrelated, "constraint", "unrelated constraint"),
+                new AnnotationRecord(anchor, "constraint_note", "note"),
+                new AnnotationRecord(anchor, "nonconstraint", "other"),
+                new AnnotationRecord(anchor, "serialization_contract", "serialization"),
+                new AnnotationRecord(middle, "unmodeled_mediatr_pattern", "IStreamRequestHandler"),
+                new AnnotationRecord(unrelated, "unmodeled_mediatr_pattern", "IStreamRequestHandler")
+            ]));
+
+        var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, anchor, null, null),
+            DefaultOptions(50_000, 3), store, store);
+        Assert.DoesNotContain(capsule.DirectCallees, item => item.SymbolId == middle);
+        Assert.Contains(capsule.OutgoingPaths.SelectMany(path => path.Hops), hop => hop.TargetSymbolId == middle);
+        Assert.Equal(expected, capsule.Constraints.Select(entry => (entry.SymbolId!, entry.AnnotationKind!)));
+        var warning = Assert.Single(capsule.Uncertainties, entry => entry.RelationshipKind == "unmodeled_mediatr_pattern");
+        Assert.Equal([middle], warning.SymbolIds);
+
+        var annotations = new CapsuleAnnotationScope([Id("App.Outer.Inner"), Id("App.Outer")], false,
+            store.GetAnnotations(snapshot));
+        foreach (var keepItem in new[] { false, true })
+        {
+            var bounded = new ContextCapsule(capsule.Anchor);
+            var entry = Id("App.Helper.Entry");
+            var end = Id("App.Helper.End");
+            var inner = Id("App.Outer.Inner");
+            bounded.OutgoingPaths.Add(new ImpactPath([
+                new ImpactHop(anchor, entry, "Calls", Provenance.CompilerProved),
+                new ImpactHop(entry, end, "Calls", Provenance.CompilerProved),
+                new ImpactHop(end, inner, "References", Provenance.CompilerProved),
+                new ImpactHop(inner, middle, "Calls", Provenance.CompilerProved, new string('x', 4_000))
+            ]));
+            if (keepItem)
+                bounded.DirectCallees.Add(new CapsuleItem(middle, "Method", "global::App.Helper.Middle",
+                    Provenance.CompilerProved, "Calls"));
+            annotations.AddConstraints(bounded);
+            Assert.Contains(bounded.Constraints, constraint => constraint.SymbolId == middle);
+
+            // The final hop alone costs over 1,300 tokens. Three short hops fit.
+            CapsuleBudgetEnforcer.Enforce(bounded, 1_200, ContextAssembler.TierNames, annotations);
+
+            var remaining = Assert.Single(bounded.OutgoingPaths).Hops;
+            Assert.Equal(3, remaining.Count);
+            Assert.DoesNotContain(remaining, hop => hop.SourceSymbolId == middle || hop.TargetSymbolId == middle);
+            Assert.Equal(keepItem, bounded.DirectCallees.Any(item => item.SymbolId == middle));
+            Assert.Equal(expected.Take(keepItem ? 4 : 3),
+                bounded.Constraints.Select(constraint => (constraint.SymbolId!, constraint.AnnotationKind!)));
+
+            new UncertaintyDetector(store, store, snapshot, SymbolId.Parse(anchor), false, null)
+                .PopulateUncertainties(bounded, annotations.MediatRPatterns(bounded));
+            var streamIds = bounded.Uncertainties.Where(item => item.RelationshipKind == "unmodeled_mediatr_pattern")
+                .SelectMany(item => item.SymbolIds);
+            Assert.Equal(keepItem ? [middle] : Array.Empty<string>(), streamIds);
+        }
+    }
 
     [Fact]
     public async Task Capsule_CarriesAnchorSemanticCausesOnce_AtTheTopLevel()
@@ -1028,6 +1246,7 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
     {
         public string Name => name;
         public string InclusionReason => $"Synthetic tier for {name}.";
+        public TierBindingScope BindingScope => TierBindingScope.CallerProjects;
 
         public List<CapsuleItem> Build()
         {

@@ -1,5 +1,3 @@
-using EdgeKind = Lurp.Storage.EdgeKind;
-
 namespace Lurp.Workspace;
 
 internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context) : IContextTierBuilder
@@ -8,85 +6,7 @@ internal sealed class SecondDegreeContextTierBuilder(ContextTierContext context)
 
     string IContextTierBuilder.InclusionReason => "Bounded upstream paths within the requested hop limit.";
 
-    List<CapsuleItem> IContextTierBuilder.Build()
-    {
-        var results = new List<CapsuleItem>();
-        var allowedKinds = new HashSet<string>
-        {
-            nameof(EdgeKind.Calls),
-            nameof(EdgeKind.MethodGroupRef)
-        };
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.CallerProjects;
 
-        if (context.MaxHops <= 1)
-            return results;
-
-        var effectiveSymbolIds = context.EffectiveSymbolIds;
-        var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
-
-        var seen = new HashSet<string>();
-
-        const string directReason =
-            "Bounded upstream dependency within the requested hop limit.";
-
-        foreach (var symbolId in effectiveSymbolIds)
-            AddUpstreamNeighbors(symbolId, directReason);
-
-        // Upstream dependencies reached through interface/abstract dispatch
-        // (Calls + MayDispatchTo) are classified separately: they are indirect
-        // dispatch candidates, never direct compiler-proved dependencies.
-        foreach (var symbolId in effectiveSymbolIds)
-            foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
-                AddUpstreamNeighbors(dispatchEdge.SourceSymbolId, null, dispatchEdge.Provenance);
-
-        return results;
-
-        void AddUpstreamNeighbors(string symbolId, string? inclusionReason, string? dispatchProvenance = null)
-        {
-            context.ThrowIfCancellationRequested();
-            var reached = reachability.Trace(symbolId, ImpactDirection.Upstream, allowedKinds, maxDepth: context.MaxHops,
-                cancellationToken: context.CancellationToken);
-            foreach (var symbol in reached.Symbols)
-            {
-                var neighborId = symbol.SymbolId;
-                if (!seen.Add(neighborId))
-                    continue;
-
-                if (effectiveSymbolIds.Contains(neighborId))
-                    continue;
-
-                if (dispatchProvenance == null)
-                {
-                    var directItem = context.BuildCapsuleItem(neighborId, symbol.ParentHop.EdgeKind, symbol.ParentHop.Provenance,
-                        inclusionReason);
-                    if (directItem != null) results.Add(directItem);
-                    continue;
-                }
-
-                // The neighbor reaches the anchor through interface/abstract
-                // dispatch. The composed claim is possible : the compiler
-                // proves the structural edges, not the runtime dispatch
-                // target : unless a framework edge participates anywhere in
-                // the path. The item is never a direct compiler-proved
-                // dependency of the anchor.
-                var provenance = DispatchClaimProvenance.Compose(
-                    reached.WitnessPath(neighborId).Select(static hop => hop.Provenance), dispatchProvenance);
-                var item = context.BuildCapsuleItem(neighborId, symbol.ParentHop.EdgeKind, provenance,
-                    BuildDispatchReason(dispatchProvenance, symbol.ParentHop.Provenance),
-                    CapsuleRelationship.IndirectDispatchCandidate, false);
-                if (item != null) results.Add(item);
-            }
-        }
-    }
-
-    // Both underlying steps stay visible: the Calls edge to the interface/
-    // abstract member, and the MayDispatchTo edge carrying the structural
-    // implementation candidate.
-    private static string BuildDispatchReason(string dispatchProvenance, string callProvenance)
-    {
-        return "Upstream dependency reached through interface dispatch: it calls the "
-               + $"interface/abstract member via a Calls edge ({callProvenance}), which may "
-               + "dispatch to this implementation at runtime via a MayDispatchTo edge "
-               + $"({dispatchProvenance}). The runtime dispatch target is not compiler-established, "
-               + "so this is not a direct compiler-proved dependency of the anchor.";
-    }
+    List<CapsuleItem> IContextTierBuilder.Build() => context.Upstream.BuildCallers(2, context.MaxHops);
 }

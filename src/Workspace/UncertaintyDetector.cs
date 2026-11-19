@@ -34,7 +34,7 @@ internal sealed class UncertaintyDetector
         _cancellationToken = cancellationToken;
     }
 
-    internal void PopulateUncertainties(ContextCapsule capsule)
+    internal void PopulateUncertainties(ContextCapsule capsule, IEnumerable<AnnotationRecord> mediatRPatterns)
     {
         var neighborhood = BuildNeighborhood(capsule);
 
@@ -48,7 +48,7 @@ internal sealed class UncertaintyDetector
         CollectFrameworkConventionUncertainties(capsule, neighborhood, relations);
         CollectRuntimeUnknownUncertainties(capsule, neighborhood, relations);
         CollectBindingIncompletenessUncertainties(capsule);
-        CollectUnmodeledMediatRPatternUncertainties(capsule);
+        CollectUnmodeledMediatRPatternUncertainties(capsule, mediatRPatterns);
 
         if (!_includeGenerated)
             CollectGeneratedExclusionUncertainties(capsule, neighborhood);
@@ -289,24 +289,14 @@ internal sealed class UncertaintyDetector
         }
     }
 
-    private void CollectUnmodeledMediatRPatternUncertainties(ContextCapsule capsule)
+    private static void CollectUnmodeledMediatRPatternUncertainties(ContextCapsule capsule, IEnumerable<AnnotationRecord> patterns)
     {
-        // GetAnnotations with no symbolId returns all annotations for the snapshot.
-        var unmodeledAnnotations = _edgeStore
-            .GetAnnotations(_snapshotId)
-            .Where(a => a.Kind == "unmodeled_mediatr_pattern")
-            .ToList();
-
-        if (unmodeledAnnotations.Count == 0)
-            return;
-
-        // Group by interface name so one entry per pattern kind, not per implementing type.
-        foreach (var group in unmodeledAnnotations
-                     .GroupBy(a => a.Value, StringComparer.Ordinal)
-                     .OrderBy(g => g.Key, StringComparer.Ordinal))
+        foreach (var group in patterns.GroupBy(annotation => annotation.Value, StringComparer.Ordinal)
+                     .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
             var ifaceName = group.Key;
-            var symbolIds = group.Select(a => a.SymbolId).Distinct().ToList();
+            var symbolIds = group.Select(annotation => annotation.SymbolId)
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
             var boundaryId = ifaceName switch
             {
                 "IStreamRequestHandler" or "IAsyncStreamHandler" => "mediatr_stream_handler",

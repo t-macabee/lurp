@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -390,11 +390,20 @@ The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and 
 
 `incoming_paths` and `outgoing_paths` hold **witness paths**, not every simple path. Lurp visits each symbol within `--max-hops` once and keeps one deterministic path to it. A capsule emits the witness path of each reached symbol that no other emitted path passes through, so no emitted path is a prefix of another. A path that ends at `--max-hops` with followable edges beyond it carries `truncated: true` and `truncation_reason: "max depth reached"`. The budget step can then keep only a few of these paths (`summarized`).
 
+Incoming paths use the default upstream impact filter. This filter excludes `Declares`, `Contains` and `TestedBy`. Outgoing paths follow all edge kinds.
+
 `topology.current` reports the reach before the budget trim: `incoming_symbol_count` and `outgoing_symbol_count` (reached symbols), `incoming_witness_path_count` and `outgoing_witness_path_count` (witness paths), and `total_hop_count` (hops over those witness paths). `--output=summary` prints the trimmed counts as `incoming_witness_paths` / `outgoing_witness_paths`.
 
 `semantic_causes` lists the anchor's persisted semantic changes in the capsule's snapshot (`from_snapshot_id`, `to_snapshot_id`, `change_type`, `symbol_id`, `detail`) once, at the top level; paths carry none. Over the budget the list is cut to 10, and `omitted_tiers` names `semantic_causes` as `summarized`.
 
-Items in `direct_callers`, `second_degree_context` and `relevant_tests` come in depth order, then symbol ID. `--tier=` pages over that order, so a `--tier=` cursor from a 1.x build is not valid.
+`direct_callers` contains callers and framework entry points at depth one.
+`second_degree_context` contains callers from depth two through `--max-hops`.
+Calls, method-group references, reads and writes count at each hop.
+Access through an interface or virtual method, property or event adds a dispatch
+hop when the access can dispatch. `relevant_tests` uses the shortest distance
+to a covered symbol. A type capsule omits callers inside the type and its
+nested types. Each tier sorts by depth, then by symbol ID.
+Start a new `--tier=` page sequence after upgrading to 4.0.0.
 
 #### Capsule token estimates
 
@@ -447,10 +456,19 @@ the emitted capsule rather than the history of how it settled. Reasons:
 | Reason | Meaning |
 |---|---|
 | `empty` | Proved absence. The relation was observable and there is none. Safe to act on. |
-| `unresolved` | Unobservable. Bindings were lost over the anchor's region, or no anchor resolved at all (gap capsules mark every tier this way). **Not** evidence that the relation does not exist. |
+| `unresolved` | Lurp could not observe the relation. A gap capsule marks every tier this way. |
 | `unmodeled_construct` | The tier is empty because an unmodeled registration form exists (see Declared boundaries). It is not proof that no relation exists. |
 | `summarized` | Present but bounded: paths clipped, or item source truncated at the per-item cap. |
 | `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
+
+For contracts, direct callees and surrounding source, Lurp checks for binding
+loss in the anchor documents. For callers, relevant tests, registered
+implementations and affected public surfaces, it checks the anchor project and
+all projects that reference it directly or transitively. If the binding reader
+is unavailable, Lurp cannot confirm absence in either scope. A binding loss
+with no document path covers its whole project. If Lurp cannot recover that
+project's documents, the loss also makes the anchor documents unobservable.
+Assembly names match without regard to case.
 
 Both `budget_exhausted` shapes are recovered the same way: refetch that one tier
 unbudgeted with `--tier=<category>` (see `inclusion_reasons["omitted_tiers_budget_exhausted"]`,

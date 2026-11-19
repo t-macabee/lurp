@@ -29,18 +29,6 @@ internal static class ImpactHandler
     internal static readonly IReadOnlyList<string> EdgeKindNames = Enum.GetNames<EdgeKind>();
 
     /// <summary>
-    ///     The edge kinds an <c>upstream</c> trace follows when the caller names none: every
-    ///     kind except the three whose backwards traversal answers "what does this belong to"
-    ///     rather than "what depends on this" (<c>Declares</c> member → type, <c>Contains</c>
-    ///     nested type → outer type, <c>TestedBy</c> test → every production symbol it covers).
-    ///     <c>downstream</c> keeps every kind. An explicit <c>--kinds=</c> / <c>kinds</c> replaces
-    ///     this set.
-    /// </summary>
-    internal static readonly IReadOnlySet<string> UpstreamDefaultKinds = EdgeKindNames
-        .Where(name => name is not nameof(EdgeKind.Declares) and not nameof(EdgeKind.Contains) and not nameof(EdgeKind.TestedBy))
-        .ToHashSet(StringComparer.Ordinal);
-
-    /// <summary>
     ///     Why a name filter did not parse; see <see cref="TryParseNameFilter" />. <see cref="Parsed" />
     ///     with a null <c>canonical</c> means the input held no part at all (for example an empty
     ///     value), which no caller may treat as "no filter".
@@ -135,10 +123,10 @@ internal static class ImpactHandler
             if (canonicalProvenance is null) HandlerBootstrap.Fail($"ERROR: --provenance must name at least one provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).");
         }
 
-        HashSet<string>? allowedKinds = canonicalKinds is not null
+        IReadOnlySet<string>? allowedKinds = canonicalKinds is not null
             ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
             : direction == ImpactDirection.Upstream
-                ? new HashSet<string>(UpstreamDefaultKinds, StringComparer.Ordinal)
+                ? ImpactReachability.UpstreamDefaultKinds
                 : null;
         HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
 

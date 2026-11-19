@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -221,8 +221,7 @@ depth, one witness path, a shortest-path count (edge rows, saturating at
 `long.MaxValue`) and a frontier flag. Edges are sorted by neighbor ID, kind,
 provenance and source location before expansion, and each level is expanded in
 symbol-ID order, so the witness paths and the output are the same on every run.
-`--mode=impact`, `lurp_impact`, the capsule paths and the `direct_callers`,
-`second_degree_context` and `relevant_tests` tiers all use it.
+`--mode=impact`, `lurp_impact` and the capsule paths use this trace.
 
 ## 6. Context Capsules
 
@@ -232,6 +231,37 @@ and enforced by `CapsuleBudgetEnforcer`. Default priority order: contracts,
 direct callees, direct callers, registered implementations, relevant tests,
 second-degree context, surrounding source. The intent (`modify`, `diagnose`)
 reorders it, and a type anchor puts surrounding source before relevant tests.
+
+Incoming capsule paths and default upstream impact use the same edge filter.
+Outgoing capsule paths follow all edge kinds.
+The caller and test tiers share a walk from the anchor and its effective members.
+Callers at depth one appear in `direct_callers`. Callers from depth two through
+the hop limit appear in `second_degree_context`. Reads and writes count at
+each hop. A dispatch link consumes one hop. A type capsule omits callers
+inside the type and its nested types. Tests use the minimum depth of the
+symbols they cover. These tiers sort by depth, then by symbol ID.
+
+When a tier is empty, contracts, direct callees and surrounding source check
+for binding loss in the anchor documents. Callers, tests, registrations and
+affected public surfaces check the anchor project and its transitive dependents.
+A missing binding reader leaves both scopes unobservable.
+A project-wide loss counts for the anchor documents when Lurp cannot recover
+the documents of that project. Assembly names match without regard to case.
+
+The contracts tier shows proved interface members implemented by the anchor
+or its effective members. The registration tier uses the other runtime evidence.
+
+Affected public surfaces and the dead-candidate ladder use the same access
+rules. Types, ordinary methods, events and event accessors use effective
+access. Instance constructors, properties, fields and property accessors use
+declared access. Internal and private protected symbols need a friend grant
+to an assembly outside the snapshot.
+
+Constraints apply to the anchor, its containing types, emitted items and
+the endpoints of emitted hops. The budget pass removes constraints when it
+removes their last in-scope occurrence. MediatR warnings use the final
+scope. A wrapper pattern also qualifies if a `Handles` edge touches the
+effective anchor scope or a surviving item carries that edge kind.
 
 Budgeting: `--content-budget` bounds content tokens; tiers are included in
 priority order (greedy-prefix) until the budget is exhausted; omitted tiers

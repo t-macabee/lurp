@@ -1,5 +1,3 @@
-using EdgeKind = Lurp.Storage.EdgeKind;
-
 namespace Lurp.Workspace;
 
 internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : IContextTierBuilder
@@ -8,68 +6,7 @@ internal sealed class RelevantTestsTierBuilder(ContextTierContext context) : ICo
 
     string IContextTierBuilder.InclusionReason => "Persisted TestedBy evidence connected to the anchor or its upstream callers.";
 
-    List<CapsuleItem> IContextTierBuilder.Build()
-    {
-        var results = new List<CapsuleItem>();
-        var seen = new HashSet<string>();
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.CallerProjects;
 
-        foreach (var symbolId in context.EffectiveSymbolIds)
-            AddTestsFor(symbolId);
-
-        foreach (var symbolId in context.EffectiveSymbolIds)
-            foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
-                AddTestsFor(dispatchEdge.SourceSymbolId);
-
-        var allowedKinds = new HashSet<string> { nameof(EdgeKind.Calls), nameof(EdgeKind.MethodGroupRef) };
-        var reachability = new ImpactReachability(context.EdgeStore, context.SnapshotId);
-
-        foreach (var symbolId in context.EffectiveSymbolIds)
-            AddTestsForUpstreamCallers(symbolId);
-
-        foreach (var symbolId in context.EffectiveSymbolIds)
-            foreach (var dispatchEdge in context.GetDispatchSourceEdges(symbolId))
-                AddTestsForUpstreamCallers(dispatchEdge.SourceSymbolId);
-
-        return results;
-
-        void AddTestsFor(string productionOrTestSymbolId)
-        {
-            context.ThrowIfCancellationRequested();
-            foreach (var candidateId in TestSymbolDiscovery.ExpandProductionSymbolIds(productionOrTestSymbolId))
-                QueryTestedBy(candidateId);
-        }
-
-        void AddTestsForUpstreamCallers(string symbolId)
-        {
-            context.ThrowIfCancellationRequested();
-            var reached = reachability.Trace(
-                symbolId,
-                ImpactDirection.Upstream,
-                allowedKinds,
-                maxDepth: context.MaxHops,
-                cancellationToken: context.CancellationToken);
-
-            foreach (var symbol in reached.Symbols)
-                AddTestsFor(symbol.SymbolId);
-        }
-
-        void QueryTestedBy(string symbolId)
-        {
-            context.ThrowIfCancellationRequested();
-            var outgoingEdges = context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId);
-            foreach (var edge in outgoingEdges)
-            {
-                if (edge.Kind != nameof(EdgeKind.TestedBy))
-                    continue;
-
-                var testSymbolId = edge.TargetSymbolId;
-                if (!seen.Add(testSymbolId))
-                    continue;
-
-                var item = context.BuildCapsuleItem(testSymbolId, edge.Kind, edge.Provenance,
-                    "Persisted TestedBy evidence connects this test to the change scope.");
-                if (item != null) results.Add(item);
-            }
-        }
-    }
+    List<CapsuleItem> IContextTierBuilder.Build() => context.Upstream.BuildTests();
 }

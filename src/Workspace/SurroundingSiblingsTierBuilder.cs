@@ -11,6 +11,8 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
 
     string IContextTierBuilder.InclusionReason => "Sibling declarations sharing the anchor's containing declaration.";
 
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.AnchorDocuments;
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
@@ -45,7 +47,7 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
     private string? FindContainingParentId()
     {
         context.ThrowIfCancellationRequested();
-        return context.EdgeStore.GetIncomingEdges(context.SnapshotId, context.SymbolId.Value)
+        return context.GetIncomingEdges(context.SymbolId.Value)
             .Where(edge => edge.Kind == nameof(EdgeKind.Declares) || edge.Kind == nameof(EdgeKind.Contains))
             .Select(edge => edge.SourceSymbolId)
             .FirstOrDefault();
@@ -54,7 +56,7 @@ internal sealed class SurroundingSiblingsTierBuilder(ContextTierContext context)
     private void AddSiblings(List<CapsuleItem> results, string parentId, bool includeNestedTypes)
     {
         context.ThrowIfCancellationRequested();
-        foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, parentId))
+        foreach (var edge in context.GetOutgoingEdges(parentId))
             if (edge.Kind == nameof(EdgeKind.Declares)
                 || (includeNestedTypes && edge.Kind == nameof(EdgeKind.Contains)))
             {

@@ -3,6 +3,75 @@ using Microsoft.Data.Sqlite;
 
 namespace Lurp.Tests;
 
+public sealed class ContextCapsuleSurfaceTests : IntegrationTestBase
+{
+    [Fact]
+    public async Task Capsule_PublicSurfaces_UseEffectiveAccessAndExternalFriends()
+    {
+        CreateProject("FriendProject", new Dictionary<string, string> { ["Friend.cs"] = "class Friend { }" },
+            msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = "FriendAssembly" });
+        CreateCore("NoFriend", null);
+        CreateCore("Outside", "ExternalAssembly");
+        CreateCore("Inside", "friendassembly");
+        CreateCore("Wildcard", "*");
+        var snapshot = await RunFullIndexAsync(DbPath);
+        using var store = OpenStore(DbPath);
+
+        Check("NoFriend.Hidden.Run", false);
+        Check("Outside.Hidden.Run", true);
+        Check("Inside.Hidden.Run", false);
+        Check("Wildcard.Hidden.InternalRun", true);
+        Check("NoFriend.Hidden.Value", true);
+        Check("Outside.Hidden.Run", false, omitProjectFacts: true);
+
+        var legacy = ResolveSymbolId(snapshot, "global::NoFriend.Hidden.Run");
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE snapshot_symbols SET metadata_json = json_remove(metadata_json, '$.effective_accessibility')
+                WHERE snapshot_id = $snapshot AND symbol_id = $id;
+                """;
+            command.Parameters.AddWithValue("$snapshot", snapshot);
+            command.Parameters.AddWithValue("$id", legacy);
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+        Check("NoFriend.Hidden.Run", true);
+
+        void CreateCore(string project, string? grant)
+        {
+            var attribute = grant == null ? "" : $"[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"{grant}\")]";
+            CreateProject(project, new Dictionary<string, string>
+            {
+                ["Hidden.cs"] = $$"""
+                                {{attribute}}
+                                namespace {{project}};
+                                internal class Hidden
+                                {
+                                    public void Run() { }
+                                    internal void InternalRun() { }
+                                    public int Value { get; }
+                                }
+                                """
+            }, msbuildProperties: new Dictionary<string, string> { ["AssemblyName"] = $"{project}Assembly" });
+        }
+
+        void Check(string name, bool present, bool omitProjectFacts = false)
+        {
+            var id = ResolveSymbolId(snapshot, $"global::{name}");
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, id, null, null),
+                new ContextAssemblyOptions(ContextIntent.Inspect, 50_000), store, omitProjectFacts ? null : store);
+            Assert.Equal(present ? [id] : Array.Empty<string>(), capsule.AffectedPublicSurfaces.Select(item => item.SymbolId));
+            if (!present)
+                Assert.Contains(capsule.OmittedTiers, entry => entry.Category == "affected_public_surfaces" &&
+                    entry.Reason == (omitProjectFacts ? "unresolved" : "empty"));
+            if (omitProjectFacts)
+                Assert.Contains("friend grants", capsule.InclusionReasons["omitted_tiers_unresolved"]);
+        }
+    }
+}
+
 public sealed class ContextCapsuleAcceptanceTests : IDisposable
 {
     private readonly string _outputDir = Path.Combine(Path.GetTempPath(), $"lurp-capsule-{Guid.NewGuid():N}");

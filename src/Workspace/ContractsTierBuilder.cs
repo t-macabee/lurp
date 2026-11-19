@@ -25,6 +25,8 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
 
     string IContextTierBuilder.InclusionReason => "Compiler-resolved contracts implemented or overridden by the anchor.";
 
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.AnchorDocuments;
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
@@ -33,9 +35,9 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
             context.ThrowIfCancellationRequested();
-            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
+            foreach (var edge in context.GetOutgoingEdges(symbolId))
             {
-                if (!_allowedKinds.Contains(edge.Kind))
+                if (!_allowedKinds.Contains(edge.Kind) || edge.TargetSymbolId == symbolId)
                     continue;
                 if (!seen.Add(edge.TargetSymbolId))
                     continue;
@@ -48,14 +50,24 @@ internal sealed class ContractsTierBuilder(ContextTierContext context) : IContex
                     continue;
                 }
 
-                // The target is external to this snapshot (e.g. a framework base
-                // type from a referenced assembly). The edge is a persisted fact;
-                // surface it under its canonical symbol name instead of dropping
-                // it silently, so an external contract is never reported as
-                // absent. The edge's provenance is preserved.
+                // Only a target outside the snapshot gets an external item.
+                if (context.GetSymbolInfo(edge.TargetSymbolId) != null)
+                    continue;
+
                 var external = BuildExternalItem(edge);
                 if (external != null)
                     results.Add(external);
+            }
+
+            foreach (var edge in context.GetDispatchSourceEdges(symbolId))
+            {
+                context.ThrowIfCancellationRequested();
+                if (!context.IsProvedInterfaceDispatch(edge) || !seen.Add(edge.SourceSymbolId))
+                    continue;
+
+                if (context.BuildCapsuleItem(edge.SourceSymbolId, edge.Kind, edge.Provenance,
+                        "Interface member implemented by the anchor.") is { } item)
+                    results.Add(item);
             }
         }
 

@@ -41,12 +41,14 @@ internal static class CapsuleBudgetEnforcer
 
     private static readonly JsonSerializerOptions SectionOptions = LurpJsonOptions.CompactIgnoreNull;
 
-    internal static void Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
+    internal static void Enforce(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority,
+        CapsuleAnnotationScope? annotations = null)
     {
-        EnforceContentBudget(capsule, budget, tierPriority);
+        EnforceContentBudget(capsule, budget, tierPriority, annotations);
     }
 
-    private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority)
+    private static int EnforceContentBudget(ContextCapsule capsule, int budget, IReadOnlyList<string> tierPriority,
+        CapsuleAnnotationScope? annotations)
     {
         var trimmer = new SectionTrimmer(capsule, tierPriority);
 
@@ -67,6 +69,8 @@ internal static class CapsuleBudgetEnforcer
             foreach (var name in tierPriority)
                 if (trimmer.BoundTierSources(name, MaxItemSourceChars) is { } bounded)
                     RecordTruncation(capsule, bounded);
+
+            annotations?.RetainConstraints(capsule);
         }
 
         while (true)
@@ -105,6 +109,7 @@ internal static class CapsuleBudgetEnforcer
             }
 
             RecordTruncation(capsule, entry);
+            annotations?.RetainConstraints(capsule);
         }
     }
 
@@ -395,7 +400,7 @@ internal static class CapsuleBudgetEnforcer
             _capsule = capsule;
 
             var sections = tierPriority
-                .Select(name => (name, items: TierItems(capsule, name)))
+                .Select(name => (name, items: ContextAssembler.GetTierItems(capsule, name)))
                 .Where(x => x.items != null)
                 .Select(x => TrimmableSection.Clear(x.name, x.items!))
                 .ToList();
@@ -479,7 +484,7 @@ internal static class CapsuleBudgetEnforcer
             {
                 if (!string.Equals(section.Name, name, StringComparison.Ordinal))
                     continue;
-                if (BoundSourceStep(TierItems(_capsule, name)!, maxChars)(_capsule))
+                if (BoundSourceStep(ContextAssembler.GetTierItems(_capsule, name)!, maxChars)(_capsule))
                     return new TruncationEntry(section.Name, "summarized");
                 return null;
             }
@@ -498,20 +503,6 @@ internal static class CapsuleBudgetEnforcer
             };
         }
 
-        private static List<CapsuleItem>? TierItems(ContextCapsule capsule, string name)
-        {
-            return name switch
-            {
-                "contracts" => capsule.Contracts,
-                "direct_callees" => capsule.DirectCallees,
-                "direct_callers" => capsule.DirectCallers,
-                "registered_implementations" => capsule.RegisteredImplementations,
-                "relevant_tests" => capsule.RelevantTests,
-                "second_degree_context" => capsule.SecondDegreeContext,
-                "surrounding_source" => capsule.SurroundingSource,
-                _ => null
-            };
-        }
     }
 
     private sealed class TrimmableSection(string name, Queue<TrimStep> steps)

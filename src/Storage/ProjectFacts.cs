@@ -24,34 +24,55 @@ internal sealed class ProjectFacts
         Dictionary<string, HashSet<string>> internalsVisibleToByAssemblyName)
     {
         _assemblyNameByProjectName = assemblyNameByProjectName;
-        // .NET matches InternalsVisibleTo target assembly names case-insensitively.
-        _snapshotAssemblyNames = new HashSet<string>(assemblyNameByProjectName.Values, StringComparer.OrdinalIgnoreCase);
+        _snapshotAssemblyNames = new HashSet<string>(assemblyNameByProjectName.Values, AssemblyNameComparer);
         _referenceSimpleNamesByAssemblyName = referenceSimpleNamesByAssemblyName;
         _internalsVisibleToByAssemblyName = internalsVisibleToByAssemblyName;
     }
+
+    /// <summary>
+    ///     .NET compares assembly simple names case-insensitively. Every lookup by assembly
+    ///     name, here and in the capsule's project scope, uses this comparer.
+    /// </summary>
+    internal static readonly StringComparer AssemblyNameComparer = StringComparer.OrdinalIgnoreCase;
+
+    internal static string GetAssemblyName(ProjectRow project) =>
+        string.IsNullOrEmpty(project.AssemblyName) ? project.Name : project.AssemblyName;
 
     public static ProjectFacts Load(SqliteConnection connection, string snapshotId)
     {
         ArgumentNullException.ThrowIfNull(connection);
 
-        var assemblyNameByProjectName = new Dictionary<string, string>(StringComparer.Ordinal);
-        var referenceSimpleNamesByAssemblyName = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        var internalsVisibleToByAssemblyName = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-
+        var projects = new List<ProjectRow>();
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "SELECT name, metadata_reference_identities, assembly_name, internals_visible_to FROM projects WHERE snapshot_id = @snapshotId;";
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            var projectName = reader.GetString(0);
-            var identitiesJson = reader.IsDBNull(1) ? null : reader.GetString(1);
-            // A NULL column means a snapshot indexed before migration 034; such a snapshot
-            // predates assembly-name storage, so the project name is the assembly name.
-            var assemblyName = reader.IsDBNull(2) || string.IsNullOrEmpty(reader.GetString(2))
-                ? projectName
-                : reader.GetString(2);
-            var internalsVisibleToJson = reader.IsDBNull(3) ? null : reader.GetString(3);
+            projects.Add(new ProjectRow
+            {
+                Name = reader.GetString(0),
+                MetadataReferenceIdentitiesJson = reader.IsDBNull(1) ? null : reader.GetString(1),
+                AssemblyName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                InternalsVisibleToJson = reader.IsDBNull(3) ? null : reader.GetString(3)
+            });
+        }
+
+        return FromRows(projects);
+    }
+
+    internal static ProjectFacts FromRows(IReadOnlyList<ProjectRow> projects)
+    {
+        var assemblyNameByProjectName = new Dictionary<string, string>(StringComparer.Ordinal);
+        var referenceSimpleNamesByAssemblyName = new Dictionary<string, HashSet<string>>(AssemblyNameComparer);
+        var internalsVisibleToByAssemblyName = new Dictionary<string, HashSet<string>>(AssemblyNameComparer);
+
+        foreach (var project in projects)
+        {
+            var projectName = project.Name;
+            var assemblyName = GetAssemblyName(project);
+            var identitiesJson = project.MetadataReferenceIdentitiesJson;
+            var internalsVisibleToJson = project.InternalsVisibleToJson;
 
             assemblyNameByProjectName[projectName] = assemblyName;
             if (!referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames))
@@ -109,6 +130,8 @@ internal sealed class ProjectFacts
 
         return new ProjectFacts(assemblyNameByProjectName, referenceSimpleNamesByAssemblyName, internalsVisibleToByAssemblyName);
     }
+
+    internal bool HasAssembly(string assemblyName) => _snapshotAssemblyNames.Contains(assemblyName);
 
     /// <summary>
     ///     D48 / D171.3: true when any row of <paramref name="assemblyName" /> grants

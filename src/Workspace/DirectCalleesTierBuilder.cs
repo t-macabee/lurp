@@ -8,6 +8,8 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
 
     string IContextTierBuilder.InclusionReason => "Direct compiler-resolved calls or constructions made by the anchor.";
 
+    TierBindingScope IContextTierBuilder.BindingScope => TierBindingScope.AnchorDocuments;
+
     List<CapsuleItem> IContextTierBuilder.Build()
     {
         var results = new List<CapsuleItem>();
@@ -22,7 +24,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
             context.ThrowIfCancellationRequested();
-            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId))
+            foreach (var edge in context.GetOutgoingEdges(symbolId))
             {
                 // D13: a recursive call is a self edge; the anchor is not its own callee.
                 if (!allowedKinds.Contains(edge.Kind) || edge.TargetSymbolId == edge.SourceSymbolId)
@@ -41,7 +43,7 @@ internal sealed class DirectCalleesTierBuilder(ContextTierContext context) : ICo
         foreach (var symbolId in context.EffectiveSymbolIds)
         {
             context.ThrowIfCancellationRequested();
-            foreach (var edge in context.EdgeStore.GetOutgoingEdges(context.SnapshotId, symbolId).Where(edge => edge.Kind == nameof(EdgeKind.Calls)))
+            foreach (var edge in context.GetOutgoingEdges(symbolId).Where(edge => edge.Kind == nameof(EdgeKind.Calls)))
                 AddMayDispatchTargets(edge);
         }
 

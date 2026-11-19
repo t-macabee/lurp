@@ -84,10 +84,10 @@ internal sealed class ImpactTool
                 provenanceRaw = string.Join(",", canonicalProvenance);
             }
 
-            HashSet<string>? allowedKinds = canonicalKinds is not null
+            IReadOnlySet<string>? allowedKinds = canonicalKinds is not null
                 ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
                 : impactDirection == ImpactDirection.Upstream
-                    ? new HashSet<string>(ImpactHandler.UpstreamDefaultKinds, StringComparer.Ordinal)
+                    ? ImpactReachability.UpstreamDefaultKinds
                     : null;
             HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
 

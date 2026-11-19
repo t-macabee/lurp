@@ -91,22 +91,16 @@ internal sealed class ContextAssembler
     public ContextCapsule Assemble(CancellationToken cancellationToken = default)
     {
         var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated, cancellationToken);
-        var anchor = BuildAnchor();
+        var anchor = BuildAnchor(context);
         var capsule = new ContextCapsule(anchor)
         {
             Budget = Budget
         };
 
+        var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
         var bindingIncompleteness = BindingIncompletenessStore?.GetBindingIncompleteness(SnapshotId) ?? [];
-
-        // Whether the anchor sits in a region where bindings were lost decides how an
-        // empty tier is reported. Resolved here so the budgeter can label emptiness
-        // as "unresolved" rather than as a proved "empty". When the completeness
-        // reader itself is absent, no absence can be observed at all, so the region
-        // is treated as unobservable: absence of the reader must never become a
-        // proved "empty" relation.
-        var anchorBindingIsIncomplete = BindingIncompletenessStore == null
-                                        || AnchorRegionHasLostBindings(anchor, bindingIncompleteness);
+        var observation = BindingObservation.Create(anchor, SymbolId, BindingIncompletenessStore == null,
+            bindingIncompleteness, snapshotMetadata?.Projects, cancellationToken);
 
         // Non-tier sections (paths, topology, constraints, completeness
         // summary, inclusion reasons) are populated after the tier budgeter
@@ -118,12 +112,15 @@ internal sealed class ContextAssembler
         var nonTierReserve = Math.Min(Budget / 4, 500);
         var tiers = GetTierBuilders(context);
         var runningTotal = ContextBudgeter.Apply(capsule, tiers, Budget - nonTierReserve,
-            EstimateTokens(anchor.Source), anchorBindingIsIncomplete);
+            EstimateTokens(anchor.Source), observation);
         cancellationToken.ThrowIfCancellationRequested();
         capsule.EstimatedTokens = runningTotal;
 
-        PopulateContractSections(capsule, tiers, bindingIncompleteness, anchorBindingIsIncomplete, cancellationToken);
+        PopulateContractSections(capsule, context, tiers, bindingIncompleteness, snapshotMetadata, observation, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+
+        var annotations = CapsuleAnnotationScope.Read(context);
+        annotations.AddConstraints(capsule);
 
         var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness, cancellationToken);
         uncertaintyDetector.PopulateSuggestedVerification(capsule);
@@ -135,16 +132,17 @@ internal sealed class ContextAssembler
         // verification, ...) against the same estimator. Run enforcement before
         // uncertainty detection so tier sections get their full budget allocation
         // before untiered metadata (uncertainties) is appended.
-        CapsuleBudgetEnforcer.Enforce(capsule, Budget, [.. tiers.Select(static tier => tier.Name)]);
+        CapsuleBudgetEnforcer.Enforce(capsule, Budget, [.. tiers.Select(static tier => tier.Name)], annotations);
 
-        uncertaintyDetector.PopulateUncertainties(capsule);
+        uncertaintyDetector.PopulateUncertainties(capsule, annotations.MediatRPatterns(capsule));
 
         CapsuleBudgetEnforcer.StampArtifactEstimate(capsule);
 
         return capsule;
     }
 
-    private void PopulateContractSections(ContextCapsule capsule, IReadOnlyList<IContextTierBuilder> tiers, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, bool anchorBindingIsIncomplete, CancellationToken cancellationToken)
+    private void PopulateContractSections(ContextCapsule capsule, ContextTierContext context, IReadOnlyList<IContextTierBuilder> tiers, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness, SnapshotRow? snapshotMetadata,
+        BindingObservation observation, CancellationToken cancellationToken)
     {
         // Each tier owns its inclusion-reason text; emit them in the canonical
         // registry order (TierNames) so the reason set is stable regardless of
@@ -167,14 +165,8 @@ internal sealed class ContextAssembler
         // affected_public_surfaces) are named with the only honest recovery: re-running
         // with a larger --content-budget.
 
-        if (anchorBindingIsIncomplete)
-            capsule.InclusionReasons["omitted_tiers_unresolved"] =
-                "Bindings were lost over the anchor's documents, so an omitted tier marked "
-                + "'unresolved' means the relation could not be observed. It is NOT evidence that "
-                + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
-
         var reachability = new ImpactReachability(EdgeStore, SnapshotId, SemanticDiffStore);
-        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
+        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, ImpactReachability.UpstreamDefaultKinds, maxDepth: MaxHops, cancellationToken: cancellationToken);
         var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
@@ -182,12 +174,6 @@ internal sealed class ContextAssembler
             capsule.IncomingPaths.Concat(capsule.OutgoingPaths).SelectMany(static path => path.Hops));
         // Both traces return the anchor's causes; the capsule writes that list once, at the top level.
         capsule.SemanticCauses.AddRange(incoming.SemanticCauses.Select(SemanticCauseJson.From));
-
-        foreach (var annotation in EdgeStore.GetAnnotations(SnapshotId)
-                     .Where(annotation =>
-                         annotation.Kind.Contains("constraint", StringComparison.OrdinalIgnoreCase) ||
-                         annotation.Kind.Contains("invariant", StringComparison.OrdinalIgnoreCase)))
-            capsule.Constraints.Add(new CapsuleConstraint(annotation.Value, "annotation", annotation.Kind, annotation.SymbolId));
 
         // The current topology is the union of incoming_paths and outgoing_paths.
         // Those collections are serialized once above; the reference summary
@@ -218,26 +204,39 @@ internal sealed class ContextAssembler
         candidates.AddRange(capsule.Contracts);
         candidates.AddRange(capsule.DirectCallers);
         candidates.AddRange(capsule.RegisteredImplementations);
+        var projects = snapshotMetadata != null ? ProjectFacts.FromRows(snapshotMetadata.Projects) : null;
+        var surfaceIds = new HashSet<string>(StringComparer.Ordinal);
+        var missingFriendFacts = false;
         foreach (var candidate in candidates.Prepend(new CapsuleItem(
                      capsule.Anchor.SymbolId, capsule.Anchor.Kind, capsule.Anchor.FullyQualifiedName,
                      capsule.Anchor.Provenance, "anchor", capsule.Anchor.Source,
                      capsule.Anchor.Locations.FirstOrDefault(), "anchor declaration")))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var metadata = DeclarationStore.GetSymbolInfo(candidate.SymbolId, SnapshotId)?.MetadataJson;
-            if (IsPublicSurface(metadata, candidate.SymbolId) && capsule.AffectedPublicSurfaces.All(item => item.SymbolId != candidate.SymbolId))
+            if (!surfaceIds.Add(candidate.SymbolId) || context.GetSymbolInfo(candidate.SymbolId) is not { } info)
+                continue;
+
+            var metadata = context.GetSymbolMetadata(candidate.SymbolId);
+            var exposed = PublicSurface.IsExposed(info.Kind.ToString(), info.SymbolId.DocCommentId,
+                SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AccessorKind),
+                SymbolMetadata.GetString(metadata, SymbolMetadataKeys.Accessibility),
+                SymbolMetadata.GetString(metadata, SymbolMetadataKeys.EffectiveAccessibility),
+                MetadataReferenceIdentity.SimpleName(info.SymbolId.AssemblyIdentity), projects);
+            if (exposed == true)
                 capsule.AffectedPublicSurfaces.Add(candidate);
+            else if (exposed == null)
+                missingFriendFacts = true;
         }
 
         if (capsule.AffectedPublicSurfaces.Count == 0)
         {
-            // AffectedPublicSurfaces is not a budgeter tier, so record its
-            // emptiness through the same reason-coded omission channel the
-            // budgeter uses for empty tiers, including the same proved-absence
-            // versus unobservable-region distinction.
-            var reason = anchorBindingIsIncomplete ? "unresolved" : "empty";
+            var reason = observation.IsUnobservable(TierBindingScope.CallerProjects) || missingFriendFacts ? "unresolved" : "empty";
             capsule.OmittedTiers.Add(new TruncationEntry("affected_public_surfaces", reason));
         }
+
+        if (capsule.OmittedTiers.Any(entry => entry.Reason == "unresolved"))
+            capsule.InclusionReasons["omitted_tiers_unresolved"] =
+                observation.Explain(missingFriendFacts && capsule.AffectedPublicSurfaces.Count == 0);
 
         if (BindingIncompletenessStore != null)
         {
@@ -248,21 +247,11 @@ internal sealed class ContextAssembler
             // per-document rows are emitted only behind an explicit
             // detail option; the default is a deterministic
             // reason/project rollup that stays within a bounded size.
-            var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
-            var baseCompleteness = (snapshotMetadata != null ? SnapshotManifest.FromStorageManifest(snapshotMetadata).Completeness : null)
-                                   ?? new SnapshotCompleteness { ExtractorVersion = VersionConstants.ExtractorVersion };
+            var baseCompleteness = snapshotMetadata != null
+                ? SnapshotManifest.StorageCompleteness(snapshotMetadata, snapshotMetadata.Projects)
+                : new SnapshotCompleteness { ExtractorVersion = VersionConstants.ExtractorVersion };
             capsule.Completeness = baseCompleteness.WithBindingIncompleteness(bindingIncompleteness, IncludeCompletenessDetail);
         }
-    }
-
-    private static bool IsPublicSurface(string? metadataJson, string symbolId)
-    {
-        var metadata = SymbolMetadata.Parse(metadataJson, symbolId);
-        if (metadata is null)
-            return false;
-        if (!metadata.Value.TryGetProperty(SymbolMetadataKeys.Accessibility, out var accessibility))
-            return false;
-        return accessibility.GetString() is "Public" or "Protected" or "ProtectedOrInternal";
     }
 
     private void AddItemChangeSites(ContextCapsule capsule, IEnumerable<CapsuleItem> items, string role, int rank)
@@ -374,15 +363,20 @@ internal sealed class ContextAssembler
             offset + page.Count < items.Count);
     }
 
+    internal static IEnumerable<CapsuleItem> EnumerateTierItems(ContextCapsule capsule) =>
+        TierBuilders.SelectMany(entry => entry.Collection(capsule));
+
+    internal static List<CapsuleItem>? GetTierItems(ContextCapsule capsule, string tierName) =>
+        TierBuilderLookup.TryGetValue(tierName, out var entry) ? entry.Collection(capsule) : null;
+
     internal static void AddTierToCapsule(ContextCapsule capsule, string tierName, List<CapsuleItem> items)
     {
-        if (TierBuilderLookup.TryGetValue(tierName, out var entry))
-            entry.Collection(capsule).AddRange(items);
+        GetTierItems(capsule, tierName)?.AddRange(items);
     }
 
-    private CapsuleAnchor BuildAnchor()
+    private CapsuleAnchor BuildAnchor(ContextTierContext context)
     {
-        var info = DeclarationStore.GetSymbolInfo(SymbolId.Value, SnapshotId);
+        var info = context.GetSymbolInfo(SymbolId.Value);
         if (info == null) throw new InvalidOperationException($"Symbol '{SymbolId.Value}' not found in snapshot '{SnapshotId}'.");
 
         var source = DeclarationStore.GetSymbolSource(SymbolId.Value, SnapshotId, ViewKind.Declaration, IncludeGenerated);
@@ -436,36 +430,6 @@ internal sealed class ContextAssembler
         // starving low-priority tiers that legitimately carry small sources.
         const int PathOnlyFramingChars = 160; // ~53 tokens
         return PathOnlyFramingChars / CharsPerToken;
-    }
-
-    /// <summary>
-    ///     True when any document the anchor is declared in lost bindings during
-    ///     extraction. In that region an absent relation is unobservable rather than
-    ///     absent, so nothing may report it as a proved emptiness.
-    /// </summary>
-    internal static bool AnchorRegionHasLostBindings(
-        CapsuleAnchor anchor, IReadOnlyList<BindingIncompletenessRecord> bindingIncompleteness)
-    {
-        if (bindingIncompleteness.Count == 0)
-            return false;
-
-        var anchorDocuments = anchor.Locations
-            .Select(static location => location.DocumentPath)
-            .Where(static path => !string.IsNullOrEmpty(path))
-            .ToHashSet(PathNormalizer.PathComparer);
-
-        if (anchorDocuments.Count == 0)
-            return false;
-
-        foreach (var record in bindingIncompleteness)
-        {
-            if (!BindingIncompletenessReason.UnobservableReasons.Contains(record.Reason))
-                continue;
-            if (record.DocumentPath != null && anchorDocuments.Contains(record.DocumentPath))
-                return true;
-        }
-
-        return false;
     }
 
     public static ContextCapsule ResolveAndAssemble(IEdgeStore edgeStore, IDeclarationStore declarationStore, ContextLookup lookup, ContextAssemblyOptions options, IBindingIncompletenessStore? bindingIncompletenessStore = null,

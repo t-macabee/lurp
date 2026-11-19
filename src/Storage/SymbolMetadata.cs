@@ -35,6 +35,10 @@ public static class SymbolMetadata
     public static string NotImplicitlyDeclaredSql(string alias) =>
         $"COALESCE(json_extract({alias}.metadata_json, '$.{SymbolMetadataKeys.IsImplicitlyDeclared}'), 0) = 0";
 
+    internal static string? GetString(JsonElement? metadata, string key) =>
+        metadata is { ValueKind: JsonValueKind.Object } obj && obj.TryGetProperty(key, out var value) &&
+        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
     public static bool IsTrue(JsonElement? metadata, string key)
     {
         return metadata is not null

@@ -118,7 +118,7 @@ public sealed class ContextCancellationTests : IntegrationTestBase
         var (fullEdges, fullProbe) = NewProbe(store, null);
         var fullCapsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, store);
         new UncertaintyDetector(fullEdges, store, snapshotId, symbolId, false, null, [], CancellationToken.None)
-            .PopulateUncertainties(fullCapsule);
+            .PopulateUncertainties(fullCapsule, []);
         var fullReads = fullProbe.Reads;
 
         Assert.True(fullReads >= 20, $"The uncancelled uncertainty stage made {fullReads} edge reads; the fixture needs at least 20 to show depth.");
@@ -136,7 +136,7 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             try
             {
                 new UncertaintyDetector(cancelledEdges, store, snapshotId, symbolId, false, null, [], cts.Token)
-                    .PopulateUncertainties(capsule);
+                    .PopulateUncertainties(capsule, []);
             }
             catch (OperationCanceledException)
             {

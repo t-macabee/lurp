@@ -142,10 +142,30 @@ public sealed class ImpactReachabilityTests
             MakeEdge("A", "C", "Constructs"),
             MakeEdge("B", "D", "Calls"),
             MakeEdge("C", "D", "Calls")
-        ]).Trace(Anchor, ImpactDirection.Downstream, ["Calls"], maxDepth: 10);
+        ]).Trace(Anchor, ImpactDirection.Downstream, new HashSet<string> { "Calls" }, maxDepth: 10);
 
         Assert.Equal(["B", "D"], result.Symbols.Select(symbol => symbol.SymbolId));
         Assert.Equal(1L, result.Symbols.Single(symbol => symbol.SymbolId == "D").ShortestPathCount);
+    }
+
+    [Fact]
+    public void Trace_DefaultUpstreamFilter_ExcludesOwnershipFromTheFrontier()
+    {
+        var reachability = CreateReachability([
+            MakeEdge("B", Anchor),
+            MakeEdge("Owner", "B", "Declares")
+        ]);
+
+        var upstream = reachability.Trace(Anchor, ImpactDirection.Upstream,
+            ImpactReachability.UpstreamDefaultKinds, maxDepth: 1);
+        Assert.False(Assert.Single(upstream.Symbols).IsFrontier);
+
+        var explicitUpstream = reachability.Trace("B", ImpactDirection.Upstream,
+            new HashSet<string> { "Declares" });
+        Assert.Equal("Owner", Assert.Single(explicitUpstream.Symbols).SymbolId);
+
+        var downstream = reachability.Trace("Owner", ImpactDirection.Downstream, maxDepth: 1);
+        Assert.Equal("B", Assert.Single(downstream.Symbols).SymbolId);
     }
 
     [Fact]
