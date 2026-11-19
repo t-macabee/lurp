@@ -8,6 +8,11 @@ namespace Lurp.Storage;
 public static class DeadCandidateLiveness
 {
     /// <summary>
+    ///     Default page size one dead-candidates call returns when limit is omitted.
+    /// </summary>
+    public const int DefaultPageSize = 50;
+
+    /// <summary>
     ///     Largest page one dead-candidates call returns (CLI <c>--limit=</c>, MCP <c>limit</c>).
     ///     It was a bound-variable guard before every id list became one JSON parameter (B16);
     ///     it stays 200 because a larger page is a contract change.

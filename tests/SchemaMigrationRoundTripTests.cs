@@ -322,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (044). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (045). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -334,8 +334,8 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 44;
-                DROP INDEX idx_document_versions_generated;
+                DELETE FROM schema_metadata WHERE version = 45;
+                ALTER TABLE projects DROP COLUMN internals_visible_to;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -347,9 +347,9 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         Assert.Equal(MigrationRunner.LatestVersion - 1, new MigrationRunner(_dbPath).GetCurrentSchemaVersion());
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
-        using var indexCommand = verify.CreateCommand();
-        indexCommand.CommandText = "SELECT COUNT(*) FROM pragma_index_list('document_versions') WHERE name = 'idx_document_versions_generated';";
-        Assert.Equal(0L, (long)indexCommand.ExecuteScalar()!);
+        using var columnCommand = verify.CreateCommand();
+        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'internals_visible_to';";
+        Assert.Equal(0L, (long)columnCommand.ExecuteScalar()!);
     }
 
     [Fact]
@@ -505,8 +505,9 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
             SqliteConnection.ClearAllPools();
 
-            Assert.Equal(44, MigrationRunner.LatestVersion);
-            new MigrationRunner(dbPath).RunMigrations();
+            var runner = new MigrationRunner(dbPath);
+            runner.RunMigrations();
+            Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
             using var verify = TestDatabase.OpenReadOnly(dbPath);
             using var query = verify.CreateCommand();
@@ -911,6 +912,70 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             Assert.True(idxReader.Read());
             Assert.Equal(1L, idxReader.GetInt64(0));
             Assert.Equal(1L, idxReader.GetInt64(1));
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void RoundTrip_Migration045_ProjectInternalsVisibleTo()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v37-ivt-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo37 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 37)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo37)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (37, '2025-01-01T00:00:00.0000000Z', 'Migration_037_DocumentVersionsDocumentIdIndex');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 37, 6);
+
+                    INSERT INTO projects (snapshot_id, name, assembly_name, target_framework)
+                    VALUES ('s1', 'App', 'App', 'net10.0');
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            var runner = new MigrationRunner(dbPath);
+            runner.RunMigrations();
+            Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using var colCmd = verify.CreateCommand();
+            colCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'internals_visible_to';";
+            Assert.Equal(1L, (long)colCmd.ExecuteScalar()!);
+
+            using var rowCmd = verify.CreateCommand();
+            rowCmd.CommandText = "SELECT internals_visible_to FROM projects WHERE snapshot_id = 's1' AND name = 'App';";
+            Assert.Equal(DBNull.Value, rowCmd.ExecuteScalar());
+
+            var facts = ProjectFacts.Load(verify, "s1");
+            Assert.False(facts.GrantsInternalsOutsideSnapshot("App"));
         }
         finally
         {

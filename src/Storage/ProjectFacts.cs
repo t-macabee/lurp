@@ -14,14 +14,20 @@ namespace Lurp.Storage;
 internal sealed class ProjectFacts
 {
     private readonly Dictionary<string, string> _assemblyNameByProjectName;
+    private readonly HashSet<string> _snapshotAssemblyNames;
     private readonly Dictionary<string, HashSet<string>> _referenceSimpleNamesByAssemblyName;
+    private readonly Dictionary<string, HashSet<string>> _internalsVisibleToByAssemblyName;
 
     private ProjectFacts(
         Dictionary<string, string> assemblyNameByProjectName,
-        Dictionary<string, HashSet<string>> referenceSimpleNamesByAssemblyName)
+        Dictionary<string, HashSet<string>> referenceSimpleNamesByAssemblyName,
+        Dictionary<string, HashSet<string>> internalsVisibleToByAssemblyName)
     {
         _assemblyNameByProjectName = assemblyNameByProjectName;
+        // .NET matches InternalsVisibleTo target assembly names case-insensitively.
+        _snapshotAssemblyNames = new HashSet<string>(assemblyNameByProjectName.Values, StringComparer.OrdinalIgnoreCase);
         _referenceSimpleNamesByAssemblyName = referenceSimpleNamesByAssemblyName;
+        _internalsVisibleToByAssemblyName = internalsVisibleToByAssemblyName;
     }
 
     public static ProjectFacts Load(SqliteConnection connection, string snapshotId)
@@ -30,9 +36,10 @@ internal sealed class ProjectFacts
 
         var assemblyNameByProjectName = new Dictionary<string, string>(StringComparer.Ordinal);
         var referenceSimpleNamesByAssemblyName = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var internalsVisibleToByAssemblyName = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT name, metadata_reference_identities, assembly_name FROM projects WHERE snapshot_id = @snapshotId;";
+        cmd.CommandText = "SELECT name, metadata_reference_identities, assembly_name, internals_visible_to FROM projects WHERE snapshot_id = @snapshotId;";
         cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -44,6 +51,7 @@ internal sealed class ProjectFacts
             var assemblyName = reader.IsDBNull(2) || string.IsNullOrEmpty(reader.GetString(2))
                 ? projectName
                 : reader.GetString(2);
+            var internalsVisibleToJson = reader.IsDBNull(3) ? null : reader.GetString(3);
 
             assemblyNameByProjectName[projectName] = assemblyName;
             if (!referenceSimpleNamesByAssemblyName.TryGetValue(assemblyName, out var simpleNames))
@@ -52,28 +60,73 @@ internal sealed class ProjectFacts
                 referenceSimpleNamesByAssemblyName[assemblyName] = simpleNames;
             }
 
-            if (string.IsNullOrEmpty(identitiesJson))
-                continue;
-
-            string[]? identities;
-            try
+            if (!string.IsNullOrEmpty(identitiesJson))
             {
-                identities = JsonSerializer.Deserialize<string[]>(identitiesJson);
+                string[]? identities;
+                try
+                {
+                    identities = JsonSerializer.Deserialize<string[]>(identitiesJson);
+                }
+                catch (JsonException ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to parse metadata_reference_identities for project '{projectName}'.", ex);
+                }
+
+                if (identities != null)
+                {
+                    foreach (var identity in identities)
+                        simpleNames.Add(MetadataReferenceIdentity.SimpleName(identity));
+                }
             }
-            catch (JsonException ex)
+
+            if (!string.IsNullOrEmpty(internalsVisibleToJson))
             {
-                throw new InvalidOperationException(
-                    $"Failed to parse metadata_reference_identities for project '{projectName}'.", ex);
+                string[]? targets;
+                try
+                {
+                    targets = JsonSerializer.Deserialize<string[]>(internalsVisibleToJson);
+                }
+                catch (JsonException ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to parse internals_visible_to for project '{projectName}'.", ex);
+                }
+
+                if (targets is { Length: > 0 })
+                {
+                    if (!internalsVisibleToByAssemblyName.TryGetValue(assemblyName, out var targetSet))
+                    {
+                        targetSet = new HashSet<string>(StringComparer.Ordinal);
+                        internalsVisibleToByAssemblyName[assemblyName] = targetSet;
+                    }
+
+                    foreach (var target in targets)
+                        targetSet.Add(target);
+                }
             }
-
-            if (identities == null)
-                continue;
-
-            foreach (var identity in identities)
-                simpleNames.Add(MetadataReferenceIdentity.SimpleName(identity));
         }
 
-        return new ProjectFacts(assemblyNameByProjectName, referenceSimpleNamesByAssemblyName);
+        return new ProjectFacts(assemblyNameByProjectName, referenceSimpleNamesByAssemblyName, internalsVisibleToByAssemblyName);
+    }
+
+    /// <summary>
+    ///     D48 / D171.3: true when any row of <paramref name="assemblyName" /> grants
+    ///     <c>InternalsVisibleTo</c> to the wildcard <c>*</c> or to an assembly that is
+    ///     not an assembly of this snapshot.
+    /// </summary>
+    public bool GrantsInternalsOutsideSnapshot(string assemblyName)
+    {
+        if (!_internalsVisibleToByAssemblyName.TryGetValue(assemblyName, out var targets))
+            return false;
+
+        foreach (var target in targets)
+        {
+            if (target == "*" || !_snapshotAssemblyNames.Contains(target))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -19,6 +19,12 @@ internal static class DocRenderers
         $"extractor {VersionConstants.ExtractorVersion}, CLI/MCP contract v{VersionConstants.CliMcpContractVersion}, " +
         $"output schema v{VersionConstants.OutputSchemaVersion}";
 
+    internal static string RenderDeadCandidatesLadder() =>
+        "\n" + DeadCandidateLadder.Ladder + "\n";
+
+    internal static string RenderDeadCandidatesResponse() =>
+        "\n" + DeadCandidateLadder.Response + "\n";
+
     internal static string RenderDeclaredBoundaries()
     {
         var rows = DeclaredBoundaries.Known.Select(entry =>

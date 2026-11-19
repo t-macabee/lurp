@@ -51,6 +51,10 @@ public sealed partial class SnapshotManifest
     public IReadOnlyDictionary<string, string> CompilationOptionsFingerprints { get; init; }
         = new Dictionary<string, string>(StringComparer.Ordinal);
 
+    [JsonPropertyName("internals_visible_to")]
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> InternalsVisibleTo { get; init; }
+        = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
     [JsonPropertyName("project_documents")]
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; init; }
         = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -91,6 +95,7 @@ public sealed partial class SnapshotManifest
             AssemblyNames = new Dictionary<string, string>(workspace.AssemblyNames, StringComparer.Ordinal),
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
+            InternalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(workspace.InternalsVisibleTo, StringComparer.Ordinal),
             ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
             DatabaseSchemaVersion = MigrationRunner.LatestVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
@@ -170,6 +175,9 @@ public sealed partial class SnapshotManifest
                 : null,
             DocumentPaths = ProjectDocuments.TryGetValue(kvp.Key, out var documentPaths)
                 ? [.. documentPaths]
+                : null,
+            InternalsVisibleToJson = InternalsVisibleTo.TryGetValue(kvp.Key, out var ivt) && ivt.Count > 0
+                ? JsonSerializer.Serialize(ivt)
                 : null
         }).ToList();
 
@@ -226,6 +234,7 @@ public sealed partial class SnapshotManifest
         var assemblyNames = new Dictionary<string, string>(StringComparer.Ordinal);
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
         var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
+        var internalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var project in selectedProjects)
         {
@@ -238,6 +247,12 @@ public sealed partial class SnapshotManifest
                     .Deserialize<string[]>(project.MetadataReferenceIdentitiesJson)!];
             if (project.CompilationOptionsFingerprint != null)
                 compilationOptionsFingerprints[project.Name] = project.CompilationOptionsFingerprint;
+            if (project.InternalsVisibleToJson != null)
+            {
+                var targets = JsonSerializer.Deserialize<string[]>(project.InternalsVisibleToJson);
+                if (targets is { Length: > 0 })
+                    internalsVisibleTo[project.Name] = targets;
+            }
             if (project.DocumentPaths != null)
                 projectDocuments[project.Name] = project.DocumentPaths;
         }
@@ -256,6 +271,7 @@ public sealed partial class SnapshotManifest
             AssemblyNames = assemblyNames,
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
+            InternalsVisibleTo = internalsVisibleTo,
             ProjectDocuments = projectDocuments,
             DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
             OutputSchemaVersion = storage.OutputSchemaVersion,

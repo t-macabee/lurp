@@ -228,9 +228,42 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - The Serialization adapter writes a `serialization_contract` annotation for
   each member with a serialization attribute (`name=<wire name>`, `ignored` or
   `included`), read from the attribute type (qualified and aliased names and
-  `[property:]` record attributes count). Its member `References` rows, which
-  never reached the index, are gone. A `[JsonSerializable]` context also
+  `[property:]` record attributes count), writing a value only when the library
+  reads the attribute (`[DataMember]` only on a `[DataContract]` type;
+  System.Text.Json `JsonPropertyName` and non-`Always` `JsonIgnore` on a
+  non-public member only with `[JsonInclude]`). Its member `References` rows,
+  which never reached the index, are gone. A `[JsonSerializable]` context also
   references the element types of generic arguments.
+
+## Dead candidates
+
+- A type candidate ignores every edge from its own subtree (including its own
+  LIVE edges), and a property or event and its accessors ignore edges between
+  one another.
+- Public surface is the effective accessibility for types, ordinary methods,
+  events and event accessors (a public method of an internal type can be
+  `proved_dead`), and the declared accessibility for instance constructors,
+  properties, property accessors and fields. Implicit implementations of
+  external interface members and overrides of external members are
+  `external_interface_implementation`.
+- Internal and private-protected symbols of a project that grants
+  `InternalsVisibleTo` to an assembly outside the snapshot (or an unnamed
+  target `*`) are treated as public surface.
+- A Scrutor scan no longer makes its own document `unresolved`; an unmodeled
+  scan of a named assembly makes the non-abstract, non-static classes and
+  delegates (and their instance constructors) of that assembly `unresolved`.
+- A symbol is treated as generated only when every declaration of it is in a
+  generated document.
+- Serialization opt-in is read from `serialization_contract` annotations
+  (`[DataMember]` counts only on a `[DataContract]` type).
+- `ef_convention` covers private and private-protected fields, properties and
+  instance constructors of a `MapsTo` entity; ordinary private methods follow
+  the normal ladder.
+- An unknown provenance value fails the call instead of reading
+  `framework_convention`.
+- Additive fields: `dead-candidates` and `lurp_dead_candidates` candidates add
+  `effective_accessibility`; `status` and `lurp_status` manifests add
+  `internals_visible_to`.
 
 ## Test coverage
 
@@ -273,6 +306,10 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `binding_incompleteness` with reason `excluded_document`, and orphan edges to
   symbols declared only in those excluded documents are bucketed under
   `excluded_document` instead of `other`.
+- Schema v45 adds `projects.internals_visible_to` (per-project
+  `InternalsVisibleTo` targets as a JSON array, NULL when none; existing rows
+  read as NULL). `InternalsVisibleTo` targets participate in snapshot identity
+  and freshness (`InternalsVisibleToChanged`).
 
 ## Snapshot lifecycle
 
@@ -329,13 +366,16 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - `dead-candidates` and `lurp_dead_candidates` `live_provenance_rank` now lists
   only the two strong edge provenances (`compiler_proved`, `framework_derived`),
   without `global_implementation_relation`.
+- Symbol declaration metadata (`get-symbol --view=metadata`): the key
+  `implements_external_interface` is renamed `implements_external_member`. Read
+  `implements_external_member`.
 
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v44 |
+| Database schema | v37 | v45 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v6 |

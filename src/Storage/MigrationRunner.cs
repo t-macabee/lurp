@@ -196,7 +196,8 @@ public class MigrationRunner
             new Migration_041_SnapshotSelectedAt(),
             new Migration_042_SnapshotBuildStrategy(),
             new Migration_043_AnnotationUniqueIndex(),
-            new Migration_044_DocumentIsGenerated()
+            new Migration_044_DocumentIsGenerated(),
+            new Migration_045_ProjectInternalsVisibleTo()
         ];
     }
 }

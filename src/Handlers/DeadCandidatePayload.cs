@@ -1,11 +1,70 @@
 namespace Lurp.Handlers;
 
 /// <summary>
-///     The one projection of a dead-candidate page, shared by the CLI handler and the MCP
-///     tool, so the two surfaces cannot drift again (for example <c>declaration_span</c>).
+///     The one projection of a dead-candidate page and envelope, shared by the CLI handler
+///     and the MCP tool, so the two surfaces cannot drift again.
 /// </summary>
 internal static class DeadCandidatePayload
 {
+    internal static object Filters(
+        string? project,
+        string? document,
+        string? kind,
+        bool includePublic,
+        bool includeGenerated,
+        bool includeTests) => new
+    {
+        project,
+        document,
+        kind,
+        include_public = includePublic,
+        include_generated = includeGenerated,
+        include_tests = includeTests
+    };
+
+    internal static Dictionary<string, object?> Envelope(
+        DeadCandidatePage page,
+        object filters,
+        string snapshotId,
+        object? freshness,
+        List<object>? candidates = null) =>
+        Build(page, filters, snapshotId, freshness, candidates ?? Candidates(page), includeCandidates: true);
+
+    internal static Dictionary<string, object?> Meta(
+        DeadCandidatePage page,
+        object filters,
+        string snapshotId,
+        object? freshness) =>
+        Build(page, filters, snapshotId, freshness, candidates: null, includeCandidates: false);
+
+    private static Dictionary<string, object?> Build(
+        DeadCandidatePage page,
+        object filters,
+        string snapshotId,
+        object? freshness,
+        List<object>? candidates,
+        bool includeCandidates)
+    {
+        var envelope = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["snapshot_id"] = snapshotId,
+            ["filters"] = filters,
+            ["incoming_edge_kinds_checked"] = DeadCandidateLiveness.LiveEdgeKinds,
+            ["type_use_edge_kinds_checked"] = DeadCandidateLiveness.TypeUseEdgeKinds,
+            ["live_provenance_rank"] = DeadCandidateLiveness.StrongProvenance,
+            ["uncertain_provenance"] = DeadCandidateLiveness.UncertainProvenance,
+            ["candidate_count"] = page.CandidateCount,
+            ["dead_count"] = page.DeadCount,
+            ["uncertain_count"] = page.UncertainCount,
+            ["unresolved_count"] = page.UnresolvedCount
+        };
+        if (includeCandidates)
+            envelope["candidates"] = candidates;
+        envelope["next_cursor"] = page.NextCursor;
+        envelope["freshness"] = freshness;
+        return envelope;
+    }
+
     internal static List<object> Candidates(DeadCandidatePage page)
     {
         return page.Candidates.Select(e => (object)new
@@ -14,6 +73,7 @@ internal static class DeadCandidatePayload
             fqn = e.Fqn,
             kind = e.Kind,
             accessibility = e.Accessibility,
+            effective_accessibility = e.EffectiveAccessibility,
             document_path = e.DocumentPath,
             locations = e.Locations.Select(l => new
             {

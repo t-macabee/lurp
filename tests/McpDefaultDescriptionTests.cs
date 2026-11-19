@@ -21,7 +21,7 @@ public sealed class McpDefaultDescriptionTests
         yield return [typeof(AnnotationsTool), "limit", AnnotationHandler.DefaultLimit];
         yield return [typeof(ContextTool), "content_budget", ContextHandler.DefaultBudget];
         yield return [typeof(ContextTool), "content_budget", ContextHandler.DefaultTypeAnchorBudget];
-        yield return [typeof(DeadCandidatesTool), "limit", DeadCandidatesHandler.DefaultLimit];
+        yield return [typeof(DeadCandidatesTool), "limit", DeadCandidateLiveness.DefaultPageSize];
         yield return [typeof(DeadCandidatesTool), "limit", DeadCandidateLiveness.MaxPageSize];
         yield return [typeof(StatusTool), "max_bytes", StatusTool.DefaultMaxBytes];
         yield return [typeof(StatusTool), "max_bytes", McpLimits.MaxStatusBytes];

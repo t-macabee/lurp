@@ -784,6 +784,80 @@ public sealed class SnapshotIdentityCompletenessTests : IntegrationTestBase
         Assert.Equal(first, second);
     }
 
+    [Fact]
+    public async Task InternalsVisibleTo_FromTheProjectFileItem_IsAnIdentityInput()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Kept.cs"] = """
+                          namespace Lib;
+
+                          internal static class Kept
+                          {
+                              internal static void Unused() { }
+                          }
+                          """
+        });
+        WriteFile("Lib", "Lib.csproj", """
+                                       <Project Sdk="Microsoft.NET.Sdk">
+                                         <PropertyGroup>
+                                           <TargetFramework>net10.0</TargetFramework>
+                                           <ImplicitUsings>enable</ImplicitUsings>
+                                           <Nullable>enable</Nullable>
+                                         </PropertyGroup>
+                                         <ItemGroup>
+                                           <InternalsVisibleTo Include="Lib.Tests" />
+                                         </ItemGroup>
+                                       </Project>
+                                       """);
+        RestoreSolution();
+
+        var workspaceInfoV1 = await LoadWorkspaceInfoAsync();
+        var snapshotV1 = await RunFullIndexAsync(DbPath);
+
+        SnapshotRow storedV1;
+        using (var store = OpenStore(DbPath))
+        {
+            storedV1 = store.LoadLatestSnapshot(workspaceInfoV1.Id.Value)
+                       ?? throw new InvalidOperationException("No stored V1 snapshot manifest.");
+        }
+
+        // Change only the <InternalsVisibleTo> item in the project file, with no source edit.
+        WriteFile("Lib", "Lib.csproj", """
+                                       <Project Sdk="Microsoft.NET.Sdk">
+                                         <PropertyGroup>
+                                           <TargetFramework>net10.0</TargetFramework>
+                                           <ImplicitUsings>enable</ImplicitUsings>
+                                           <Nullable>enable</Nullable>
+                                         </PropertyGroup>
+                                         <ItemGroup>
+                                           <InternalsVisibleTo Include="Other" />
+                                         </ItemGroup>
+                                       </Project>
+                                       """);
+        RestoreSolution();
+
+        var workspaceInfoV2 = await LoadWorkspaceInfoAsync();
+
+        Assert.NotEqual(
+            SnapshotIdentity.Create(workspaceInfoV1, new HashSet<string>()),
+            SnapshotIdentity.Create(workspaceInfoV2, new HashSet<string>()));
+
+        var freshness = WorkspaceFreshness.CheckFreshness(
+            workspaceInfoV2, SnapshotManifest.FromStorageManifest(storedV1));
+        Assert.False(freshness.IsFresh);
+        Assert.Contains(freshness.Mismatches, m => m.Kind == MismatchKind.InternalsVisibleToChanged);
+
+        // Also verify --mode=status reports the mismatch against the first snapshot.
+        var output = new CapturingOutputSink();
+        await Lurp.Handlers.StatusHandler.Run(
+            [$"--solution={SolutionPath}", $"--output-dir={Path.GetDirectoryName(DbPath)!}", "--json"],
+            output);
+        var json = output.Stdout;
+        Assert.Contains(nameof(MismatchKind.InternalsVisibleToChanged), json);
+        Assert.NotEmpty(snapshotV1);
+    }
+
     private async Task<WorkspaceInfo> LoadWorkspaceInfoAsync()
     {
         using var workspace = MSBuildWorkspace.Create(LurpCache.CreateWorkspaceGlobalProperties(SolutionPath));

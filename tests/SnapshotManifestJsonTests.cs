@@ -188,11 +188,12 @@ public sealed class SnapshotManifestJsonTests
             "project_graph",
             "compilation_options_fingerprints",
             "assembly_names",
+            "internals_visible_to",
             "metadata_reference_counts",
             "completeness.active_tfms",
             "completeness.binding_incompleteness_summary"
         ];
-        Assert.Equal(10, entries.Count);
+        Assert.Equal(11, entries.Count);
         Assert.Equal(
             expected.OrderBy(name => name, StringComparer.Ordinal),
             entries.Select(entry => entry.Category).OrderBy(name => name, StringComparer.Ordinal));
@@ -250,6 +251,7 @@ public sealed class SnapshotManifestJsonTests
             ["project_graph"] = new JsonObject { ["A"] = new JsonArray { "B" } },
             ["compilation_options_fingerprints"] = new JsonObject { ["A"] = "fp-a" },
             ["assembly_names"] = new JsonObject { ["A"] = "AssemblyA" },
+            ["internals_visible_to"] = new JsonObject { ["A"] = new JsonArray { "A.Tests" } },
             ["completeness"] = new JsonObject
             {
                 ["active_tfms"] = new JsonObject { ["A"] = "net10.0" },

@@ -12,6 +12,8 @@ internal static class DocCatalog
         new("docs/ARCHITECTURE.md", "mcp-tools:write", DocRenderers.RenderMcpWriteTools),
         new("docs/CLI_REFERENCE.md", "flags:read-options", DocRenderers.RenderReadOptions),
         .. Program.ModeRegistry.Select(entry => new DocSection("docs/CLI_REFERENCE.md", $"flags:{entry.Name}", () => DocRenderers.RenderModeFlags(entry))),
+        new("docs/CLI_REFERENCE.md", "dead-candidates:ladder", DocRenderers.RenderDeadCandidatesLadder),
+        new("docs/CLI_REFERENCE.md", "dead-candidates:response", DocRenderers.RenderDeadCandidatesResponse),
         new("docs/CLI_REFERENCE.md", "mcp-tools:read", DocRenderers.RenderMcpReadTools),
         new("docs/CLI_REFERENCE.md", "mcp-tools:write", DocRenderers.RenderMcpWriteTools),
         new("docs/CLI_REFERENCE.md", "mcp-tools:total", DocRenderers.RenderMcpToolTotal),

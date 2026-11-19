@@ -79,7 +79,7 @@ public sealed class BindingIncompletenessCollector(string projectName, string gi
 
     /// <summary>
     ///     Records that a DI convention scan site has an open match set. The row seeds
-    ///     the reverse-edge closure frontier (<see cref="BindingIncompletenessReason.UnobservableReasons" />),
+    ///     the reverse-edge closure frontier (<see cref="BindingIncompletenessReason.IncrementalFrontierReasons" />),
     ///     so the registration document is re-examined on any change even though no
     ///     previous edge points at a type the convention could newly match.
     /// </summary>

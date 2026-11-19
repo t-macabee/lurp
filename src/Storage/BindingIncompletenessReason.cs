@@ -12,7 +12,10 @@ public static class BindingIncompletenessReason
     /// <summary>
     ///     A DI convention scan site whose match set is open: any type added to the
     ///     scanned assembly may newly match, and no persisted edge witnesses the new
-    ///     match, so the relation set for the site is never provably complete.
+    ///     match. Included in <see cref="IncrementalFrontierReasons" /> so incremental
+    ///     refresh re-examines the scan-site document, and excluded from
+    ///     <see cref="UnobservableReasons" /> because a modeled scan does not hide
+    ///     dead code in its own document (D51, D170).
     /// </summary>
     public const string ConventionScan = "convention_scan";
 
@@ -22,16 +25,16 @@ public static class BindingIncompletenessReason
     /// <summary>
     ///     A compile item under <c>bin/</c> or <c>obj/</c> was excluded from the
     ///     snapshot (declared boundary <c>source_generators</c>, D4). Not in
-    ///     <see cref="UnobservableReasons" />: like <see cref="FilteredExternal" />,
-    ///     it is a declared boundary rather than an unknown gap.
+    ///     <see cref="UnobservableReasons" /> or <see cref="IncrementalFrontierReasons" />:
+    ///     like <see cref="FilteredExternal" />, it is a declared boundary rather than an unknown gap.
     /// </summary>
     public const string ExcludedDocument = "excluded_document";
 
     /// <summary>
     ///     Reasons under which a missing relation proves nothing, because the relation was
-    ///     never observable. Excludes <see cref="FilteredExternal" />: there the target was
-    ///     resolved and is knowably outside the snapshot, which is an explained absence
-    ///     rather than an unknown one.
+    ///     never observable. Read by dead-candidate liveness and capsule assembly. Excludes
+    ///     <see cref="FilteredExternal" />, <see cref="ExcludedDocument" /> and
+    ///     <see cref="ConventionScan" /> (D51, D170).
     /// </summary>
     public static readonly IReadOnlySet<string> UnobservableReasons =
         new HashSet<string>(StringComparer.Ordinal)
@@ -41,9 +44,16 @@ public static class BindingIncompletenessReason
             UnresolvedMetadata,
             UnsupportedSyntax,
             ExtractorFailure,
-            ProjectUnreadable,
-            ConventionScan
+            ProjectUnreadable
         };
+
+    /// <summary>
+    ///     Reasons that seed the incremental reverse-edge closure frontier:
+    ///     <see cref="UnobservableReasons" /> plus <see cref="ConventionScan" /> (D51, D170).
+    ///     Read by <c>ReverseEdgeClosure</c> only.
+    /// </summary>
+    public static readonly IReadOnlySet<string> IncrementalFrontierReasons =
+        new HashSet<string>(UnobservableReasons.Append(ConventionScan), StringComparer.Ordinal);
 
     public static string Describe(string reason, int count, string scope)
     {

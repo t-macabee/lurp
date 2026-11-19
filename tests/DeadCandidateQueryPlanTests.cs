@@ -26,6 +26,8 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
     // narrower. It is the same store text with TypeUseEdgeKinds.
     private static readonly string TypeUseEdgesQuerySql = Lurp.Storage.DeadCandidateStore.IncomingEdgesSql(Lurp.Storage.DeadCandidateLiveness.TypeUseEdgeKinds);
 
+    private static readonly string AssemblyScanOwnersQuerySql = Lurp.Storage.DeadCandidateStore.AssemblyScanOwnersSql();
+
     [Fact]
     public async Task Plans_WithAndWithoutStatistics_DriveFromSymbolIds_AndUseSnapshotTargetIndex()
     {
@@ -53,7 +55,7 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
         var declarationPlan = QueryPlanFixture.Explain(connection, DeclarationQuerySql, parameters);
         Assert.NotEmpty(declarationPlan);
         Assert.DoesNotContain("snapshot_documents", declarationPlan[0]);
-        Assert.Matches(@"^(SEARCH|SCAN) d ", declarationPlan[0]);
+        Assert.Matches(@"^SEARCH d ", declarationPlan[0]);
 
         // The incoming-edge query must probe idx_edges_snapshot_target, not scan the whole
         // snapshot edge set.
@@ -63,6 +65,21 @@ public sealed class DeadCandidateQueryPlanTests : IntegrationTestBase
         // The type-use query (B25) must use the same probe index, not a scan.
         var typeUsePlan = QueryPlanFixture.Explain(connection, TypeUseEdgesQuerySql, parameters);
         Assert.Contains(typeUsePlan, detail => detail.Contains("idx_edges_snapshot_target", StringComparison.Ordinal));
+
+        // The convention assembly-scan prefix query must range-seek idx_edges_snapshot_target
+        // on both snapshot_id and target_symbol_id, never scanning all edges in the snapshot.
+        var (prefixStart, prefixEnd) = Lurp.Storage.DeadCandidateStore.AssemblyScanPrefixRange();
+        var scanParameters = new Dictionary<string, object>
+        {
+            ["@snapshotId"] = snapshotId,
+            ["@prefixStart"] = prefixStart,
+            ["@prefixEnd"] = prefixEnd
+        };
+        var assemblyScanPlan = QueryPlanFixture.Explain(connection, AssemblyScanOwnersQuerySql, scanParameters);
+        Assert.Contains(assemblyScanPlan, detail =>
+            detail.Contains("idx_edges_snapshot_target", StringComparison.Ordinal) &&
+            detail.Contains("target_symbol_id>", StringComparison.Ordinal) &&
+            detail.Contains("target_symbol_id<", StringComparison.Ordinal));
     }
 
     private static Dictionary<string, object> DeadCandidateParameters(string snapshotId, string[] symbolIds)

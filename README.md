@@ -57,7 +57,7 @@ separately.
 | `timings` | Per-step performance data for a snapshot. |
 | `outline` | List declarations in a document with line spans. |
 | `diagnostics` | List compiler diagnostics captured at index time. |
-| `dead-candidates` | List dead-code candidates: no incoming LIVE edge, after a suppression ladder. Public surface, EF/serialization conventions, process entry points and generated/test code are never reported as `proved_dead`. |
+| `dead-candidates` | List dead-code candidates: no incoming LIVE edge (one-hop liveness), after a suppression ladder. Public surface (effective accessibility for types, methods and events; declared accessibility for constructors, properties and fields; plus internals of projects granting `InternalsVisibleTo` outside the snapshot), EF/serialization conventions, process entry points and generated/test code are never reported as `proved_dead`. |
 
 ## Worked example
 
@@ -168,7 +168,7 @@ Task-first lookup for things you already know Lurp can do but not which mode doe
 |---|---|
 | Find unused `using` directives | `lurp --mode=diagnostics --severity=hidden --id=CS8019 --output-dir=./out` |
 | Confirm the installed build matches these docs | `lurp --version` |
-| Find dead-code candidates (public API and tests are never `proved_dead`) | `lurp --mode=dead-candidates --output-dir=./out` |
+| Find dead-code candidates (public API and tests are never `proved_dead`; see [CLI Reference](docs/CLI_REFERENCE.md#--modedead-candidates)) | `lurp --mode=dead-candidates --output-dir=./out` |
 | Search source text literally (not symbol search) | `lurp --mode=grep --query=<text> --output-dir=./out` |
 | See what changed between two indexing runs | `lurp --mode=diff --from-snapshot=<id> --to-snapshot=<id> --output-dir=./out` |
 | Pull just the code relevant to a change | `lurp --mode=context --file=<path> --line=<n> --output-dir=./out` |
@@ -204,7 +204,7 @@ Measured 2026-10-18 on commit `bcb44f0` (tool 3.5.1, Release build) and eNoteV2 
 
 ## Status & roadmap
 
-Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v44, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
+Shipped as a global tool (`dotnet tool install lurp`). This source tree is <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->. Each release, and whether it needs an index run, is listed under
 [Documentation & license](#documentation--license). `windows-latest`
 and `ubuntu-latest` CI plus a manual real-parity gate on eNoteV2 that runs on Windows and Linux
 GitHub-hosted runners (`workflow_dispatch`); a release publishes only the CI-built package of a commit

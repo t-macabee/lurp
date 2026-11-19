@@ -34,6 +34,7 @@ public sealed class DeadCandidateEntry
         string? fqn,
         string kind,
         string? accessibility,
+        string? effectiveAccessibility,
         string? documentPath,
         List<DeclarationLocation> locations,
         string? projectName,
@@ -48,6 +49,7 @@ public sealed class DeadCandidateEntry
         Fqn = fqn;
         Kind = kind;
         Accessibility = accessibility;
+        EffectiveAccessibility = effectiveAccessibility;
         DocumentPath = documentPath;
         Locations = locations;
         ProjectName = projectName;
@@ -63,6 +65,7 @@ public sealed class DeadCandidateEntry
     public string? Fqn { get; }
     public string Kind { get; }
     public string? Accessibility { get; }
+    public string? EffectiveAccessibility { get; }
     public string? DocumentPath { get; }
     public List<DeclarationLocation> Locations { get; }
     public string? ProjectName { get; }

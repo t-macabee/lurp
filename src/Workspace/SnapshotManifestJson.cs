@@ -21,6 +21,7 @@ internal static class SnapshotManifestJson
         "project_graph",
         "compilation_options_fingerprints",
         "assembly_names",
+        "internals_visible_to",
         "metadata_reference_counts",
         "completeness.active_tfms",
         "completeness.binding_incompleteness_summary"

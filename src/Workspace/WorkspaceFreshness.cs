@@ -128,6 +128,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
         mismatches.AddRange(CheckAssemblyNames(current, stored));
+        mismatches.AddRange(CheckInternalsVisibleTo(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
@@ -144,6 +145,7 @@ public static class WorkspaceFreshness
         mismatches.AddRange(CheckSdkAndCompiler(current, stored));
         mismatches.AddRange(CheckTargetFrameworks(current, stored));
         mismatches.AddRange(CheckAssemblyNames(current, stored));
+        mismatches.AddRange(CheckInternalsVisibleTo(current, stored));
         mismatches.AddRange(CheckProjectGraph(current, stored));
         mismatches.AddRange(CheckMetadataReferences(current, stored));
         mismatches.AddRange(CheckCompilationOptions(current, stored));
@@ -340,6 +342,33 @@ public static class WorkspaceFreshness
                 continue;
 
             if (!string.Equals(currentName, storedName, StringComparison.Ordinal)) yield return new SnapshotMismatch(MismatchKind.AssemblyNameChanged, $"Assembly name changed for project '{projName}'.", null, $"{storedName} → {currentName}");
+        }
+    }
+
+    private static IEnumerable<SnapshotMismatch> CheckInternalsVisibleTo(WorkspaceInfo current, SnapshotManifest stored)
+    {
+        foreach (var projName in current.TargetFrameworks.Keys)
+        {
+            if (!stored.TargetFrameworks.ContainsKey(projName))
+                continue;
+
+            var currentSet = current.InternalsVisibleTo.TryGetValue(projName, out var c)
+                ? c.ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            var storedSet = stored.InternalsVisibleTo.TryGetValue(projName, out var s)
+                ? s.ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+
+            if (currentSet.SetEquals(storedSet))
+                continue;
+
+            var added = currentSet.Except(storedSet).OrderBy(t => t, StringComparer.Ordinal).ToList();
+            var removed = storedSet.Except(currentSet).OrderBy(t => t, StringComparer.Ordinal).ToList();
+            yield return new SnapshotMismatch(
+                MismatchKind.InternalsVisibleToChanged,
+                $"InternalsVisibleTo targets changed for project '{projName}'.",
+                null,
+                FormatSetDifference(added, removed));
         }
     }
 

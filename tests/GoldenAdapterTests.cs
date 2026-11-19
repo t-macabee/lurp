@@ -1035,6 +1035,65 @@ public sealed class GoldenAdapterTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task SerializationAdapter_IgnoresAttributesTheSerializerIgnores()
+    {
+        var test = new SerializationAdapterExtractorTest();
+        try
+        {
+            var extraction = await test.ExtractAsync(
+                new Dictionary<string, string>
+                {
+                    ["Contract.cs"] = """
+                                      using System.Runtime.Serialization;
+
+                                      namespace App;
+
+                                      public class NoContract
+                                      {
+                                          [DataMember]
+                                          internal int A { get; set; }
+
+                                          [System.Text.Json.Serialization.JsonPropertyName("b")]
+                                          internal int B { get; set; }
+
+                                          [IgnoreDataMember]
+                                          public int C { get; set; }
+                                      }
+
+                                      [DataContract]
+                                      public class WithContract
+                                      {
+                                          [DataMember]
+                                          internal int D { get; set; }
+                                      }
+                                      """
+                },
+                runAdapters: true);
+
+            var annotations = extraction.Result.Annotations
+                .Where(a => a.Kind == "serialization_contract")
+                .Select(a => (a.SymbolId, a.Value))
+                .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+                .ThenBy(a => a.Value, StringComparer.Ordinal)
+                .ToList();
+
+            var expected = new (string SymbolId, string Value)[]
+                {
+                    (extraction.ResolveId("global::App.NoContract.C"), "ignored"),
+                    (extraction.ResolveId("global::App.WithContract.D"), "included")
+                }
+                .OrderBy(a => a.SymbolId, StringComparer.Ordinal)
+                .ThenBy(a => a.Value, StringComparer.Ordinal)
+                .ToList();
+            Assert.Equal(expected, annotations);
+        }
+        finally
+        {
+            test.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task SerializationAdapter_ReadsNewtonsoftAttributes()
     {
         CreateProject("App",

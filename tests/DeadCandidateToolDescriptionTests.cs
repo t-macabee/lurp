@@ -22,6 +22,48 @@ public sealed class DeadCandidateToolDescriptionTests
     }
 
     [Fact]
+    public void Description_IsTheLadderConstant()
+    {
+        Assert.Equal(DeadCandidateLadder.ToolDescription, ReadDescription());
+    }
+
+    [Fact]
+    public void Description_PaginationText_MatchesLivenessConstants()
+    {
+        var expectedSuffix =
+            $"Keyset pagination via limit/cursor ordered by symbol_id ASC; limit default {DeadCandidateLiveness.DefaultPageSize} max {DeadCandidateLiveness.MaxPageSize}.";
+        Assert.EndsWith(expectedSuffix, DeadCandidateLadder.ToolDescription, StringComparison.Ordinal);
+        Assert.EndsWith(expectedSuffix, ReadDescription(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParameterDescriptions_DocumentFilterSemantics()
+    {
+        var method = typeof(DeadCandidatesTool).GetMethod(
+            "LurpDeadCandidates",
+            BindingFlags.Public | BindingFlags.Instance)!;
+
+        string ReadParamDescription(string name)
+        {
+            var param = method.GetParameters().Single(p => p.Name == name);
+            var attr = param.GetCustomAttribute<DescriptionAttribute>();
+            Assert.NotNull(attr);
+            Assert.False(string.IsNullOrWhiteSpace(attr.Description));
+            return attr.Description;
+        }
+
+        Assert.Contains("assembly", ReadParamDescription("project"), StringComparison.OrdinalIgnoreCase);
+
+        var documentDesc = ReadParamDescription("document");
+        Assert.Contains("forward-slash", documentDesc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("relative", documentDesc, StringComparison.OrdinalIgnoreCase);
+
+        var kindDesc = ReadParamDescription("kind");
+        foreach (var kind in DeadCandidateLiveness.CandidateKinds)
+            Assert.Contains(kind, kindDesc, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Description_NamesExactlyTheSharedLiveKindsAndStrongProvenance()
     {
         var text = ReadDescription();

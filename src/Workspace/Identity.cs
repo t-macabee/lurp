@@ -99,6 +99,7 @@ public sealed record SnapshotIdentityInput(
     IReadOnlyDictionary<string, IReadOnlyCollection<string>> ProjectGraph,
     IReadOnlyDictionary<string, ImmutableArray<string>> MetadataReferenceIdentities,
     IReadOnlyDictionary<string, string> CompilationOptionsFingerprints,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> InternalsVisibleTo,
     IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments,
     string SdkVersion,
     string CompilerVersion,
@@ -122,6 +123,7 @@ public sealed record SnapshotIdentityInput(
                 StringComparer.Ordinal),
             new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
+            new Dictionary<string, IReadOnlyList<string>>(workspace.InternalsVisibleTo, StringComparer.Ordinal),
             new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
             workspace.SdkVersion,
             workspace.CompilerVersion.ToString(),
@@ -210,6 +212,17 @@ public static class SnapshotIdentity
         {
             WriteField(writer, "project", kvp.Key);
             WriteField(writer, "fingerprint", kvp.Value);
+        }
+
+        writer.Write("internalsVisibleTo");
+        writer.Write(input.InternalsVisibleTo.Count);
+        foreach (var kvp in input.InternalsVisibleTo.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            WriteField(writer, "project", kvp.Key);
+            writer.Write("targets");
+            writer.Write(kvp.Value.Count);
+            foreach (var target in kvp.Value.OrderBy(t => t, StringComparer.Ordinal))
+                writer.Write(target);
         }
 
         writer.Write("projectDocuments");

@@ -5,8 +5,6 @@ namespace Lurp.Handlers;
 
 internal static class DeadCandidatesHandler
 {
-    internal const int DefaultLimit = 50;
-
     public static void Run(string[] args, IOutputSink output)
     {
         var projectArg = HandlerBootstrap.GetArgValue(args, "--project=");
@@ -21,7 +19,7 @@ internal static class DeadCandidatesHandler
         if (!string.IsNullOrEmpty(kindArg) && !DeadCandidateLiveness.IsCandidateKind(kindArg))
             HandlerBootstrap.Fail($"ERROR: --kind must be one of: {DeadCandidateLiveness.CandidateKindsText} (case-insensitive). Got '{kindArg}'.");
 
-        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
+        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DeadCandidateLiveness.DefaultPageSize);
         if (limit > DeadCandidateLiveness.MaxPageSize)
             HandlerBootstrap.Fail($"ERROR: --limit must be <= {DeadCandidateLiveness.MaxPageSize}.");
 
@@ -51,34 +49,8 @@ internal static class DeadCandidatesHandler
             }
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
-
-            var filters = new
-            {
-                project = projectFilter,
-                document = documentFilter,
-                kind = kindFilter,
-                include_public = includePublic,
-                include_generated = includeGenerated,
-                include_tests = includeTests
-            };
-
-            var candidates = DeadCandidatePayload.Candidates(page);
-
-            var meta = new
-            {
-                snapshot_id = snapshotId,
-                filters,
-                incoming_edge_kinds_checked = DeadCandidateLiveness.LiveEdgeKinds,
-                type_use_edge_kinds_checked = DeadCandidateLiveness.TypeUseEdgeKinds,
-                live_provenance_rank = DeadCandidateLiveness.StrongProvenance,
-                uncertain_provenance = DeadCandidateLiveness.UncertainProvenance,
-                candidate_count = page.CandidateCount,
-                dead_count = page.DeadCount,
-                uncertain_count = page.UncertainCount,
-                unresolved_count = page.UnresolvedCount,
-                next_cursor = page.NextCursor,
-                freshness = FreshnessJson.Cheap(freshness)
-            };
+            var filters = DeadCandidatePayload.Filters(projectFilter, documentFilter, kindFilter, includePublic, includeGenerated, includeTests);
+            var freshnessJson = FreshnessJson.Cheap(freshness);
 
             switch (outputMode)
             {
@@ -93,30 +65,15 @@ internal static class DeadCandidatesHandler
                     break;
 
                 case OutputMode.Jsonl:
+                    var meta = DeadCandidatePayload.Meta(page, filters, snapshotId, freshnessJson);
                     output.WriteLine(JsonSerializer.Serialize(new { type = "meta", meta }, HandlerBootstrap.CompactJson));
-                    foreach (var c in candidates)
+                    foreach (var c in DeadCandidatePayload.Candidates(page))
                         output.WriteLine(JsonSerializer.Serialize(new { type = "candidate", candidate = c }, HandlerBootstrap.CompactJson));
                     break;
 
                 default:
-                    output.WriteLine(JsonSerializer.Serialize(
-                        new
-                        {
-                            snapshot_id = snapshotId,
-                            filters,
-                            incoming_edge_kinds_checked = DeadCandidateLiveness.LiveEdgeKinds,
-                            type_use_edge_kinds_checked = DeadCandidateLiveness.TypeUseEdgeKinds,
-                            live_provenance_rank = DeadCandidateLiveness.StrongProvenance,
-                            uncertain_provenance = DeadCandidateLiveness.UncertainProvenance,
-                            candidate_count = page.CandidateCount,
-                            dead_count = page.DeadCount,
-                            uncertain_count = page.UncertainCount,
-                            unresolved_count = page.UnresolvedCount,
-                            candidates,
-                            next_cursor = page.NextCursor,
-                            freshness = FreshnessJson.Cheap(freshness)
-                        },
-                        HandlerBootstrap.IndentedJson));
+                    var envelope = DeadCandidatePayload.Envelope(page, filters, snapshotId, freshnessJson);
+                    output.WriteLine(JsonSerializer.Serialize(envelope, HandlerBootstrap.IndentedJson));
                     break;
             }
         }, output);

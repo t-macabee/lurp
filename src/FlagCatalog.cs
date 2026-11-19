@@ -27,7 +27,7 @@ internal static class FlagCatalog
     public static readonly FlagSpec IncludePublic = new("--include-public", "Include public/protected symbols with no internal LIVE incoming edge as `uncertain_dead` (reason: `public_surface`). Default excludes them from `proved_dead`.");
 
     // Modes that accept --include-tests: dead-candidates.
-    public static readonly FlagSpec IncludeTests = new("--include-tests", $"Include test-project symbols (a project that references a test framework: {TestFrameworks.FrameworkAssembliesText}) with no LIVE incoming edge as `uncertain` (reason: `test_harness`). Default excludes them. Without it, test helpers reached only through xUnit reflection discovery would all appear dead.");
+    public static readonly FlagSpec IncludeTests = new("--include-tests", $"Include test-project symbols (a project that references a test framework: {TestFrameworks.FrameworkAssembliesText}) with no LIVE incoming edge as `uncertain` (reason: `test_harness`). Default excludes them. Without it, test helpers reached only by a test framework would all appear dead.");
 
     // Modes that accept --cursor=: outline, search, impact, context, get-annotations, diagnostics, grep, and dead-candidates.
     public static readonly FlagSpec Cursor = new("--cursor=", "Continue from a previous page's `next_cursor`.", "token");

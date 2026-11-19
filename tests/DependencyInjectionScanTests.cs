@@ -105,6 +105,10 @@ public sealed class DependencyInjectionScanTests : IntegrationTestBase
         using var store = OpenStore(DbPath);
         var site = Assert.Single(store.GetBindingIncompleteness(snapshotId), row => row.Reason == BindingIncompletenessReason.ConventionScan);
         Assert.Equal(("src/App/Registration.cs", 1), (site.DocumentPath, site.Count));
+        Assert.Contains(BindingIncompletenessReason.ConventionScan, BindingIncompletenessReason.IncrementalFrontierReasons);
+        Assert.DoesNotContain(BindingIncompletenessReason.ConventionScan, BindingIncompletenessReason.UnobservableReasons);
+        Assert.DoesNotContain(BindingIncompletenessReason.ExcludedDocument, BindingIncompletenessReason.IncrementalFrontierReasons);
+        Assert.DoesNotContain(BindingIncompletenessReason.ExcludedDocument, BindingIncompletenessReason.UnobservableReasons);
     }
 
     /// <summary>S02-F9, D28: <c>AddClasses(publicOnly: false)</c> with no lifetime call also selects internal classes.</summary>

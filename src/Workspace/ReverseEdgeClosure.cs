@@ -33,7 +33,7 @@ internal sealed class ReverseEdgeClosure(SqliteIndexStore store, string gitRoot)
         {
             if (record.DocumentPath == null)
                 continue;
-            if (!BindingIncompletenessReason.UnobservableReasons.Contains(record.Reason))
+            if (!BindingIncompletenessReason.IncrementalFrontierReasons.Contains(record.Reason))
                 continue;
             if (!visitedPaths.Add(record.DocumentPath))
                 continue;

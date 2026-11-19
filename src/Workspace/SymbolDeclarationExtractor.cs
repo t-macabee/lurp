@@ -32,6 +32,11 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
     // write is_implicitly_declared for them.
     private readonly HashSet<IMethodSymbol> _extensionImplementations = new(SymbolEqualityComparer.Default);
 
+    // D48: members declared in the compilation that implement (implicitly or explicitly)
+    // a member of an interface declared outside the compilation. Built once per ExtractAll
+    // across every named type in the compilation so full and incremental runs write the same metadata.
+    private readonly HashSet<ISymbol> _externalInterfaceImplementations = new(SymbolEqualityComparer.Default);
+
     // Per-document cache for DeriveGeneratorIdentity so a generated file with many symbols
     // is scanned once per extraction pass.
     private readonly Dictionary<DocumentId, string?> _generatorIdentities = new();
@@ -56,10 +61,30 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         var results = new List<SymbolDeclaration>();
 
         BuildExtensionImplementationMaps();
+        BuildExternalInterfaceImplementations();
 
         foreach (var typeSymbol in ExtractionUtils.GetNamespaceTypeMembers(context.Compilation.Assembly.GlobalNamespace)) ExtractTypeDeclarations(typeSymbol, results);
 
         return results;
+    }
+
+    private void BuildExternalInterfaceImplementations()
+    {
+        foreach (var typeSymbol in ExtractionUtils.GetAllNamedTypes(context.Compilation.Assembly.GlobalNamespace))
+        {
+            foreach (var iface in typeSymbol.AllInterfaces)
+            {
+                if (!ExtractionUtils.IsOutsideCompilation(iface.OriginalDefinition, context.Compilation))
+                    continue;
+
+                foreach (var member in iface.GetMembers())
+                {
+                    var implementation = typeSymbol.FindImplementationForInterfaceMember(member);
+                    if (implementation != null && !ExtractionUtils.IsOutsideCompilation(implementation.OriginalDefinition, context.Compilation))
+                        _externalInterfaceImplementations.Add(implementation.OriginalDefinition);
+                }
+            }
+        }
     }
 
     private void BuildExtensionImplementationMaps()
@@ -120,7 +145,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
 
         var fqn = BuildFullyQualifiedName(symbol);
         var kind = MapKind(symbol);
-        var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors, _extensionImplementations);
+        var metadataJson = BuildMetadataJson(symbol, context.Compilation, _entryPointMethod, _extensionImplementationAccessors, _extensionImplementations, _externalInterfaceImplementations);
 
         var symbolId = new SymbolId(docCommentId, context.AssemblyIdentity, fqn);
         var isPartial = symbol is INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 1 };
@@ -210,7 +235,13 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         };
     }
 
-    private static string? BuildMetadataJson(ISymbol symbol, Compilation compilation, IMethodSymbol? entryPointMethod, Dictionary<IMethodSymbol, IMethodSymbol> extensionImplementationAccessors, HashSet<IMethodSymbol> extensionImplementations)
+    private static string? BuildMetadataJson(
+        ISymbol symbol,
+        Compilation compilation,
+        IMethodSymbol? entryPointMethod,
+        Dictionary<IMethodSymbol, IMethodSymbol> extensionImplementationAccessors,
+        HashSet<IMethodSymbol> extensionImplementations,
+        HashSet<ISymbol> externalInterfaceImplementations)
     {
         var metadata = new Dictionary<string, object?>();
 
@@ -229,6 +260,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsStatic] = method.IsStatic;
                 metadata[SymbolMetadataKeys.IsAsync] = method.IsAsync;
                 metadata[SymbolMetadataKeys.Accessibility] = method.DeclaredAccessibility.ToString();
+                metadata[SymbolMetadataKeys.EffectiveAccessibility] = ComputeEffectiveAccessibility(method).ToString();
                 metadata[SymbolMetadataKeys.Arity] = method.Arity;
                 metadata[SymbolMetadataKeys.IsExtensionMethod] = method.IsExtensionMethod;
                 metadata[SymbolMetadataKeys.Signature] = method.ToDisplayString(SignatureFormat);
@@ -247,8 +279,8 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                     if (!string.IsNullOrEmpty(associatedId))
                         metadata[SymbolMetadataKeys.AssociatedSymbol] = associatedId;
                 }
-                if (ImplementsExternalInterface(compilation, method))
-                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
+                if (ImplementsExternalMember(compilation, method, externalInterfaceImplementations))
+                    metadata[SymbolMetadataKeys.ImplementsExternalMember] = true;
                 break;
             case INamedTypeSymbol type:
                 metadata[SymbolMetadataKeys.TypeKind] = type.TypeKind.ToString();
@@ -256,6 +288,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsStatic] = type.IsStatic;
                 metadata[SymbolMetadataKeys.IsRecord] = type.IsRecord;
                 metadata[SymbolMetadataKeys.Accessibility] = type.DeclaredAccessibility.ToString();
+                metadata[SymbolMetadataKeys.EffectiveAccessibility] = ComputeEffectiveAccessibility(type).ToString();
                 metadata[SymbolMetadataKeys.Arity] = type.Arity;
                 metadata[SymbolMetadataKeys.BaseType] = type.TypeKind == TypeKind.Interface || type.BaseType == null
                     ? null
@@ -278,9 +311,10 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsReadOnly] = prop.IsReadOnly;
                 metadata[SymbolMetadataKeys.IsWriteOnly] = prop.IsWriteOnly;
                 metadata[SymbolMetadataKeys.Accessibility] = prop.DeclaredAccessibility.ToString();
+                metadata[SymbolMetadataKeys.EffectiveAccessibility] = ComputeEffectiveAccessibility(prop).ToString();
                 metadata[SymbolMetadataKeys.Signature] = prop.ToDisplayString(SignatureFormat);
-                if (ImplementsExternalInterface(compilation, prop))
-                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
+                if (ImplementsExternalMember(compilation, prop, externalInterfaceImplementations))
+                    metadata[SymbolMetadataKeys.ImplementsExternalMember] = true;
                 break;
             case IFieldSymbol field:
                 metadata[SymbolMetadataKeys.ReturnType] = field.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -289,6 +323,7 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsConst] = field.IsConst;
                 metadata[SymbolMetadataKeys.IsVolatile] = field.IsVolatile;
                 metadata[SymbolMetadataKeys.Accessibility] = field.DeclaredAccessibility.ToString();
+                metadata[SymbolMetadataKeys.EffectiveAccessibility] = ComputeEffectiveAccessibility(field).ToString();
                 break;
             case IEventSymbol evt:
                 metadata[SymbolMetadataKeys.ReturnType] = evt.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -297,9 +332,10 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
                 metadata[SymbolMetadataKeys.IsOverride] = evt.IsOverride;
                 metadata[SymbolMetadataKeys.IsStatic] = evt.IsStatic;
                 metadata[SymbolMetadataKeys.Accessibility] = evt.DeclaredAccessibility.ToString();
+                metadata[SymbolMetadataKeys.EffectiveAccessibility] = ComputeEffectiveAccessibility(evt).ToString();
                 metadata[SymbolMetadataKeys.Signature] = evt.ToDisplayString(SignatureFormat);
-                if (ImplementsExternalInterface(compilation, evt))
-                    metadata[SymbolMetadataKeys.ImplementsExternalInterface] = true;
+                if (ImplementsExternalMember(compilation, evt, externalInterfaceImplementations))
+                    metadata[SymbolMetadataKeys.ImplementsExternalMember] = true;
                 break;
         }
 
@@ -315,6 +351,33 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
             : null;
     }
 
+    /// <summary>
+    ///     D168.4 / C# §7.5.3: the meet of a symbol's declared accessibility with the declared
+    ///     accessibility of every containing type up the chain.
+    /// </summary>
+    private static Accessibility ComputeEffectiveAccessibility(ISymbol symbol)
+    {
+        var effective = symbol.DeclaredAccessibility;
+        for (var container = symbol.ContainingType; container != null; container = container.ContainingType)
+            effective = MeetAccessibility(effective, container.DeclaredAccessibility);
+        return effective;
+    }
+
+    private static Accessibility MeetAccessibility(Accessibility a, Accessibility b)
+    {
+        if (a == b) return a;
+        if (a == Accessibility.Private || b == Accessibility.Private) return Accessibility.Private;
+        if (a == Accessibility.NotApplicable) return b;
+        if (b == Accessibility.NotApplicable) return a;
+        if (a == Accessibility.Public) return b;
+        if (b == Accessibility.Public) return a;
+        if (a == Accessibility.ProtectedAndInternal || b == Accessibility.ProtectedAndInternal) return Accessibility.ProtectedAndInternal;
+        if (a == Accessibility.ProtectedOrInternal) return b;
+        if (b == Accessibility.ProtectedOrInternal) return a;
+        // Remaining pair: Internal and Protected.
+        return Accessibility.ProtectedAndInternal;
+    }
+
     private static string? AccessorKindOf(IMethodSymbol method)
     {
         return method.MethodKind switch
@@ -328,8 +391,11 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         };
     }
 
-    private static bool ImplementsExternalInterface(Compilation compilation, ISymbol member)
+    private static bool ImplementsExternalMember(Compilation compilation, ISymbol member, HashSet<ISymbol> externalInterfaceImplementations)
     {
+        if (externalInterfaceImplementations.Contains(member.OriginalDefinition))
+            return true;
+
         IEnumerable<ISymbol> implementations = member switch
         {
             IMethodSymbol method => method.ExplicitInterfaceImplementations.AsEnumerable(),
@@ -342,6 +408,14 @@ internal sealed partial class SymbolDeclarationExtractor(SymbolExtractionContext
         foreach (var implemented in implementations)
         {
             if (ExtractionUtils.IsOutsideCompilation(implemented, compilation))
+                return true;
+        }
+
+        for (var overridden = ExtractionUtils.OverriddenMember(member);
+             overridden != null;
+             overridden = ExtractionUtils.OverriddenMember(overridden))
+        {
+            if (ExtractionUtils.IsOutsideCompilation(overridden, compilation))
                 return true;
         }
 

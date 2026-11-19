@@ -667,7 +667,7 @@ public async Task Status_Cheap_WhenNoSolution_ReturnsStatMethod()
         foreach (var part in new[]
                  {
                      "document_versions", "metadata_reference_identities", "project_documents", "project_graph",
-                     "compilation_options_fingerprints", "assembly_names"
+                     "compilation_options_fingerprints", "assembly_names", "internals_visible_to"
                  })
             if (fullManifest.TryGetProperty(part, out _))
                 presentParts.Add(part);

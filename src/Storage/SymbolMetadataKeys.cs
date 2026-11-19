@@ -9,6 +9,7 @@ public static class SymbolMetadataKeys
     public const string IsStatic = "is_static";
     public const string IsAsync = "is_async";
     public const string Accessibility = "accessibility";
+    public const string EffectiveAccessibility = "effective_accessibility";
     public const string Arity = "arity";
     public const string IsExtensionMethod = "is_extension_method";
     public const string Signature = "signature";
@@ -27,6 +28,6 @@ public static class SymbolMetadataKeys
     public const string AccessorKind = "accessor_kind";
     public const string IsStaticConstructor = "is_static_constructor";
     public const string IsImplicitlyDeclared = "is_implicitly_declared";
-    public const string ImplementsExternalInterface = "implements_external_interface";
+    public const string ImplementsExternalMember = "implements_external_member";
     public const string ContainsEntryPoint = "contains_entry_point";
 }

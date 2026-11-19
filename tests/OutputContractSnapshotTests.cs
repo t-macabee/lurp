@@ -36,6 +36,8 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.compilation_options_fingerprints",
         // SnapshotManifest.AssemblyNames: keys are project names.
         "$.assembly_names",
+        // SnapshotManifest.InternalsVisibleTo: keys are project names.
+        "$.internals_visible_to",
         // SnapshotCompleteness.ActiveTfms: keys are target framework monikers ("net8.0").
         "$.completeness.active_tfms",
         // SnapshotManifest.DocumentVersions: keys are document paths ("App/ShapeCallers.cs").
@@ -59,6 +61,8 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.manifest.project_documents",
         // SnapshotManifest.AssemblyNames: keys are project names.
         "$.manifest.assembly_names",
+        // SnapshotManifest.InternalsVisibleTo: keys are project names.
+        "$.manifest.internals_visible_to",
         // SnapshotManifest.ProjectGraph: keys are project names.
         "$.manifest.project_graph",
         // SnapshotManifest.TargetFrameworks: keys are project names.
@@ -78,6 +82,8 @@ public sealed class OutputContractSnapshotTests(OutputContractFixture fixture) :
         "$.detail.manifest.project_documents",
         // SnapshotManifest.AssemblyNames: keys are project names.
         "$.detail.manifest.assembly_names",
+        // SnapshotManifest.InternalsVisibleTo: keys are project names.
+        "$.detail.manifest.internals_visible_to",
         // SnapshotCompleteness.ActiveTfms: keys are target framework monikers ("net8.0").
         "$.detail.manifest.completeness.active_tfms",
         // SnapshotManifestJson.Render metadata_reference_counts (sections=references off): keys are project names.

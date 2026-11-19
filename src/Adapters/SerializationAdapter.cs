@@ -13,6 +13,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
     private const string NewtonsoftJsonProperty = "Newtonsoft.Json.JsonPropertyAttribute";
     private const string NewtonsoftJsonIgnore = "Newtonsoft.Json.JsonIgnoreAttribute";
 
+    private const string DataContractAttribute = "System.Runtime.Serialization.DataContractAttribute";
     private const string DataContractDataMember = "System.Runtime.Serialization.DataMemberAttribute";
     private const string DataContractIgnoreDataMember = "System.Runtime.Serialization.IgnoreDataMemberAttribute";
 
@@ -34,6 +35,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
             ExtractJsonSerializable(type, context, edges);
 
+            var hasDataContract = HasAttribute(type, DataContractAttribute);
             foreach (var member in type.GetMembers())
             {
                 if (member is not (IPropertySymbol or IFieldSymbol { IsImplicitlyDeclared: false }))
@@ -42,7 +44,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
                 if (!context.IsSymbolInScope(member))
                     continue;
 
-                ExtractMemberContracts(member, context, annotations);
+                ExtractMemberContracts(member, hasDataContract, context, annotations);
             }
         }
 
@@ -99,6 +101,7 @@ public sealed class SerializationAdapter : IFrameworkAdapter
 
     private static void ExtractMemberContracts(
         ISymbol member,
+        bool hasDataContract,
         AdapterExtractionContext context,
         List<AnnotationRecord> annotations)
     {
@@ -106,11 +109,15 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         if (memberId == null)
             return;
 
+        var attributes = member.GetAttributes();
+        var stjVisible = member.DeclaredAccessibility == Accessibility.Public ||
+                         attributes.Any(static a => a.AttributeClass != null && FrameworkTypes.Is(a.AttributeClass, StjJsonInclude));
+
         (int Rank, string Value) stj = default;
         (int Rank, string Value) newtonsoft = default;
         (int Rank, string Value) dataContract = default;
 
-        foreach (var attr in member.GetAttributes())
+        foreach (var attr in attributes)
         {
             var attrClass = attr.AttributeClass;
             if (attrClass == null)
@@ -119,12 +126,14 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             if (FrameworkTypes.Is(attrClass, StjJsonIgnore))
             {
                 var condition = GetNamedInt(attr, "Condition") ?? JsonIgnoreConditionAlways;
-                var candidate = condition == JsonIgnoreConditionAlways ? (3, "ignored") : (1, "included");
-                stj = PickHigher(stj, candidate);
+                if (condition == JsonIgnoreConditionAlways)
+                    stj = PickHigher(stj, (3, "ignored"));
+                else if (stjVisible)
+                    stj = PickHigher(stj, (1, "included"));
             }
             else if (FrameworkTypes.Is(attrClass, StjJsonPropertyName))
             {
-                if (attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string name)
+                if (stjVisible && attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is string name)
                     stj = PickHigher(stj, (2, $"name={name}"));
             }
             else if (FrameworkTypes.Is(attrClass, StjJsonInclude))
@@ -148,9 +157,12 @@ public sealed class SerializationAdapter : IFrameworkAdapter
             }
             else if (FrameworkTypes.Is(attrClass, DataContractDataMember))
             {
-                var name = GetNamedString(attr, "Name");
-                var candidate = name != null ? (2, $"name={name}") : (1, "included");
-                dataContract = PickHigher(dataContract, candidate);
+                if (hasDataContract)
+                {
+                    var name = GetNamedString(attr, "Name");
+                    var candidate = name != null ? (2, $"name={name}") : (1, "included");
+                    dataContract = PickHigher(dataContract, candidate);
+                }
             }
         }
 
@@ -165,6 +177,16 @@ public sealed class SerializationAdapter : IFrameworkAdapter
         var docPath = context.LocationResolver.Resolve(member).path;
         foreach (var value in distinctValues)
             annotations.Add(new AnnotationRecord(memberId, "serialization_contract", value, docPath));
+    }
+
+    private static bool HasAttribute(ISymbol symbol, string metadataName)
+    {
+        foreach (var attr in symbol.GetAttributes())
+        {
+            if (attr.AttributeClass != null && FrameworkTypes.Is(attr.AttributeClass, metadataName))
+                return true;
+        }
+        return false;
     }
 
     private static (int Rank, string Value) PickHigher((int Rank, string Value) current, (int Rank, string Value) candidate)

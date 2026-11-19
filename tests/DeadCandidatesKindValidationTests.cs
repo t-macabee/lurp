@@ -12,7 +12,7 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
     {
         CreateProject("DeadProj", new Dictionary<string, string>
         {
-            ["Models.cs"] = "namespace DeadProj { public class Foo { public void Bar() {} } }"
+            ["Models.cs"] = "namespace DeadProj { public class Foo { public void Bar() {} } internal class Helper { internal int UnusedField; internal void UnusedMethod() {} } }"
         });
         return await RunFullIndexAsync(DbPath);
     }
@@ -54,11 +54,25 @@ public sealed class DeadCandidatesKindValidationTests : IntegrationTestBase
         Assert.Null(cliResult.Failure);
         Assert.False(string.IsNullOrEmpty(cliResult.Stdout));
 
+        using (var cliDocument = JsonDocument.Parse(cliResult.Stdout))
+        {
+            var cliCandidates = cliDocument.RootElement.GetProperty("candidates");
+            Assert.Equal(JsonValueKind.Array, cliCandidates.ValueKind);
+            Assert.True(cliCandidates.GetArrayLength() > 0);
+            foreach (var item in cliCandidates.EnumerateArray())
+                Assert.Equal("Method", item.GetProperty("kind").GetString());
+        }
+
         await using var session = CreateSession();
         var tool = new DeadCandidatesTool(session);
         var json = tool.LurpDeadCandidates(kind: "method");
         using var document = JsonDocument.Parse(json);
         Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        var mcpCandidates = document.RootElement.GetProperty("candidates");
+        Assert.Equal(JsonValueKind.Array, mcpCandidates.ValueKind);
+        Assert.True(mcpCandidates.GetArrayLength() > 0);
+        foreach (var item in mcpCandidates.EnumerateArray())
+            Assert.Equal("Method", item.GetProperty("kind").GetString());
     }
 
     [Fact]

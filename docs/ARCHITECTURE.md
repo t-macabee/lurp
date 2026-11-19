@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v44, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v6<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -55,7 +55,7 @@ gets other snapshot ids), the .NET SDK and Roslyn compiler versions,
 `ExtractorVersion` and each extractor and adapter version, the per-project
 target frameworks, assembly names, project references, metadata reference
 identities, compilation-options fingerprints (including the language version and
-preprocessor symbols) and project document lists, each document's path and
+preprocessor symbols), per-project `InternalsVisibleTo` targets and project document lists, each document's path and
 content hash, and the skipped adapters. A change to any of those inputs gives a
 new snapshot id. The latest snapshot of a workspace is the one that the most
 recent successful index run built or reused.
@@ -124,7 +124,7 @@ capsule path hops list up to 20 sites with `site_count`.
 | Dependency Injection | `Registers` for every MS.DI registration form (`Add*`, `TryAdd*`, keyed, `ServiceDescriptor`): service → implementation and registering member → implementation. A factory, an instance of an interface or abstract type and a `Type` value that is not a `typeof` give the runtime-unknown node. Hosted services, options and an external `IServiceCollection` method give the runtime-unknown node and the named type with `runtime_unknown`. A Scrutor scan `FromAssemblyOf<T>()` → `AddClasses()` → `AsImplementedInterfaces()` gives interface → class with `convention`; any other scan gives a `convention:assembly_scan:<assembly>` placeholder. |
 | MediatR | `Handles` (request/notification → the method that implements the handler interface's `Handle`, including explicit, inherited and overloaded implementations) |
 | EF Core | `MapsTo` (entity, `DbSet`, configuration); navigation `References` (context or configuration → related entity); `ef_query_filter_constraint` and `ef_unique_index_constraint` (only `IsUnique`) on the entity; same facts in `OnModelCreating` and `Configure` |
-| Serialization | `serialization_contract` annotation per member (`name=<wire name>`, `ignored`, `included`) from System.Text.Json, Newtonsoft.Json and DataContract attributes; `JsonSerializable` context → type `References` |
+| Serialization | `serialization_contract` annotation per member (`name=<wire name>`, `ignored`, `included`) from System.Text.Json, Newtonsoft.Json and DataContract attributes, writing a value only when the library reads the attribute (`DataMember` on a `[DataContract]` type; STJ name or condition on a non-public member only with `JsonInclude`); `JsonSerializable` context → type `References` |
 | Test | `TestedBy` (production type → covering test method; test methods: an attribute that is or derives from a framework test attribute, list in `TestFrameworks`; follows the test body, test-assembly helpers, class constructors, initializers and setup methods) |
 
 ### 4.2 Evidence ladder

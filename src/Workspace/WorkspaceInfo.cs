@@ -1,6 +1,7 @@
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -36,6 +37,8 @@ public sealed class WorkspaceInfo
         TargetFrameworks = BuildTargetFrameworkMap(solution, gitRoot, sink);
 
         AssemblyNames = BuildAssemblyNameMap(solution);
+
+        InternalsVisibleTo = BuildInternalsVisibleToMap(solution);
 
         ProjectDocuments = projectDocuments.ToDictionary(
             kvp => kvp.Key,
@@ -90,6 +93,13 @@ public sealed class WorkspaceInfo
     ///     <c>AssemblyName</c> is set in the project file (B18).
     /// </summary>
     public IReadOnlyDictionary<string, string> AssemblyNames { get; }
+
+    /// <summary>
+    ///     D48 / D171: per-project sorted, distinct <c>InternalsVisibleTo</c> target assembly
+    ///     simple names (or <c>*</c> when a target cannot be named from syntax). A project with
+    ///     no target has no entry.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> InternalsVisibleTo { get; }
 
     public IReadOnlyDictionary<string, ImmutableHashSet<string>> ProjectGraph { get; }
 
@@ -302,6 +312,84 @@ public sealed class WorkspaceInfo
         foreach (var project in solution.Projects)
             map[project.Name] = project.AssemblyName;
         return map;
+    }
+
+    private static Dictionary<string, IReadOnlyList<string>> BuildInternalsVisibleToMap(Solution solution)
+    {
+        var targetsByProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var project in solution.Projects)
+        {
+            HashSet<string>? targets = null;
+            var parseOptions = project.ParseOptions as CSharpParseOptions;
+
+            foreach (var document in project.Documents)
+            {
+                string? text = null;
+                if (document.FilePath != null && File.Exists(document.FilePath))
+                {
+                    var rawBytes = File.ReadAllBytes(document.FilePath);
+                    if (!TryNormalizeSourceBytes(rawBytes, out var normalized))
+                        continue;
+                    text = Encoding.UTF8.GetString(normalized);
+                }
+                else
+                {
+                    text = document.GetTextAsync().GetAwaiter().GetResult().ToString();
+                }
+
+                if (!text.Contains("InternalsVisibleTo", StringComparison.Ordinal))
+                    continue;
+
+                var tree = CSharpSyntaxTree.ParseText(text, parseOptions);
+                if (tree.GetRoot() is not CompilationUnitSyntax root)
+                    continue;
+
+                foreach (var attrList in root.AttributeLists)
+                {
+                    if (attrList.Target is null || !string.Equals(attrList.Target.Identifier.ValueText, "assembly", StringComparison.Ordinal))
+                        continue;
+
+                    foreach (var attr in attrList.Attributes)
+                    {
+                        var lastName = attr.Name switch
+                        {
+                            SimpleNameSyntax simple => simple.Identifier.ValueText,
+                            QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+                            AliasQualifiedNameSyntax aliasQualified => aliasQualified.Name.Identifier.ValueText,
+                            _ => null
+                        };
+
+                        if (lastName is not ("InternalsVisibleTo" or "InternalsVisibleToAttribute"))
+                            continue;
+
+                        string target = "*";
+                        var firstArg = attr.ArgumentList?.Arguments.FirstOrDefault();
+                        if (firstArg?.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
+                        {
+                            var raw = literal.Token.ValueText;
+                            var comma = raw.IndexOf(',', StringComparison.Ordinal);
+                            var simpleName = (comma >= 0 ? raw[..comma] : raw).Trim();
+                            if (simpleName.Length > 0)
+                                target = simpleName;
+                        }
+
+                        if (targets == null && !targetsByProject.TryGetValue(project.Name, out targets))
+                        {
+                            targets = new HashSet<string>(StringComparer.Ordinal);
+                            targetsByProject[project.Name] = targets;
+                        }
+
+                        targets.Add(target);
+                    }
+                }
+            }
+        }
+
+        return targetsByProject.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlyList<string>)[.. kvp.Value.OrderBy(static t => t, StringComparer.Ordinal)],
+            StringComparer.Ordinal);
     }
 
     private static Dictionary<string, ImmutableHashSet<string>> BuildProjectGraph(Solution solution)

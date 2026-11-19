@@ -355,6 +355,7 @@ cli:dead-candidates:json $.candidates[].declaration_span object
 cli:dead-candidates:json $.candidates[].declaration_span.end_line number
 cli:dead-candidates:json $.candidates[].declaration_span.start_line number
 cli:dead-candidates:json $.candidates[].document_path string
+cli:dead-candidates:json $.candidates[].effective_accessibility string
 cli:dead-candidates:json $.candidates[].fqn string
 cli:dead-candidates:json $.candidates[].incoming_edge_summary object
 cli:dead-candidates:json $.candidates[].incoming_edge_summary.kind_breakdown object
@@ -403,7 +404,7 @@ cli:dead-candidates:json $.incoming_edge_kinds_checked array
 cli:dead-candidates:json $.incoming_edge_kinds_checked[] string
 cli:dead-candidates:json $.live_provenance_rank array
 cli:dead-candidates:json $.live_provenance_rank[] string
-cli:dead-candidates:json $.next_cursor null
+cli:dead-candidates:json $.next_cursor string
 cli:dead-candidates:json $.snapshot_id string
 cli:dead-candidates:json $.type_use_edge_kinds_checked array
 cli:dead-candidates:json $.type_use_edge_kinds_checked[] string
@@ -419,6 +420,7 @@ cli:dead-candidates:jsonl:candidate $.candidate.declaration_span object
 cli:dead-candidates:jsonl:candidate $.candidate.declaration_span.end_line number
 cli:dead-candidates:jsonl:candidate $.candidate.declaration_span.start_line number
 cli:dead-candidates:jsonl:candidate $.candidate.document_path string
+cli:dead-candidates:jsonl:candidate $.candidate.effective_accessibility string
 cli:dead-candidates:jsonl:candidate $.candidate.fqn string
 cli:dead-candidates:jsonl:candidate $.candidate.incoming_edge_summary object
 cli:dead-candidates:jsonl:candidate $.candidate.incoming_edge_summary.kind_breakdown object
@@ -471,7 +473,7 @@ cli:dead-candidates:jsonl:meta $.meta.incoming_edge_kinds_checked array
 cli:dead-candidates:jsonl:meta $.meta.incoming_edge_kinds_checked[] string
 cli:dead-candidates:jsonl:meta $.meta.live_provenance_rank array
 cli:dead-candidates:jsonl:meta $.meta.live_provenance_rank[] string
-cli:dead-candidates:jsonl:meta $.meta.next_cursor null
+cli:dead-candidates:jsonl:meta $.meta.next_cursor string
 cli:dead-candidates:jsonl:meta $.meta.snapshot_id string
 cli:dead-candidates:jsonl:meta $.meta.type_use_edge_kinds_checked array
 cli:dead-candidates:jsonl:meta $.meta.type_use_edge_kinds_checked[] string
@@ -599,6 +601,7 @@ cli:find-symbol:json $.locations[].start_line number
 cli:find-symbol:json $.metadata object
 cli:find-symbol:json $.metadata.accessibility string
 cli:find-symbol:json $.metadata.arity number
+cli:find-symbol:json $.metadata.effective_accessibility string
 cli:find-symbol:json $.metadata.is_abstract boolean
 cli:find-symbol:json $.metadata.is_async boolean
 cli:find-symbol:json $.metadata.is_extension_method boolean
@@ -637,6 +640,7 @@ cli:find-symbol:json[type] $.metadata object
 cli:find-symbol:json[type] $.metadata.accessibility string
 cli:find-symbol:json[type] $.metadata.arity number
 cli:find-symbol:json[type] $.metadata.base_type string
+cli:find-symbol:json[type] $.metadata.effective_accessibility string
 cli:find-symbol:json[type] $.metadata.interfaces array
 cli:find-symbol:json[type] $.metadata.interfaces[] string
 cli:find-symbol:json[type] $.metadata.is_abstract boolean
@@ -677,6 +681,7 @@ cli:find-symbol:jsonl:symbol $.symbol.locations[].start_line number
 cli:find-symbol:jsonl:symbol $.symbol.metadata object
 cli:find-symbol:jsonl:symbol $.symbol.metadata.accessibility string
 cli:find-symbol:jsonl:symbol $.symbol.metadata.arity number
+cli:find-symbol:jsonl:symbol $.symbol.metadata.effective_accessibility string
 cli:find-symbol:jsonl:symbol $.symbol.metadata.is_abstract boolean
 cli:find-symbol:jsonl:symbol $.symbol.metadata.is_async boolean
 cli:find-symbol:jsonl:symbol $.symbol.metadata.is_extension_method boolean
@@ -767,6 +772,7 @@ cli:get-symbol:json $.locations[].start_line number
 cli:get-symbol:json $.metadata object
 cli:get-symbol:json $.metadata.accessibility string
 cli:get-symbol:json $.metadata.arity number
+cli:get-symbol:json $.metadata.effective_accessibility string
 cli:get-symbol:json $.metadata.is_abstract boolean
 cli:get-symbol:json $.metadata.is_async boolean
 cli:get-symbol:json $.metadata.is_extension_method boolean
@@ -805,6 +811,7 @@ cli:get-symbol:json[type] $.metadata object
 cli:get-symbol:json[type] $.metadata.accessibility string
 cli:get-symbol:json[type] $.metadata.arity number
 cli:get-symbol:json[type] $.metadata.base_type string
+cli:get-symbol:json[type] $.metadata.effective_accessibility string
 cli:get-symbol:json[type] $.metadata.interfaces array
 cli:get-symbol:json[type] $.metadata.interfaces[] string
 cli:get-symbol:json[type] $.metadata.is_abstract boolean
@@ -1004,6 +1011,7 @@ cli:index:export $.database_schema_version number
 cli:index:export $.document_versions object
 cli:index:export $.document_versions.{*} string
 cli:index:export $.extractor_version string
+cli:index:export $.internals_visible_to object
 cli:index:export $.metadata_reference_identities object
 cli:index:export $.metadata_reference_identities.{*} array
 cli:index:export $.metadata_reference_identities.{*}[] string
@@ -1287,6 +1295,7 @@ cli:status:json[default] $.manifest.database_schema_version number
 cli:status:json[default] $.manifest.document_count number
 cli:status:json[default] $.manifest.documents_note string
 cli:status:json[default] $.manifest.extractor_version string
+cli:status:json[default] $.manifest.internals_visible_to object
 cli:status:json[default] $.manifest.metadata_reference_counts object
 cli:status:json[default] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[default] $.manifest.metadata_reference_note string
@@ -1360,6 +1369,7 @@ cli:status:json[detail=all] $.manifest.database_schema_version number
 cli:status:json[detail=all] $.manifest.document_versions object
 cli:status:json[detail=all] $.manifest.document_versions.{*} string
 cli:status:json[detail=all] $.manifest.extractor_version string
+cli:status:json[detail=all] $.manifest.internals_visible_to object
 cli:status:json[detail=all] $.manifest.metadata_reference_identities object
 cli:status:json[detail=all] $.manifest.metadata_reference_identities.{*} array
 cli:status:json[detail=all] $.manifest.metadata_reference_identities.{*}[] string
@@ -1432,6 +1442,7 @@ cli:status:json[detail=completeness] $.manifest.database_schema_version number
 cli:status:json[detail=completeness] $.manifest.document_count number
 cli:status:json[detail=completeness] $.manifest.documents_note string
 cli:status:json[detail=completeness] $.manifest.extractor_version string
+cli:status:json[detail=completeness] $.manifest.internals_visible_to object
 cli:status:json[detail=completeness] $.manifest.metadata_reference_counts object
 cli:status:json[detail=completeness] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[detail=completeness] $.manifest.metadata_reference_note string
@@ -1499,6 +1510,7 @@ cli:status:json[detail=documents] $.manifest.database_schema_version number
 cli:status:json[detail=documents] $.manifest.document_versions object
 cli:status:json[detail=documents] $.manifest.document_versions.{*} string
 cli:status:json[detail=documents] $.manifest.extractor_version string
+cli:status:json[detail=documents] $.manifest.internals_visible_to object
 cli:status:json[detail=documents] $.manifest.metadata_reference_counts object
 cli:status:json[detail=documents] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[detail=documents] $.manifest.metadata_reference_note string
@@ -1566,6 +1578,7 @@ cli:status:json[detail=references] $.manifest.database_schema_version number
 cli:status:json[detail=references] $.manifest.document_count number
 cli:status:json[detail=references] $.manifest.documents_note string
 cli:status:json[detail=references] $.manifest.extractor_version string
+cli:status:json[detail=references] $.manifest.internals_visible_to object
 cli:status:json[detail=references] $.manifest.metadata_reference_identities object
 cli:status:json[detail=references] $.manifest.metadata_reference_identities.{*} array
 cli:status:json[detail=references] $.manifest.metadata_reference_identities.{*}[] string
@@ -1636,6 +1649,7 @@ cli:status:json[failed-snapshot] $.manifest.database_schema_version number
 cli:status:json[failed-snapshot] $.manifest.document_count number
 cli:status:json[failed-snapshot] $.manifest.documents_note string
 cli:status:json[failed-snapshot] $.manifest.extractor_version string
+cli:status:json[failed-snapshot] $.manifest.internals_visible_to object
 cli:status:json[failed-snapshot] $.manifest.metadata_reference_counts object
 cli:status:json[failed-snapshot] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[failed-snapshot] $.manifest.metadata_reference_note string
@@ -1703,6 +1717,7 @@ cli:status:json[failed-then-complete] $.manifest.database_schema_version number
 cli:status:json[failed-then-complete] $.manifest.document_count number
 cli:status:json[failed-then-complete] $.manifest.documents_note string
 cli:status:json[failed-then-complete] $.manifest.extractor_version string
+cli:status:json[failed-then-complete] $.manifest.internals_visible_to object
 cli:status:json[failed-then-complete] $.manifest.metadata_reference_counts object
 cli:status:json[failed-then-complete] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[failed-then-complete] $.manifest.metadata_reference_note string
@@ -1788,6 +1803,7 @@ cli:status:json[pinned] $.manifest.database_schema_version number
 cli:status:json[pinned] $.manifest.document_count number
 cli:status:json[pinned] $.manifest.documents_note string
 cli:status:json[pinned] $.manifest.extractor_version string
+cli:status:json[pinned] $.manifest.internals_visible_to object
 cli:status:json[pinned] $.manifest.metadata_reference_counts object
 cli:status:json[pinned] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[pinned] $.manifest.metadata_reference_note string
@@ -1855,6 +1871,7 @@ cli:status:json[snapshot-only] $.manifest.database_schema_version number
 cli:status:json[snapshot-only] $.manifest.document_count number
 cli:status:json[snapshot-only] $.manifest.documents_note string
 cli:status:json[snapshot-only] $.manifest.extractor_version string
+cli:status:json[snapshot-only] $.manifest.internals_visible_to object
 cli:status:json[snapshot-only] $.manifest.metadata_reference_counts object
 cli:status:json[snapshot-only] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[snapshot-only] $.manifest.metadata_reference_note string
@@ -1920,6 +1937,7 @@ cli:status:json[stale-pin] $.manifest.database_schema_version number
 cli:status:json[stale-pin] $.manifest.document_count number
 cli:status:json[stale-pin] $.manifest.documents_note string
 cli:status:json[stale-pin] $.manifest.extractor_version string
+cli:status:json[stale-pin] $.manifest.internals_visible_to object
 cli:status:json[stale-pin] $.manifest.metadata_reference_counts object
 cli:status:json[stale-pin] $.manifest.metadata_reference_counts.{*} number
 cli:status:json[stale-pin] $.manifest.metadata_reference_note string
@@ -2292,6 +2310,7 @@ mcp:dead_candidates $.candidates[].declaration_span object
 mcp:dead_candidates $.candidates[].declaration_span.end_line number
 mcp:dead_candidates $.candidates[].declaration_span.start_line number
 mcp:dead_candidates $.candidates[].document_path string
+mcp:dead_candidates $.candidates[].effective_accessibility string
 mcp:dead_candidates $.candidates[].fqn string
 mcp:dead_candidates $.candidates[].incoming_edge_summary object
 mcp:dead_candidates $.candidates[].incoming_edge_summary.kind_breakdown object
@@ -2340,7 +2359,7 @@ mcp:dead_candidates $.incoming_edge_kinds_checked array
 mcp:dead_candidates $.incoming_edge_kinds_checked[] string
 mcp:dead_candidates $.live_provenance_rank array
 mcp:dead_candidates $.live_provenance_rank[] string
-mcp:dead_candidates $.next_cursor null
+mcp:dead_candidates $.next_cursor string
 mcp:dead_candidates $.pinned boolean
 mcp:dead_candidates $.snapshot_id string
 mcp:dead_candidates $.type_use_edge_kinds_checked array
@@ -2450,6 +2469,7 @@ mcp:find_symbol $.locations[].start_line number
 mcp:find_symbol $.metadata object
 mcp:find_symbol $.metadata.accessibility string
 mcp:find_symbol $.metadata.arity number
+mcp:find_symbol $.metadata.effective_accessibility string
 mcp:find_symbol $.metadata.is_abstract boolean
 mcp:find_symbol $.metadata.is_async boolean
 mcp:find_symbol $.metadata.is_extension_method boolean
@@ -2489,6 +2509,7 @@ mcp:find_symbol[type] $.metadata object
 mcp:find_symbol[type] $.metadata.accessibility string
 mcp:find_symbol[type] $.metadata.arity number
 mcp:find_symbol[type] $.metadata.base_type string
+mcp:find_symbol[type] $.metadata.effective_accessibility string
 mcp:find_symbol[type] $.metadata.interfaces array
 mcp:find_symbol[type] $.metadata.interfaces[] string
 mcp:find_symbol[type] $.metadata.is_abstract boolean
@@ -2603,6 +2624,7 @@ mcp:get_symbol[type] $.metadata object
 mcp:get_symbol[type] $.metadata.accessibility string
 mcp:get_symbol[type] $.metadata.arity number
 mcp:get_symbol[type] $.metadata.base_type string
+mcp:get_symbol[type] $.metadata.effective_accessibility string
 mcp:get_symbol[type] $.metadata.interfaces array
 mcp:get_symbol[type] $.metadata.interfaces[] string
 mcp:get_symbol[type] $.metadata.is_abstract boolean
@@ -2647,6 +2669,7 @@ mcp:get_symbol[view=all] $.locations[].start_line number
 mcp:get_symbol[view=all] $.metadata object
 mcp:get_symbol[view=all] $.metadata.accessibility string
 mcp:get_symbol[view=all] $.metadata.arity number
+mcp:get_symbol[view=all] $.metadata.effective_accessibility string
 mcp:get_symbol[view=all] $.metadata.is_abstract boolean
 mcp:get_symbol[view=all] $.metadata.is_async boolean
 mcp:get_symbol[view=all] $.metadata.is_extension_method boolean
@@ -2693,6 +2716,7 @@ mcp:get_symbol[view=source] $.locations[].start_line number
 mcp:get_symbol[view=source] $.metadata object
 mcp:get_symbol[view=source] $.metadata.accessibility string
 mcp:get_symbol[view=source] $.metadata.arity number
+mcp:get_symbol[view=source] $.metadata.effective_accessibility string
 mcp:get_symbol[view=source] $.metadata.is_abstract boolean
 mcp:get_symbol[view=source] $.metadata.is_async boolean
 mcp:get_symbol[view=source] $.metadata.is_extension_method boolean
@@ -2739,6 +2763,7 @@ mcp:get_symbol[view=summary] $.locations[].start_line number
 mcp:get_symbol[view=summary] $.metadata object
 mcp:get_symbol[view=summary] $.metadata.accessibility string
 mcp:get_symbol[view=summary] $.metadata.arity number
+mcp:get_symbol[view=summary] $.metadata.effective_accessibility string
 mcp:get_symbol[view=summary] $.metadata.is_abstract boolean
 mcp:get_symbol[view=summary] $.metadata.is_async boolean
 mcp:get_symbol[view=summary] $.metadata.is_extension_method boolean
@@ -3071,6 +3096,7 @@ mcp:status[sections=all] $.detail.manifest.database_schema_version number
 mcp:status[sections=all] $.detail.manifest.document_versions object
 mcp:status[sections=all] $.detail.manifest.document_versions.{*} string
 mcp:status[sections=all] $.detail.manifest.extractor_version string
+mcp:status[sections=all] $.detail.manifest.internals_visible_to object
 mcp:status[sections=all] $.detail.manifest.metadata_reference_counts object
 mcp:status[sections=all] $.detail.manifest.metadata_reference_counts.{*} number
 mcp:status[sections=all] $.detail.manifest.metadata_reference_note string
@@ -3156,6 +3182,7 @@ mcp:status[sections=completeness] $.detail.manifest.database_schema_version numb
 mcp:status[sections=completeness] $.detail.manifest.document_count number
 mcp:status[sections=completeness] $.detail.manifest.documents_note string
 mcp:status[sections=completeness] $.detail.manifest.extractor_version string
+mcp:status[sections=completeness] $.detail.manifest.internals_visible_to object
 mcp:status[sections=completeness] $.detail.manifest.metadata_reference_counts object
 mcp:status[sections=completeness] $.detail.manifest.metadata_reference_counts.{*} number
 mcp:status[sections=completeness] $.detail.manifest.metadata_reference_note string
@@ -3250,6 +3277,7 @@ mcp:status[sections=manifest] $.detail.manifest.database_schema_version number
 mcp:status[sections=manifest] $.detail.manifest.document_count number
 mcp:status[sections=manifest] $.detail.manifest.documents_note string
 mcp:status[sections=manifest] $.detail.manifest.extractor_version string
+mcp:status[sections=manifest] $.detail.manifest.internals_visible_to object
 mcp:status[sections=manifest] $.detail.manifest.metadata_reference_counts object
 mcp:status[sections=manifest] $.detail.manifest.metadata_reference_counts.{*} number
 mcp:status[sections=manifest] $.detail.manifest.metadata_reference_note string
@@ -3325,6 +3353,7 @@ mcp:status[sections=references,projects,max_bytes] $.detail.manifest.database_sc
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.document_count number
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.documents_note string
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.extractor_version string
+mcp:status[sections=references,projects,max_bytes] $.detail.manifest.internals_visible_to object
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.metadata_reference_identities object
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.metadata_reference_identities.{*} array
 mcp:status[sections=references,projects,max_bytes] $.detail.manifest.metadata_reference_identities.{*}[] string
@@ -3398,6 +3427,7 @@ mcp:status[sections=references] $.detail.manifest.database_schema_version number
 mcp:status[sections=references] $.detail.manifest.document_count number
 mcp:status[sections=references] $.detail.manifest.documents_note string
 mcp:status[sections=references] $.detail.manifest.extractor_version string
+mcp:status[sections=references] $.detail.manifest.internals_visible_to object
 mcp:status[sections=references] $.detail.manifest.metadata_reference_counts object
 mcp:status[sections=references] $.detail.manifest.metadata_reference_counts.{*} number
 mcp:status[sections=references] $.detail.manifest.metadata_reference_note string

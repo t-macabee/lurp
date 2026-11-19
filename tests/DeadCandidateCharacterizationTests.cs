@@ -13,7 +13,7 @@ namespace Lurp.Tests;
 ///     fixtures, plus direct <c>store.SaveEdges</c> injection to isolate individual
 ///     weak-provenance ladder branches that no single natural C# construct can
 ///     produce in isolation from the others (see
-///     <see cref="PossibleDispatch_InheritedOnly_Uncertain" />).
+///     <see cref="PossibleDispatch_InjectedEdge_IsUncertainDead" />).
 /// </summary>
 public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
 {
@@ -147,7 +147,7 @@ public sealed class DeadCandidateCharacterizationTests : IntegrationTestBase
             var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
 
             // R147: removing the field breaks compilation, so a nameof receiver is live.
-            Assert.DoesNotContain(page.Candidates, c => c.SymbolId == fieldId && c.Status == DeadCandidateStatus.ProvedDead);
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId == fieldId);
         }
         finally
         {
@@ -586,6 +586,42 @@ internal static class Helper2
             Assert.Equal(DeadCandidateReason.TestHarness, msTestUnused.Reason);
             Assert.Equal(DeadCandidateStatus.Uncertain, tunitUnused.Status);
             Assert.Equal(DeadCandidateReason.TestHarness, tunitUnused.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task TestHarnessText_NamesNoSingleFramework()
+    {
+        CreateProject("H.NUnit", new Dictionary<string, string>
+        {
+            ["Helper.cs"] = """
+                            namespace H.NUnit;
+
+                            internal static class Helper
+                            {
+                                internal static void Unused() { }
+                            }
+                            """
+        }, packageReferences: ["NUnit@5.0.0"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var unusedId = ResolveSymbolId(snapshotId, "global::H.NUnit.Helper.Unused");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, true, 200, null);
+            var entry = Assert.Single(page.Candidates, c => c.SymbolId == unusedId);
+            Assert.Equal(DeadCandidateStatus.Uncertain, entry.Status);
+            Assert.Equal(DeadCandidateReason.TestHarness, entry.Reason);
+            Assert.Equal(
+                "Test-project symbol: a test framework may discover or call it by reflection, and no strong LIVE edge reaches it. Verify no production code depends on this member before removing.",
+                Assert.Single(entry.Uncertainties).Description);
         }
         finally
         {
@@ -1048,6 +1084,455 @@ public static class Api { public static void Go() => Host.Run(null!); }
     }
 
     [Fact]
+    public async Task TypeLiveness_TypeUsedOnlyByItsOwnMembers_IsProvedDead()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["SelfUsed.cs"] = """
+                              namespace TestProject;
+
+                              internal class Singleton
+                              {
+                                  private static readonly Singleton Instance = new Singleton();
+                              }
+
+                              internal class Factory
+                              {
+                                  internal static Factory Create() => new Factory();
+                              }
+                              """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            var singleton = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:TestProject.Singleton");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, singleton.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, singleton.Reason);
+
+            var instance = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "F:TestProject.Singleton.Instance");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, instance.Status);
+
+            var factory = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:TestProject.Factory");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, factory.Status);
+
+            var create = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Factory.Create");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, create.Status);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task AccessorLiveness_OwnPropertyChangedName_IsASelfEdge()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Vm.cs"] = """
+                        namespace TestProject;
+
+                        internal class Vm : System.ComponentModel.INotifyPropertyChanged
+                        {
+                            public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+                            private string _n = "";
+                            internal string Name
+                            {
+                                get => _n;
+                                set
+                                {
+                                    _n = value;
+                                    PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs("Name"));
+                                }
+                            }
+                        }
+
+                        public static class Consumer
+                        {
+                            public static object Use() => new Vm();
+                        }
+                        """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var allIds = store.GetSymbolIdsInSnapshot(snapshotId);
+            var nameSymbolId = allIds.Single(id => id.Split('|')[0] == "P:TestProject.Vm.Name");
+            var setterSymbolId = allIds.Single(id => id.Split('|')[0] == "M:TestProject.Vm.set_Name(System.String)");
+
+            // Precondition: the snapshot has an edge set_Name -> P:Vm.Name so the input reaches D145.
+            var incomingToName = store.GetIncomingEdges(snapshotId, nameSymbolId);
+            Assert.Contains(incomingToName, e => e.SourceSymbolId == setterSymbolId);
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            var name = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "P:TestProject.Vm.Name");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, name.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, name.Reason);
+
+            var getter = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Vm.get_Name");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, getter.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, getter.Reason);
+
+            var setter = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Vm.set_Name(System.String)");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, setter.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, setter.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task PublicSurface_UsesEffectiveAccessibility()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Surface.cs"] = """
+                             namespace TestProject;
+
+                             internal class Hidden
+                             {
+                                 public void PublicButHidden() { }
+                                 public Hidden() { }
+                                 public int Prop { get; set; }
+                                 public int Field;
+                                 public event System.Action? Changed { add { } remove { } }
+                             }
+
+                             public class Outer
+                             {
+                                 private class Nested
+                                 {
+                                     public void NestedPublic() { }
+                                 }
+                             }
+
+                             internal class Over
+                             {
+                                 public override string ToString() => "x";
+                             }
+
+                             public static class Consumer
+                             {
+                                 public static object Use() => new Hidden();
+                             }
+                             """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+
+            var publicButHidden = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.PublicButHidden");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, publicButHidden.Status);
+            Assert.Equal("Public", publicButHidden.Accessibility);
+            Assert.Equal("Internal", publicButHidden.EffectiveAccessibility);
+
+            var nestedPublic = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Outer.Nested.NestedPublic");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, nestedPublic.Status);
+            Assert.Equal("Public", nestedPublic.Accessibility);
+            Assert.Equal("Private", nestedPublic.EffectiveAccessibility);
+
+            var changed = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "E:TestProject.Hidden.Changed");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, changed.Status);
+
+            var addChanged = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.add_Changed(System.Action)");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, addChanged.Status);
+
+            var removeChanged = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.remove_Changed(System.Action)");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, removeChanged.Status);
+
+            // Declared Public properties, their accessors, and fields remain public surface (D168.2).
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "P:TestProject.Hidden.Prop");
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.get_Prop");
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.set_Prop(System.Int32)");
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "F:TestProject.Hidden.Field");
+
+            // Hidden.#ctor is live via Constructs from Consumer.Use.
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Hidden.#ctor");
+
+            // Override of external Object.ToString lands in step 4.
+            var overToString = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Over.ToString");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, overToString.Status);
+            Assert.Equal(DeadCandidateReason.ExternalInterfaceImplementation, overToString.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task InternalsVisibleTo_OutsideTheSnapshot_IsPublicSurface()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Exposed.cs"] = """
+                             [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Outside.Consumer")]
+
+                             namespace App;
+
+                             public static class Exposed
+                             {
+                                 internal static void ForFriend() { }
+                                 private static void Hidden() { }
+                             }
+                             """
+        });
+
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Kept.cs"] = """
+                          namespace Lib;
+
+                          internal static class Kept
+                          {
+                              internal static void Unused() { }
+                          }
+                          """
+        });
+        WriteFile("Lib", "Lib.csproj", """
+                                       <Project Sdk="Microsoft.NET.Sdk">
+                                         <PropertyGroup>
+                                           <TargetFramework>net10.0</TargetFramework>
+                                           <ImplicitUsings>enable</ImplicitUsings>
+                                           <Nullable>enable</Nullable>
+                                         </PropertyGroup>
+                                         <ItemGroup>
+                                           <InternalsVisibleTo Include="Lib.Tests" />
+                                         </ItemGroup>
+                                       </Project>
+                                       """);
+
+        CreateProject("Lib.Tests", new Dictionary<string, string>
+        {
+            ["TestStub.cs"] = """
+                              namespace Lib.Tests;
+
+                              public static class TestStub { }
+                              """
+        }, projectReferences: ["Lib"]);
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var pageNoPublic = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+            Assert.DoesNotContain(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Exposed.ForFriend");
+
+            var hidden = Assert.Single(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Exposed.Hidden");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, hidden.Status);
+
+            var keptUnused = Assert.Single(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Lib.Kept.Unused");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, keptUnused.Status);
+
+            var pageWithPublic = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: true, false, false, 200, null);
+            var forFriend = Assert.Single(pageWithPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Exposed.ForFriend");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, forFriend.Status);
+            Assert.Equal(DeadCandidateReason.PublicSurface, forFriend.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task InternalsVisibleTo_InsideSnapshot_MatchesCaseInsensitively()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Kept.cs"] = """
+                          [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("lib.tests")]
+
+                          namespace Lib;
+
+                          internal static class Kept
+                          {
+                              internal static void Unused() { }
+                          }
+                          """
+        });
+
+        CreateProject("Lib.Tests", new Dictionary<string, string>
+        {
+            ["TestStub.cs"] = """
+                              namespace Lib.Tests;
+
+                              public static class TestStub { }
+                              """
+        }, projectReferences: ["Lib"]);
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var pageNoPublic = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+            var keptUnused = Assert.Single(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Lib.Kept.Unused");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, keptUnused.Status);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task ConventionScan_ModeledScanSite_DoesNotHideItsDocument()
+    {
+        CreateProject("Di", new Dictionary<string, string>
+        {
+            ["Scan.cs"] = """
+                          using Microsoft.Extensions.DependencyInjection;
+
+                          namespace Di;
+
+                          public static class Setup
+                          {
+                              public static void Add(IServiceCollection s) =>
+                                  s.Scan(x => x.FromAssemblyOf<Svc>().AddClasses().AsImplementedInterfaces().WithScopedLifetime());
+
+                              private static void Unused() { }
+                          }
+
+                          public interface ISvc { void Run(); }
+
+                          public class Svc : ISvc
+                          {
+                              public void Run() { }
+                              private void SvcUnused() { }
+                          }
+                          """
+        }, packageReferences: ["Scrutor@4.2.2", "Microsoft.Extensions.DependencyInjection.Abstractions@9.0.0"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Precondition: modeled scan of own assembly records a convention_scan row on Scan.cs.
+            Assert.Contains(store.GetBindingIncompleteness(snapshotId),
+                r => r.Reason == BindingIncompletenessReason.ConventionScan && r.DocumentPath == "src/Di/Scan.cs");
+
+            var pageNoPublic = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+
+            var setupUnused = Assert.Single(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Di.Setup.Unused");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, setupUnused.Status);
+
+            var svcUnused = Assert.Single(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Di.Svc.SvcUnused");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, svcUnused.Status);
+
+            Assert.DoesNotContain(pageNoPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Di.Setup.Add(Microsoft.Extensions.DependencyInjection.IServiceCollection)");
+
+            var pageWithPublic = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: true, false, false, 200, null);
+            var setupAdd = Assert.Single(pageWithPublic.Candidates, c => c.SymbolId.Split('|')[0] == "M:Di.Setup.Add(Microsoft.Extensions.DependencyInjection.IServiceCollection)");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, setupAdd.Status);
+            Assert.Equal(DeadCandidateReason.PublicSurface, setupAdd.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task ConventionScan_UnmodeledScan_ScopesTheScannedAssemblyTypes()
+    {
+        CreateProject("Lib", new Dictionary<string, string>
+        {
+            ["Jobs.cs"] = """
+                          namespace Lib;
+
+                          public interface IJob { }
+
+                          internal class Job : IJob
+                          {
+                              internal Job() { }
+                          }
+
+                          internal abstract class AbstractJob { }
+
+                          internal static class Helpers
+                          {
+                              internal static void H() { }
+                          }
+                          """
+        });
+
+        CreateProject("Di", new Dictionary<string, string>
+        {
+            ["Program.cs"] = """
+                             using Microsoft.Extensions.DependencyInjection;
+                             using Lib;
+
+                             namespace Di;
+
+                             public static class Program
+                             {
+                                 public static void Main(string[] args) => Configure(new ServiceCollection());
+
+                                 private static void Configure(IServiceCollection s) =>
+                                     s.Scan(x => x.FromAssemblyOf<IJob>().AddClasses(c => c.AssignableTo<IJob>()).AsImplementedInterfaces());
+                             }
+                             """
+        }, packageReferences: ["Scrutor@4.2.2", "Microsoft.Extensions.DependencyInjection@9.0.0"], projectReferences: ["Lib"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var scanOwnerId = ResolveSymbolId(snapshotId, "global::Di.Program.Configure");
+            // Precondition: the snapshot has the placeholder edge owner -> convention:assembly_scan:Lib, ...
+            Assert.Contains(store.GetEdges(snapshotId),
+                e => e.SourceSymbolId == scanOwnerId &&
+                     e.TargetSymbolId.StartsWith($"{GraphNodeIds.AssemblyScanConventionPrefix}Lib", StringComparison.Ordinal));
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, includePublic: false, false, false, 200, null);
+
+            var job = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:Lib.Job");
+            Assert.Equal(DeadCandidateStatus.Unresolved, job.Status);
+            Assert.Equal(DeadCandidateReason.BindingIncompleteness, job.Reason);
+            Assert.Contains(scanOwnerId, Assert.Single(job.Uncertainties).SymbolIds);
+
+            var jobCtor = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:Lib.Job.#ctor");
+            Assert.Equal(DeadCandidateStatus.Unresolved, jobCtor.Status);
+            Assert.Equal(DeadCandidateReason.BindingIncompleteness, jobCtor.Reason);
+            Assert.Contains(scanOwnerId, Assert.Single(jobCtor.Uncertainties).SymbolIds);
+
+            var abstractJob = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:Lib.AbstractJob");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, abstractJob.Status);
+
+            var helpers = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:Lib.Helpers");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, helpers.Status);
+
+            var helperH = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:Lib.Helpers.H");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, helperH.Status);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
     public async Task CompilerAndRuntimeCalledMembers_AreNotProvedDead()
     {
         // B26: Test that compiler and runtime called members are not proved dead
@@ -1106,15 +1591,105 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
+    [Fact]
+    public async Task PossibleDispatch_InjectedEdge_IsUncertainDead()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Worker.cs"] = """
+                            namespace TestProject;
+
+                            internal class Worker
+                            {
+                                internal void DoWork() { }
+                            }
+                            """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var doWorkId = ResolveSymbolId(snapshotId, "global::TestProject.Worker.DoWork");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            store.SaveEdges(snapshotId,
+            [
+                MakeEdge("dispatch://synthetic/interface", doWorkId, nameof(EdgeKind.MayDispatchTo), Provenance.Possible)
+            ]);
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+            var entry = Assert.Single(page.Candidates, c => c.SymbolId == doWorkId);
+            Assert.Equal(DeadCandidateStatus.UncertainDead, entry.Status);
+            Assert.Equal(DeadCandidateReason.PossibleDispatch, entry.Reason);
+            Assert.Equal(
+                UncertaintyDescriptions.DispatchCandidate(doWorkId, Provenance.Possible),
+                Assert.Single(entry.Uncertainties).Description);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task ExplicitImplementation_DerivedDeclaredFirst_IsAlive()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Entities.cs"] = """
+                              namespace TestProject;
+
+                              internal interface IEntity
+                              {
+                                  int Id { get; }
+                              }
+
+                              internal class A_Derived : A_Base, IEntity
+                              {
+                              }
+
+                              internal class A_Base : IEntity
+                              {
+                                  int IEntity.Id => 1;
+                              }
+
+                              public static class Caller
+                              {
+                                  public static int Read()
+                                  {
+                                      IEntity e = new A_Derived();
+                                      return e.Id;
+                                  }
+                              }
+                              """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var allIds = store.GetSymbolIdsInSnapshot(snapshotId);
+            var propId = allIds.Single(id => id.Split('|')[0] == "P:TestProject.A_Base.TestProject#IEntity#Id");
+            var getterId = allIds.Single(id => id.Split('|')[0] == "M:TestProject.A_Base.TestProject#IEntity#get_Id");
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId == propId);
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId == getterId);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     /// <summary>
-    ///     Companion to <see cref="PossibleDispatch_InheritedOnly_Uncertain" />:
+    ///     Companion to <see cref="PossibleDispatch_InjectedEdge_IsUncertainDead" />:
     ///     proves, on real compiled code with no injected edges, that an inherited
     ///     (non-direct) implicit interface implementation produces exactly one
     ///     MayDispatchTo edge with "possible" provenance, and that
-    ///     GetDeadCandidatesPage classifies its target as public_surface (Q1) rather
-    ///     than possible_dispatch — public_surface wins because it is evaluated
-    ///     first in the ladder and the target must be public to implicitly satisfy
-    ///     an interface.
+    ///     GetDeadCandidatesPage classifies its target as public_surface rather
+    ///     than possible_dispatch — step 5 (public surface) runs ahead of step 8
+    ///     whenever the member's effective accessibility is public (D48; if the
+    ///     interface were external, step 4 would run first instead).
     /// </summary>
     [Fact]
     public async Task PossibleDispatch_InheritedOnly_SurfacesAsPublicSurface()
@@ -1487,6 +2062,61 @@ internal static class Use { internal static void Go() { Lifecycle.Touch(); _ = n
         }
     }
 
+    [Fact]
+    public async Task MixedPartialType_IsNotGenerated()
+    {
+        CreateProject("App", new Dictionary<string, string>
+        {
+            ["Mixed.cs"] = """
+                           namespace App;
+
+                           internal partial class Mixed
+                           {
+                               internal void HandWritten() { }
+                           }
+                           """,
+            ["Mixed.g.cs"] = """
+                             namespace App;
+
+                             internal partial class Mixed
+                             {
+                                 internal void FromGenerated() { }
+                             }
+                             """
+        });
+
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, includeGenerated: false, false, 200, null);
+
+            var mixed = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "T:App.Mixed");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, mixed.Status);
+            Assert.False(mixed.IsGenerated);
+            Assert.Equal(2, mixed.Locations.Count);
+            Assert.Equal("src/App/Mixed.cs", mixed.Locations[0].DocumentPath);
+            Assert.False(mixed.Locations[0].IsGenerated);
+            Assert.Equal("src/App/Mixed.g.cs", mixed.Locations[1].DocumentPath);
+            Assert.True(mixed.Locations[1].IsGenerated);
+
+            var handWritten = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Mixed.HandWritten");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, handWritten.Status);
+
+            Assert.DoesNotContain(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Mixed.FromGenerated");
+
+            var withGenerated = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, includeGenerated: true, false, 200, null);
+            var fromGenerated = Assert.Single(withGenerated.Candidates, c => c.SymbolId.Split('|')[0] == "M:App.Mixed.FromGenerated");
+            Assert.Equal(DeadCandidateStatus.Uncertain, fromGenerated.Status);
+            Assert.Equal(DeadCandidateReason.GeneratedExcluded, fromGenerated.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     /// <summary>
     ///     B3 step 2a: a C# 14 extension block declares a block member beside its
     ///     implementation on the outer static class. The block method is never
@@ -1669,14 +2299,19 @@ internal static class Entry
         using var store = OpenStore(DbPath);
         try
         {
+            var allIds = store.GetSymbolIdsInSnapshot(snapshotId);
+            var ctorIds = new[]
+            {
+                allIds.Single(id => id.Split('|')[0] == "M:TestProject.Plain.#ctor(System.Int32)"),
+                allIds.Single(id => id.Split('|')[0] == "M:TestProject.Targeted.#ctor(System.Int32)"),
+                allIds.Single(id => id.Split('|')[0] == "M:TestProject.InField.#ctor(System.Int32)"),
+                allIds.Single(id => id.Split('|')[0] == "M:TestProject.TagAttribute.#ctor(System.String)")
+            };
+
             var page = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
 
-            Assert.DoesNotContain(page.Candidates,
-                c => c.Status == DeadCandidateStatus.ProvedDead
-                     && (c.SymbolId.Contains("Plain.#ctor(")
-                         || c.SymbolId.Contains("Targeted.#ctor(")
-                         || c.SymbolId.Contains("InField.#ctor(")
-                         || c.SymbolId.Contains("TagAttribute.#ctor(")));
+            foreach (var ctorId in ctorIds)
+                Assert.DoesNotContain(page.Candidates, c => c.SymbolId == ctorId);
         }
         finally
         {
@@ -1813,13 +2448,13 @@ internal static class Entry
             var fields = store.GetDeadCandidatesPage(snapshotId, null, null, "Field", false, false, false, 200, null);
             foreach (var constant in new[] { "MethodDefault", "AttributeArg", "EnumSeed", "IndexDefault" })
             {
-                Assert.DoesNotContain(fields.Candidates,
-                    c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains($"Holder.{constant}"));
+                var constantId = ResolveSymbolId(snapshotId, $"global::TestProject.Holder.{constant}");
+                Assert.DoesNotContain(fields.Candidates, c => c.SymbolId == constantId);
             }
 
+            var handlerId = ResolveSymbolId(snapshotId, "global::TestProject.EventSource.Handler");
             var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
-            Assert.DoesNotContain(methods.Candidates,
-                c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains("EventSource.Handler"));
+            Assert.DoesNotContain(methods.Candidates, c => c.SymbolId == handlerId);
         }
         finally
         {
@@ -1830,13 +2465,14 @@ internal static class Entry
     [Fact]
     public async Task SerializationConvention_RequiresOptInAttribute()
     {
-        // B31: the serialization convention applies only to a member carrying an
-        // opt-in attribute, matched by exact name.
+        // B31 / D53: the serialization convention applies only when a serializer actually
+        // opts the non-public member in (DataMember requires [DataContract] on the type).
         CreateProject("TestProject", new Dictionary<string, string>
         {
             ["Serialized.cs"] = """
 namespace TestProject;
 
+[System.Runtime.Serialization.DataContract]
 internal sealed class Serialized
 {
     internal int Plain { get; set; }
@@ -1854,9 +2490,22 @@ internal sealed class Serialized
     internal int NamedOnly { get; set; }
 }
 
+internal sealed class NoContract
+{
+    [System.Runtime.Serialization.DataMember]
+    private int _dm;
+
+    [System.Runtime.Serialization.DataMember]
+    internal int DmProp { get; set; }
+}
+
 internal static class Entry
 {
-    internal static void Go() => _ = new Serialized();
+    internal static void Go()
+    {
+        _ = new Serialized();
+        _ = new NoContract();
+    }
 }
 """
         });
@@ -1882,10 +2531,22 @@ internal static class Entry
             Assert.Equal(DeadCandidateStatus.UncertainDead, member.Status);
             Assert.Equal(DeadCandidateReason.SerializationConvention, member.Reason);
 
+            var dmProp = Assert.Single(properties.Candidates, c => c.SymbolId.Contains("NoContract.DmProp"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, dmProp.Status);
+
+            var methods = store.GetDeadCandidatesPage(snapshotId, null, null, "Method", false, false, false, 200, null);
+            var getDmProp = Assert.Single(methods.Candidates, c => c.SymbolId.Contains("NoContract.get_DmProp"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, getDmProp.Status);
+            var setDmProp = Assert.Single(methods.Candidates, c => c.SymbolId.Contains("NoContract.set_DmProp"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, setDmProp.Status);
+
             var fields = store.GetDeadCandidatesPage(snapshotId, null, null, "Field", false, false, false, 200, null);
             var memberField = Assert.Single(fields.Candidates, c => c.SymbolId.Contains("Serialized._memberField"));
             Assert.Equal(DeadCandidateStatus.UncertainDead, memberField.Status);
             Assert.Equal(DeadCandidateReason.SerializationConvention, memberField.Reason);
+
+            var dmField = Assert.Single(fields.Candidates, c => c.SymbolId.Contains("NoContract._dm"));
+            Assert.Equal(DeadCandidateStatus.ProvedDead, dmField.Status);
         }
         finally
         {
@@ -1903,6 +2564,7 @@ internal static class Entry
             ["Serialized.cs"] = """
 namespace TestProject;
 
+[System.Runtime.Serialization.DataContract]
 internal sealed class Serialized
 {
     internal int Plain { get; set; }
@@ -1945,6 +2607,69 @@ internal sealed class Serialized
             var type = Assert.Single(types.Candidates, c => c.SymbolId.Contains("T:TestProject.Serialized"));
             Assert.Equal(DeadCandidateStatus.UncertainDead, type.Status);
             Assert.Equal(DeadCandidateReason.SerializationConvention, type.Reason);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task EfConvention_CoversFieldsPropertiesAndConstructorsOnly()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Entities.cs"] = """
+                              using Microsoft.EntityFrameworkCore;
+
+                              namespace TestProject;
+
+                              internal class Order
+                              {
+                                  private Order() { }
+                                  private int _secret;
+                                  private int Hidden { get; set; }
+                                  private void Hook() { }
+                                  internal int Id { get; set; }
+                              }
+
+                              internal class AppDbContext : DbContext
+                              {
+                                  protected override void OnModelCreating(ModelBuilder mb)
+                                  {
+                                      mb.Entity<Order>();
+                                  }
+                              }
+                              """
+        }, packageReferences: ["Microsoft.EntityFrameworkCore@10.0.1"]);
+
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var orderId = ResolveSymbolId(snapshotId, "global::TestProject.Order");
+            // Precondition: a MapsTo edge targets Order.
+            Assert.Contains(store.GetIncomingEdges(snapshotId, orderId), e => e.Kind == nameof(EdgeKind.MapsTo));
+
+            var page = store.GetDeadCandidatesPage(snapshotId, null, null, null, false, false, false, 200, null);
+
+            var ctor = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Order.#ctor");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, ctor.Status);
+            Assert.Equal(DeadCandidateReason.EfConvention, ctor.Reason);
+
+            var secret = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "F:TestProject.Order._secret");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, secret.Status);
+            Assert.Equal(DeadCandidateReason.EfConvention, secret.Reason);
+
+            var hidden = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "P:TestProject.Order.Hidden");
+            Assert.Equal(DeadCandidateStatus.UncertainDead, hidden.Status);
+            Assert.Equal(DeadCandidateReason.EfConvention, hidden.Reason);
+
+            var hook = Assert.Single(page.Candidates, c => c.SymbolId.Split('|')[0] == "M:TestProject.Order.Hook");
+            Assert.Equal(DeadCandidateStatus.ProvedDead, hook.Status);
+            Assert.Equal(DeadCandidateReason.NoIncomingLiveEdges, hook.Reason);
         }
         finally
         {
@@ -2015,8 +2740,8 @@ internal static class Entry
             var types = store.GetDeadCandidatesPage(snapshotId, null, null, "Type", false, false, false, 200, null);
             foreach (var type in new[] { "OnlyIsChecked", "OnlyCaught", "OnlyGenericArg", "OnlyArrayElement", "OnlyListArg" })
             {
-                Assert.DoesNotContain(types.Candidates,
-                    c => c.Status == DeadCandidateStatus.ProvedDead && c.SymbolId.Contains($"TestProject.{type}"));
+                var typeId = ResolveSymbolId(snapshotId, $"global::TestProject.{type}");
+                Assert.DoesNotContain(types.Candidates, c => c.SymbolId == typeId);
             }
         }
         finally
