@@ -106,7 +106,7 @@ public sealed class WideIncrementalInvalidationTests : IntegrationTestBase
         Assert.Equal(fqnCount, ftsCount);
 
         using var store = OpenStore(DbPath);
-        var changes = store.GetSemanticChangesToSnapshot(newSnapshotId);
+        var changes = store.GetSemanticChanges(fullSnapshotId, newSnapshotId);
         Assert.Contains(changes, change => change.SymbolId == addedSymbolId && change.ChangeType == ChangeType.SymbolAdded);
     }
 }

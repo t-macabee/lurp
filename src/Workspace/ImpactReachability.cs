@@ -10,40 +10,37 @@ namespace Lurp.Workspace;
 public sealed class ImpactReachability
 {
     private readonly Dictionary<(ImpactDirection, string), List<EdgeRecord>> _edgeCache = [];
-    private readonly ISemanticDiffStore? _semanticDiffStore;
     private readonly string _snapshotId;
     private readonly IEdgeStore _store;
 
-    public ImpactReachability(IEdgeStore store, string snapshotId, ISemanticDiffStore? semanticDiffStore = null)
+    public ImpactReachability(IEdgeStore store, string snapshotId)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _snapshotId = snapshotId ?? throw new ArgumentNullException(nameof(snapshotId));
-        _semanticDiffStore = semanticDiffStore;
     }
+
+    internal static readonly IReadOnlySet<string> UpstreamDefaultKinds = Enum.GetNames<EdgeKind>()
+        .Where(name => name is not nameof(EdgeKind.Declares) and not nameof(EdgeKind.Contains) and not nameof(EdgeKind.TestedBy))
+        .ToHashSet(StringComparer.Ordinal);
 
     /// <summary>
     ///     Computes the reached-symbol set with a level-by-level BFS. The anchor
     ///     sits at depth 0 and is not part of the result.
     ///     <para>
-    ///     Shortest-path counts count edge rows, not distinct neighbors: two
-    ///     edges between the same pair (for example <c>Calls</c> and
-    ///     <c>StaticallyCalls</c> on one static call site) are two routes. The
+    ///     Shortest-path counts count shortest symbol routes: parallel edges
+    ///     between the same symbol pair (for example <c>Calls</c> and
+    ///     <c>StaticallyCalls</c> on one static call site) count once. The
     ///     sum saturates at <see cref="long.MaxValue" /> instead of overflowing.
     ///     </para>
     /// </summary>
-    internal static readonly IReadOnlySet<string> UpstreamDefaultKinds = Enum.GetNames<EdgeKind>()
-        .Where(name => name is not nameof(EdgeKind.Declares) and not nameof(EdgeKind.Contains) and not nameof(EdgeKind.TestedBy))
-        .ToHashSet(StringComparer.Ordinal);
-
-    public ImpactReachabilityResult Trace(string symbolId, ImpactDirection direction, IReadOnlySet<string>? allowedEdgeKinds = null,
-        HashSet<string>? allowedProvenance = null, int maxDepth = 10, bool includeSource = true,
-        CancellationToken cancellationToken = default)
+    public ImpactReachabilityResult Trace(string symbolId, ImpactDirection direction, int maxDepth,
+        IReadOnlySet<string>? allowedEdgeKinds = null, HashSet<string>? allowedProvenance = null,
+        bool includeSource = true, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(symbolId))
             throw new ArgumentException("Symbol id is required.", nameof(symbolId));
 
         cancellationToken.ThrowIfCancellationRequested();
-        var semanticCauses = GetSemanticCauses(symbolId);
         var depth = new Dictionary<string, int>(StringComparer.Ordinal) { [symbolId] = 0 };
         var parentHops = new Dictionary<string, ImpactHop>(StringComparer.Ordinal);
         var pathCounts = new Dictionary<string, long>(StringComparer.Ordinal) { [symbolId] = 1 };
@@ -60,9 +57,15 @@ public sealed class ImpactReachability
 
             foreach (var currentId in level)
             {
+                string? previousNeighborId = null;
                 foreach (var edge in FilterAndSort(GetEdges(currentId, direction), direction, allowedEdgeKinds, allowedProvenance))
                 {
                     var neighborId = NeighborOf(edge, direction);
+                    // FilterAndSort orders by neighbor first, so parallel edges
+                    // between one pair are adjacent; credit each neighbor once.
+                    if (string.Equals(neighborId, previousNeighborId, StringComparison.Ordinal))
+                        continue;
+                    previousNeighborId = neighborId;
 
                     if (depth.TryGetValue(neighborId, out var neighborDepth))
                     {
@@ -93,16 +96,7 @@ public sealed class ImpactReachability
             symbols.Add(new ImpactReachedSymbol(id, depth[id], pathCounts[id], isFrontier, parentHops[id]));
         }
 
-        return new ImpactReachabilityResult(symbolId, symbols, semanticCauses, parentHops);
-    }
-
-    private List<SemanticChange> GetSemanticCauses(string symbolId)
-    {
-        if (_semanticDiffStore == null)
-            return [];
-
-        return [.. _semanticDiffStore.GetSemanticChangesToSnapshot(_snapshotId)
-            .Where(change => change.SymbolId == symbolId)];
+        return new ImpactReachabilityResult(symbolId, symbols, parentHops);
     }
 
     private List<EdgeRecord> GetEdges(string currentId, ImpactDirection direction)
@@ -274,9 +268,9 @@ public sealed class ImpactReachedSymbol
     public int Depth { get; }
 
     /// <summary>
-    ///     Number of shortest-length routes from the anchor to this symbol.
-    ///     Routes count edge rows, not distinct neighbors; two edges between the
-    ///     same pair are two routes. Saturates at <see cref="long.MaxValue" />.
+    ///     Number of shortest-length symbol routes from the anchor to this symbol.
+    ///     Parallel edges between two symbols count once. Saturates at
+    ///     <see cref="long.MaxValue" />.
     /// </summary>
     public long ShortestPathCount { get; }
 
@@ -294,11 +288,10 @@ public sealed class ImpactReachabilityResult
     private readonly IReadOnlyDictionary<string, ImpactHop> _parentHops;
 
     internal ImpactReachabilityResult(string anchorSymbolId, IReadOnlyList<ImpactReachedSymbol> symbols,
-        List<SemanticChange> semanticCauses, IReadOnlyDictionary<string, ImpactHop> parentHops)
+        IReadOnlyDictionary<string, ImpactHop> parentHops)
     {
         AnchorSymbolId = anchorSymbolId ?? throw new ArgumentNullException(nameof(anchorSymbolId));
         Symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
-        SemanticCauses = semanticCauses ?? throw new ArgumentNullException(nameof(semanticCauses));
         _parentHops = parentHops ?? throw new ArgumentNullException(nameof(parentHops));
     }
 
@@ -306,8 +299,6 @@ public sealed class ImpactReachabilityResult
 
     /// <summary>Reached symbols (anchor excluded), sorted by depth, then symbol ID (ordinal).</summary>
     public IReadOnlyList<ImpactReachedSymbol> Symbols { get; }
-
-    public List<SemanticChange> SemanticCauses { get; }
 
     /// <summary>
     ///     The witness path from the anchor to <paramref name="symbolId" />, in

@@ -26,7 +26,7 @@ internal sealed class ContextTool
         int? line = null,
         [Description("Intent hint: inspect | modify | diagnose (default: inspect).")]
         string? intent = null,
-        [Description("Token budget for capsule content (default: 8000, or 16000 when symbol is a type anchor and content_budget is omitted).")]
+        [Description("Token budget for capsule content (default: 8000, or 16000 when the anchor resolves to a type (from symbol or file+line) and content_budget is omitted).")]
         int? content_budget = null,
         int? max_hops = null,
         string? scope = null,
@@ -45,92 +45,40 @@ internal sealed class ContextTool
             cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
 
-            var normalizedFile = HandlerBootstrap.NormalizeDocumentPath(file);
-            var hasSymbol = !string.IsNullOrEmpty(symbol);
-            var hasFile = !string.IsNullOrEmpty(normalizedFile) && line.HasValue;
+            var (request, parseError) = ContextRequest.Parse(
+                symbol,
+                HandlerBootstrap.NormalizeDocumentPath(file),
+                line?.ToString(CultureInfo.InvariantCulture),
+                intent,
+                content_budget?.ToString(CultureInfo.InvariantCulture),
+                max_hops?.ToString(CultureInfo.InvariantCulture),
+                scope,
+                affected_project,
+                include_generated ?? false,
+                completeness_detail ?? false,
+                tier,
+                tier_limit?.ToString(CultureInfo.InvariantCulture),
+                cursor);
+            if (parseError != null)
+                throw new McpProtocolException(parseError.FormatMcp(), McpErrorCode.InvalidParams);
 
-            if (!hasSymbol && !hasFile)
-                throw new McpProtocolException("Either symbol or file+line is required.", McpErrorCode.InvalidParams);
-
-            if (hasSymbol && hasFile)
-                throw new McpProtocolException("Provide either symbol or file+line, not both.", McpErrorCode.InvalidParams);
-
-            if (hasFile && line!.Value < 1)
-                throw new McpProtocolException("line must be a positive integer.", McpErrorCode.InvalidParams);
-
-            if (!ContextHandler.TryParseIntent(intent ?? "inspect", out var intentParsed))
-                throw new McpProtocolException("intent must be one of: inspect, modify, diagnose.", McpErrorCode.InvalidParams);
-            // Deferred: resolved to the canonical form before the default is picked (see
-            // below) so the type-anchor budget default keys off the resolved symbol kind,
-            // not whichever of the three accepted input forms the caller used.
-            var budget = content_budget ?? ContextHandler.DefaultBudget;
-            if (budget < 1)
-                throw new McpProtocolException("content_budget must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(content_budget, McpLimits.MaxContentBudget, "content_budget");
-
-            var maxHops = max_hops ?? ContextHandler.DefaultMaxHops;
-            if (maxHops < 1)
-                throw new McpProtocolException("max_hops must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_hops, McpLimits.MaxMaxHops, "max_hops");
-
-            var tierLimit = tier_limit ?? ContextHandler.DefaultTierLimit;
-            if (tierLimit < 1)
-                throw new McpProtocolException("tier_limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(tier_limit, McpLimits.MaxLimit, "tier_limit");
 
-            var includeGenerated = include_generated ?? false;
-            var completenessDetail = completeness_detail ?? false;
-            var affectedProjects = affected_project != null
-                ? (IReadOnlyList<string>)affected_project.Where(v => !string.IsNullOrWhiteSpace(v)).ToArray()
-                : null;
+            var (binding, bindError) = request!.Bind(store, snapshotId);
+            if (bindError != null)
+                throw new McpProtocolException(bindError.FormatMcp(), McpErrorCode.InvalidParams);
 
-            // Tier path
-            if (!string.IsNullOrEmpty(tier))
+            if (request.Tier is not null)
             {
-                if (Array.IndexOf(ContextAssembler.TierNames, tier) < 0)
-                    throw new McpProtocolException($"unknown tier '{tier}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.", McpErrorCode.InvalidParams);
-
-                string resolvedSymbol;
-                if (hasSymbol)
-                {
-                    resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated);
-                }
-                else
-                {
-                    resolvedSymbol = store.ResolveSymbolByLocation(normalizedFile!, line!.Value, snapshotId, includeGenerated)
-                        ?? throw new McpProtocolException($"no symbol found at {normalizedFile}:{line}; tier needs an anchor symbol.", McpErrorCode.InvalidParams);
-                }
-
-                var fingerprint = SequenceCursor.ComputeFingerprint(
-                    resolvedSymbol, tier,
-                    maxHops.ToString(CultureInfo.InvariantCulture),
-                    includeGenerated.ToString());
-
-                SequenceCursor? cursorObj = null;
-                if (!string.IsNullOrEmpty(cursor))
-                {
-                    cursorObj = SequenceCursor.TryDecode(cursor);
-                    if (cursorObj == null)
-                        throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-
-                    try
-                    {
-                        cursorObj.Validate(snapshotId, fingerprint, ContextHandler.CursorKind);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-                    }
-                }
-
                 cancellationToken.ThrowIfCancellationRequested();
-                var offset = cursorObj?.Offset ?? 0;
                 var page = ContextAssembler.BuildTierPage(
-                    store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tier,
-                    maxHops, includeGenerated, offset, tierLimit, cancellationToken);
+                    store, store, snapshotId, SymbolId.Parse(binding!.ResolvedSymbolId!), request.Tier,
+                    request.MaxHops, request.IncludeGenerated, binding.Offset, request.TierLimit, cancellationToken);
 
                 var nextCursor = page.HasMore
-                    ? new SequenceCursor(snapshotId, fingerprint, ContextHandler.CursorKind, offset + page.Items.Count).Encode()
+                    ? new SequenceCursor(snapshotId, binding.Fingerprint!, ContextRequest.CursorKind, binding.Offset + page.Items.Count).Encode()
                     : null;
 
                 var freshness = _session.GetFreshnessJson();
@@ -160,18 +108,10 @@ internal sealed class ContextTool
                 return JsonSerializer.Serialize(envelope, LurpJsonOptions.Indented);
             }
 
-            // Non-tier path
-            string? symbolArg = symbol;
-            if (hasSymbol)
-                symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated);
-            if (content_budget is null && hasSymbol)
-                budget = ContextHandler.DefaultBudgetFor(symbolArg);
-
-            var lookup = new ContextLookup(snapshotId, symbolArg, normalizedFile, line);
-            var gitRoot = store.GetSnapshotGitRoot(snapshotId);
+            var lookup = new ContextLookup(snapshotId, binding!.ResolvedSymbolId, request.File, request.Line);
             var assemblyOptions = new ContextAssemblyOptions(
-                intentParsed, budget, maxHops, includeGenerated,
-                scope, affectedProjects, gitRoot, completenessDetail);
+                request.Intent, request.ContentBudget, request.MaxHops, request.IncludeGenerated,
+                request.Scope, request.AffectedProjects, request.CompletenessDetail);
 
             cancellationToken.ThrowIfCancellationRequested();
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store, cancellationToken);

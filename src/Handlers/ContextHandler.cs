@@ -8,95 +8,51 @@ namespace Lurp.Handlers;
 
 internal static class ContextHandler
 {
-    internal const string CursorKind = "capsule-tier";
-
-    internal const int DefaultTierLimit = 25;
-
-    internal const int DefaultMaxHops = 3;
-
     // Keep ordinary capsule paths below the legacy Windows MAX_PATH boundary even
     // when the output directory itself is moderately nested.
     private const int MaxCapsuleFileNameLength = 128;
 
-    internal const int DefaultBudget = 8000;
-
-    // A type anchor's callee/caller tiers scale with member fan-out, so a capsule
-    // for a type routinely needs more room than a method anchor's. This default
-    // only applies when the caller omits --content-budget=; an explicit budget is always
-    // honored as-is.
-    internal const int DefaultTypeAnchorBudget = 16000;
-
-    internal static int DefaultBudgetFor(string? symbolArg)
-    {
-        if (symbolArg is not null)
-        {
-            if (SymbolId.TryParse(symbolArg, out var id) && id.IsType)
-                return DefaultTypeAnchorBudget;
-            // Bare doc-comment ID form without assembly identity (e.g. "T:Namespace.Type")
-            // is what --mode=find-symbol also prints and what HandlerBootstrap accepts;
-            // it must still trigger the type-aware default.
-            if (symbolArg.StartsWith("T:", StringComparison.Ordinal))
-                return DefaultTypeAnchorBudget;
-        }
-
-        return DefaultBudget;
-    }
-
     public static void Run(string[] args, IOutputSink output)
     {
-        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        var fileArg = HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file="));
-        var lineArg = HandlerBootstrap.GetArgValue(args, "--line=");
-        var intentArg = HandlerBootstrap.GetArgValue(args, "--intent=") ?? "inspect";
-        var budgetArg = HandlerBootstrap.GetArgValue(args, "--content-budget=");
-        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
-        var includeGenerated = args.Contains("--include-generated");
-        var includeCompletenessDetail = args.Contains("--completeness-detail");
-        var scopeArg = HandlerBootstrap.GetArgValue(args, "--scope=");
         var affectedProjects = GetRepeatableArgs(args, "--affected-project=");
-        var tierArg = HandlerBootstrap.GetArgValue(args, "--tier=");
-        var outputMode = HandlerBootstrap.ParseOutputMode(args, !string.IsNullOrEmpty(tierArg));
+        var (request, parseError) = ContextRequest.Parse(
+            HandlerBootstrap.GetArgValue(args, "--symbol="),
+            HandlerBootstrap.NormalizeDocumentPath(HandlerBootstrap.GetArgValue(args, "--file=")),
+            HandlerBootstrap.GetArgValue(args, "--line="),
+            HandlerBootstrap.GetArgValue(args, "--intent="),
+            HandlerBootstrap.GetArgValue(args, "--content-budget="),
+            HandlerBootstrap.GetArgValue(args, "--max-hops="),
+            HandlerBootstrap.GetArgValue(args, "--scope="),
+            affectedProjects.Count > 0 ? [.. affectedProjects] : null,
+            args.Contains("--include-generated"),
+            args.Contains("--completeness-detail"),
+            HandlerBootstrap.GetArgValue(args, "--tier="),
+            HandlerBootstrap.GetArgValue(args, "--tier-limit="),
+            HandlerBootstrap.GetArgValue(args, "--cursor="));
+        if (parseError != null)
+            HandlerBootstrap.Fail(parseError.FormatCli());
+
+        var snapshotArg = HandlerBootstrap.GetArgValue(args, "--snapshot=");
+        var outputMode = HandlerBootstrap.ParseOutputMode(args, request!.Tier is not null);
         var quiet = HandlerBootstrap.IsQuiet(args);
         var outputDirArg = HandlerBootstrap.ResolveOutputDir(args, output);
 
-        var hasSymbol = !string.IsNullOrEmpty(symbolArg);
-        var hasFileArg = !string.IsNullOrEmpty(fileArg);
-        var hasLineArg = !string.IsNullOrEmpty(lineArg);
-        if (!hasSymbol && !hasFileArg && !hasLineArg) HandlerBootstrap.Fail("ERROR: Either --symbol=<symbolId> or --file=<path> --line=<line> is required for --mode=context.");
-        if (hasSymbol && hasFileArg && hasLineArg) HandlerBootstrap.Fail("ERROR: Provide either --symbol or --file with --line, not both.");
-        if (hasFileArg != hasLineArg) HandlerBootstrap.Fail("ERROR: --file and --line must be given together.");
-        var hasFile = hasFileArg && hasLineArg;
-
-        if (!TryParseIntent(intentArg, out var intent))
-            HandlerBootstrap.Fail("ERROR: --intent must be one of: inspect, modify, diagnose.");
-        var explicitBudget = !string.IsNullOrEmpty(budgetArg);
-        var budget = explicitBudget
-            ? HandlerBootstrap.ParsePositiveIntArg(args, "--content-budget=", DefaultBudget)
-            : DefaultBudget;
-        var maxHops = HandlerBootstrap.ParsePositiveIntArg(args, "--max-hops=", DefaultMaxHops);
-        var lineNumber = ParseLineNumber(hasFile, lineArg);
-
         HandlerBootstrap.WithStore(args, snapshotArg, (store, snapshotId) =>
         {
-            // Resolve to the canonical docCommentId|assemblyIdentity form first: the
-            // type-anchor budget default must key off the resolved symbol kind, not
-            // whichever of the three accepted input forms the caller happened to use
-            // (an FQN carries no "T:" prefix to pattern-match against).
-            if (hasSymbol) symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
-            if (!explicitBudget && hasSymbol) budget = DefaultBudgetFor(symbolArg);
+            var (binding, bindError) = request.Bind(store, snapshotId);
+            if (bindError != null)
+                HandlerBootstrap.Fail(bindError.FormatCli());
 
-            if (!string.IsNullOrEmpty(tierArg))
+            if (request.Tier is not null)
             {
-                RunTierContinuation(store, args, snapshotId, tierArg, symbolArg, fileArg, lineNumber,
-                    maxHops, includeGenerated, outputMode, output);
+                RunTierContinuation(store, args, snapshotId, request, binding!, outputMode, output);
                 return;
             }
 
-            var lookup = new ContextLookup(snapshotId, symbolArg, fileArg, lineNumber);
-            var gitRoot = store.GetSnapshotGitRoot(snapshotId);
+            var lookup = new ContextLookup(snapshotId, binding!.ResolvedSymbolId, request.File, request.Line);
             var assemblyOptions = new ContextAssemblyOptions(
-                intent, budget, maxHops, includeGenerated,
-                scopeArg, affectedProjects, gitRoot, includeCompletenessDetail);
+                request.Intent, request.ContentBudget, request.MaxHops, request.IncludeGenerated,
+                request.Scope, request.AffectedProjects, request.CompletenessDetail);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, assemblyOptions, store, store, store);
 
             HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
@@ -112,44 +68,17 @@ internal static class ContextHandler
     ///     way to take.
     /// </summary>
     private static void RunTierContinuation(
-        SqliteIndexStore store, string[] args, string snapshotId, string tierArg,
-        string? symbolArg, string? fileArg, int? lineNumber, int maxHops, bool includeGenerated,
+        SqliteIndexStore store, string[] args, string snapshotId, ContextRequest request, ContextBinding binding,
         OutputMode outputMode, IOutputSink output)
     {
-        if (!ContextAssembler.TierNames.Contains(tierArg, StringComparer.Ordinal)) HandlerBootstrap.Fail($"ERROR: unknown --tier '{tierArg}'. Valid tiers: {string.Join(", ", ContextAssembler.TierNames)}.");
-
-        var resolvedSymbol = !string.IsNullOrEmpty(symbolArg)
-            ? symbolArg
-            : store.ResolveSymbolByLocation(fileArg!, lineNumber!.Value, snapshotId, includeGenerated);
-        if (string.IsNullOrEmpty(resolvedSymbol))
-        {
-            HandlerBootstrap.Fail($"ERROR: no symbol found at {fileArg}:{lineNumber}; --tier needs an anchor symbol.");
-            return;
-        }
-
-        // Belt-and-suspenders: Run() resolves --symbol= to the canonical
-        // 'docCommentId|assemblyIdentity' form via HandlerBootstrap.ResolveSymbolArg before
-        // dispatching here, and the file/line branch above always resolves to a well-formed
-        // persisted value. Re-validating here means this call stays safe even if a future
-        // caller stops going through Run()'s resolution.
-        ValidateSymbolIdFormat(resolvedSymbol);
-
-        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--tier-limit=", DefaultTierLimit);
-        var fingerprint = SequenceCursor.ComputeFingerprint(
-            resolvedSymbol, tierArg,
-            maxHops.ToString(CultureInfo.InvariantCulture),
-            includeGenerated.ToString());
-        var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
-        var offset = cursor?.Offset ?? 0;
-
         var page = ContextAssembler.BuildTierPage(
-            store, store, snapshotId, SymbolId.Parse(resolvedSymbol), tierArg,
-            maxHops, includeGenerated, offset, limit);
+            store, store, snapshotId, SymbolId.Parse(binding.ResolvedSymbolId!), request.Tier!,
+            request.MaxHops, request.IncludeGenerated, binding.Offset, request.TierLimit);
 
         var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
         var nextCursor = page.HasMore
-            ? new SequenceCursor(snapshotId, fingerprint, CursorKind, offset + page.Items.Count).Encode()
+            ? new SequenceCursor(snapshotId, binding.Fingerprint!, ContextRequest.CursorKind, binding.Offset + page.Items.Count).Encode()
             : null;
 
         if (outputMode == OutputMode.Summary)
@@ -220,30 +149,6 @@ internal static class ContextHandler
                 intent = ContextIntent.Inspect;
                 return false;
         }
-    }
-
-    // SymbolId.Parse throws an unhandled FormatException on anything without the
-    // 'docCommentId|assemblyIdentity' pipe separator it requires. The easy mistake
-    // this catches: passing the fully-qualified name --mode=search prints (e.g.
-    // "T:Some.Type") instead of the resolvable symbolId --mode=find-symbol returns.
-    // Fail cleanly here instead of surfacing a raw stack trace out of ContextAssembler.
-    private static void ValidateSymbolIdFormat(string symbolArg)
-    {
-        if (!symbolArg.Contains('|'))
-            HandlerBootstrap.Fail(
-                $"ERROR: --symbol value '{symbolArg}' is not a resolvable symbolId " +
-                "(expected 'docCommentId|assemblyIdentity'). Run --mode=find-symbol " +
-                "--symbol=<name> first and pass its exact symbolId, not a bare FQN or search result.");
-    }
-
-    private static int? ParseLineNumber(bool hasFile, string? lineArg)
-    {
-        if (!hasFile)
-            return null;
-
-        if (!int.TryParse(lineArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ln) || ln < 1) HandlerBootstrap.Fail("ERROR: --line must be a positive integer.");
-
-        return ln;
     }
 
     internal static void WriteCapsuleOutput(ContextCapsule capsule, string outputDirArg, OutputMode outputMode, bool quiet, IOutputSink output)

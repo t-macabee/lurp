@@ -297,12 +297,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _pinStore!.ClearPinnedSnapshot(workspaceId);
     }
 
-    public string? GetSnapshotGitRoot(string snapshotId)
-    {
-        EnsureOpen();
-        return _lifecycle!.GetSnapshotGitRoot(snapshotId);
-    }
-
     public string? GetSnapshotStatus(string snapshotId, string workspaceId)
     {
         EnsureOpen();
@@ -829,10 +823,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _semanticDiffStore!.GetSemanticChanges(fromSnapshotId, toSnapshotId);
     }
 
-    public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
+    public List<SemanticChange> GetSemanticChangesForSymbol(string toSnapshotId, string symbolId)
     {
         EnsureOpen();
-        return _semanticDiffStore!.GetSemanticChangesToSnapshot(toSnapshotId);
+        return _semanticDiffStore!.GetSemanticChangesForSymbol(toSnapshotId, symbolId);
     }
 
     // ── Cross-table batched maintenance ──────────────────────────────────

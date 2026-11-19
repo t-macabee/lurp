@@ -6,10 +6,6 @@ namespace Lurp.Handlers;
 
 internal static class ImpactHandler
 {
-    internal const string CursorKind = "impact";
-    internal const int DefaultLimit = 50;
-    internal const int DefaultMaxDepth = 3;
-
     internal static bool TryParseDirection(string value, out ImpactDirection direction)
     {
         switch (value.ToLowerInvariant())
@@ -89,81 +85,46 @@ internal static class ImpactHandler
 
     public static void Run(string[] args, IOutputSink output)
     {
-        var symbolArg = HandlerBootstrap.GetArgValue(args, "--symbol=");
-        if (string.IsNullOrEmpty(symbolArg)) HandlerBootstrap.Fail("ERROR: --symbol=<symbol-id> is required for --mode=impact.");
-
-        var directionArg = HandlerBootstrap.GetArgValue(args, "--direction=") ?? "downstream";
-        if (!TryParseDirection(directionArg, out var direction))
-        {
-            HandlerBootstrap.Fail($"ERROR: Invalid direction '{directionArg}'. Use 'upstream' or 'downstream'.");
-            return;
-        }
-
-        var maxDepthArg = HandlerBootstrap.GetArgValue(args, "--max-depth=");
-        var maxDepth = DefaultMaxDepth;
-        if (!string.IsNullOrEmpty(maxDepthArg) && (!int.TryParse(maxDepthArg, NumberStyles.Integer, CultureInfo.InvariantCulture, out maxDepth) || maxDepth < 1)) HandlerBootstrap.Fail("ERROR: --max-depth must be a positive integer.");
-
         var kindsArg = HandlerBootstrap.GetArgValue(args, "--kinds=");
-        IReadOnlyList<string>? canonicalKinds = null;
-        if (kindsArg is not null)
-        {
-            var kindsOutcome = TryParseNameFilter([kindsArg], EdgeKindNames, out canonicalKinds, out var unknownKind);
-            if (kindsOutcome == NameFilterParseOutcome.EmptyItem) HandlerBootstrap.Fail("ERROR: --kinds contains an empty item.");
-            if (kindsOutcome == NameFilterParseOutcome.UnknownName) HandlerBootstrap.Fail($"ERROR: Unknown edge kind '{unknownKind}' in --kinds. Use one of: {string.Join(", ", EdgeKindNames)} (case-insensitive).");
-            if (canonicalKinds is null) HandlerBootstrap.Fail($"ERROR: --kinds must name at least one edge kind. Use one of: {string.Join(", ", EdgeKindNames)} (case-insensitive).");
-        }
-
         var provenanceArg = HandlerBootstrap.GetArgValue(args, "--provenance=");
-        IReadOnlyList<string>? canonicalProvenance = null;
-        if (provenanceArg is not null)
-        {
-            var provenanceOutcome = TryParseNameFilter([provenanceArg], Provenance.All, out canonicalProvenance, out var unknownProvenance);
-            if (provenanceOutcome == NameFilterParseOutcome.EmptyItem) HandlerBootstrap.Fail("ERROR: --provenance contains an empty item.");
-            if (provenanceOutcome == NameFilterParseOutcome.UnknownName) HandlerBootstrap.Fail($"ERROR: Unknown provenance '{unknownProvenance}' in --provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).");
-            if (canonicalProvenance is null) HandlerBootstrap.Fail($"ERROR: --provenance must name at least one provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).");
-        }
+        var (request, parseError) = ImpactRequest.Parse(
+            HandlerBootstrap.GetArgValue(args, "--symbol="),
+            HandlerBootstrap.GetArgValue(args, "--direction="),
+            kindsArg is null ? null : [kindsArg],
+            provenanceArg is null ? null : [provenanceArg],
+            HandlerBootstrap.GetArgValue(args, "--max-depth="),
+            HandlerBootstrap.GetArgValue(args, "--limit="),
+            HandlerBootstrap.GetArgValue(args, "--cursor="));
+        if (parseError != null)
+            HandlerBootstrap.Fail(parseError.FormatCli());
 
-        IReadOnlySet<string>? allowedKinds = canonicalKinds is not null
-            ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
-            : direction == ImpactDirection.Upstream
-                ? ImpactReachability.UpstreamDefaultKinds
-                : null;
-        HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
-
-        var limit = HandlerBootstrap.ParsePositiveIntArg(args, "--limit=", DefaultLimit);
         var outputMode = HandlerBootstrap.ParseOutputMode(args);
 
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
-            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+            var (binding, bindError) = request!.Bind(store, snapshotId);
+            if (bindError != null)
+                HandlerBootstrap.Fail(bindError.FormatCli());
 
-            var fingerprint = SequenceCursor.ComputeFingerprint(
-                resolvedSymbolId,
-                direction.ToString(),
-                maxDepth.ToString(CultureInfo.InvariantCulture),
-                canonicalKinds is null ? null : string.Join(",", canonicalKinds),
-                canonicalProvenance is null ? null : string.Join(",", canonicalProvenance),
-                "symbols");
-            var cursor = HandlerBootstrap.ResolveSequenceCursor(args, snapshotId, fingerprint, CursorKind);
-            var offset = cursor?.Offset ?? 0;
-
-            var reachability = new ImpactReachability(store, snapshotId, store);
-            var traced = reachability.Trace(resolvedSymbolId, direction, allowedKinds, allowedProvenance, maxDepth);
+            var reachability = new ImpactReachability(store, snapshotId);
+            var traced = reachability.Trace(binding!.ResolvedSymbolId, request.Direction, request.MaxDepth, request.AllowedKinds, request.AllowedProvenance);
+            var semanticCauses = store.GetSemanticChangesForSymbol(snapshotId, binding.ResolvedSymbolId);
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
             var response = ImpactPaging.BuildSymbolsResponse(
                 snapshotId,
                 FreshnessJson.Cheap(freshness),
-                resolvedSymbolId,
-                direction,
-                maxDepth,
+                binding.ResolvedSymbolId,
+                request.Direction,
+                request.MaxDepth,
                 traced,
                 reachability,
-                offset,
-                limit,
-                fingerprint,
-                CursorKind);
+                semanticCauses,
+                binding.Offset,
+                request.Limit,
+                binding.Fingerprint,
+                ImpactRequest.CursorKind);
 
             switch (outputMode)
             {
@@ -172,7 +133,7 @@ internal static class ImpactHandler
                     // docCommentId|assemblyIdentity strings stay in --output=json, which is
                     // what a consumer feeds back into --symbol=.
                     var displayName = MakeNameResolver(store, snapshotId);
-                    WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, offset,
+                    WriteSummary(displayName(response.symbol_id), response.direction, response.symbol_count_total, response.symbols.Count, binding.Offset,
                         response.groups.Count, response.frontier_count,
                         response.groups.Select(group => ($"{displayName(group.first_hop_source_symbol_id)} → {displayName(group.first_hop_target_symbol_id)} [{group.edge_kind}]", group.symbol_count)),
                         response.truncated, output);

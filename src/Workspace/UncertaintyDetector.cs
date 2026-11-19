@@ -6,13 +6,10 @@ internal sealed class UncertaintyDetector
     private readonly CancellationToken _cancellationToken;
     private readonly IDeclarationStore _declarationStore;
     private readonly IEdgeStore _edgeStore;
-    private readonly string? _gitRoot;
     private readonly bool _includeGenerated;
-    private readonly Dictionary<string, string?> _owningProjectCache = new(PathNormalizer.PathComparer);
     private readonly string _snapshotId;
+    private readonly SnapshotRow? _snapshotMetadata;
     private readonly SymbolId _symbolId;
-    private string? _solutionPath;
-    private bool _solutionPathResolved;
 
     public UncertaintyDetector(
         IEdgeStore edgeStore,
@@ -20,7 +17,7 @@ internal sealed class UncertaintyDetector
         string snapshotId,
         SymbolId symbolId,
         bool includeGenerated,
-        string? gitRoot = null,
+        SnapshotRow? snapshotMetadata = null,
         IReadOnlyList<BindingIncompletenessRecord>? bindingIncompleteness = null,
         CancellationToken cancellationToken = default)
     {
@@ -29,7 +26,7 @@ internal sealed class UncertaintyDetector
         _snapshotId = snapshotId;
         _symbolId = symbolId;
         _includeGenerated = includeGenerated;
-        _gitRoot = gitRoot;
+        _snapshotMetadata = snapshotMetadata;
         _bindingIncompleteness = bindingIncompleteness ?? [];
         _cancellationToken = cancellationToken;
     }
@@ -350,14 +347,14 @@ internal sealed class UncertaintyDetector
                 AddClassSuggestion(capsule, classId);
         }
 
-        var projects = AllCapsuleItems(capsule)
-            .Select(item => ResolveOwningProject(item.SymbolId))
-            .Where(static path => path != null)
-            .Distinct(PathNormalizer.PathComparer)
+        var matchedProjects = AllCapsuleItems(capsule)
+            .Select(MatchProjectKey)
+            .Where(static key => key != null)
+            .Distinct(ProjectFacts.AssemblyNameComparer)
             .ToList();
-        if (projects.Count >= 3)
+        if (matchedProjects.Count >= 3)
         {
-            var solution = ResolveSolutionPath();
+            var solution = ResolveSnapshotSolutionPath();
             var command = solution == null ? "dotnet test" : $"dotnet test \"{solution}\"";
             capsule.SuggestedVerification.Add(new VerificationSuggestion(
                 "full-suite",
@@ -373,11 +370,11 @@ internal sealed class UncertaintyDetector
         _cancellationToken.ThrowIfCancellationRequested();
         var testInfo = _declarationStore.GetSymbolInfo(testId, _snapshotId);
         var testName = testInfo?.FullyQualifiedName ?? testId;
-        var projectPath = ResolveOwningProject(testId);
+        var targetPath = ResolveProjectPath(testId) ?? ResolveSnapshotSolutionPath();
         var normalizedTestName = FqnNormalizer.NormalizeForCommand(testName);
-        var command = projectPath == null
+        var command = targetPath == null
             ? $"dotnet test --filter \"FullyQualifiedName={normalizedTestName}\""
-            : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName={normalizedTestName}\"";
+            : $"dotnet test \"{targetPath}\" --filter \"FullyQualifiedName={normalizedTestName}\"";
 
         capsule.SuggestedVerification.Add(new VerificationSuggestion(
             testId,
@@ -392,11 +389,11 @@ internal sealed class UncertaintyDetector
         var className = _declarationStore.GetSymbolInfo(classId, _snapshotId)?.FullyQualifiedName;
         if (string.IsNullOrEmpty(className))
             className = DeriveTypeName(classId);
-        var projectPath = ResolveOwningProject(classId);
+        var targetPath = ResolveProjectPath(classId) ?? ResolveSnapshotSolutionPath();
         var normalizedClassName = FqnNormalizer.NormalizeForCommand(className);
-        var command = projectPath == null
+        var command = targetPath == null
             ? $"dotnet test --filter \"FullyQualifiedName~{normalizedClassName}\""
-            : $"dotnet test \"{projectPath}\" --filter \"FullyQualifiedName~{normalizedClassName}\"";
+            : $"dotnet test \"{targetPath}\" --filter \"FullyQualifiedName~{normalizedClassName}\"";
 
         capsule.SuggestedVerification.Add(new VerificationSuggestion(
             classId,
@@ -424,64 +421,61 @@ internal sealed class UncertaintyDetector
             .Concat(capsule.SurroundingSource);
     }
 
-    private string? ResolveOwningProject(string symbolId)
+    private string? MatchProjectKey(CapsuleItem item)
     {
-        _cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrEmpty(_gitRoot))
+        if (_snapshotMetadata == null || !SymbolId.TryParse(item.SymbolId, out var parsed))
             return null;
-        var location = _declarationStore.GetDeclarationLocations(symbolId, _snapshotId, _includeGenerated).FirstOrDefault();
-        if (location == null)
-            return null;
-        var root = PathNormalizer.NormalizeForStorage(_gitRoot);
-        var directory = Path.GetDirectoryName(Path.Combine(root, location.DocumentPath));
-        return ResolveProjectFromDirectory(directory, root);
-    }
 
-    private string? ResolveProjectFromDirectory(string? directory, string root)
-    {
-        if (string.IsNullOrEmpty(directory))
-            return null;
-        if (_owningProjectCache.TryGetValue(directory, out var cached))
-            return cached;
-
-        string? result = null;
-        var current = directory;
-        while (!string.IsNullOrEmpty(current) && current.StartsWith(root, PathNormalizer.PathComparison))
+        var assemblyName = MetadataReferenceIdentity.SimpleName(parsed.AssemblyIdentity);
+        foreach (var project in _snapshotMetadata.Projects)
         {
-            if (!Directory.Exists(current))
-                break;
-
-            var project = Directory.EnumerateFiles(current, "*.csproj", SearchOption.TopDirectoryOnly)
-                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            if (project != null)
-            {
-                result = PathNormalizer.ToForwardSlash(Path.GetRelativePath(root, project));
-                break;
-            }
-
-            if (string.Equals(current, root, PathNormalizer.PathComparison))
-                break;
-            current = Path.GetDirectoryName(current)!;
+            var projectAssembly = ProjectFacts.GetAssemblyName(project);
+            if (ProjectFacts.AssemblyNameComparer.Equals(projectAssembly, assemblyName))
+                return projectAssembly;
         }
 
-        // Keyed by the start directory, the key that the lookup above reads (S01-F18).
-        _owningProjectCache[directory] = result;
-        return result;
+        return null;
     }
 
-    private string? ResolveSolutionPath()
+    private string? ResolveProjectPath(string symbolId)
     {
-        if (_solutionPathResolved)
-            return _solutionPath;
-        _solutionPathResolved = true;
-
-        if (string.IsNullOrEmpty(_gitRoot) || !Directory.Exists(_gitRoot))
+        if (_snapshotMetadata == null || !SymbolId.TryParse(symbolId, out var parsed))
             return null;
-        var solution = Directory.EnumerateFiles(_gitRoot, "*.sln*", SearchOption.TopDirectoryOnly)
-            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        _solutionPath = solution == null ? null : PathNormalizer.ToForwardSlash(Path.GetRelativePath(_gitRoot, solution));
-        return _solutionPath;
+
+        var assemblyName = MetadataReferenceIdentity.SimpleName(parsed.AssemblyIdentity);
+        string? matchedPath = null;
+        foreach (var project in _snapshotMetadata.Projects)
+        {
+            if (!ProjectFacts.AssemblyNameComparer.Equals(ProjectFacts.GetAssemblyName(project), assemblyName))
+                continue;
+            if (string.IsNullOrEmpty(project.ProjectPath))
+                return null;
+
+            var normalized = PathNormalizer.ToForwardSlash(project.ProjectPath);
+            if (matchedPath == null)
+                matchedPath = normalized;
+            else if (!PathNormalizer.PathComparer.Equals(matchedPath, normalized))
+                return null;
+        }
+
+        return matchedPath;
+    }
+
+    private string? ResolveSnapshotSolutionPath()
+    {
+        if (_snapshotMetadata == null || string.IsNullOrWhiteSpace(_snapshotMetadata.SolutionPath))
+            return null;
+
+        var solution = PathNormalizer.ToForwardSlash(_snapshotMetadata.SolutionPath);
+        if (string.IsNullOrWhiteSpace(_snapshotMetadata.GitRoot))
+            return solution;
+
+        var root = PathNormalizer.ToForwardSlash(_snapshotMetadata.GitRoot).TrimEnd('/');
+        if (solution.StartsWith(root + "/", PathNormalizer.PathComparison))
+            return solution[(root.Length + 1)..];
+
+        return Path.IsPathRooted(_snapshotMetadata.SolutionPath)
+            ? PathNormalizer.ToGitRelative(_snapshotMetadata.SolutionPath, _snapshotMetadata.GitRoot)
+            : solution;
     }
 }

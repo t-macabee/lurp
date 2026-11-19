@@ -34,15 +34,20 @@ public sealed class SemanticDiffStoreTests : IDisposable
     }
 
     [Fact]
-    public void GetSemanticChangesToSnapshot_ReturnsEveryFromSnapshotForThatTargetInOrder()
+    public void GetSemanticChangesForSymbol_ReturnsEveryFromSnapshotForThatTargetAndSymbolInOrder()
     {
         using var store = OpenSeededStore();
 
-        var changes = store.GetSemanticChangesToSnapshot("s2");
+        var changes = store.GetSemanticChangesForSymbol("s2", "M:Probe.Foo()");
 
-        Assert.Equal(["c1", "c2", "c4"], changes.Select(c => c.ChangeId));
-        Assert.All(changes, change => Assert.Equal("s2", change.ToSnapshotId));
-        Assert.Empty(store.GetSemanticChangesToSnapshot("missing"));
+        Assert.Equal(["c1", "c5"], changes.Select(c => c.ChangeId));
+        Assert.All(changes, change =>
+        {
+            Assert.Equal("s2", change.ToSnapshotId);
+            Assert.Equal("M:Probe.Foo()", change.SymbolId);
+        });
+        Assert.Empty(store.GetSemanticChangesForSymbol("s2", "missing"));
+        Assert.Empty(store.GetSemanticChangesForSymbol("missing", "M:Probe.Foo()"));
     }
 
     private SqliteIndexStore OpenSeededStore()
@@ -74,6 +79,12 @@ public sealed class SemanticDiffStoreTests : IDisposable
                 ChangeId = "c4", FromSnapshotId = "s0", ToSnapshotId = "s2",
                 ChangeType = "edge_added", SymbolId = "M:Probe.Baz()",
                 DetailJson = null, CreatedAtUtc = createdAt.AddMinutes(2)
+            },
+            new SemanticChange
+            {
+                ChangeId = "c5", FromSnapshotId = "s0", ToSnapshotId = "s2",
+                ChangeType = "edge_added", SymbolId = "M:Probe.Foo()",
+                DetailJson = null, CreatedAtUtc = createdAt.AddMinutes(4)
             }
         ]);
         store.SaveSemanticChanges("s2", "s3",

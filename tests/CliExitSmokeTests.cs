@@ -664,7 +664,7 @@ public sealed class CliExitSmokeTests : IDisposable
     public void Impact_EmptyKinds_ExitsOneWithOneErrorLine()
     {
         var result = RunCli("--mode=impact", "--symbol=T:Some.Type|assembly", "--kinds=", $"--output-dir={NoIndexOutputDir()}");
-        AssertSingleCliError(result, $"ERROR: --kinds must name at least one edge kind. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).");
+        AssertSingleCliError(result, $"ERROR: --kinds must name at least one edge kind. Use one of: {string.Join(", ", ImpactRequest.EdgeKindNames)} (case-insensitive).");
     }
 
     [Fact]

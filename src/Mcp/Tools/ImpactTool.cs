@@ -37,104 +37,41 @@ internal sealed class ImpactTool
             cancellationToken.ThrowIfCancellationRequested();
             using var store = _session.OpenReadStore();
 
-            if (string.IsNullOrEmpty(symbol))
-                throw new McpProtocolException("symbol is required.", McpErrorCode.InvalidParams);
+            var (request, parseError) = ImpactRequest.Parse(
+                symbol,
+                direction,
+                kinds,
+                provenance,
+                max_depth?.ToString(CultureInfo.InvariantCulture),
+                limit?.ToString(CultureInfo.InvariantCulture),
+                cursor);
+            if (parseError != null)
+                throw new McpProtocolException(parseError.FormatMcp(), McpErrorCode.InvalidParams);
 
-            var directionArg = direction ?? "downstream";
-            if (!ImpactHandler.TryParseDirection(directionArg, out var impactDirection))
-                throw new McpProtocolException("direction must be one of: downstream, upstream.", McpErrorCode.InvalidParams);
-
-            var maxDepth = max_depth ?? ImpactHandler.DefaultMaxDepth;
-            if (maxDepth < 1)
-                throw new McpProtocolException("max_depth must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(max_depth, McpLimits.MaxMaxDepth, "max_depth");
-
-            var limitValue = limit ?? ImpactHandler.DefaultLimit;
-            if (limitValue < 1)
-                throw new McpProtocolException("limit must be a positive integer.", McpErrorCode.InvalidParams);
             McpLimits.RequireAtMost(limit, McpLimits.MaxLimit, "limit");
 
-            IReadOnlyList<string>? canonicalKinds = null;
-            string? kindsRaw = null;
-            if (kinds is not null)
-            {
-                var kindsOutcome = ImpactHandler.TryParseNameFilter(kinds, ImpactHandler.EdgeKindNames, out canonicalKinds, out var unknownKind);
-                if (kindsOutcome == ImpactHandler.NameFilterParseOutcome.EmptyItem)
-                    throw new McpProtocolException("kinds contains an empty item.", McpErrorCode.InvalidParams);
-                if (kindsOutcome == ImpactHandler.NameFilterParseOutcome.UnknownName)
-                    throw new McpProtocolException($"kinds: unknown edge kind '{unknownKind}'. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).", McpErrorCode.InvalidParams);
-                if (canonicalKinds is null)
-                    throw new McpProtocolException($"kinds must name at least one edge kind. Use one of: {string.Join(", ", ImpactHandler.EdgeKindNames)} (case-insensitive).", McpErrorCode.InvalidParams);
+            var (binding, bindError) = request!.Bind(store, snapshotId);
+            if (bindError != null)
+                throw new McpProtocolException(bindError.FormatMcp(), McpErrorCode.InvalidParams);
 
-                kindsRaw = string.Join(",", canonicalKinds);
-            }
-
-            IReadOnlyList<string>? canonicalProvenance = null;
-            string? provenanceRaw = null;
-            if (provenance is not null)
-            {
-                var provenanceOutcome = ImpactHandler.TryParseNameFilter(provenance, Provenance.All, out canonicalProvenance, out var unknownProvenance);
-                if (provenanceOutcome == ImpactHandler.NameFilterParseOutcome.EmptyItem)
-                    throw new McpProtocolException("provenance contains an empty item.", McpErrorCode.InvalidParams);
-                if (provenanceOutcome == ImpactHandler.NameFilterParseOutcome.UnknownName)
-                    throw new McpProtocolException($"provenance: unknown provenance '{unknownProvenance}'. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).", McpErrorCode.InvalidParams);
-                if (canonicalProvenance is null)
-                    throw new McpProtocolException($"provenance must name at least one provenance. Use one of: {string.Join(", ", Provenance.All)} (case-insensitive).", McpErrorCode.InvalidParams);
-
-                provenanceRaw = string.Join(",", canonicalProvenance);
-            }
-
-            IReadOnlySet<string>? allowedKinds = canonicalKinds is not null
-                ? new HashSet<string>(canonicalKinds, StringComparer.Ordinal)
-                : impactDirection == ImpactDirection.Upstream
-                    ? ImpactReachability.UpstreamDefaultKinds
-                    : null;
-            HashSet<string>? allowedProvenance = canonicalProvenance is null ? null : new HashSet<string>(canonicalProvenance, StringComparer.Ordinal);
-
-            var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, symbol, snapshotId);
-
-            var fingerprint = SequenceCursor.ComputeFingerprint(
-                resolvedSymbolId,
-                impactDirection.ToString(),
-                maxDepth.ToString(CultureInfo.InvariantCulture),
-                kindsRaw,
-                provenanceRaw,
-                "symbols");
-
-            SequenceCursor? cursorObj = null;
-            if (!string.IsNullOrEmpty(cursor))
-            {
-                cursorObj = SequenceCursor.TryDecode(cursor);
-                if (cursorObj == null)
-                    throw new McpProtocolException("cursor is not a valid continuation token.", McpErrorCode.InvalidParams);
-
-                try
-                {
-                    cursorObj.Validate(snapshotId, fingerprint, ImpactHandler.CursorKind);
-                }
-                catch (ArgumentException ex)
-                {
-                    throw new McpProtocolException(ex.Message, McpErrorCode.InvalidParams);
-                }
-            }
-
-            var offset = cursorObj?.Offset ?? 0;
-
-            var reachability = new ImpactReachability(store, snapshotId, store);
-            var traced = reachability.Trace(resolvedSymbolId, impactDirection, allowedKinds, allowedProvenance, maxDepth, includeSource: true, cancellationToken: cancellationToken);
+            var reachability = new ImpactReachability(store, snapshotId);
+            var traced = reachability.Trace(binding!.ResolvedSymbolId, request.Direction, request.MaxDepth, request.AllowedKinds, request.AllowedProvenance, includeSource: true, cancellationToken: cancellationToken);
+            var semanticCauses = store.GetSemanticChangesForSymbol(snapshotId, binding.ResolvedSymbolId);
 
             var response = ImpactPaging.BuildSymbolsResponse(
                 snapshotId,
                 _session.GetFreshnessJson(),
-                resolvedSymbolId,
-                impactDirection,
-                maxDepth,
+                binding.ResolvedSymbolId,
+                request.Direction,
+                request.MaxDepth,
                 traced,
                 reachability,
-                offset,
-                limitValue,
-                fingerprint,
-                ImpactHandler.CursorKind,
+                semanticCauses,
+                binding.Offset,
+                request.Limit,
+                binding.Fingerprint,
+                ImpactRequest.CursorKind,
                 pinned: true,
                 includeLimitEcho: true);
 

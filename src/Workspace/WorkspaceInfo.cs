@@ -38,6 +38,8 @@ public sealed class WorkspaceInfo
 
         AssemblyNames = BuildAssemblyNameMap(solution);
 
+        ProjectPaths = BuildProjectPathMap(solution, gitRoot);
+
         InternalsVisibleTo = BuildInternalsVisibleToMap(solution);
 
         ProjectDocuments = projectDocuments.ToDictionary(
@@ -93,6 +95,8 @@ public sealed class WorkspaceInfo
     ///     <c>AssemblyName</c> is set in the project file (B18).
     /// </summary>
     public IReadOnlyDictionary<string, string> AssemblyNames { get; }
+
+    public IReadOnlyDictionary<string, string> ProjectPaths { get; }
 
     /// <summary>
     ///     D48 / D171: per-project sorted, distinct <c>InternalsVisibleTo</c> target assembly
@@ -311,6 +315,18 @@ public sealed class WorkspaceInfo
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var project in solution.Projects)
             map[project.Name] = project.AssemblyName;
+        return map;
+    }
+
+    private static Dictionary<string, string> BuildProjectPathMap(Solution solution, string gitRoot)
+    {
+        var normalizedRoot = PathNormalizer.NormalizeRoot(gitRoot);
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            if (!string.IsNullOrWhiteSpace(project.FilePath))
+                map[project.Name] = GetRelativePath(project.FilePath, normalizedRoot);
+        }
         return map;
     }
 

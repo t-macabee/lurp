@@ -39,4 +39,46 @@ public sealed class UncertaintyDetectorTests : IntegrationTestBase
         Assert.Single(capsule.Uncertainties, static u => u.RelationshipKind == "ReflectionTargetUnknown");
         Assert.Single(capsule.Uncertainties, static u => u.RelationshipKind == "ReflectionNameCandidate");
     }
+
+    [Fact]
+    public async Task EachRuntimeUnknownAndDispatchRelation_GivesOneEntry()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Setup.cs"] = """
+                           using Microsoft.Extensions.DependencyInjection;
+
+                           namespace TestProject;
+
+                           public interface IFoo
+                           {
+                               void Work();
+                           }
+
+                           public class BaseFoo
+                           {
+                               public void Work() { }
+                           }
+
+                           public class Foo : BaseFoo, IFoo { }
+
+                           public static class Setup
+                           {
+                               public static void Register(IServiceCollection services) =>
+                                   services.AddSingleton<IFoo>(_ => new Foo());
+                           }
+                           """
+        }, frameworkReferences: ["Microsoft.AspNetCore.App"]);
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var fooInterfaceId = ResolveSymbolId(snapshotId, "global::TestProject.IFoo");
+
+        using var store = OpenStore(DbPath);
+        var capsule = ContextAssembler.ResolveAndAssemble(store, store,
+            new ContextLookup(snapshotId, fooInterfaceId, null, null),
+            new ContextAssemblyOptions(ContextIntent.Inspect, 8000, 2),
+            store, store, store);
+
+        Assert.Single(capsule.Uncertainties, static u => u.RelationshipKind == "Registers");
+        Assert.Single(capsule.Uncertainties, static u => u.RelationshipKind == "MayDispatchTo");
+    }
 }

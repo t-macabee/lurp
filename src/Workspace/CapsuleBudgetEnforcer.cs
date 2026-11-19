@@ -4,28 +4,30 @@ namespace Lurp.Workspace;
 
 // The tier budgeter bounds tier-item source against the same estimate; this
 // final pass applies the architecture's greedy priority policy across every
-// consumer-visible section. The budget measures CONTENT the agent consumes:
-// the source text of the anchor and every capsule item, plus the serialized
-// weight of the substantive non-source sections (paths, topology,
-// constraints, completeness, uncertainties, verification, likely change
-// sites, affected public surfaces, inclusion reasons). Per-item identity
-// framing (symbol ids, fully-qualified names, edge kinds, provenance,
-// coordinates) is navigation metadata and is not counted as content.
+// counted section. The budget measures CONTENT the agent consumes: anchor and
+// item source, plus the serialized weight of the substantive non-source
+// sections (paths, semantic causes, constraints, inclusion reasons, likely
+// change sites, topology, completeness, suggested verification, affected public
+// surfaces). Per-item identity framing (symbol ids, fully-qualified names, edge
+// kinds, provenance, coordinates) is navigation metadata and is not counted as
+// content. `uncertainties` is added after the budget pass, so it is neither
+// counted nor trimmed.
 //
-// Over-budget capsules first bound the path and semantic-cause sections (a
-// "summarized" entry), then bound tier-item source text to a per-item cap, then clear the
-// lowest-priority sections greedily; every omitted/summarized category is
-// recorded in omitted_tiers and truncated_categories. surrounding_source is
-// low-value bulk (sibling declarations that heavily overlap the anchor) and
-// is cleared before high-signal small sections such as inclusion_reasons and
+// Over-budget capsules first keep only the first whole paths and bound
+// semantic causes (a "summarized" entry), then bound tier-item source text to
+// a per-item cap, then clear the lowest-priority sections greedily; every
+// omitted/summarized category is recorded in omitted_tiers and
+// truncated_categories. surrounding_source is low-value bulk (sibling
+// declarations that heavily overlap the anchor) and is cleared first, before
+// small high-signal sections such as inclusion_reasons and
 // affected_public_surfaces. The anchor is never dropped; as a last resort its
 // source is bounded to fit the remaining budget (a "summarized" entry), so
-// --content-budget always bounds the content basis it is documented to bound. Only
-// when the residual non-anchor content alone still exceeds the budget is the
-// overflow declared with budget_exhausted. estimated_tokens is set to the
-// settled CONTENT measure of the capsule : the serialized artifact is
-// larger, because per-item identity and provenance framing is uncounted
-// navigation metadata; the whole-artifact figure is reported separately as
+// --content-budget always bounds the content basis it is documented to bound.
+// Only when the residual non-anchor content alone still exceeds the budget is
+// the overflow declared with budget_exhausted. estimated_tokens is set to the
+// settled CONTENT measure of the capsule: the serialized artifact is larger,
+// because per-item identity and provenance framing is uncounted navigation
+// metadata; the whole-artifact figure is reported separately as
 // estimated_artifact_tokens.
 //
 // omitted_tiers carries exactly ONE terminal record per category: a later trim
@@ -34,7 +36,6 @@ namespace Lurp.Workspace;
 internal static class CapsuleBudgetEnforcer
 {
     private const int MaxBoundPaths = 3;
-    private const int MaxBoundHopsPerPath = 3;
     private const int MaxBoundCauses = 10;
     private const int MaxItemSourceChars = 800;
     private const string SourceTruncationMarker = "\n// … source truncated by token budget …";
@@ -194,7 +195,6 @@ internal static class CapsuleBudgetEnforcer
         chars += SerializedChars(capsule.LikelyChangeSites);
         chars += SerializedChars(capsule.Topology);
         chars += SerializedChars(capsule.Completeness);
-        chars += SerializedChars(capsule.Uncertainties);
         chars += SerializedChars(capsule.SuggestedVerification);
         return chars;
     }
@@ -325,22 +325,10 @@ internal static class CapsuleBudgetEnforcer
     {
         return _ =>
         {
-            if (paths.Count == 0)
+            if (paths.Count <= MaxBoundPaths)
                 return false;
-            var changed = false;
-            foreach (var path in paths.Where(path => path.Hops.Count > MaxBoundHopsPerPath))
-            {
-                path.Hops.RemoveRange(MaxBoundHopsPerPath, path.Hops.Count - MaxBoundHopsPerPath);
-                changed = true;
-            }
-
-            if (paths.Count > MaxBoundPaths)
-            {
-                paths.RemoveRange(MaxBoundPaths, paths.Count - MaxBoundPaths);
-                changed = true;
-            }
-
-            return changed;
+            paths.RemoveRange(MaxBoundPaths, paths.Count - MaxBoundPaths);
+            return true;
         };
     }
 
@@ -394,62 +382,56 @@ internal static class CapsuleBudgetEnforcer
     {
         private readonly ContextCapsule _capsule;
         private readonly List<TrimmableSection> _sections;
+        private int _nextIndex;
 
         public SectionTrimmer(ContextCapsule capsule, IReadOnlyList<string> tierPriority)
         {
             _capsule = capsule;
 
-            var sections = tierPriority
-                .Select(name => (name, items: ContextAssembler.GetTierItems(capsule, name)))
-                .Where(x => x.items != null)
-                .Select(x => TrimmableSection.Clear(x.name, x.items!))
-                .ToList();
+            // Trim order (D64, first entry trimmed first):
+            // surrounding_source, inclusion_reasons (except omitted_tiers_*),
+            // affected_public_surfaces, likely_change_sites, completeness
+            // (detail, then all), constraints, topology, semantic_causes,
+            // outgoing_paths, incoming_paths, suggested_verification, then the
+            // remaining tiers from the lowest priority up.
+            List<TrimmableSection> sections = [];
+            if (tierPriority.Contains("surrounding_source", StringComparer.Ordinal)
+                && ContextAssembler.GetTierItems(capsule, "surrounding_source") is { } surrounding)
+                sections.Add(TrimmableSection.Clear("surrounding_source", surrounding));
 
-            // Sections appended after the tiers, ordered so the greedy loop
-            // (which trims from the end of this list first) drops the least
-            // essential content first. Uncertainties are surfaced last among
-            // the non-tier sections so semantic incompleteness is preserved as
-            // long as possible.
             sections.AddRange(
             [
-                TrimmableSection.Clear("uncertainties", capsule.Uncertainties),
-                TrimmableSection.Clear("suggested_verification", capsule.SuggestedVerification),
-                TrimmableSection.Clear("incoming_paths", capsule.IncomingPaths),
-                TrimmableSection.Clear("outgoing_paths", capsule.OutgoingPaths),
-                TrimmableSection.Clear("semantic_causes", capsule.SemanticCauses),
-                TrimmableSection.WithSteps("topology",
-                    new TrimStep("budget_exhausted", TopologyResetStep(capsule))),
-                TrimmableSection.Clear("constraints", capsule.Constraints),
+                TrimmableSection.ClearDictionary("inclusion_reasons", capsule.InclusionReasons),
+                TrimmableSection.Clear("affected_public_surfaces", capsule.AffectedPublicSurfaces),
+                TrimmableSection.Clear("likely_change_sites", capsule.LikelyChangeSites),
                 TrimmableSection.WithSteps("completeness",
                     new TrimStep("summarized", CompletenessDropDetailStep(capsule)),
                     new TrimStep("budget_exhausted", CompletenessDropStep(capsule))),
-                TrimmableSection.Clear("likely_change_sites", capsule.LikelyChangeSites),
-                TrimmableSection.Clear("affected_public_surfaces", capsule.AffectedPublicSurfaces),
-                TrimmableSection.ClearDictionary("inclusion_reasons", capsule.InclusionReasons)
+                TrimmableSection.Clear("constraints", capsule.Constraints),
+                TrimmableSection.WithSteps("topology",
+                    new TrimStep("budget_exhausted", TopologyResetStep(capsule))),
+                TrimmableSection.Clear("semantic_causes", capsule.SemanticCauses),
+                TrimmableSection.Clear("outgoing_paths", capsule.OutgoingPaths),
+                TrimmableSection.Clear("incoming_paths", capsule.IncomingPaths),
+                TrimmableSection.Clear("suggested_verification", capsule.SuggestedVerification)
             ]);
 
-            _sections = sections;
-
-            // surrounding_source is low-value bulk: sibling declarations that
-            // heavily overlap the anchor. It must be cleared before the
-            // small high-signal sections (inclusion_reasons,
-            // affected_public_surfaces), so it moves to the end of the list
-            // (the greedy loop trims from the end first) regardless of its
-            // position in the tier priority. Source bounding is unaffected:
-            // BoundTierSources looks sections up by name.
-            var surrounding = sections.FirstOrDefault(static section => section.Name == "surrounding_source");
-            if (surrounding != null)
+            foreach (var name in tierPriority.Reverse())
             {
-                sections.Remove(surrounding);
-                sections.Add(surrounding);
+                if (string.Equals(name, "surrounding_source", StringComparison.Ordinal))
+                    continue;
+                if (ContextAssembler.GetTierItems(capsule, name) is { } items)
+                    sections.Add(TrimmableSection.Clear(name, items));
             }
+
+            _sections = sections;
         }
 
         public TruncationEntry? TrimNextLowestPriority()
         {
-            for (var i = _sections.Count - 1; i >= 0; i--)
+            while (_nextIndex < _sections.Count)
             {
-                var section = _sections[i];
+                var section = _sections[_nextIndex];
                 while (section.Steps.Count > 0)
                 {
                     var step = section.Steps.Dequeue();
@@ -457,7 +439,7 @@ internal static class CapsuleBudgetEnforcer
                         return new TruncationEntry(section.Name, step.Reason);
                 }
 
-                _sections.RemoveAt(i);
+                _nextIndex++;
             }
 
             return null;

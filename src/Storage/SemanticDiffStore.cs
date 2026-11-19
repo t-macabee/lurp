@@ -72,14 +72,15 @@ public sealed class SemanticDiffStore : ISemanticDiffStore
         return ReadChanges(command);
     }
 
-    public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
+    public List<SemanticChange> GetSemanticChangesForSymbol(string toSnapshotId, string symbolId)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = SemanticChangesSelect + """
-            WHERE to_snapshot_id = @toSnapshotId
+            WHERE to_snapshot_id = @toSnapshotId AND symbol_id = @symbolId
             ORDER BY created_at_utc, change_id;
             """;
         command.Parameters.AddWithValue("@toSnapshotId", toSnapshotId);
+        command.Parameters.AddWithValue("@symbolId", symbolId);
 
         return ReadChanges(command);
     }

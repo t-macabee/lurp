@@ -287,11 +287,11 @@ internal static class SnapshotAssertions
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT name, assembly_name, target_framework, metadata_reference_identities,
-                   compilation_options_fingerprint, document_paths_json, internals_visible_to
+                   compilation_options_fingerprint, document_paths_json, internals_visible_to, project_path
             FROM projects
             WHERE snapshot_id = @snapshotId
             ORDER BY name, assembly_name, target_framework, metadata_reference_identities,
-                     compilation_options_fingerprint, document_paths_json, internals_visible_to;
+                     compilation_options_fingerprint, document_paths_json, internals_visible_to, project_path;
             """;
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
@@ -305,7 +305,8 @@ internal static class SnapshotAssertions
                 reader.IsDBNull(3) ? null : reader.GetString(3),
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.IsDBNull(6) ? null : reader.GetString(6)));
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7)));
         result.Sort((a, b) =>
         {
             var cmp = StringComparer.Ordinal.Compare(a.Name, b.Name);
@@ -320,7 +321,9 @@ internal static class SnapshotAssertions
             if (cmp != 0) return cmp;
             cmp = StringComparer.Ordinal.Compare(a.DocumentPathsJson, b.DocumentPathsJson);
             if (cmp != 0) return cmp;
-            return StringComparer.Ordinal.Compare(a.InternalsVisibleToJson, b.InternalsVisibleToJson);
+            cmp = StringComparer.Ordinal.Compare(a.InternalsVisibleToJson, b.InternalsVisibleToJson);
+            if (cmp != 0) return cmp;
+            return StringComparer.Ordinal.Compare(a.ProjectPath, b.ProjectPath);
         });
         return result;
     }
@@ -633,7 +636,8 @@ internal static class SnapshotAssertions
         string? MetadataReferenceIdentities,
         string? CompilationOptionsFingerprint,
         string? DocumentPathsJson,
-        string? InternalsVisibleToJson);
+        string? InternalsVisibleToJson,
+        string? ProjectPath);
 
     internal sealed record ProjectReferenceSnapshot(string ProjectName, string ReferencedProjectName);
 }

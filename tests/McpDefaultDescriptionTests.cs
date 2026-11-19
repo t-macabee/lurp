@@ -19,8 +19,8 @@ public sealed class McpDefaultDescriptionTests
     public static IEnumerable<object[]> NumericDefaults()
     {
         yield return [typeof(AnnotationsTool), "limit", AnnotationHandler.DefaultLimit];
-        yield return [typeof(ContextTool), "content_budget", ContextHandler.DefaultBudget];
-        yield return [typeof(ContextTool), "content_budget", ContextHandler.DefaultTypeAnchorBudget];
+        yield return [typeof(ContextTool), "content_budget", ContextRequest.DefaultBudget];
+        yield return [typeof(ContextTool), "content_budget", ContextRequest.DefaultTypeAnchorBudget];
         yield return [typeof(DeadCandidatesTool), "limit", DeadCandidateLiveness.DefaultPageSize];
         yield return [typeof(DeadCandidatesTool), "limit", DeadCandidateLiveness.MaxPageSize];
         yield return [typeof(StatusTool), "max_bytes", StatusTool.DefaultMaxBytes];

@@ -18,8 +18,7 @@ internal static class HelpText
     // drift). Keyed by mode name; printed after that mode's flag list.
     private static readonly Dictionary<string, string> ModeNotes = new(StringComparer.Ordinal)
     {
-        ["impact"] = "The response lists reached symbols, each with its depth, `shortest_path_count`, `frontier` flag and a deterministic witness path. It also carries `groups`: the symbols grouped by the first hop of their witness path, computed over ALL symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated. "
-                     + "Note: a static call site emits both a `Calls` edge and a `StaticallyCalls` edge, and `shortest_path_count` counts both as separate routes; count distinct call sites (first_hop_source_symbol_id) rather than total edge rows when measuring fan-in.",
+        ["impact"] = "The response lists reached symbols, each with its depth, `shortest_path_count` (shortest symbol routes; parallel edges between two symbols count once), `frontier` flag and a deterministic witness path. It also carries `groups`: the symbols grouped by the first hop of their witness path, computed over ALL symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated.",
         ["context"] = "The capsule is always written to <output-dir>/capsule-<symbol>.json (long symbols are shortened with a stable hash suffix); the stdout copy is what --quiet and --output=summary replace."
     };
 

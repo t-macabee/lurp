@@ -25,13 +25,11 @@ public sealed class McpImpactTests : ImpactIndexFixture
         Assert.Equal(snap2, session.PinnedSnapshotId);
         var impact = new ImpactTool(session);
 
-        string barId, callerId;
-        using (var store = OpenStore(DbPath))
-        {
-            var ids = store.GetSymbolIdsInSnapshot(snap2);
-            barId = ids.First(id => store.GetSymbolInfo(id, snap2)?.FullyQualifiedName?.Contains("ImpactProj.Foo.Bar") == true);
-            callerId = ids.First(id => store.GetSymbolInfo(id, snap2)?.FullyQualifiedName?.Contains("ImpactProj.Foo.Caller") == true);
-        }
+        var barId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.Bar");
+        var callerId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.Caller");
+        var upstreamCallerId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.UpstreamCaller");
+        var extraId = ResolveSymbolId(snap2, "global::ImpactProj.Extra.ExtraMethod");
+        var anotherId = ResolveSymbolId(snap2, "global::ImpactProj.Another.AnotherMethod");
 
         // downstream from Caller reaches Bar
         var jsonDown = impact.LurpImpact(symbol: callerId, direction: "downstream", max_depth: 3, limit: 50);
@@ -40,39 +38,41 @@ public sealed class McpImpactTests : ImpactIndexFixture
         Assert.True(docDown.RootElement.GetProperty("pinned").GetBoolean());
         Assert.Equal(50, docDown.RootElement.GetProperty("limit").GetInt32());
         Assert.True(docDown.RootElement.TryGetProperty("freshness", out _));
-        Assert.True(docDown.RootElement.GetProperty("symbols").GetArrayLength() >= 1);
+        Assert.Equal([barId], McpSymbolIds(docDown));
         Assert.True(docDown.RootElement.TryGetProperty("groups", out _));
         Assert.True(docDown.RootElement.TryGetProperty("semantic_causes", out _));
         Assert.True(docDown.RootElement.TryGetProperty("symbol_count_total", out _));
         Assert.True(docDown.RootElement.TryGetProperty("frontier_count", out _));
 
-        // kinds filtering: Calls keeps symbols, Inherits filters to 0
+        // kinds filtering: Calls keeps Bar, Inherits filters to 0
         var jsonCalls = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: CallsKind);
         using var docCalls = JsonDocument.Parse(jsonCalls);
-        Assert.True(docCalls.RootElement.GetProperty("symbols").GetArrayLength() >= 1);
+        Assert.Equal([barId], McpSymbolIds(docCalls));
         var jsonInherits = impact.LurpImpact(symbol: callerId, direction: "downstream", kinds: InheritsKind);
         using var docInherits = JsonDocument.Parse(jsonInherits);
-        Assert.Equal(0, docInherits.RootElement.GetProperty("symbols").GetArrayLength());
+        Assert.Empty(McpSymbolIds(docInherits));
 
-        // provenance filtering does not throw
+        // provenance filtering: compiler_proved keeps Bar; framework_derived yields 0
         var jsonProv = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: CompilerProvedProvenance);
         using var docProv = JsonDocument.Parse(jsonProv);
-        Assert.True(docProv.RootElement.TryGetProperty("symbols", out _));
+        Assert.Equal([barId], McpSymbolIds(docProv));
+        var jsonFramework = impact.LurpImpact(symbol: callerId, direction: "downstream", provenance: ["framework_derived"]);
+        using var docFramework = JsonDocument.Parse(jsonFramework);
+        Assert.Empty(McpSymbolIds(docFramework));
 
         // max_depth bounds the reached set
-        var jsonD1 = impact.LurpImpact(symbol: callerId, direction: "downstream", max_depth: 1, limit: 50);
-        var jsonD10 = impact.LurpImpact(symbol: callerId, direction: "downstream", max_depth: 10, limit: 50);
+        var jsonD1 = impact.LurpImpact(symbol: barId, direction: "upstream", max_depth: 1, limit: 50);
+        var jsonD10 = impact.LurpImpact(symbol: barId, direction: "upstream", max_depth: 10, limit: 50);
         using var d1 = JsonDocument.Parse(jsonD1);
         using var d10 = JsonDocument.Parse(jsonD10);
-        Assert.True(d1.RootElement.GetProperty("symbols").GetArrayLength() <= d10.RootElement.GetProperty("symbols").GetArrayLength());
+        Assert.Equal([extraId, callerId], McpSymbolIds(d1));
+        Assert.Equal([extraId, callerId, anotherId, upstreamCallerId], McpSymbolIds(d10));
 
         // limit + cursor pagination: concatenating pages equals the full ordered symbol list
         var jsonFull = impact.LurpImpact(symbol: barId, direction: "upstream", limit: 50);
         using var docFull = JsonDocument.Parse(jsonFull);
-        var fullSymbols = docFull.RootElement.GetProperty("symbols").EnumerateArray()
-            .Select(s => s.GetProperty("symbol_id").GetString()!)
-            .ToList();
-        Assert.True(fullSymbols.Count >= 2);
+        var fullSymbols = McpSymbolIds(docFull);
+        Assert.Equal([extraId, callerId, anotherId, upstreamCallerId], fullSymbols);
 
         var pagedSymbols = new List<string>();
         string? cursor = null;
@@ -117,6 +117,8 @@ public sealed class McpImpactTests : ImpactIndexFixture
         using var docUpBar = JsonDocument.Parse(jsonUpBar);
         var upBarCauses = docUpBar.RootElement.GetProperty("semantic_causes");
         Assert.True(upBarCauses.GetArrayLength() >= 1);
+        Assert.All(upBarCauses.EnumerateArray(),
+            cause => Assert.Equal(barId, cause.GetProperty("symbol_id").GetString()));
 
         // The item shape of lurp_impact (B60): these five keys, nothing else.
         var expectedCauseKeys = new[] { "change_type", "detail", "from_snapshot_id", "symbol_id", "to_snapshot_id" };
@@ -369,7 +371,7 @@ public sealed class McpImpactTests : ImpactIndexFixture
 
         var ex = Assert.Throws<McpProtocolException>(() => tool.LurpImpact(symbol: "T:ImpactProj.Foo|ImpactProj", provenance: ["global_implementation_relation"]));
         Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
-        Assert.Contains("unknown provenance 'global_implementation_relation'", ex.Message);
+        Assert.Contains("Unknown provenance 'global_implementation_relation' in provenance.", ex.Message);
         Assert.Contains("compiler_proved, framework_derived, possible, convention, name_candidate, runtime_unknown", ex.Message);
     }
 

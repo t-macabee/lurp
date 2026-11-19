@@ -77,12 +77,11 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         await IndexInitialAsync();
         var snap2 = await IndexSecondAsync();
 
-        string barId;
-        using (var store = OpenStore(DbPath))
-        {
-            var ids = store.GetSymbolIdsInSnapshot(snap2);
-            barId = ids.First(id => store.GetSymbolInfo(id, snap2)?.FullyQualifiedName?.Contains("ImpactProj.Foo.Bar") == true);
-        }
+        var barId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.Bar");
+        var callerId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.Caller");
+        var upstreamCallerId = ResolveSymbolId(snap2, "global::ImpactProj.Foo.UpstreamCaller");
+        var extraId = ResolveSymbolId(snap2, "global::ImpactProj.Extra.ExtraMethod");
+        var anotherId = ResolveSymbolId(snap2, "global::ImpactProj.Another.AnotherMethod");
 
         // 1. A run with a large --limit= value gives the full ordered symbol list.
         var fullResult = CapturingOutputSink.Capture(sink => ImpactHandler.Run([
@@ -102,12 +101,13 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
         var list1 = fullRoot.GetProperty("symbols").EnumerateArray()
             .Select(s => s.GetProperty("symbol_id").GetString()!)
             .ToList();
-        Assert.True(list1.Count >= 2, $"Expected at least 2 upstream symbols for Bar, got {list1.Count}.");
+        Assert.Equal([extraId, callerId, anotherId, upstreamCallerId], list1);
 
-        // Every symbol carries a non-empty witness path.
+        // Every symbol carries a non-empty witness path and count 1.
         foreach (var symbol in fullRoot.GetProperty("symbols").EnumerateArray())
         {
             Assert.True(symbol.GetProperty("depth").GetInt32() >= 1);
+            Assert.Equal(1L, symbol.GetProperty("shortest_path_count").GetInt64());
             var witness = symbol.GetProperty("witness_path");
             Assert.True(witness.GetProperty("total_steps").GetInt32() >= 1);
             Assert.NotEmpty(witness.GetProperty("hops").EnumerateArray());
@@ -155,32 +155,40 @@ public sealed class ImpactHandlerPagingTests : ImpactIndexFixture
 
         Assert.Equal(list1, pagedList);
 
-        // 3. groups is sorted by symbol_count from high to low, then by first_hop_target_symbol_id (ordinal);
-        //    every reached symbol is counted exactly once across the groups.
+        // 3. groups is sorted by symbol_count from high to low, then by the first-hop neighbor id (D63).
         var groups = fullRoot.GetProperty("groups").EnumerateArray().ToList();
-        for (var i = 1; i < groups.Count; i++)
-        {
-            var prev = groups[i - 1];
-            var curr = groups[i];
-            var prevCount = prev.GetProperty("symbol_count").GetInt32();
-            var currCount = curr.GetProperty("symbol_count").GetInt32();
-
-            if (prevCount == currCount)
-            {
-                var prevTarget = prev.GetProperty("first_hop_target_symbol_id").GetString()!;
-                var currTarget = curr.GetProperty("first_hop_target_symbol_id").GetString()!;
-                Assert.True(string.Compare(prevTarget, currTarget, StringComparison.Ordinal) <= 0);
-            }
-            else
-            {
-                Assert.True(prevCount > currCount);
-            }
-        }
+        Assert.Equal(2, groups.Count);
+        Assert.Equal((callerId, barId, 3, 2), (
+            groups[0].GetProperty("first_hop_source_symbol_id").GetString()!,
+            groups[0].GetProperty("first_hop_target_symbol_id").GetString()!,
+            groups[0].GetProperty("symbol_count").GetInt32(),
+            groups[0].GetProperty("max_depth").GetInt32()));
+        Assert.Equal((extraId, barId, 1, 1), (
+            groups[1].GetProperty("first_hop_source_symbol_id").GetString()!,
+            groups[1].GetProperty("first_hop_target_symbol_id").GetString()!,
+            groups[1].GetProperty("symbol_count").GetInt32(),
+            groups[1].GetProperty("max_depth").GetInt32()));
 
         Assert.Equal(list1.Count, groups.Sum(g => g.GetProperty("symbol_count").GetInt32()));
 
         // 4. symbol_count_total equals the length of list 1.
         Assert.Equal(list1.Count, fullRoot.GetProperty("symbol_count_total").GetInt32());
+
+        // 5. Tie-break upstream: equal-count groups sort by first_hop_source_symbol_id (ordinal).
+        using var callerUpstream = RunImpactJson(callerId, "upstream", maxDepth: 1);
+        Assert.Equal([anotherId, upstreamCallerId], SymbolIds(callerUpstream));
+        var tiedGroups = callerUpstream.RootElement.GetProperty("groups").EnumerateArray().ToList();
+        Assert.Equal(2, tiedGroups.Count);
+        Assert.Equal((anotherId, callerId, 1, 1), (
+            tiedGroups[0].GetProperty("first_hop_source_symbol_id").GetString()!,
+            tiedGroups[0].GetProperty("first_hop_target_symbol_id").GetString()!,
+            tiedGroups[0].GetProperty("symbol_count").GetInt32(),
+            tiedGroups[0].GetProperty("max_depth").GetInt32()));
+        Assert.Equal((upstreamCallerId, callerId, 1, 1), (
+            tiedGroups[1].GetProperty("first_hop_source_symbol_id").GetString()!,
+            tiedGroups[1].GetProperty("first_hop_target_symbol_id").GetString()!,
+            tiedGroups[1].GetProperty("symbol_count").GetInt32(),
+            tiedGroups[1].GetProperty("max_depth").GetInt32()));
     }
 
     // Contract/acceptance: pins the v2 summary and jsonl renderings.

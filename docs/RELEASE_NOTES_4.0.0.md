@@ -377,13 +377,24 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - Read proved interface members implemented by the anchor from `contracts`.
 - Read `affected_public_surfaces` using the effective-access and outside-friend rules. Instance constructors, properties, fields and property accessors still use declared access.
 - Query snapshot annotations directly for facts outside the capsule scope.
+- `shortest_path_count` counts shortest symbol routes. Parallel edges between two symbols count once, so a count can drop, and `--kinds=` no longer changes the count of a route that it keeps.
+- `groups` with equal counts sort by the first-hop neighbor id.
+- Over the budget, a capsule keeps the first three witness paths whole and drops the rest. Before, it cut each path to three hops.
+- A gap capsule keeps its `location_gap` uncertainty under any budget.
+- `anchor.extractor_identity` names the extractor version of the capsule's snapshot.
+- `suggested_verification` commands name the indexed project or solution, not files found on disk at read time.
+- A location anchor that resolves to a type gets the type default budget.
+
+## CLI and MCP surface
+
+- MCP `lurp_context` rejects a half `file`+`line` pair, as the CLI does (D86, additive). MCP and CLI error texts for impact and context use one wording.
 
 ## Versions
 
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v45 |
+| Database schema | v37 | v46 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v7 |

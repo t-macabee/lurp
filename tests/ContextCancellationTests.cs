@@ -105,6 +105,23 @@ public sealed class ContextCancellationTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Capsule_ReadsTheAnchorCausesOnce()
+    {
+        var snapshotId = await IndexChainAsync();
+        var typeId = ResolveSymbolId(snapshotId, "global::TestProject.Chain");
+        var lookup = new ContextLookup(snapshotId, typeId, null, null);
+        var options = new ContextAssemblyOptions(ContextIntent.Inspect, 8000, 5);
+
+        using var store = OpenStore(DbPath);
+        var counter = new CancelOnUseSemanticDiffStore(store, null);
+        var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store, counter, CancellationToken.None);
+
+        Assert.NotNull(capsule);
+        Assert.Equal(1, counter.Calls);
+        Assert.Equal([typeId], counter.QueriedSymbolIds);
+    }
+
+    [Fact]
     public async Task Uncertainties_CancelledInsideNeighborhoodLoops_StopsEarly()
     {
         var snapshotId = await IndexChainAsync();
@@ -223,11 +240,12 @@ public sealed class ContextCancellationTests : IntegrationTestBase
 
     /// <summary>
     ///     Forwards to the inner store and cancels <see cref="Cancellation" /> on the first
-    ///     <see cref="GetSemanticChangesToSnapshot" /> call.
+    ///     <see cref="GetSemanticChangesForSymbol" /> call.
     /// </summary>
-    public sealed class CancelOnUseSemanticDiffStore(ISemanticDiffStore inner, CancellationTokenSource cancellation) : ISemanticDiffStore
+    public sealed class CancelOnUseSemanticDiffStore(ISemanticDiffStore inner, CancellationTokenSource? cancellation) : ISemanticDiffStore
     {
         public int Calls { get; private set; }
+        public List<string> QueriedSymbolIds { get; } = [];
 
         public void SaveSemanticChanges(string fromSnapshotId, string toSnapshotId, IEnumerable<SemanticChange> changes)
         {
@@ -239,11 +257,12 @@ public sealed class ContextCancellationTests : IntegrationTestBase
             return inner.GetSemanticChanges(fromSnapshotId, toSnapshotId);
         }
 
-        public List<SemanticChange> GetSemanticChangesToSnapshot(string toSnapshotId)
+        public List<SemanticChange> GetSemanticChangesForSymbol(string toSnapshotId, string symbolId)
         {
             Calls++;
-            cancellation.Cancel();
-            return inner.GetSemanticChangesToSnapshot(toSnapshotId);
+            QueriedSymbolIds.Add(symbolId);
+            cancellation?.Cancel();
+            return inner.GetSemanticChangesForSymbol(toSnapshotId, symbolId);
         }
     }
 }

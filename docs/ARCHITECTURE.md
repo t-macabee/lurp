@@ -2,7 +2,7 @@
 
 **Status:** Design reference. The architecture described here is fully implemented.
 See `notes/TRUST_KERNEL.md` for verification evidence and known deviations.
-**Current:** <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
+**Current:** <!-- generated:versions -->tool 3.6.1, schema v46, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->
 **Scope:** C#/.NET through Roslyn; local, compiler-grounded, read-only analysis
 
 ---
@@ -53,7 +53,7 @@ input is unchanged, a re-index reuses the existing snapshot, except
 hashes the workspace id (git root and solution path, so a clone at another path
 gets other snapshot ids), the .NET SDK and Roslyn compiler versions,
 `ExtractorVersion` and each extractor and adapter version, the per-project
-target frameworks, assembly names, project references, metadata reference
+target frameworks, assembly names, project file paths, project references, metadata reference
 identities, compilation-options fingerprints (including the language version and
 preprocessor symbols), per-project `InternalsVisibleTo` targets and project document lists, each document's path and
 content hash, and the skipped adapters. A change to any of those inputs gives a
@@ -217,8 +217,9 @@ migrate.
 `ImpactReachability` answers "what can this change reach?". It runs a
 level-by-level BFS from the anchor with one shared visited set, so memory grows
 with symbols and edges, not with paths. For each reached symbol it records the
-depth, one witness path, a shortest-path count (edge rows, saturating at
-`long.MaxValue`) and a frontier flag. Edges are sorted by neighbor ID, kind,
+depth, one witness path, a shortest-path count (the number of shortest symbol routes;
+parallel edges between two symbols count once, saturating at `long.MaxValue`)
+and a frontier flag. Edges are sorted by neighbor ID, kind,
 provenance and source location before expansion, and each level is expanded in
 symbol-ID order, so the witness paths and the output are the same on every run.
 `--mode=impact`, `lurp_impact` and the capsule paths use this trace.
@@ -230,7 +231,17 @@ assembled for an agent task. Built by `ContextAssembler` with tier builders
 and enforced by `CapsuleBudgetEnforcer`. Default priority order: contracts,
 direct callees, direct callers, registered implementations, relevant tests,
 second-degree context, surrounding source. The intent (`modify`, `diagnose`)
-reorders it, and a type anchor puts surrounding source before relevant tests.
+reorders it, and a type anchor swaps `relevant_tests` and `surrounding_source`.
+
+| Intent | Tier priority order (highest to lowest) |
+|---|---|
+| `inspect` (default) | `contracts`, `direct_callees`, `direct_callers`, `registered_implementations`, `relevant_tests`, `second_degree_context`, `surrounding_source` |
+| `modify` | `contracts`, `direct_callers`, `registered_implementations`, `relevant_tests`, `direct_callees`, `second_degree_context`, `surrounding_source` |
+| `diagnose` | `direct_callers`, `registered_implementations`, `contracts`, `direct_callees`, `relevant_tests`, `second_degree_context`, `surrounding_source` |
+
+For a type anchor, `relevant_tests` and `surrounding_source` swap positions wherever the intent placed them.
+
+Trim order (first dropped to last dropped; `uncertainties` is appended after the budget pass and is never counted or trimmed): `surrounding_source`, `inclusion_reasons` (except `omitted_tiers_*`), `affected_public_surfaces`, `likely_change_sites`, `completeness` (detail first as `summarized`, then whole section as `budget_exhausted`), `constraints`, `topology`, `semantic_causes`, `outgoing_paths`, `incoming_paths`, `suggested_verification`, then the remaining tiers from lowest priority up, then `anchor` (source bounded to fit, or `budget_exhausted` when residual content still exceeds the budget).
 
 Incoming capsule paths and default upstream impact use the same edge filter.
 Outgoing capsule paths follow all edge kinds.
@@ -263,7 +274,9 @@ removes their last in-scope occurrence. MediatR warnings use the final
 scope. A wrapper pattern also qualifies if a `Handles` edge touches the
 effective anchor scope or a surviving item carries that edge kind.
 
-Budgeting: `--content-budget` bounds content tokens; tiers are included in
+Budgeting: `--content-budget` bounds content tokens; over the budget, the capsule
+keeps the first three incoming or outgoing paths whole, in witness-path order,
+and drops the rest (`summarized`), never cutting a path; tiers are included in
 priority order (greedy-prefix) until the budget is exhausted; omitted tiers
 are reported with reason (`budget_exhausted`, `empty`, `unresolved`,
 `summarized`, `unmodeled_construct`). `unmodeled_construct` is used by the

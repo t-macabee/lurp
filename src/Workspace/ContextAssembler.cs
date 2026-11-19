@@ -1,3 +1,5 @@
+using Lurp.Handlers;
+
 namespace Lurp.Workspace;
 
 internal sealed record ContextLookup(
@@ -9,12 +11,11 @@ internal sealed record ContextLookup(
 
 internal sealed record ContextAssemblyOptions(
     ContextIntent Intent,
-    int Budget,
-    int MaxHops = 3,
+    int? Budget,
+    int MaxHops,
     bool IncludeGenerated = false,
     string? Scope = null,
     IReadOnlyList<string>? AffectedProjects = null,
-    string? GitRoot = null,
     bool IncludeCompletenessDetail = false
 );
 
@@ -81,23 +82,22 @@ internal sealed class ContextAssembler
     public SymbolId SymbolId { get; init; } = null!;
     public ContextIntent Intent { get; init; }
     public int Budget { get; init; }
-    public int MaxHops { get; init; } = 3;
+    public required int MaxHops { get; init; }
     public bool IncludeGenerated { get; init; }
     public string? Scope { get; init; }
     public IReadOnlyList<string> AffectedProjects { get; init; } = [];
-    public string? GitRoot { get; init; }
     public bool IncludeCompletenessDetail { get; init; }
 
     public ContextCapsule Assemble(CancellationToken cancellationToken = default)
     {
+        var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
         var context = new ContextTierContext(EdgeStore, DeclarationStore, SnapshotId, SymbolId, MaxHops, IncludeGenerated, cancellationToken);
-        var anchor = BuildAnchor(context);
+        var anchor = BuildAnchor(context, snapshotMetadata?.ExtractorVersion ?? string.Empty);
         var capsule = new ContextCapsule(anchor)
         {
             Budget = Budget
         };
 
-        var snapshotMetadata = SnapshotStore?.LoadSnapshotMetadata(SnapshotId);
         var bindingIncompleteness = BindingIncompletenessStore?.GetBindingIncompleteness(SnapshotId) ?? [];
         var observation = BindingObservation.Create(anchor, SymbolId, BindingIncompletenessStore == null,
             bindingIncompleteness, snapshotMetadata?.Projects, cancellationToken);
@@ -122,7 +122,7 @@ internal sealed class ContextAssembler
         var annotations = CapsuleAnnotationScope.Read(context);
         annotations.AddConstraints(capsule);
 
-        var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, GitRoot, bindingIncompleteness, cancellationToken);
+        var uncertaintyDetector = new UncertaintyDetector(EdgeStore, DeclarationStore, SnapshotId, SymbolId, IncludeGenerated, snapshotMetadata, bindingIncompleteness, cancellationToken);
         uncertaintyDetector.PopulateSuggestedVerification(capsule);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -165,15 +165,16 @@ internal sealed class ContextAssembler
         // affected_public_surfaces) are named with the only honest recovery: re-running
         // with a larger --content-budget.
 
-        var reachability = new ImpactReachability(EdgeStore, SnapshotId, SemanticDiffStore);
-        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, ImpactReachability.UpstreamDefaultKinds, maxDepth: MaxHops, cancellationToken: cancellationToken);
-        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, maxDepth: MaxHops, cancellationToken: cancellationToken);
+        var reachability = new ImpactReachability(EdgeStore, SnapshotId);
+        var incoming = reachability.Trace(SymbolId.Value, ImpactDirection.Upstream, MaxHops, ImpactReachability.UpstreamDefaultKinds, cancellationToken: cancellationToken);
+        var outgoing = reachability.Trace(SymbolId.Value, ImpactDirection.Downstream, MaxHops, cancellationToken: cancellationToken);
         capsule.IncomingPaths.AddRange(incoming.WitnessLeafPaths());
         capsule.OutgoingPaths.AddRange(outgoing.WitnessLeafPaths());
         reachability.PopulateSites(
             capsule.IncomingPaths.Concat(capsule.OutgoingPaths).SelectMany(static path => path.Hops));
-        // Both traces return the anchor's causes; the capsule writes that list once, at the top level.
-        capsule.SemanticCauses.AddRange(incoming.SemanticCauses.Select(SemanticCauseJson.From));
+        // Read the anchor's causes once per capsule rather than per trace.
+        var semanticCauses = SemanticDiffStore?.GetSemanticChangesForSymbol(SnapshotId, SymbolId.Value) ?? [];
+        capsule.SemanticCauses.AddRange(semanticCauses.Select(SemanticCauseJson.From));
 
         // The current topology is the union of incoming_paths and outgoing_paths.
         // Those collections are serialized once above; the reference summary
@@ -249,7 +250,7 @@ internal sealed class ContextAssembler
             // reason/project rollup that stays within a bounded size.
             var baseCompleteness = snapshotMetadata != null
                 ? SnapshotManifest.StorageCompleteness(snapshotMetadata, snapshotMetadata.Projects)
-                : new SnapshotCompleteness { ExtractorVersion = VersionConstants.ExtractorVersion };
+                : new SnapshotCompleteness();
             capsule.Completeness = baseCompleteness.WithBindingIncompleteness(bindingIncompleteness, IncludeCompletenessDetail);
         }
     }
@@ -374,7 +375,7 @@ internal sealed class ContextAssembler
         GetTierItems(capsule, tierName)?.AddRange(items);
     }
 
-    private CapsuleAnchor BuildAnchor(ContextTierContext context)
+    private CapsuleAnchor BuildAnchor(ContextTierContext context, string extractorIdentity)
     {
         var info = context.GetSymbolInfo(SymbolId.Value);
         if (info == null) throw new InvalidOperationException($"Symbol '{SymbolId.Value}' not found in snapshot '{SnapshotId}'.");
@@ -391,7 +392,7 @@ internal sealed class ContextAssembler
             SnapshotId = SnapshotId,
             AffectedProjects = [.. AffectedProjects.Distinct(StringComparer.Ordinal).OrderBy(static value => value, StringComparer.Ordinal)],
             Provenance = Provenance.CompilerProved,
-            ExtractorIdentity = VersionConstants.ExtractorVersion,
+            ExtractorIdentity = extractorIdentity,
             Locations = DeclarationStore.GetDeclarationLocations(SymbolId.Value, SnapshotId, IncludeGenerated)
         };
     }
@@ -448,12 +449,11 @@ internal sealed class ContextAssembler
                 SnapshotId = lookup.SnapshotId,
                 SymbolId = symbolId,
                 Intent = options.Intent,
-                Budget = options.Budget,
+                Budget = ResolveBudget(options.Budget, symbolId),
                 MaxHops = options.MaxHops,
                 IncludeGenerated = options.IncludeGenerated,
                 Scope = options.Scope,
                 AffectedProjects = options.AffectedProjects ?? [],
-                GitRoot = options.GitRoot,
                 IncludeCompletenessDetail = options.IncludeCompletenessDetail
             };
             return assembler.Assemble(cancellationToken);
@@ -464,6 +464,7 @@ internal sealed class ContextAssembler
 
         if (resolvedId == null)
         {
+            var gapBudget = ResolveBudget(options.Budget, null);
             // A gap capsule is a real capsule and obeys the same finalization
             // contract as any other. In particular its tiers are NOT bare `[]`:
             // under the capsule's own empty/unresolved semantics a bare `[]`
@@ -488,7 +489,7 @@ internal sealed class ContextAssembler
 
             var gapCapsule = new ContextCapsule(gapAnchor)
             {
-                Budget = options.Budget
+                Budget = gapBudget
             };
 
             foreach (var tierName in TierNames)
@@ -499,12 +500,13 @@ internal sealed class ContextAssembler
                 + "'unresolved': the relation could not be observed. It is NOT evidence that "
                 + "no such relation exists. Only tiers marked 'empty' are a proved absence.";
 
+            CapsuleBudgetEnforcer.Enforce(gapCapsule, gapBudget, TierNames);
+
             gapCapsule.Uncertainties.Add(new UncertaintyEntry(
                 [gapAnchor.SymbolId],
                 "location_gap",
                 $"No symbol found at {lookup.FileArg}:{lookup.LineNumber}. The location may be in a comment, whitespace, or within a region not represented in the index."));
 
-            CapsuleBudgetEnforcer.Enforce(gapCapsule, options.Budget, TierNames);
             CapsuleBudgetEnforcer.StampArtifactEstimate(gapCapsule);
 
             return gapCapsule;
@@ -521,14 +523,16 @@ internal sealed class ContextAssembler
             SnapshotId = lookup.SnapshotId,
             SymbolId = resolvedSymbolId,
             Intent = options.Intent,
-            Budget = options.Budget,
+            Budget = ResolveBudget(options.Budget, resolvedSymbolId),
             MaxHops = options.MaxHops,
             IncludeGenerated = options.IncludeGenerated,
             Scope = options.Scope,
             AffectedProjects = options.AffectedProjects ?? [],
-            GitRoot = options.GitRoot,
             IncludeCompletenessDetail = options.IncludeCompletenessDetail
         };
         return resolvedAssembler.Assemble(cancellationToken);
     }
+
+    private static int ResolveBudget(int? explicitBudget, SymbolId? symbolId) =>
+        explicitBudget ?? (symbolId is { IsType: true } ? ContextRequest.DefaultTypeAnchorBudget : ContextRequest.DefaultBudget);
 }

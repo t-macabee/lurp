@@ -143,8 +143,8 @@ public sealed class McpParityTests : IntegrationTestBase
         var toolSymbols = doc.RootElement.GetProperty("symbols").GetArrayLength();
 
         using var store2 = OpenStore(DbPath);
-        var reachability = new ImpactReachability(store2, snapshotId, store2);
-        var direct = reachability.Trace(symbolId, ImpactDirection.Downstream, null, null, 3);
+        var reachability = new ImpactReachability(store2, snapshotId);
+        var direct = reachability.Trace(symbolId, ImpactDirection.Downstream, 3);
         // parity: the reached-symbol count matches the core directly, and the page is a prefix
         Assert.Equal(direct.Symbols.Count, doc.RootElement.GetProperty("symbol_count_total").GetInt32());
         Assert.True(toolSymbols <= direct.Symbols.Count);

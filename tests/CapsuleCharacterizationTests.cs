@@ -410,38 +410,110 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         }
     }
 
+    [Fact]
+    public async Task Capsule_GapAnchor_KeepsItsUncertaintyUnderAnyBudget()
+    {
+        var (snapshotId, _, _, _, _, _) = await IndexFixtureAsync();
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            // Anchor.cs line 28 is a comment
+            var lookup = new ContextLookup(snapshotId, null, "src/TestProject/Anchor.cs", 28);
+            var options = DefaultOptions(1, 1);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            Assert.NotNull(capsule);
+            var uncertainty = Assert.Single(capsule.Uncertainties);
+            Assert.Equal("location_gap", uncertainty.RelationshipKind);
+            Assert.DoesNotContain(capsule.OmittedTiers, e => e.Category == "uncertainties");
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task TierPriority_FollowsD64()
+    {
+        var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
+        var anchorTypeId = ResolveSymbolId(snapshotId, "global::TestProject.Anchor");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var inspect = ContextAssembler.ResolveAndAssemble(
+                store, store, new ContextLookup(snapshotId, usedId, null, null),
+                new ContextAssemblyOptions(ContextIntent.Inspect, 1, 1), store, store);
+            Assert.Equal(
+                ["contracts", "direct_callees", "direct_callers", "registered_implementations", "relevant_tests", "second_degree_context", "surrounding_source"],
+                inspect.OmittedTiers.Take(7).Select(e => e.Category));
+
+            var modify = ContextAssembler.ResolveAndAssemble(
+                store, store, new ContextLookup(snapshotId, usedId, null, null),
+                new ContextAssemblyOptions(ContextIntent.Modify, 1, 1), store, store);
+            Assert.Equal(
+                ["contracts", "direct_callers", "registered_implementations", "relevant_tests", "direct_callees", "second_degree_context", "surrounding_source"],
+                modify.OmittedTiers.Take(7).Select(e => e.Category));
+
+            var diagnose = ContextAssembler.ResolveAndAssemble(
+                store, store, new ContextLookup(snapshotId, usedId, null, null),
+                new ContextAssemblyOptions(ContextIntent.Diagnose, 1, 1), store, store);
+            Assert.Equal(
+                ["direct_callers", "registered_implementations", "contracts", "direct_callees", "relevant_tests", "second_degree_context", "surrounding_source"],
+                diagnose.OmittedTiers.Take(7).Select(e => e.Category));
+
+            var typeInspect = ContextAssembler.ResolveAndAssemble(
+                store, store, new ContextLookup(snapshotId, anchorTypeId, null, null),
+                new ContextAssemblyOptions(ContextIntent.Inspect, 1, 1), store, store);
+            Assert.Equal(
+                ["contracts", "direct_callees", "direct_callers", "registered_implementations", "surrounding_source", "second_degree_context", "relevant_tests"],
+                typeInspect.OmittedTiers.Take(7).Select(e => e.Category));
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
     // ── D6 ──────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Capsule_OmittedTier_FetchCommandReturnsTheOmittedContent()
     {
-        var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["Pager.cs"] = """
+                           namespace TestProject;
+
+                           public class Target { public void Hit() { } }
+                           public class CallerA { public void A() => new Target().Hit(); }
+                           public class CallerB { public void B() => new Target().Hit(); }
+                           public class CallerC { public void C() => new Target().Hit(); }
+                           """
+        });
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var targetId = ResolveSymbolId(snapshotId, "global::TestProject.Target.Hit");
+        var expectedIds = PagedCallers
+            .Select(name => ResolveSymbolId(snapshotId, $"global::TestProject.{name}"))
+            .ToList();
 
         using var store = OpenStore(DbPath);
         try
         {
-            // Build a budgeted capsule that forces direct_callers to be budget_exhausted
-            var lookup = new ContextLookup(snapshotId, usedId, null, null);
-            var options = DefaultOptions(50, 1);
-            var budgetedCapsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+            var lookup = new ContextLookup(snapshotId, targetId, null, null);
+            var budgetedCapsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, DefaultOptions(1, 1), store, store);
 
-            Assert.NotNull(budgetedCapsule);
-
-            // Find an omitted tier with budget_exhausted that is a fetchable tier
-            var omittedEntry = budgetedCapsule.OmittedTiers.FirstOrDefault(e => e.Reason == "budget_exhausted"
-                && ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
-
-            Assert.NotNull(omittedEntry);
+            Assert.Contains(budgetedCapsule.OmittedTiers,
+                e => e is { Category: "direct_callers", Reason: "budget_exhausted" });
 
             Assert.Contains(budgetedCapsule.InclusionReasons,
                 kv => kv.Key == "omitted_tiers_budget_exhausted");
 
             var template = budgetedCapsule.InclusionReasons["omitted_tiers_budget_exhausted"];
-
-            // The template must contain the fetch command pattern for fetchable tiers
             Assert.Contains("--mode=context --tier=<category> --symbol=<anchor symbolId>", template);
 
-            // Verify non-fetchable sections appear in the "larger --content-budget" sentence
             var hasNonFetchable = budgetedCapsule.OmittedTiers.Any(e =>
                 e.Reason == "budget_exhausted" &&
                 !ContextAssembler.TierNames.Contains(e.Category, StringComparer.Ordinal));
@@ -450,36 +522,17 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             else
                 Assert.DoesNotContain("larger --content-budget", template);
 
-            // Compare the fetched page against the same tier from an unbudgeted capsule
-            var unbudgetedCapsule = ContextAssembler.ResolveAndAssemble(
-                store, store, lookup, DefaultOptions(100000, 1), store, store);
-            Assert.NotNull(unbudgetedCapsule);
-            var expectedItems = omittedEntry.Category switch
-            {
-                "contracts" => unbudgetedCapsule.Contracts,
-                "direct_callees" => unbudgetedCapsule.DirectCallees,
-                "direct_callers" => unbudgetedCapsule.DirectCallers,
-                "registered_implementations" => unbudgetedCapsule.RegisteredImplementations,
-                "relevant_tests" => unbudgetedCapsule.RelevantTests,
-                "second_degree_context" => unbudgetedCapsule.SecondDegreeContext,
-                "surrounding_source" => unbudgetedCapsule.SurroundingSource,
-                _ => new List<CapsuleItem>()
-            };
-
-            // Fetch the omitted tier unbudgeted via BuildTierPage
-            var symbolId = SymbolId.Parse(usedId);
             var page = ContextAssembler.BuildTierPage(
-                store, store, snapshotId, symbolId,
-                omittedEntry.Category, 1, false,
+                store, store, snapshotId, SymbolId.Parse(targetId),
+                "direct_callers", 1, false,
                 0, 100);
 
-            Assert.NotNull(page);
-            Assert.Equal(omittedEntry.Category, page.TierName);
-            Assert.NotEmpty(page.Items);
-            Assert.Equal(expectedItems.Count, page.TotalItems);
+            Assert.Equal("direct_callers", page.TierName);
+            Assert.Equal(expectedIds.Count, page.TotalItems);
+            Assert.Equal(expectedIds, page.Items.Select(i => i.SymbolId));
             Assert.Equal(
-                expectedItems.Select(i => i.SymbolId).ToList(),
-                page.Items.Select(i => i.SymbolId).ToList());
+                expectedIds.Take(budgetedCapsule.DirectCallers.Count),
+                budgetedCapsule.DirectCallers.Select(i => i.SymbolId));
         }
         finally
         {
@@ -614,14 +667,14 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, anchorId, null, null);
-            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1, GitRoot: TestDir);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             var suggestion = Assert.Single(capsule.SuggestedVerification);
             Assert.Contains("FullyQualifiedName~TestTargetTests", suggestion.Command);
 
             var serialized = ContextCapsuleJson.Serialize(capsule);
-            Assert.Equal(serialized.Length / ContextAssembler.CharsPerToken, capsule.EstimatedArtifactTokens);
+            Assert.Equal(serialized.Length / 3, capsule.EstimatedArtifactTokens);
         }
         finally
         {
@@ -638,12 +691,111 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
         try
         {
             var lookup = new ContextLookup(snapshotId, anchorId, null, null);
-            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 1, 1, GitRoot: TestDir);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 1, 1);
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
 
             Assert.Empty(capsule.SuggestedVerification);
             Assert.Contains(capsule.OmittedTiers,
                 entry => entry is { Category: "suggested_verification", Reason: "budget_exhausted" });
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task Capsule_Verification_NamesTheIndexedProject()
+    {
+        var (snapshotId, anchorId) = await IndexTestedAnchorAsync();
+        File.WriteAllText(Path.Combine(TestDir, "src", "TestProject.Tests", "Aaa.csproj"), "");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            var suggestion = Assert.Single(capsule.SuggestedVerification);
+            Assert.Contains("\"src/TestProject.Tests/TestProject.Tests.csproj\"", suggestion.Command);
+        }
+        finally
+        {
+            store.Close();
+        }
+
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE projects SET project_path = NULL WHERE snapshot_id = $snapshot;";
+            command.Parameters.AddWithValue("$snapshot", snapshotId);
+            Assert.Equal(2, command.ExecuteNonQuery());
+        }
+
+        using var pre046Store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
+            var capsule = ContextAssembler.ResolveAndAssemble(pre046Store, pre046Store, lookup, options, pre046Store, pre046Store);
+
+            var suggestion = Assert.Single(capsule.SuggestedVerification);
+            Assert.Contains("\"Test.slnx\"", suggestion.Command);
+        }
+        finally
+        {
+            pre046Store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task Capsule_Verification_FullSuite_NamesTheIndexedSolution()
+    {
+        CreateProject("TestProject", new Dictionary<string, string>
+        {
+            ["TestTarget.cs"] = TestTargetSource,
+            ["LocalCaller.cs"] = """
+                                 namespace TestProject;
+
+                                 public class LocalCaller
+                                 {
+                                     public int Go() => new TestTarget().Run(2);
+                                 }
+                                 """
+        });
+        CreateProject("TestProject.Tests",
+            new Dictionary<string, string> { ["TestTargetTests.cs"] = ManyTestMethodsSource() },
+            projectReferences: ["TestProject"],
+            packageReferences: ["xunit@2.9.3"]);
+        CreateProject("TestProject.Client",
+            new Dictionary<string, string>
+            {
+                ["Client.cs"] = """
+                                namespace TestProject.Client;
+
+                                public class Client
+                                {
+                                    public int Call() => new TestProject.TestTarget().Run(1);
+                                }
+                                """
+            },
+            projectReferences: ["TestProject"]);
+        RestoreSolution();
+        var snapshotId = await RunFullIndexAsync(DbPath);
+        var anchorId = ResolveSymbolId(snapshotId, "global::TestProject.TestTarget.Run");
+        File.WriteAllText(Path.Combine(TestDir, "Aaa.slnx"), "");
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, anchorId, null, null);
+            var options = new ContextAssemblyOptions(ContextIntent.Inspect, 5000, 1);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, options, store, store);
+
+            var fullSuite = Assert.Single(capsule.SuggestedVerification, s => s.TestId == "full-suite");
+            Assert.Equal("dotnet test \"Test.slnx\"", fullSuite.Command);
         }
         finally
         {
@@ -775,6 +927,99 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
 
         source.AppendLine("}");
         return source.ToString();
+    }
+
+    [Fact]
+    public void PathBound_KeepsTheFirstWholePaths()
+    {
+        static ImpactPath MakePath(string leafId) => new([
+            new ImpactHop("U", "T", "Calls", Provenance.CompilerProved),
+            new ImpactHop("V", "U", "Calls", Provenance.CompilerProved),
+            new ImpactHop("W", "V", "Calls", Provenance.CompilerProved),
+            new ImpactHop(leafId, "W", "Calls", Provenance.CompilerProved)
+        ]);
+
+        static ContextCapsule MakeCapsule(IEnumerable<ImpactPath> paths)
+        {
+            var capsule = new ContextCapsule(new CapsuleAnchor("T", "T", nameof(IndexedSymbolKind.Method), string.Empty));
+            capsule.IncomingPaths.AddRange(paths);
+            return capsule;
+        }
+
+        var leaves = Enumerable.Range(1, 5).Select(i => $"L{i}").ToList();
+        var threePathCopy = MakeCapsule(leaves.Take(3).Select(MakePath));
+        var budget = CapsuleBudgetEnforcer.Measure(threePathCopy);
+
+        var capsule = MakeCapsule(leaves.Select(MakePath));
+        CapsuleBudgetEnforcer.Enforce(capsule, budget, ContextAssembler.TierNames);
+
+        Assert.Equal(3, capsule.IncomingPaths.Count);
+        for (var i = 0; i < 3; i++)
+        {
+            var expected = MakePath(leaves[i]);
+            var actual = capsule.IncomingPaths[i];
+            Assert.Equal(4, actual.TotalSteps);
+            Assert.Equal(4, actual.Hops.Count);
+            Assert.Equal(
+                expected.Hops.Select(h => (h.SourceSymbolId, h.TargetSymbolId, h.EdgeKind)),
+                actual.Hops.Select(h => (h.SourceSymbolId, h.TargetSymbolId, h.EdgeKind)));
+        }
+
+        Assert.Equal(3, capsule.IncomingPaths.Select(p => p.Hops[^1].SourceSymbolId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(capsule.OmittedTiers, e => e is { Category: "incoming_paths", Reason: "summarized" });
+    }
+
+    [Fact]
+    public void TrimOrder_FollowsD64()
+    {
+        static CapsuleItem MakeItem(string id) => new(id, nameof(IndexedSymbolKind.Method), id, Provenance.CompilerProved, "Calls", "public void M() {}");
+
+        var capsule = new ContextCapsule(new CapsuleAnchor("T:A", "A", nameof(IndexedSymbolKind.Type), "public class A {}"))
+        {
+            Completeness = new SnapshotCompleteness().WithBindingIncompleteness(
+                [new BindingIncompletenessRecord("Proj", "a.cs", "compiler_error", 1, "1.12.0")],
+                includeDetail: true),
+            Topology = new CapsuleTopology(new CapsuleTopologyReference("see incoming", "see outgoing", 1, 1, 1, 1, 2))
+        };
+        foreach (var tierName in ContextAssembler.TierNames)
+            ContextAssembler.AddTierToCapsule(capsule, tierName, [MakeItem($"M:{tierName}")]);
+
+        capsule.InclusionReasons["contracts"] = "r1";
+        capsule.InclusionReasons["direct_callers"] = "r2";
+        capsule.AffectedPublicSurfaces.Add(MakeItem("M:Surface"));
+        capsule.LikelyChangeSites.Add(new LikelyChangeSite("a.cs", 0, "anchor", "T:A"));
+        capsule.Constraints.Add(new CapsuleConstraint("c", "annotation"));
+        capsule.SemanticCauses.Add(new SemanticCauseJson("s1", "s2", "signature_changed", "T:A", null));
+        capsule.IncomingPaths.Add(new ImpactPath([new ImpactHop("B", "T:A", "Calls", Provenance.CompilerProved)]));
+        capsule.OutgoingPaths.Add(new ImpactPath([new ImpactHop("T:A", "C", "Calls", Provenance.CompilerProved)]));
+        capsule.SuggestedVerification.Add(new VerificationSuggestion("T:Test", "Test", "run", "dotnet test"));
+        capsule.Uncertainties.Add(new UncertaintyEntry(["T:A"], "location_gap", "keep me"));
+
+        CapsuleBudgetEnforcer.Enforce(capsule, 0, ContextAssembler.TierNames);
+
+        Assert.Equal(
+            [
+                "surrounding_source",
+                "inclusion_reasons",
+                "affected_public_surfaces",
+                "likely_change_sites",
+                "completeness",
+                "constraints",
+                "topology",
+                "semantic_causes",
+                "outgoing_paths",
+                "incoming_paths",
+                "suggested_verification",
+                "second_degree_context",
+                "relevant_tests",
+                "registered_implementations",
+                "direct_callers",
+                "direct_callees",
+                "contracts",
+                "anchor"
+            ],
+            capsule.OmittedTiers.Select(e => e.Category));
+        Assert.Single(capsule.Uncertainties);
     }
 
     /// <summary>
@@ -1005,6 +1250,15 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             var end = Id("App.Helper.End");
             var inner = Id("App.Outer.Inner");
             bounded.OutgoingPaths.Add(new ImpactPath([
+                new ImpactHop(anchor, entry, "Calls", Provenance.CompilerProved)
+            ]));
+            bounded.OutgoingPaths.Add(new ImpactPath([
+                new ImpactHop(anchor, end, "Calls", Provenance.CompilerProved)
+            ]));
+            bounded.OutgoingPaths.Add(new ImpactPath([
+                new ImpactHop(anchor, inner, "References", Provenance.CompilerProved)
+            ]));
+            bounded.OutgoingPaths.Add(new ImpactPath([
                 new ImpactHop(anchor, entry, "Calls", Provenance.CompilerProved),
                 new ImpactHop(entry, end, "Calls", Provenance.CompilerProved),
                 new ImpactHop(end, inner, "References", Provenance.CompilerProved),
@@ -1016,12 +1270,12 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
             annotations.AddConstraints(bounded);
             Assert.Contains(bounded.Constraints, constraint => constraint.SymbolId == middle);
 
-            // The final hop alone costs over 1,300 tokens. Three short hops fit.
+            // The fourth path alone costs over 1,300 tokens; the first three paths fit whole.
             CapsuleBudgetEnforcer.Enforce(bounded, 1_200, ContextAssembler.TierNames, annotations);
 
-            var remaining = Assert.Single(bounded.OutgoingPaths).Hops;
-            Assert.Equal(3, remaining.Count);
-            Assert.DoesNotContain(remaining, hop => hop.SourceSymbolId == middle || hop.TargetSymbolId == middle);
+            Assert.Equal(3, bounded.OutgoingPaths.Count);
+            Assert.DoesNotContain(bounded.OutgoingPaths.SelectMany(path => path.Hops),
+                hop => hop.SourceSymbolId == middle || hop.TargetSymbolId == middle);
             Assert.Equal(keepItem, bounded.DirectCallees.Any(item => item.SymbolId == middle));
             Assert.Equal(expected.Take(keepItem ? 4 : 3),
                 bounded.Constraints.Select(constraint => (constraint.SymbolId!, constraint.AnnotationKind!)));
@@ -1229,6 +1483,36 @@ public sealed class CapsuleCharacterizationTests : IntegrationTestBase
                     (8, 8, 8, 16)
                 ],
                 sites);
+        }
+        finally
+        {
+            store.Close();
+        }
+    }
+
+    [Fact]
+    public async Task Capsule_ExtractorIdentity_IsTheSnapshots()
+    {
+        var (snapshotId, _, usedId, _, _, _) = await IndexFixtureAsync();
+
+        using (var connection = new SqliteConnection($"Data Source={DbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE snapshots SET extractor_version = '1.10.0' WHERE snapshot_id = $snapshot;";
+            command.Parameters.AddWithValue("$snapshot", snapshotId);
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+
+        using var store = OpenStore(DbPath);
+        try
+        {
+            var lookup = new ContextLookup(snapshotId, usedId, null, null);
+            var capsule = ContextAssembler.ResolveAndAssemble(store, store, lookup, DefaultOptions(), store, store);
+
+            Assert.Equal("1.10.0", capsule.Anchor.ExtractorIdentity);
+            Assert.NotNull(capsule.Completeness);
+            Assert.Equal("1.10.0", capsule.Completeness!.ExtractorVersion);
         }
         finally
         {

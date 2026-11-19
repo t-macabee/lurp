@@ -98,14 +98,11 @@ public sealed class McpContextTests : IntegrationTestBase
     public async Task BudgetDefaults_8000_And_16000_ForTypeAnchor()
     {
         var snapshotId = await IndexFixtureAndGetSnapshot();
-        // Discover method and type symbolIds to test budget defaults (type should be 16000 via pipe/T: form)
-        string methodSymbolId;
-        string typeSymbolId;
+        string? methodFound = null;
+        string? typeFound = null;
         using (var store = OpenStore(DbPath))
         {
             var ids = store.GetSymbolIdsInSnapshot(snapshotId);
-            string? methodFound = null;
-            string? typeFound = null;
             foreach (var id in ids)
             {
                 var info = store.GetSymbolInfo(id, snapshotId);
@@ -114,45 +111,43 @@ public sealed class McpContextTests : IntegrationTestBase
                 {
                     if (!sid.IsType && info.FullyQualifiedName != null && info.FullyQualifiedName.Contains("Foo.Bar"))
                         methodFound = id;
-                    if (sid.IsType && info.FullyQualifiedName == "CtxProj.Foo")
+                    if (sid.IsType && info.FullyQualifiedName == "global::CtxProj.Foo")
                         typeFound = id;
                 }
             }
-            // Fallback if exact match not found — pick any method and any type
-            if (methodFound == null || typeFound == null)
-            {
-                foreach (var id in ids)
-                {
-                    var info = store.GetSymbolInfo(id, snapshotId);
-                    if (info == null) continue;
-                    if (methodFound == null && SymbolId.TryParse(id, out var sid) && !sid.IsType)
-                        methodFound = id;
-                    if (typeFound == null && SymbolId.TryParse(id, out var sid2) && sid2.IsType)
-                        typeFound = id;
-                }
-            }
-            Assert.False(string.IsNullOrEmpty(methodFound));
-            Assert.False(string.IsNullOrEmpty(typeFound));
-            methodSymbolId = methodFound!;
-            typeSymbolId = typeFound!;
         }
+        Assert.False(string.IsNullOrEmpty(methodFound));
+        Assert.False(string.IsNullOrEmpty(typeFound));
+        var methodSymbolId = methodFound!;
+        var typeSymbolId = typeFound!;
 
         var (session, tool) = CreateSessionTool();
         await using (session)
         {
             var jsonMethod = tool.LurpContext(symbol: methodSymbolId);
-            // Type via full symbolId (pipe form T:...|assembly) triggers 16000 budget; bare FQN/docComment alone would be 8000 per Handler logic
             var jsonType = tool.LurpContext(symbol: typeSymbolId);
+            var jsonTypeFqn = tool.LurpContext(symbol: "CtxProj.Foo");
+            var jsonTypeDoc = tool.LurpContext(symbol: "T:CtxProj.Foo");
+            var jsonTypeLocation = tool.LurpContext(file: "src/CtxProj/Models.cs", line: 2);
 
             using var docMethod = JsonDocument.Parse(jsonMethod);
             using var docType = JsonDocument.Parse(jsonType);
+            using var docTypeFqn = JsonDocument.Parse(jsonTypeFqn);
+            using var docTypeDoc = JsonDocument.Parse(jsonTypeDoc);
+            using var docTypeLocation = JsonDocument.Parse(jsonTypeLocation);
 
-            var budgetMethod = docMethod.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32();
-            var budgetType = docType.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32();
-
-            Assert.Equal(8000, budgetMethod);
-            Assert.Equal(16000, budgetType);
+            Assert.Equal(8000, docMethod.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32());
+            Assert.Equal(16000, docType.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32());
+            Assert.Equal(16000, docTypeFqn.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32());
+            Assert.Equal(16000, docTypeDoc.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32());
+            Assert.Equal(16000, docTypeLocation.RootElement.GetProperty("capsule").GetProperty("budget").GetInt32());
         }
+
+        var cliJson = await CliModeRunner.RunAsync("context", [
+            "--file=src/CtxProj/Models.cs", "--line=2",
+            "--output=json", $"--output-dir={TestDir}"]);
+        using var cliDoc = JsonDocument.Parse(cliJson);
+        Assert.Equal(16000, cliDoc.RootElement.GetProperty("budget").GetInt32());
     }
 
     [Fact]
@@ -236,6 +231,29 @@ public sealed class McpContextTests : IntegrationTestBase
             var ex = Assert.Throws<McpProtocolException>(() =>
                 tool.LurpContext(symbol: "CtxProj.Foo", tier: "direct_callers", cursor: "not-a-valid-cursor"));
             Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+        }
+    }
+
+    [Fact]
+    public async Task Context_HalfAnchorPair_IsInvalidParams()
+    {
+        await IndexFixtureAndGetSnapshot();
+        var (session, tool) = CreateSessionTool();
+        await using (session)
+        {
+            var cases = new[]
+            {
+                () => tool.LurpContext(symbol: "CtxProj.Foo", file: "src/CtxProj/Models.cs"),
+                () => tool.LurpContext(file: "src/CtxProj/Models.cs"),
+                () => tool.LurpContext(line: 2)
+            };
+
+            foreach (var call in cases)
+            {
+                var ex = Assert.Throws<McpProtocolException>(call);
+                Assert.Equal(McpErrorCode.InvalidParams, ex.ErrorCode);
+                Assert.Equal("file and line must be given together.", ex.Message);
+            }
         }
     }
 

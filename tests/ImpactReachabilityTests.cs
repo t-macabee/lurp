@@ -120,7 +120,7 @@ public sealed class ImpactReachabilityTests
     }
 
     [Fact]
-    public void Trace_TwoEdgeRowsBetweenOnePair_CountAsTwoRoutes()
+    public void Trace_ParallelEdgesBetweenOnePair_CountAsOneRoute()
     {
         var result = CreateReachability([
             MakeEdge("A", "B", "Calls"),
@@ -129,7 +129,31 @@ public sealed class ImpactReachabilityTests
 
         var b = result.Symbols.Single(symbol => symbol.SymbolId == "B");
         Assert.Equal(1, b.Depth);
-        Assert.Equal(2L, b.ShortestPathCount);
+        Assert.Equal(1L, b.ShortestPathCount);
+    }
+
+    [Fact]
+    public void Trace_ParallelEdges_DoNotChangeWithTheKindFilter()
+    {
+        var edges = new List<EdgeRecord>
+        {
+            MakeEdge("A", "B", "Calls"),
+            MakeEdge("A", "C", "Calls"),
+            MakeEdge("B", "D", "Calls"),
+            MakeEdge("B", "D", "StaticallyCalls"),
+            MakeEdge("C", "D", "Calls"),
+            MakeEdge("C", "D", "StaticallyCalls"),
+            MakeEdge("D", "E", "Calls")
+        };
+
+        var unfiltered = CreateReachability(edges).Trace(Anchor, ImpactDirection.Downstream, maxDepth: 3);
+        Assert.Equal(2L, unfiltered.Symbols.Single(s => s.SymbolId == "D").ShortestPathCount);
+        Assert.Equal(2L, unfiltered.Symbols.Single(s => s.SymbolId == "E").ShortestPathCount);
+
+        var callsOnly = CreateReachability(edges).Trace(Anchor, ImpactDirection.Downstream,
+            maxDepth: 3, allowedEdgeKinds: new HashSet<string> { "Calls" });
+        Assert.Equal(2L, callsOnly.Symbols.Single(s => s.SymbolId == "D").ShortestPathCount);
+        Assert.Equal(2L, callsOnly.Symbols.Single(s => s.SymbolId == "E").ShortestPathCount);
     }
 
     // ── Filters ─────────────────────────────────────────────────────────
@@ -142,7 +166,7 @@ public sealed class ImpactReachabilityTests
             MakeEdge("A", "C", "Constructs"),
             MakeEdge("B", "D", "Calls"),
             MakeEdge("C", "D", "Calls")
-        ]).Trace(Anchor, ImpactDirection.Downstream, new HashSet<string> { "Calls" }, maxDepth: 10);
+        ]).Trace(Anchor, ImpactDirection.Downstream, maxDepth: 10, allowedEdgeKinds: new HashSet<string> { "Calls" });
 
         Assert.Equal(["B", "D"], result.Symbols.Select(symbol => symbol.SymbolId));
         Assert.Equal(1L, result.Symbols.Single(symbol => symbol.SymbolId == "D").ShortestPathCount);
@@ -157,11 +181,11 @@ public sealed class ImpactReachabilityTests
         ]);
 
         var upstream = reachability.Trace(Anchor, ImpactDirection.Upstream,
-            ImpactReachability.UpstreamDefaultKinds, maxDepth: 1);
+            maxDepth: 1, allowedEdgeKinds: ImpactReachability.UpstreamDefaultKinds);
         Assert.False(Assert.Single(upstream.Symbols).IsFrontier);
 
         var explicitUpstream = reachability.Trace("B", ImpactDirection.Upstream,
-            new HashSet<string> { "Declares" });
+            maxDepth: 10, allowedEdgeKinds: new HashSet<string> { "Declares" });
         Assert.Equal("Owner", Assert.Single(explicitUpstream.Symbols).SymbolId);
 
         var downstream = reachability.Trace("Owner", ImpactDirection.Downstream, maxDepth: 1);
@@ -226,7 +250,7 @@ public sealed class ImpactReachabilityTests
         var edges = new List<EdgeRecord> { MakeEdge("A", "B"), MakeEdge("B", "C") };
         var reachability = new ImpactReachability(new FailingEdgeStore(edges, failOnSymbolId: "B"), SnapshotId);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => reachability.Trace(Anchor, ImpactDirection.Downstream));
+        var ex = Assert.Throws<InvalidOperationException>(() => reachability.Trace(Anchor, ImpactDirection.Downstream, maxDepth: 10));
         Assert.Equal("edge read failed", ex.Message);
     }
 
@@ -290,23 +314,60 @@ public sealed class ImpactReachabilityTests
     [Fact]
     public void Trace_LayeredGraph_OverflowingCountsSaturateAtLongMaxValue()
     {
-        const int links = 70;
-        var edges = new List<EdgeRecord>();
-        for (var i = 0; i < links; i++)
+        const int layers = 64;
+        var edges = new List<EdgeRecord>
         {
-            edges.Add(MakeEdge($"N{i:D3}", $"N{i + 1:D3}", "Calls"));
-            edges.Add(MakeEdge($"N{i:D3}", $"N{i + 1:D3}", "StaticallyCalls"));
+            MakeEdge("N000", "L01A", "Calls"),
+            MakeEdge("N000", "L01B", "Calls")
+        };
+        for (var i = 1; i < layers; i++)
+        {
+            var next = i + 1;
+            edges.Add(MakeEdge($"L{i:D2}A", $"L{next:D2}A", "Calls"));
+            edges.Add(MakeEdge($"L{i:D2}A", $"L{next:D2}B", "Calls"));
+            edges.Add(MakeEdge($"L{i:D2}B", $"L{next:D2}A", "Calls"));
+            edges.Add(MakeEdge($"L{i:D2}B", $"L{next:D2}B", "Calls"));
         }
 
-        var result = CreateReachability(edges).Trace("N000", ImpactDirection.Downstream, maxDepth: links + 1);
+        var result = CreateReachability(edges).Trace("N000", ImpactDirection.Downstream, maxDepth: layers + 1);
 
-        var last = result.Symbols.Single(symbol => symbol.SymbolId == $"N{links:D3}");
-        Assert.Equal(links, last.Depth);
-        Assert.Equal(long.MaxValue, last.ShortestPathCount);
+        var layer63 = result.Symbols.Single(symbol => symbol.SymbolId == "L63A");
+        Assert.Equal(63, layer63.Depth);
+        Assert.Equal(4611686018427387904L, layer63.ShortestPathCount);
+
+        var layer64 = result.Symbols.Single(symbol => symbol.SymbolId == "L64A");
+        Assert.Equal(64, layer64.Depth);
+        Assert.Equal(long.MaxValue, layer64.ShortestPathCount);
     }
 
-    // Frozen characterization: reached sets pinned as literals after the
-    // path-enumerating cross-check that established them was deleted.
+    [Fact]
+    public void Trace_SelfEdge_ChangesNoCountAndNoFrontier()
+    {
+        var depth1 = CreateReachability([
+            MakeEdge("A", "B"),
+            MakeEdge("B", "B")
+        ]).Trace(Anchor, ImpactDirection.Downstream, maxDepth: 1);
+
+        var bOnly = Assert.Single(depth1.Symbols);
+        Assert.Equal("B", bOnly.SymbolId);
+        Assert.Equal(1, bOnly.Depth);
+        Assert.Equal(1L, bOnly.ShortestPathCount);
+        Assert.False(bOnly.IsFrontier);
+
+        var depth2 = CreateReachability([
+            MakeEdge("A", "B"),
+            MakeEdge("B", "B"),
+            MakeEdge("B", "C")
+        ]).Trace(Anchor, ImpactDirection.Downstream, maxDepth: 2);
+
+        var c = depth2.Symbols.Single(symbol => symbol.SymbolId == "C");
+        Assert.Equal(2, c.Depth);
+        Assert.Equal(1L, c.ShortestPathCount);
+        Assert.False(c.IsFrontier);
+    }
+
+    // Reached sets match the output of an independent BFS program (slice 5 audit);
+    // they are not frozen output.
     [Fact]
     public void Trace_RandomGraphs_ReachedSetsMatchFrozenExpectations()
     {

@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v45, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v46, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -345,7 +345,7 @@ Trace the impact of a changed symbol as a set of reached symbols.
 
 Also accepts the shared [read-command options](#read-command-options).
 
-Every response carries `symbols`: the reached symbols, each with its depth, `shortest_path_count`, a `frontier` flag and a deterministic `witness_path` from the anchor (each hop includes `site_count` and up to 20 ordered `sites`). `groups` buckets those symbols by the first hop of their witness path, computed over *all* symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated; `semantic_causes` sits at the top level because it depends only on the anchor. `shortest_path_count` counts both `Calls` and `StaticallyCalls` edges: a static call site emits both, and each counts as a route.
+Every response carries `symbols`: the reached symbols, each with its depth, `shortest_path_count`, a `frontier` flag and a deterministic `witness_path` from the anchor (each hop includes `site_count` and up to 20 ordered `sites`). `groups` buckets those symbols by the first hop of their witness path, computed over *all* symbols before the page is cut, so the fan-out summary stays complete even when the symbol list is truncated; equal groups sort by the first-hop neighbor id: the target downstream, the source upstream. `semantic_causes` sits at the top level because it depends only on the anchor. `shortest_path_count` counts shortest symbol routes: parallel edges between two symbols (such as `Calls` and `StaticallyCalls` on a static call site) count once.
 
 Top-level fields: `snapshot_id`, `freshness`, `symbol_id`, `direction`, `max_depth`, `symbol_count_total` (reached symbols on all pages; the anchor is not included), `frontier_count` (reached symbols at `--max-depth` that have followable edges beyond their witness path), `offset`, `groups`, `semantic_causes`, `truncated` (`null`, or `{reason:"limit",returned,total,remaining,cursor}`) and `symbols`. Symbols come in depth order, then symbol ID, and the cursor pages over that order. A cursor from a 1.x build is rejected.
 
@@ -368,7 +368,7 @@ Assemble a context capsule for a symbol or source location.
 | `--file=<path>` | Yes* | Source file path (use with `--line`). |
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
-| `--content-budget=<n>` | No | Token budget for capsule content (default: 8000, or 16000 when `--symbol=` is a type anchor and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens`. Over-budget capsules first bound paths and item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
+| `--content-budget=<n>` | No | Token budget for capsule content (default: 8000, or 16000 when the anchor resolves to a type (from `--symbol=` or `--file=`/`--line=`) and `--content-budget=` is omitted: a type's callee/caller tiers scale with member fan-out, so the default is kind-aware. An explicit `--content-budget=` is always honored as-is). Even at 16000, a large type anchor can still exhaust the budget before its lowest-priority tiers are reached (typically `relevant_tests` and `second_degree_context`). That is not a failure to budget away: refetch those tiers on their own with `--tier=`, e.g. `lurp --mode=context --symbol=<symbol-id> --tier=relevant_tests` (see `--tier=` below). Reported as `estimated_tokens`: anchor and item source plus the serialized weight of the substantive non-source sections (paths, semantic causes, constraints, topology, completeness, verification, likely change sites, affected public surfaces, inclusion reasons). `uncertainties` is appended after this pass, so it is not counted and is never trimmed. Per-item identity/provenance framing is navigation metadata and is not counted, so the emitted file is larger than `estimated_tokens`: size a context window from `estimated_artifact_tokens`. Over-budget capsules first keep only the first whole paths and bound item source (recorded as `summarized`), then clear the lowest-priority sections greedily (`budget_exhausted`); `suggested_verification` is measured and can be cleared this way, while `uncertainties` is not. Every truncated category is declared in `omitted_tiers`. The anchor is never dropped. |
 | `--max-hops=<n>` | No | Maximum graph hops to expand (default: 3). |
 | `--scope=<label>` | No | Logical scope label recorded on the anchor (default: the symbol ID). |
 | `--affected-project=<name>` | No | Repeatable. A project affected by the change. May be repeated. |
@@ -388,7 +388,7 @@ The capsule is always written to `<output-dir>/capsule-<sanitized-id>.json` and 
 
 #### Paths, topology and tier order
 
-`incoming_paths` and `outgoing_paths` hold **witness paths**, not every simple path. Lurp visits each symbol within `--max-hops` once and keeps one deterministic path to it. A capsule emits the witness path of each reached symbol that no other emitted path passes through, so no emitted path is a prefix of another. A path that ends at `--max-hops` with followable edges beyond it carries `truncated: true` and `truncation_reason: "max depth reached"`. The budget step can then keep only a few of these paths (`summarized`).
+`incoming_paths` and `outgoing_paths` hold **witness paths**, not every simple path. Lurp visits each symbol within `--max-hops` once and keeps one deterministic path to it. A capsule emits the witness path of each reached symbol that no other emitted path passes through, so no emitted path is a prefix of another. A path that ends at `--max-hops` with followable edges beyond it carries `truncated: true` and `truncation_reason: "max depth reached"`. Over the budget, the capsule keeps the first three paths whole, in this order, and drops the rest (`summarized`). It never cuts a path.
 
 Incoming paths use the default upstream impact filter. This filter excludes `Declares`, `Contains` and `TestedBy`. Outgoing paths follow all edge kinds.
 
@@ -411,7 +411,7 @@ A capsule reports two different numbers, and they are not interchangeable:
 
 | Field | What it measures | Use it for |
 |---|---|---|
-| `estimated_tokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections. Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
+| `estimated_tokens` | **Content only**: anchor and item source plus the serialized weight of the substantive non-source sections (paths, semantic causes, constraints, topology, completeness, suggested verification, likely change sites, affected public surfaces, inclusion reasons). Per-item identity/provenance framing (symbol IDs, fully-qualified names, edge kinds, provenance, coordinates) is navigation metadata and is not counted. | Understanding what `--content-budget` bounded. This is the budget basis. |
 | `estimated_artifact_tokens` | The **whole emitted file** (serialized length ÷ 3), framing included. | Sizing a context window. |
 
 Both numbers are a model-neutral, character-based size hint (characters ÷ 3).
@@ -437,7 +437,7 @@ covering test, the section carries one entry per class with a
 `dotnet test --filter "FullyQualifiedName~<Class>"` command instead of one
 entry per test; a class with a single test keeps its exact
 `FullyQualifiedName=<Test>` entry, and running the class filter runs every
-test it holds. `uncertainties` is assembled after the budget pass: it is
+test it holds. Each command names the indexed project of the test. Without a stored project path (a snapshot from before 4.0.0), it names the indexed solution. `uncertainties` is assembled after the budget pass: it is
 neither counted against `--content-budget` nor trimmed.
 `estimated_artifact_tokens` is stamped last, over the emitted file, so it
 includes both sections.
@@ -458,7 +458,7 @@ the emitted capsule rather than the history of how it settled. Reasons:
 | `empty` | Proved absence. The relation was observable and there is none. Safe to act on. |
 | `unresolved` | Lurp could not observe the relation. A gap capsule marks every tier this way. |
 | `unmodeled_construct` | The tier is empty because an unmodeled registration form exists (see Declared boundaries). It is not proof that no relation exists. |
-| `summarized` | Present but bounded: paths clipped, or item source truncated at the per-item cap. |
+| `summarized` | Present but bounded: only the first paths kept, or item source truncated at the per-item cap. |
 | `budget_exhausted` | Bounded by budget. **With items still present in the section**, the included items are a complete greedy prefix of the tier in its relevance order. **With no items**, the tier was fully omitted. |
 
 For contracts, direct callees and surrounding source, Lurp checks for binding

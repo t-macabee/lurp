@@ -50,6 +50,7 @@ internal static class ImpactPaging
         int maxDepth,
         ImpactReachabilityResult reachability,
         ImpactReachability siteLoader,
+        IReadOnlyList<SemanticChange> semanticCauses,
         int offset,
         int limit,
         string fingerprint,
@@ -84,8 +85,8 @@ internal static class ImpactPaging
             symbol_count_total: allSymbols.Count,
             frontier_count: allSymbols.Count(static symbol => symbol.IsFrontier),
             offset: offset,
-            groups: BuildFirstHopGroups(allSymbols, reachability),
-            semantic_causes: reachability.SemanticCauses.Select(SemanticCauseJson.From).ToList(),
+            groups: BuildFirstHopGroups(allSymbols, reachability, direction),
+            semantic_causes: semanticCauses.Select(SemanticCauseJson.From).ToList(),
             truncated: truncated,
             symbols: page.Zip(pagePaths, ToSymbolJson).ToList());
     }
@@ -95,7 +96,8 @@ internal static class ImpactPaging
     ///     symbols, before the page cut. The deterministic core order makes the
     ///     first hop of a symbol stable, so the group key is stable too.
     /// </summary>
-    private static List<ImpactSymbolGroup> BuildFirstHopGroups(IReadOnlyList<ImpactReachedSymbol> symbols, ImpactReachabilityResult reachability)
+    private static List<ImpactSymbolGroup> BuildFirstHopGroups(IReadOnlyList<ImpactReachedSymbol> symbols,
+        ImpactReachabilityResult reachability, ImpactDirection direction)
     {
         var byFirstHop = new Dictionary<(string Source, string Target, string Kind), (string Provenance, int Count, int MaxDepth)>();
         foreach (var symbol in symbols)
@@ -119,7 +121,9 @@ internal static class ImpactPaging
                 symbol_count: pair.Value.Count,
                 max_depth: pair.Value.MaxDepth))
             .OrderByDescending(static group => group.symbol_count)
-            .ThenBy(static group => group.first_hop_target_symbol_id, StringComparer.Ordinal)
+            .ThenBy(group => direction == ImpactDirection.Downstream
+                ? group.first_hop_target_symbol_id
+                : group.first_hop_source_symbol_id, StringComparer.Ordinal)
             .ToList();
     }
 

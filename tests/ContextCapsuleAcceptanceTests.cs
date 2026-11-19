@@ -1,3 +1,4 @@
+using Lurp.Handlers;
 using Lurp.Workspace;
 using Microsoft.Data.Sqlite;
 
@@ -61,7 +62,7 @@ public sealed class ContextCapsuleSurfaceTests : IntegrationTestBase
         {
             var id = ResolveSymbolId(snapshot, $"global::{name}");
             var capsule = ContextAssembler.ResolveAndAssemble(store, store, new ContextLookup(snapshot, id, null, null),
-                new ContextAssemblyOptions(ContextIntent.Inspect, 50_000), store, omitProjectFacts ? null : store);
+                new ContextAssemblyOptions(ContextIntent.Inspect, 50_000, ContextRequest.DefaultMaxHops), store, omitProjectFacts ? null : store);
             Assert.Equal(present ? [id] : Array.Empty<string>(), capsule.AffectedPublicSurfaces.Select(item => item.SymbolId));
             if (!present)
                 Assert.Contains(capsule.OmittedTiers, entry => entry.Category == "affected_public_surfaces" &&
@@ -110,8 +111,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
                 500_000,
                 3,
                 Scope: "src/Shared/EdgeLocationResolver.cs",
-                AffectedProjects: ["Lurp"],
-                GitRoot: repositoryRoot),
+                AffectedProjects: ["Lurp"]),
             store,
             store);
 

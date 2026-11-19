@@ -40,6 +40,7 @@ public sealed class ProjectRow
     public string? CompilationOptionsFingerprint { get; init; }
     public IReadOnlyList<string>? DocumentPaths { get; init; }
     public string? InternalsVisibleToJson { get; init; }
+    public string? ProjectPath { get; init; }
 }
 
 public sealed record OrphanEdgeDropSummary(int Total, int External, int CompilerSynthesized, int ExcludedDocument, int Other)

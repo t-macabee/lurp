@@ -101,8 +101,8 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
         using var projectCommand = _connection.CreateCommand();
         projectCommand.Transaction = transaction;
         projectCommand.CommandText = """
-            INSERT INTO projects (snapshot_id, name, assembly_name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json, internals_visible_to)
-            VALUES (@snapshotId, @name, @assemblyName, @targetFramework, @metadataReferenceIdentities, @compilationOptionsFingerprint, @documentPathsJson, @internalsVisibleTo);
+            INSERT INTO projects (snapshot_id, name, assembly_name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json, internals_visible_to, project_path)
+            VALUES (@snapshotId, @name, @assemblyName, @targetFramework, @metadataReferenceIdentities, @compilationOptionsFingerprint, @documentPathsJson, @internalsVisibleTo, @projectPath);
             SELECT last_insert_rowid();
             """;
 
@@ -124,6 +124,7 @@ internal sealed class SnapshotLifecycleStore(SqliteConnection connection)
             projectCommand.Parameters.AddWithValue("@compilationOptionsFingerprint", (object?)project.CompilationOptionsFingerprint ?? DBNull.Value);
             projectCommand.Parameters.AddWithValue("@documentPathsJson", project.DocumentPaths == null ? DBNull.Value : (object)JsonSerializer.Serialize(project.DocumentPaths));
             projectCommand.Parameters.AddWithValue("@internalsVisibleTo", (object?)project.InternalsVisibleToJson ?? DBNull.Value);
+            projectCommand.Parameters.AddWithValue("@projectPath", (object?)project.ProjectPath ?? DBNull.Value);
             var projectId = projectCommand.ExecuteScalar();
 
             if (project.References.Count > 0 && projectId != null)
@@ -520,7 +521,7 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
 
         using var projectCommand = _connection.CreateCommand();
         projectCommand.CommandText = """
-            SELECT project_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json, assembly_name, internals_visible_to
+            SELECT project_id, name, target_framework, metadata_reference_identities, compilation_options_fingerprint, document_paths_json, assembly_name, internals_visible_to, project_path
             FROM projects
             WHERE snapshot_id = @snapshotId;
             """;
@@ -539,7 +540,8 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
                     CompilationOptionsFingerprint = projectReader.IsDBNull(4) ? null : projectReader.GetString(4),
                     DocumentPaths = projectReader.IsDBNull(5) ? null : JsonSerializer.Deserialize<List<string>>(projectReader.GetString(5)),
                     AssemblyName = projectReader.IsDBNull(6) ? null : projectReader.GetString(6),
-                    InternalsVisibleToJson = projectReader.IsDBNull(7) ? null : projectReader.GetString(7)
+                    InternalsVisibleToJson = projectReader.IsDBNull(7) ? null : projectReader.GetString(7),
+                    ProjectPath = projectReader.IsDBNull(8) ? null : projectReader.GetString(8)
                 });
             }
         }
@@ -562,19 +564,6 @@ SELECT f.snapshot_id, f.failure_reason_code, f.failure_message, f.built_at_utc
 
         command.Parameters.AddWithValue("@status", SnapshotStatusValues.Complete);
 
-        return command.ExecuteScalar() as string;
-    }
-
-    internal string? GetSnapshotGitRoot(string snapshotId)
-    {
-        using var command = _connection.CreateCommand();
-        command.CommandText = """
-            SELECT w.git_root
-            FROM snapshots s
-            JOIN workspaces w ON w.workspace_id = s.workspace_id
-            WHERE s.snapshot_id = @snapshotId;
-            """;
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
         return command.ExecuteScalar() as string;
     }
 

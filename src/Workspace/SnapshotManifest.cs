@@ -55,6 +55,10 @@ public sealed partial class SnapshotManifest
     public IReadOnlyDictionary<string, IReadOnlyList<string>> InternalsVisibleTo { get; init; }
         = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string> ProjectPaths { get; init; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
+
     [JsonPropertyName("project_documents")]
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocuments { get; init; }
         = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -96,6 +100,7 @@ public sealed partial class SnapshotManifest
             MetadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(workspace.MetadataReferenceIdentities, StringComparer.Ordinal),
             CompilationOptionsFingerprints = new Dictionary<string, string>(workspace.CompilationOptionsFingerprints, StringComparer.Ordinal),
             InternalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(workspace.InternalsVisibleTo, StringComparer.Ordinal),
+            ProjectPaths = new Dictionary<string, string>(workspace.ProjectPaths, StringComparer.Ordinal),
             ProjectDocuments = new Dictionary<string, IReadOnlyList<string>>(workspace.ProjectDocuments, StringComparer.Ordinal),
             DatabaseSchemaVersion = MigrationRunner.LatestVersion,
             OutputSchemaVersion = VersionConstants.OutputSchemaVersion,
@@ -178,6 +183,9 @@ public sealed partial class SnapshotManifest
                 : null,
             InternalsVisibleToJson = InternalsVisibleTo.TryGetValue(kvp.Key, out var ivt) && ivt.Count > 0
                 ? JsonSerializer.Serialize(ivt)
+                : null,
+            ProjectPath = ProjectPaths.TryGetValue(kvp.Key, out var projectPath)
+                ? projectPath
                 : null
         }).ToList();
 
@@ -250,6 +258,7 @@ public sealed partial class SnapshotManifest
         var metadataReferenceIdentities = new Dictionary<string, ImmutableArray<string>>(StringComparer.Ordinal);
         var compilationOptionsFingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
         var internalsVisibleTo = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var projectPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         var projectDocuments = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var project in selectedProjects)
         {
@@ -267,6 +276,8 @@ public sealed partial class SnapshotManifest
                 if (targets is { Length: > 0 })
                     internalsVisibleTo[project.Name] = targets;
             }
+            if (project.ProjectPath != null)
+                projectPaths[project.Name] = project.ProjectPath;
             if (project.DocumentPaths != null)
                 projectDocuments[project.Name] = project.DocumentPaths;
         }
@@ -286,6 +297,7 @@ public sealed partial class SnapshotManifest
             MetadataReferenceIdentities = metadataReferenceIdentities,
             CompilationOptionsFingerprints = compilationOptionsFingerprints,
             InternalsVisibleTo = internalsVisibleTo,
+            ProjectPaths = projectPaths,
             ProjectDocuments = projectDocuments,
             DatabaseSchemaVersion = storage.DatabaseSchemaVersion,
             OutputSchemaVersion = storage.OutputSchemaVersion,
