@@ -198,7 +198,8 @@ public class MigrationRunner
             new Migration_043_AnnotationUniqueIndex(),
             new Migration_044_DocumentIsGenerated(),
             new Migration_045_ProjectInternalsVisibleTo(),
-            new Migration_046_ProjectFilePath()
+            new Migration_046_ProjectFilePath(),
+            new Migration_047_SnapshotSymbolBareFqn()
         ];
     }
 }

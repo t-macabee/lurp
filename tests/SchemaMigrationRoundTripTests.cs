@@ -322,7 +322,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
         }
     }
 
-    // This test re-runs the newest migration (046). When a migration is added, move the test to it; that migration must be safe to run twice.
+    // This test re-runs the newest migration (047). When a migration is added, move the test to it; that migration must be safe to run twice.
     [Fact]
     public void RunMigrations_ThrowsAndRollsBack_WhenTheLastMigrationLeavesAForeignKeyViolation()
     {
@@ -334,8 +334,10 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA foreign_keys = OFF;
-                DELETE FROM schema_metadata WHERE version = 46;
-                ALTER TABLE projects DROP COLUMN project_path;
+                DELETE FROM schema_metadata WHERE version = 47;
+                DROP INDEX IF EXISTS idx_snapshot_symbols_bare_fqn;
+                DROP INDEX IF EXISTS idx_snapshot_symbols_fqn;
+                ALTER TABLE snapshot_symbols DROP COLUMN bare_fqn;
                 INSERT INTO snapshot_documents (snapshot_id, document_version_id) VALUES ('no-such-snapshot', 'no-such-version');
                 """;
             command.ExecuteNonQuery();
@@ -348,7 +350,7 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
         using var verify = TestDatabase.OpenReadOnly(_dbPath);
         using var columnCommand = verify.CreateCommand();
-        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'project_path';";
+        columnCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshot_symbols') WHERE name = 'bare_fqn';";
         Assert.Equal(0L, (long)columnCommand.ExecuteScalar()!);
     }
 
@@ -1027,7 +1029,6 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
 
             var runner = new MigrationRunner(dbPath);
             runner.RunMigrations();
-            Assert.Equal(46, MigrationRunner.LatestVersion);
             Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
 
             using (var verify = TestDatabase.OpenReadOnly(dbPath))
@@ -1054,6 +1055,96 @@ public sealed class SchemaMigrationRoundTripTests : IDisposable
             {
                 store.Close();
             }
+        }
+        finally
+        {
+            TestDatabase.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void RoundTrip_Migration047_SnapshotSymbolBareFqn()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"lurp-v37-barefqn-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var connection = TestDatabase.Open(dbPath))
+            {
+                using var pragmaCmd = connection.CreateCommand();
+                pragmaCmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                pragmaCmd.ExecuteNonQuery();
+
+                var migrationsTo37 = typeof(MigrationRunner).Assembly
+                    .GetTypes()
+                    .Where(static t => !t.IsAbstract && typeof(IMigration).IsAssignableFrom(t))
+                    .Select(static t => (IMigration)Activator.CreateInstance(t)!)
+                    .Where(static m => m.Version <= 37)
+                    .OrderBy(static m => m.Version)
+                    .ToList();
+
+                foreach (var migration in migrationsTo37)
+                    migration.Up(connection);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO schema_metadata (version, applied_at_utc, migration_id)
+                    VALUES (37, '2025-01-01T00:00:00.0000000Z', 'Migration_037_DocumentVersionsDocumentIdIndex');
+
+                    INSERT INTO workspaces (workspace_id, git_root, solution_path)
+                    VALUES ('ws1', '/repo', '/repo/Test.slnx');
+
+                    INSERT INTO snapshots (snapshot_id, workspace_id, built_at_utc, sdk_version, database_schema_version, output_schema_version)
+                    VALUES ('s1', 'ws1', '2025-01-01T00:00:00.0000000Z', '10.0.100', 37, 6);
+
+                    INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind) VALUES
+                        ('M:Ns.Repo`1.Add(`0)|Asm', 'M:Ns.Repo`1.Add(`0)', 'Asm', 'Method'),
+                        ('T:Ns.Plain|Asm', 'T:Ns.Plain', 'Asm', 'NamedType'),
+                        ('T:Ns.NullFqn|Asm', 'T:Ns.NullFqn', 'Asm', 'NamedType');
+
+                    INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn) VALUES
+                        ('s1', 'M:Ns.Repo`1.Add(`0)|Asm', 'global::Ns.Repo<T>.Add'),
+                        ('s1', 'T:Ns.Plain|Asm', 'global::Ns.Plain'),
+                        ('s1', 'T:Ns.NullFqn|Asm', NULL);
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            var runner = new MigrationRunner(dbPath);
+            runner.RunMigrations();
+            Assert.Equal(MigrationRunner.LatestVersion, runner.GetCurrentSchemaVersion());
+
+            using var verify = TestDatabase.OpenReadOnly(dbPath);
+            using (var colCmd = verify.CreateCommand())
+            {
+                colCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('snapshot_symbols') WHERE name = 'bare_fqn';";
+                Assert.Equal(1L, (long)colCmd.ExecuteScalar()!);
+            }
+
+            using (var idxCmd = verify.CreateCommand())
+            {
+                idxCmd.CommandText = "SELECT name FROM pragma_index_list('snapshot_symbols');";
+                var indexes = new HashSet<string>(StringComparer.Ordinal);
+                using var reader = idxCmd.ExecuteReader();
+                while (reader.Read())
+                    indexes.Add(reader.GetString(0));
+                Assert.Contains("idx_snapshot_symbols_bare_fqn", indexes);
+                Assert.Contains("idx_snapshot_symbols_fqn", indexes);
+            }
+
+            var bareFqns = new Dictionary<string, object?>(StringComparer.Ordinal);
+            using (var rowCmd = verify.CreateCommand())
+            {
+                rowCmd.CommandText = "SELECT symbol_id, bare_fqn FROM snapshot_symbols WHERE snapshot_id = 's1';";
+                using var reader = rowCmd.ExecuteReader();
+                while (reader.Read())
+                    bareFqns[reader.GetString(0)] = reader.IsDBNull(1) ? null : reader.GetString(1);
+            }
+
+            Assert.Equal("global::Ns.Repo.Add", bareFqns["M:Ns.Repo`1.Add(`0)|Asm"]);
+            Assert.Equal("global::Ns.Plain", bareFqns["T:Ns.Plain|Asm"]);
+            Assert.Null(bareFqns["T:Ns.NullFqn|Asm"]);
         }
         finally
         {

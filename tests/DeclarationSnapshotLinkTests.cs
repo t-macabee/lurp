@@ -150,8 +150,7 @@ public sealed class DeclarationSnapshotLinkTests : IDisposable
         var locs = store.GetDeclarationLocations(b.SymbolId.Value, "s2");
         Assert.Single(locs);
 
-        var info = store.ResolveSymbolByFqn("global::N.B", "s2");
-        Assert.NotNull(info);
+        var info = Assert.Single(store.FindSymbols(SymbolKey.Fqn, "global::N.B", "s2"));
         Assert.Equal(1, info.DeclarationCount);
     }
 }

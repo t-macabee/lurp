@@ -17,7 +17,7 @@ internal sealed class AnnotationsTool
     }
 
     [McpServerTool(Name = "lurp_get_annotations", Title = "Lurp Get Annotations", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Get annotations in the pinned snapshot. Supports three modes: by symbol (resolved via docCommentId|assemblyIdentity, bare T: docCommentId, or FQN), by document (solution-relative forward-slashed path), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination. Annotations with document_path IS NULL (user-authored via `--mode=annotate`) are unreachable via document filter.")]
+    [Description("Get annotations in the pinned snapshot. Supports three modes: by symbol (" + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error.), by document (solution-relative forward-slashed path; returns annotations whose document_path is that document and annotations of every symbol declared in it, user annotations included), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination.")]
     public string LurpGetAnnotations(
         string? symbol = null,
         string? document = null,
@@ -59,7 +59,7 @@ internal sealed class AnnotationsTool
 
             if (hasSymbol)
             {
-                resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId);
+                resolvedSymbol = HandlerBootstrap.ResolveSymbolArg(store, symbol!, snapshotId, includeGenerated: true);
             }
             else if (hasDocument)
             {

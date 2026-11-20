@@ -19,7 +19,7 @@ This creates `./out/index.db` containing all indexed symbols, edges, and source 
 
 **Environment variables:** `LURP_SOLUTION_PATH` and `LURP_OUTPUT_DIR` are equivalent to `--solution=` and `--output-dir=` on every mode that reads them — set once and every subsequent command can drop both flags. A database location is otherwise required almost everywhere below (see [ENVIRONMENT VARIABLES](#environment-variables)): pass `--output-dir=` for a specific database, or `--solution=` (or `LURP_SOLUTION_PATH`) to use the default cache location described under [`--mode=index`](#--modeindex). Only `--solution=` and `--output-dir=` have an environment variable; every other required flag has none.
 
-**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v46, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
+**This document describes the CLI as of <!-- generated:versions -->tool 3.6.1, schema v47, extractor 1.12.0, CLI/MCP contract v7, output schema v7<!-- /generated:versions -->.** The changes of each release are in the release notes that [README.md](../README.md#documentation--license) lists. Run `lurp --version` before relying on anything below — a mode, flag, or field this doc mentions but your installed `lurp` rejects means the two are out of sync (most commonly: `dotnet tool install --global lurp` pulled an older published version than the source this doc ships with). `--version` prints the schema, extractor, and CLI/MCP contract versions the running binary was built with, so a mismatch is a one-command check rather than a guess from trial and error.
 
 `--mode=index` always indexes the entire solution named by `--solution=`; there is
 no per-project or per-directory scoping flag. To point Lurp at one part of a larger
@@ -62,7 +62,7 @@ The context capsule has no `freshness` block, because the capsule is also writte
 
 **Null fields:** every CLI and MCP JSON response prints every key of its mode; a key with no value is `null`. A yes/no key is `true` or `false`; it is `null` only when the list or check it describes was not produced. The context capsule and the snapshot manifest are separate documents and omit null keys.
 
-**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). An edge keeps every site of its relation in source order; impact hops and capsule path hops list up to 20 sites with `site_count`. A reported `start_line` can be passed verbatim to `--line=` (for example to `navigate`) and resolves to the same symbol.
+**Line-number base:** every emitted line number is **1-based**, matching the `--line=<n>` input convention. This covers edge locations (`impact` hops' `source_line`/`source_end_line`, `diff` `edge_location_changed` details) and declaration locations (`context` capsule `locations`, tier-page `path:start_line`). An edge keeps every site of its relation in source order; impact hops and capsule path hops list up to 20 sites with `site_count`. A reported `start_line` resolves to the same symbol when no other declaration on that line has a smaller span or a better rank; for the other declarations on that line (the parameter properties of a record, the accessors of a property) the answer is the one with the smaller span or the better rank.
 
 **Declaration spans:** `outline` entries, `locations` in `find-symbol` and `get-symbol --view=metadata`, and the `navigate` `target` cover the whole declaration with its leading and trailing trivia. So `start_line` can be a blank line or a comment above the declaration. The end is an exclusive position, as in Roslyn and the Language Server Protocol: `end_line` (and `end_column` where present) name the point just after the span. When the span ends with a line break, that point is column 0 of the next line. To read the declaration with `--mode=get-source`, pass `--end-line=<end_line - 1>` in that case, or use `--mode=get-symbol --view=declaration`.
 
@@ -193,14 +193,14 @@ Look up symbol metadata or source by view kind.
 <!-- generated:flags:get-symbol -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to look up. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
+| `--symbol=<id>` | Yes | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
 | `--view=<metadata\|signature\|body\|declaration\|containing-type\|surrounding>` | Yes | What to return. |
 | `--context-lines=<n>` | No | Lines of context for `--view=surrounding` (default: 3). |
-| `--include-generated` | No | Include source-generated symbols. |
+| `--include-generated` | No | Allow resolving a symbol whose declarations are all source-generated, and include generated declarations in source views (`--view=metadata` always lists every declaration with its own `is_generated`). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 <!-- /generated:flags:get-symbol -->
 
-Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, start_column, end_line, end_column, is_generated }` per declaration, lines 1-based); the five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`). For a primary constructor, `declaration` and `signature` print the parameter list, and `body` fails with `ERROR: Source not found for symbol '<id>' with view 'body'.` because the constructor has no body. `outline` and `navigate` give the type name as its name position.
+Accepts the shared [read-command options](#read-command-options) except `--output=`. `--view=metadata` embeds the `freshness` block in its JSON payload and a `locations` array (`{ document_path, start_line, start_column, end_line, end_column, is_generated }` per declaration, lines 1-based). `locations` lists every declaration of the symbol in the snapshot, each with its own `is_generated`, so `declaration_count` equals the number of entries; `--include-generated` decides only whether a symbol whose declarations are all generated resolves. The five source views write source bytes verbatim, so their freshness signal is the stderr line plus `--require-fresh`'s exit code; the source views read generated declarations only with `--include-generated`. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`). For a primary constructor, `declaration` and `signature` print the parameter list, and `body` fails with `ERROR: Source not found for symbol '<id>' with view 'body'.` because the constructor has no body. `outline` and `navigate` give the type name as its name position.
 
 ---
 
@@ -258,7 +258,7 @@ Output is JSON with `snapshot_id`, `query`, `ignore_case`, `results` (array of `
 
 ### `--mode=find-symbol`
 
-Resolve a symbol by fully qualified name.
+Resolve a symbol by full symbol ID, doc-comment ID, fully qualified name, or generic name without type parameters.
 
 ```
 --mode=find-symbol --symbol=<name> --output-dir=<path> [options]
@@ -267,8 +267,8 @@ Resolve a symbol by fully qualified name.
 <!-- generated:flags:find-symbol -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<name>` | Yes | Fully qualified name to resolve. |
-| `--include-generated` | No | Include source-generated symbols. |
+| `--symbol=<id>` | Yes | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
+| `--include-generated` | No | Allow resolving a symbol whose declarations are all source-generated (`locations` always lists every declaration with its own `is_generated`). |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
 <!-- /generated:flags:find-symbol -->
 
@@ -276,7 +276,7 @@ Also accepts the shared [read-command options](#read-command-options).
 
 `declaration_count` is scoped to the requested snapshot, so a non-partial type reports `1` however many historical declarations retention still holds; a partial type reports its true multiplicity in that snapshot.
 
-The payload carries a `locations` array: one entry per declaration in the snapshot, each `{ document_path, start_line, start_column, end_line, end_column, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. A partial type reports one entry per file, matching `declaration_count`; `--include-generated` controls whether generated declarations appear. In `--output=summary`, the first location prints as `path:start_line`. `--output=jsonl` prints `{"type":"meta", meta}` (`snapshot_id`, `freshness`), then one `{"type":"symbol", symbol}` record. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`).
+The payload carries a `locations` array: one entry per declaration in the snapshot, each `{ document_path, start_line, start_column, end_line, end_column, is_generated }` (lines 1-based). This answers "where is X defined?" in one call, without a capsule. `locations` lists every declaration of the symbol in the snapshot, each with its own `is_generated`. `declaration_count` equals the number of entries. `--include-generated` decides only whether a symbol whose declarations are all generated resolves. In `--output=summary`, the first location prints as `path:start_line`. `--output=jsonl` prints `{"type":"meta", meta}` (`snapshot_id`, `freshness`), then one `{"type":"symbol", symbol}` record. `metadata` is an object with the extractor's snake_case metadata fields (for example `accessibility`, `is_static`, `return_type`).
 
 ---
 
@@ -299,7 +299,7 @@ Resolve an indexed declaration by file and line.
 
 Accepts the shared [read-command options](#read-command-options) except `--output=`; the JSON payload embeds the `freshness` block.
 
-Returns the symbol ID, the document path and version, and the exact source span of the declaration at that location. For its name and kind, pass `target.symbol_id` to `--mode=find-symbol` or `--mode=get-symbol --view=metadata`. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; the reported `start_line` round-trips, so passing it back as `--line=` resolves to the same symbol.
+Returns the innermost declaration whose span intersects the line (equal spans: not compiler-made first, then type, constructor, other member, accessor, then symbol id), with the symbol ID, the document path and version, and the exact source span. For its name and kind, pass `target.symbol_id` to `--mode=find-symbol` or `--mode=get-symbol --view=metadata`. The `target` carries both the character offsets (`full_start`/`full_end`/`name_start`/`name_end`, the exact-span contract) and 1-based `start_line`/`end_line`; a reported `start_line` resolves to the same symbol when no other declaration on that line has a smaller span or a better rank; for the other declarations on that line (the parameter properties of a record, the accessors of a property) the answer is the one with the smaller span or the better rank.
 
 ---
 
@@ -333,7 +333,7 @@ Trace the impact of a changed symbol as a set of reached symbols.
 <!-- generated:flags:impact -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to trace from. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
+| `--symbol=<id>` | Yes | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
 | `--direction=<downstream\|upstream>` | No | Traversal direction (default: `downstream`). `upstream` follows every edge kind except `Declares`, `Contains` and `TestedBy` unless `--kinds=` is given; `downstream` follows every kind. |
 | `--kinds=<Inherits\|Implements\|References\|Contains\|Overrides\|Hides\|ExtensionReceiver\|Calls\|MethodGroupRef\|Constructs\|Reads\|Writes\|Returns\|Throws\|Declares\|MayDispatchTo\|StaticallyCalls\|RoutesTo\|Registers\|Handles\|MapsTo\|TestedBy\|ReflectionTypeRef\|ReflectionMemberRef\|ReflectionNameCandidate\|ReflectionTargetUnknown>` | No | Comma-separated edge kinds to follow, matched case-insensitively. An unknown kind is rejected with an error. An empty value or an empty item (`Calls,`) is an error. Replaces the default set for the direction (see `--direction=`). |
 | `--provenance=<compiler_proved\|framework_derived\|possible\|convention\|name_candidate\|runtime_unknown>` | No | Comma-separated provenance values to follow (e.g. `compiler_proved,framework_derived`). Pass `compiler_proved` to follow only compiler-verified edges: direct interface implementations, virtual/override `MayDispatchTo`, `Calls`, `MethodGroupRef`, `Constructs`, `Implements`, `Inherits`, `Overrides`. Excludes framework-derived DI (`Registers`), string-reflection candidates (`Reflection*`), and inherited-only dispatch edges. Values are matched case-insensitively; an unknown value is rejected with an error. An empty value or an empty item is an error. |
@@ -364,7 +364,7 @@ Assemble a context capsule for a symbol or source location.
 <!-- generated:flags:context -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes* | Symbol ID to anchor on. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name. |
+| `--symbol=<id>` | Yes* | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
 | `--file=<path>` | Yes* | Source file path (use with `--line`). |
 | `--line=<n>` | Yes* | Line number in the source file. |
 | `--intent=<inspect\|modify\|diagnose>` | No | Intent hint for assembly (default: `inspect`). |
@@ -568,7 +568,7 @@ Attach a user-authored annotation to a symbol.
 <!-- generated:flags:annotate -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | Yes | The symbol ID to annotate. |
+| `--symbol=<id>` | Yes | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
 | `--annotation-kind=<kind>` | Yes | Annotation kind. |
 | `--value=<text>` | Yes | Annotation value. |
 | `--snapshot=<id>` | No | Snapshot to use (default: latest, or the pinned snapshot when one is set; see `--mode=pin-snapshot`). The literal `latest` means the same. |
@@ -587,8 +587,8 @@ Retrieve annotations by symbol, document, or snapshot (with kind filtering and k
 <!-- generated:flags:get-annotations -->
 | Argument | Required | Description |
 |---|---|---|
-| `--symbol=<id>` | No | The symbol ID to query. Accepts the full `docCommentId\|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`. |
-| `--document=<relative-path>` | No | Relative path of the document within the solution. Mutually exclusive with `--symbol=`. |
+| `--symbol=<id>` | No | The symbol to look up. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. Mutually exclusive with `--document=`. |
+| `--document=<relative-path>` | No | Relative path of the document within the solution. Returns the annotations whose `document_path` is that document and the annotations of every symbol declared in it, user annotations included. Mutually exclusive with `--symbol=`. |
 | `--kind=<kind>` | No | Filter to one annotation kind. |
 | `--limit=<n>` | No | Max annotations per page (default: 100; positive integer). |
 | `--cursor=<token>` | No | Continue from a previous page's `next_cursor`. |
@@ -596,8 +596,10 @@ Retrieve annotations by symbol, document, or snapshot (with kind filtering and k
 <!-- /generated:flags:get-annotations -->
 
 Accepts the shared [read-command options](#read-command-options). `--symbol=` and
-`--document=` are enforced as mutually exclusive. With neither, all annotations in
-the snapshot are returned.
+`--document=` are enforced as mutually exclusive. `--document=` returns the annotations
+whose `document_path` is that document and the annotations of every symbol that has a
+declaration in it, user annotations included. With neither, all annotations in the
+snapshot are returned.
 
 The JSON payload is `{ snapshot_id, symbol_id, document, kind, annotations,
 annotation_count, next_cursor, freshness }`; each annotation is `{ annotation_id, symbol_id,
@@ -758,12 +760,12 @@ Tool parameters (each is optional in the tool schema, including `annotation_id` 
 | `lurp_get_source` | read | `document` (string), `start_line` (int), `end_line` (int), `context_lines` (int), `snapshot_id` (string), `outline` (bool) | Fetch source text for a document in the pinned snapshot. Supports line windowing: start_line/end_line are 1-based inclusive; context_lines expands symmetrically. When no window is given the whole file is returned. Pass outline=true to include the declaration outline in the same response; compiler-generated members (record Equals, ToString and similar) are not listed. |
 | `lurp_outline` | read | `document` (string), `include_generated` (bool), `limit` (int), `cursor` (string), `snapshot_id` (string) | List declarations in a document with 1-based line spans. Ordered by full_start. Supports pagination via limit/cursor and filtering generated declarations. declaration_count is the total match count across all pages, not the page size — use next_cursor for pagination. Compiler-generated members (record Equals, ToString and similar) are not listed. |
 | `lurp_navigate` | read | `file` (string), `line` (int), `include_generated` (bool), `snapshot_id` (string) | Navigate to the declaration containing a file+line in the pinned snapshot. Null target is success, not an error. |
-| `lurp_find_symbol` | read | `symbol` (string), `include_generated` (bool), `snapshot_id` (string) | Resolve a symbol in the pinned snapshot. Accepts pipe-form docCommentId\|assemblyIdentity, bare T: docCommentId, or bare FQN. |
+| `lurp_find_symbol` | read | `symbol` (string), `include_generated` (bool), `snapshot_id` (string) | Resolve a symbol in the pinned snapshot. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. |
 | `lurp_search` | read | `query` (string), `type` (string), `kind` (string), `limit` (int), `snippet_tokens` (int), `cursor` (string), `include_generated` (bool), `snapshot_id` (string) | Search source or symbols in the pinned snapshot. Type picks the store: source, symbol, or all. Uses FTS5 phrase quoting verbatim and cursor pagination for symbol search. |
 | `lurp_impact` | read | `symbol` (string), `direction` (string), `kinds` (string[]), `provenance` (string[]), `max_depth` (int), `limit` (int), `cursor` (string), `snapshot_id` (string) | Trace impact downstream or upstream for a symbol: the reached symbols with depth, shortest-path count, frontier flag and a deterministic witness path, plus first-hop groups. Supports kinds/provenance filtering and cursor pagination. The upstream direction follows every edge kind except Declares, Contains and TestedBy unless kinds names the set; the downstream direction follows every kind. |
 | `lurp_diff` | read | `from_snapshot` (string), `to_snapshot` (string) | Compute semantic diff between two snapshots. Both from_snapshot and to_snapshot are required. |
-| `lurp_get_symbol` | read | `symbol` (string), `view` (string), `context_lines` (int), `include_generated` (bool), `snapshot_id` (string) | Get symbol metadata and optional source. Accepts pipe-form docCommentId\|assemblyIdentity, bare T: docCommentId, or bare FQN. View summary\|source\|all controls payload. |
-| `lurp_get_annotations` | read | `symbol` (string), `document` (string), `kind` (string), `limit` (int), `cursor` (string), `snapshot_id` (string) | Get annotations in the pinned snapshot. Supports three modes: by symbol (resolved via docCommentId\|assemblyIdentity, bare T: docCommentId, or FQN), by document (solution-relative forward-slashed path), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination. Annotations with document_path IS NULL (user-authored via `--mode=annotate`) are unreachable via document filter. |
+| `lurp_get_symbol` | read | `symbol` (string), `view` (string), `context_lines` (int), `include_generated` (bool), `snapshot_id` (string) | Get symbol metadata and optional source. Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error. View summary\|source\|all controls payload. |
+| `lurp_get_annotations` | read | `symbol` (string), `document` (string), `kind` (string), `limit` (int), `cursor` (string), `snapshot_id` (string) | Get annotations in the pinned snapshot. Supports three modes: by symbol (Pass the full 'docCommentId\|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>). More than one match is an error.), by document (solution-relative forward-slashed path; returns annotations whose document_path is that document and annotations of every symbol declared in it, user annotations included), or whole-snapshot when neither is given. Optional kind filter and keyset pagination via limit/cursor (default 100, ordered by annotation_id). annotation_count is the total match count across all pages, not the page size — use next_cursor for pagination. |
 | `lurp_diagnostics` | read | `document` (string), `project` (string), `severity` (string), `id` (string), `limit` (int), `cursor` (string), `include_generated` (bool, default `false`), `snapshot_id` (string) | List diagnostics captured at index time for the pinned snapshot: compiler diagnostics plus any diagnostics from analyzers referenced by the target project (e.g. built-in SDK analyzers like CA1822). IDE-only code-style rules (e.g. IDE0005) are not included even when the target project's own build enables them (e.g. EnforceCodeStyleInBuild plus an .editorconfig severity) — Roslyn's build-time compilation additionally gates IDE0005 behind GenerateDocumentationFile=true, independent of anything Lurp does. For unused-using-directive detection, query the compiler diagnostic instead: severity=hidden, id=CS8019 ("Unnecessary using directive") — Lurp always captures this regardless of the target's analyzer/code-style configuration. Filters: document (solution-relative path, not git-relative), project, severity (Hidden, Info, Warning, Error case-insensitive, or "all" for every severity including Hidden; default excludes Hidden), id (diagnostic code, e.g. CS8933), include_generated (default false: excludes diagnostics located in obj/**, *.g.cs, *.generated.cs, *.Designer.cs, *ModelSnapshot.cs — the same generated-file patterns every other read tool's include_generated excludes by default). Unknown severity values are rejected with an error instead of returning empty. Keyset pagination via limit/cursor, ordered by diagnostic_id. diagnostic_count is the total match count across all pages, not the page size. start_column/end_column are 0-based (unlike the 1-based start_line/end_line). Reports what the compiler and analyzers said at index time — not re-evaluated, ranked, or deduplicated. |
 | `lurp_grep` | read | `query` (string), `limit` (int), `cursor` (string), `ignore_case` (bool), `include_generated` (bool), `snapshot_id` (string) | Literal/exact-text search over source content in the pinned snapshot. Returns per-occurrence results with 1-based start_line/end_line and 0-based start_column/end_column plus the full line_text. Use this instead of lurp_search when you need the exact line where a string appears. Supports pagination via cursor and case-insensitive search via ignore_case. match_count is the total match count across all pages, not the page size — use next_cursor for pagination. |
 | `lurp_status` | read | `snapshot_id` (string), `detail` (object), `sections` (string), `max_documents` (int), `max_mismatches` (int), `documents` (object), `full` (bool), `projects` (string[]), `max_bytes` (int) | Show pinned snapshot status and freshness. Cheap stat check by default; pass full=true to run the MSBuild workspace freshness check (requires serve --solution=). The response is capped at max_bytes (default 40000): over the cap, the largest manifest parts are summarized or left out, truncated is true and detail.manifest.omitted_fields names them; pass projects to narrow the manifest to named projects. |

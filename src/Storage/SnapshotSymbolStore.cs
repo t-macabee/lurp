@@ -11,12 +11,13 @@ internal sealed class SnapshotSymbolStore(SqliteConnection connection)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
-            SELECT @toSnapshotId, symbol_id, fqn, metadata_json
+            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, bare_fqn, metadata_json)
+            SELECT @toSnapshotId, symbol_id, fqn, bare_fqn, metadata_json
             FROM snapshot_symbols
             WHERE snapshot_id = @fromSnapshotId
             ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
                 fqn = excluded.fqn,
+                bare_fqn = excluded.bare_fqn,
                 metadata_json = excluded.metadata_json;
             """;
         command.Parameters.AddWithValue("@fromSnapshotId", fromSnapshotId);

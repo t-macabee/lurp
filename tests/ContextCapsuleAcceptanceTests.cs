@@ -94,8 +94,7 @@ public sealed class ContextCapsuleAcceptanceTests : IDisposable
         var snapshotId = await IntegrationHarness.RunFullIndexAsync(dbPath, solutionPath);
 
         using var store = IntegrationHarness.OpenReadStore(dbPath);
-        var anchor = store.ResolveSymbolByFqn("Lurp.Shared.EdgeLocationResolver", snapshotId)
-                     ?? throw new InvalidOperationException("Self-host anchor was not indexed.");
+        var anchor = HandlerBootstrap.ResolveSymbolInfo(store, "Lurp.Shared.EdgeLocationResolver", snapshotId);
 
         var capsule = ContextAssembler.ResolveAndAssemble(
             store,

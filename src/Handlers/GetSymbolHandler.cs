@@ -20,7 +20,7 @@ internal static class GetSymbolHandler
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var view = ResolveViewSelection(viewArg!, contextLinesArg);
-            symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId);
+            symbolArg = HandlerBootstrap.ResolveSymbolArg(store, symbolArg!, snapshotId, includeGenerated);
 
             // Resolved once for every view: the raw-source views carry freshness on
             // stderr plus the exit code only, while the metadata view additionally
@@ -59,9 +59,9 @@ internal static class GetSymbolHandler
         if (view.IsMetadataView)
             WriteMetadataView(store, symbolArg, snapshotId, freshness, output);
         else if (view.IsContainingType)
-            WriteContainingTypeView(store, symbolArg, snapshotId, output);
+            WriteContainingTypeView(store, symbolArg, snapshotId, includeGenerated, output);
         else if (view.IsSurrounding)
-            WriteSurroundingView(store, symbolArg, snapshotId, view.ContextLines, output);
+            WriteSurroundingView(store, symbolArg, snapshotId, view.ContextLines, includeGenerated, output);
         else
             WriteSourceView(store, symbolArg, snapshotId, view.ViewKind, viewArg, includeGenerated, output);
     }
@@ -71,7 +71,7 @@ internal static class GetSymbolHandler
         var info = store.GetSymbolInfo(symbolArg, snapshotId);
         if (info == null) HandlerBootstrap.Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'.");
 
-        var locations = store.GetDeclarationLocations(symbolArg, snapshotId, true);
+        var locations = store.GetDeclarationLocations(symbolArg, snapshotId, includeGenerated: true);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -91,16 +91,16 @@ internal static class GetSymbolHandler
         output.WriteLine(json);
     }
 
-    private static void WriteContainingTypeView(IDeclarationStore store, string symbolArg, string snapshotId, IOutputSink output)
+    private static void WriteContainingTypeView(IDeclarationStore store, string symbolArg, string snapshotId, bool includeGenerated, IOutputSink output)
     {
-        var source = store.GetContainingTypeSource(symbolArg, snapshotId);
+        var source = store.GetContainingTypeSource(symbolArg, snapshotId, includeGenerated);
         if (source == null) HandlerBootstrap.Fail($"ERROR: Containing type source not found for symbol '{symbolArg}'.");
         output.Write(source);
     }
 
-    private static void WriteSurroundingView(IDeclarationStore store, string symbolArg, string snapshotId, int contextLines, IOutputSink output)
+    private static void WriteSurroundingView(IDeclarationStore store, string symbolArg, string snapshotId, int contextLines, bool includeGenerated, IOutputSink output)
     {
-        var source = store.GetSurroundingLines(symbolArg, snapshotId, contextLines);
+        var source = store.GetSurroundingLines(symbolArg, snapshotId, contextLines, includeGenerated);
         if (source == null) HandlerBootstrap.Fail($"ERROR: Surrounding lines not found for symbol '{symbolArg}'.");
         output.Write(source);
     }

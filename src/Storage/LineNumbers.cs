@@ -12,8 +12,7 @@
 // Lurp project only and would be unreachable from Storage.
 //
 // The input direction (--line=) is already 1-based and is converted to 0-based
-// by NavigateToLocation/ResolveSymbolByLocation (line - 1); that side is left
-// as-is on purpose.
+// by NavigateToLocation (line - 1); that side is left as-is on purpose.
 
 namespace Lurp.Storage;
 

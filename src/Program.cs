@@ -49,7 +49,7 @@ public static class Program
                 FlagCatalog.Symbol with { Requirement = FlagRequirement.Required },
                 FlagCatalog.View with { Requirement = FlagRequirement.Required },
                 FlagCatalog.ContextLines with { Description = $"Lines of context for `--view=surrounding` (default: {GetSymbolHandler.DefaultContextLines})." },
-                FlagCatalog.IncludeGenerated,
+                FlagCatalog.IncludeGenerated with { Description = "Allow resolving a symbol whose declarations are all source-generated, and include generated declarations in source views (`--view=metadata` always lists every declaration with its own `is_generated`)." },
                 FlagCatalog.Snapshot,
                 FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
@@ -66,10 +66,10 @@ public static class Program
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
             Sync(SearchHandler.Run)),
-        new("find-symbol", "Resolve a symbol by FQN.",
+        new("find-symbol", "Resolve a symbol in the selected snapshot. " + HandlerBootstrap.AcceptedSymbolFormsText,
             [
-                FlagCatalog.Symbol with { ValueHint = "name", Description = "Fully qualified name to resolve.", Requirement = FlagRequirement.Required },
-                FlagCatalog.IncludeGenerated,
+                FlagCatalog.Symbol with { Requirement = FlagRequirement.Required },
+                FlagCatalog.IncludeGenerated with { Description = "Allow resolving a symbol whose declarations are all source-generated (`locations` always lists every declaration with its own `is_generated`)." },
                 FlagCatalog.Snapshot,
                 FlagCatalog.Output, FlagCatalog.Freshness, FlagCatalog.RequireFresh, FlagCatalog.Quiet
             ],
@@ -88,7 +88,7 @@ public static class Program
             Sync(DiffHandler.Run)),
         new("impact", "List the symbols a changed symbol can reach, each with a witness path.",
             [
-                FlagCatalog.Symbol with { Description = "The symbol ID to trace from. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name.", Requirement = FlagRequirement.Required },
+                FlagCatalog.Symbol with { Requirement = FlagRequirement.Required },
                 FlagCatalog.Direction, FlagCatalog.Kinds, FlagCatalog.Provenance, FlagCatalog.MaxDepth,
                 FlagCatalog.Limit with { Description = $"Symbols per page (default: {ImpactRequest.DefaultLimit}). When more exist, the response carries `truncated.{{reason,returned,total,remaining,cursor}}`." },
                 FlagCatalog.Cursor with { Description = "Continue from a previous page's `truncated.cursor`." },
@@ -98,7 +98,7 @@ public static class Program
             Sync(ImpactHandler.Run)),
         new("context", "Assemble a context capsule for a symbol.",
             [
-                FlagCatalog.Symbol with { Description = "Symbol ID to anchor on. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name.", Requirement = FlagRequirement.Conditional },
+                FlagCatalog.Symbol with { Requirement = FlagRequirement.Conditional },
                 FlagCatalog.File with { Description = "Source file path (use with `--line`).", Requirement = FlagRequirement.Conditional },
                 FlagCatalog.Line with { Description = "Line number in the source file.", Requirement = FlagRequirement.Conditional },
                 FlagCatalog.Intent, FlagCatalog.ContentBudget, FlagCatalog.MaxHops, FlagCatalog.Scope,
@@ -132,7 +132,7 @@ public static class Program
             Sync(PinSnapshotHandler.Run)),
         new("annotate", "Attach a user-authored annotation to a symbol.",
             [
-                FlagCatalog.Symbol with { Description = "The symbol ID to annotate.", Requirement = FlagRequirement.Required },
+                FlagCatalog.Symbol with { Requirement = FlagRequirement.Required },
                 FlagCatalog.AnnotationKind, FlagCatalog.Value,
                 FlagCatalog.Snapshot
             ],
@@ -145,8 +145,8 @@ public static class Program
             Sync(AnnotationHandler.RunRetractAnnotation)),
         new("get-annotations", "Retrieve annotations by symbol, document, or snapshot (with kind/limit/cursor paging).",
             [
-                FlagCatalog.Symbol with { Description = "The symbol ID to query. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID, or a fully-qualified name. Mutually exclusive with `--document=`." },
-                FlagCatalog.Document with { Description = "Relative path of the document within the solution. Mutually exclusive with `--symbol=`." },
+                FlagCatalog.Symbol with { Description = $"{FlagCatalog.Symbol.Description} Mutually exclusive with `--document=`." },
+                FlagCatalog.Document with { Description = "Relative path of the document within the solution. Returns the annotations whose `document_path` is that document and the annotations of every symbol declared in it, user annotations included. Mutually exclusive with `--symbol=`." },
                 FlagCatalog.Kind with { Description = "Filter to one annotation kind.", ValueHint = "kind" },
                 FlagCatalog.Limit with { Description = $"Max annotations per page (default: {AnnotationHandler.DefaultLimit}; positive integer)." },
                 FlagCatalog.Cursor,

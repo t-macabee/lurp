@@ -293,7 +293,10 @@ public sealed class CliExitSmokeTests : IDisposable
     public void ResolveSymbolArg_Unresolvable_Throws()
     {
         using var store = OpenEmptyStore();
-        Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveSymbolArg(store, "Some.Type", "s1"));
+        var ex = Assert.Throws<CliExitException>(() => HandlerBootstrap.ResolveSymbolArg(store, "Some.Type", "s1"));
+        Assert.Equal(
+            $"ERROR: Symbol 'Some.Type' not found in snapshot 's1'. {HandlerBootstrap.AcceptedSymbolFormsText}",
+            ex.Message);
     }
 
     [Fact]
@@ -598,10 +601,20 @@ public sealed class CliExitSmokeTests : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
+            INSERT OR IGNORE INTO documents (document_id, relative_path)
+            VALUES ('doc-seed', 'src/Some.cs');
+            INSERT OR IGNORE INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
+            VALUES ('dv-seed', 'doc-seed', 'h-seed', X'636C6173732054207B7D', 'utf-8', 10, '[0]', 0);
+            INSERT OR IGNORE INTO snapshot_documents (snapshot_id, document_version_id)
+            VALUES (@snapshotId, 'dv-seed');
             INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
             VALUES (@symbolId, 'T:Some.Type', 'assembly', 'Type');
-            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
-            VALUES (@snapshotId, @symbolId, 'Some.Type', NULL);
+            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, bare_fqn, metadata_json)
+            VALUES (@snapshotId, @symbolId, 'global::Some.Type', 'global::Some.Type', NULL);
+            INSERT INTO declarations (symbol_id, document_version_id, full_start, full_end, signature_start, signature_end, body_start, body_end, name_start, name_end, is_partial, is_generated)
+            VALUES (@symbolId, 'dv-seed', 0, 10, 0, 10, 0, 10, 6, 7, 0, 0);
+            INSERT INTO snapshot_declarations (snapshot_id, declaration_id)
+            SELECT @snapshotId, declaration_id FROM declarations WHERE symbol_id = @symbolId AND document_version_id = 'dv-seed';
             """;
         command.Parameters.AddWithValue("@symbolId", symbolId);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);

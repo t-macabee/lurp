@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lurp.Handlers;
 using Lurp.Mcp;
 using Lurp.Mcp.Tools;
 using Lurp.Storage;
@@ -124,15 +125,13 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
         var snap2 = await RunFullIndexNoDeleteAsync(DbPath);
         using (var store = OpenStore(DbPath))
         {
-            stableId = store.GetSymbolIdsInSnapshot(snap2).First(id => {
-                var info = store.GetSymbolInfo(id, snap2);
-                return info != null && info.FullyQualifiedName != null && info.FullyQualifiedName.Contains("AnnoProj.Foo");
-            });
-            // Save annotations with different document_paths
+            stableId = HandlerBootstrap.ResolveSymbolArg(store, "AnnoProj.Foo", snap2);
+            var otherId = HandlerBootstrap.ResolveSymbolArg(store, "AnnoProj.Other", snap2);
+            // Save annotations on Foo (in Models.cs) and Other (in Other.cs)
             store.SaveAnnotations(snap2, new[] {
                 new AnnotationRecord(stableId, "note", "v1", "src/AnnoProj/Models.cs"),
-                new AnnotationRecord(stableId, "note", "v2", "src/AnnoProj/Other.cs"),
-                new AnnotationRecord(stableId, "note", "v3", null)
+                new AnnotationRecord(otherId, "note", "v2", "src/AnnoProj/Other.cs"),
+                new AnnotationRecord(otherId, "note", "v3", null)
             });
         }
         await using var session = CreateSession();
@@ -312,33 +311,58 @@ public sealed class McpAnnotationsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Annotations_NullDocumentPath_UnreachableByDocFilterButVisibleBySnapshot()
+    public async Task Annotations_NullDocumentPath_IncludedForDeclaredDocumentOnly()
     {
-        var snap = await IndexInitialAsync();
-        string stableId;
+        var snap = await IndexFullAsync("AnnoProj", new Dictionary<string, string>
+        {
+            ["Models.cs"] = """
+                namespace AnnoProj {
+                    public class Foo {
+                        public void Bar() {}
+                    }
+                }
+                """,
+            ["Other.cs"] = """
+                namespace AnnoProj {
+                    public class Baz { }
+                }
+                """
+        });
+
+        string fooId;
+        string bazId;
         using (var store = OpenStore(DbPath))
         {
-            stableId = store.GetSymbolIdsInSnapshot(snap).First();
-            store.SaveAnnotations(snap, new[] { new AnnotationRecord(stableId, "note", "nullDoc", null) });
+            fooId = HandlerBootstrap.ResolveSymbolArg(store, "AnnoProj.Foo", snap);
+            bazId = HandlerBootstrap.ResolveSymbolArg(store, "AnnoProj.Baz", snap);
+            store.SaveUserAnnotation(snap, fooId, "note", "in-models");
+            store.SaveUserAnnotation(snap, bazId, "note", "in-other");
         }
+
         await using var session = CreateSession();
         var tool = new AnnotationsTool(session);
 
-        // Document filter should not see it
+        // Document filter sees NULL-path annotations for symbols declared in Models.cs and excludes Other.cs
         var jsonDoc = tool.LurpGetAnnotations(document: "src/AnnoProj/Models.cs");
         using var docDoc = JsonDocument.Parse(jsonDoc);
-        Assert.Equal(0, docDoc.RootElement.GetProperty("annotations").GetArrayLength());
+        var docValues = docDoc.RootElement.GetProperty("annotations").EnumerateArray()
+            .Select(e => e.GetProperty("value").GetString())
+            .ToList();
+        Assert.Equal(["in-models"], docValues);
 
-        // Whole snapshot should see it
+        // Whole snapshot sees both
         var jsonAll = tool.LurpGetAnnotations();
         using var docAll = JsonDocument.Parse(jsonAll);
-        Assert.True(docAll.RootElement.GetProperty("annotations").GetArrayLength() >= 1);
-        Assert.Contains(docAll.RootElement.GetProperty("annotations").EnumerateArray(), e => e.GetProperty("value").GetString() == "nullDoc");
+        var allValues = docAll.RootElement.GetProperty("annotations").EnumerateArray()
+            .Select(e => e.GetProperty("value").GetString())
+            .ToList();
+        Assert.Contains("in-models", allValues);
+        Assert.Contains("in-other", allValues);
 
-        // Symbol filter should see it
-        var jsonSym = tool.LurpGetAnnotations(symbol: stableId);
+        // Symbol filter sees the symbol's NULL-path annotation
+        var jsonSym = tool.LurpGetAnnotations(symbol: fooId);
         using var docSym = JsonDocument.Parse(jsonSym);
-        Assert.Contains(docSym.RootElement.GetProperty("annotations").EnumerateArray(), e => e.GetProperty("value").GetString() == "nullDoc");
+        Assert.Contains(docSym.RootElement.GetProperty("annotations").EnumerateArray(), e => e.GetProperty("value").GetString() == "in-models");
     }
 
     [Fact]

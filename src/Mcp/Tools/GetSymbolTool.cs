@@ -17,7 +17,7 @@ internal sealed class GetSymbolTool
     }
 
     [McpServerTool(Name = "lurp_get_symbol", Title = "Lurp Get Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Get symbol metadata and optional source. Accepts pipe-form docCommentId|assemblyIdentity, bare T: docCommentId, or bare FQN. View summary|source|all controls payload.")]
+    [Description("Get symbol metadata and optional source. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error. View summary|source|all controls payload.")]
     public string LurpGetSymbol(
         string? symbol = null,
         string? view = null,
@@ -46,11 +46,9 @@ internal sealed class GetSymbolTool
             var contextLines = context_lines ?? GetSymbolHandler.DefaultContextLines;
 
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbol, snapshotId, includeGenerated);
-            if (info == null)
-                throw new McpProtocolException($"Symbol '{symbol}' not found in snapshot '{snapshotId}'.", McpErrorCode.InvalidParams);
 
             var freshness = _session.GetFreshnessJson();
-            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated: true);
             var annotations = store.GetAnnotations(snapshotId, info.SymbolId.Value);
 
             string? source = null;
@@ -58,7 +56,7 @@ internal sealed class GetSymbolTool
             {
                 if (context_lines.HasValue)
                 {
-                    source = store.GetSurroundingLines(info.SymbolId.Value, snapshotId, contextLines);
+                    source = store.GetSurroundingLines(info.SymbolId.Value, snapshotId, contextLines, includeGenerated);
                     if (source == null)
                         source = store.GetSymbolSource(info.SymbolId.Value, snapshotId, ViewKind.Declaration, includeGenerated);
                 }

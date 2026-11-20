@@ -459,7 +459,7 @@ internal sealed class ContextAssembler
             return assembler.Assemble(cancellationToken);
         }
 
-        var resolvedId = declarationStore.ResolveSymbolByLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated);
+        var resolvedId = declarationStore.NavigateToLocation(lookup.FileArg!, lookup.LineNumber!.Value, lookup.SnapshotId, options.IncludeGenerated)?.SymbolId;
         cancellationToken.ThrowIfCancellationRequested();
 
         if (resolvedId == null)

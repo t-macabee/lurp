@@ -555,7 +555,7 @@ internal static class Program
 
                     // The index resolves and classifies the declaration (source-only,
                     // generated excluded); a method it does not hold cannot be sampled.
-                    if (store.ResolveSymbolByDocCommentId(id, snapshotId, includeGenerated: false) is null)
+                    if (store.FindSymbols(SymbolKey.DocCommentId, id, snapshotId, includeGenerated: false).Count == 0)
                         continue;
 
                     candidates.Add(id);

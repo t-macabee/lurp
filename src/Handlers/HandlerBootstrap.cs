@@ -444,53 +444,52 @@ internal static class HandlerBootstrap
         return stamp;
     }
 
+    internal const string AcceptedSymbolFormsText =
+        "Pass the full 'docCommentId|assemblyIdentity' id, a doc-comment id (T:Some.Type), a fully qualified name (Some.Namespace.Type), or a generic name without its type parameters (Some.Namespace.Repo for Repo<T>).";
+
     /// <summary>
     ///     Resolves a symbol identifier argument to the canonical <c>docCommentId|assemblyIdentity</c>
-    ///     form. Accepts the pipe-separated form directly, a bare doc-comment ID (e.g. T:Some.Type),
-    ///     or a fully-qualified name (e.g. Some.Namespace.Type). This eliminates the intermediate
-    ///     <c>find-symbol</c> step that was previously required to obtain the resolvable form.
+    ///     form in <paramref name="snapshotId" /> using the four exact forms of D69 and D181.
     /// </summary>
     public static string ResolveSymbolArg(SqliteIndexStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
-        // The canonical form is trusted as-is; validating it is the caller's choice
-        // (existing behavior for all five call sites).
-        if (symbolArg.Contains('|'))
-            return symbolArg;
-
-        var info = ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
-        if (info != null)
-            return info.SymbolId.Value;
-
-        Fail(
-            $"ERROR: Could not resolve '{symbolArg}' to a known symbol in snapshot '{snapshotId}'. " +
-            "Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), " +
-            "or a fully-qualified name (e.g. Some.Namespace.Type).");
-        return symbolArg; // unreachable
+        return ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated).SymbolId.Value;
     }
 
     /// <summary>
-    ///     Resolves any accepted symbol identifier form to its indexed record, or null when no
-    ///     symbol matches. Accepts the full <c>docCommentId|assemblyIdentity</c> symbol ID
-    ///     (validated via its doc-comment part), a bare doc-comment ID (e.g. <c>T:Some.Type</c>),
-    ///     or a fully-qualified name (e.g. <c>Some.Namespace.Type</c>).
+    ///     Resolves a symbol identifier argument to its indexed record in <paramref name="snapshotId" />
+    ///     using the four exact forms of D69 and D181. Throws via <see cref="Fail" /> when no symbol
+    ///     matches or when more than one symbol matches.
     /// </summary>
-    public static IndexedSymbolInfo? ResolveSymbolInfo(SqliteIndexStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
+    public static IndexedSymbolInfo ResolveSymbolInfo(SqliteIndexStore store, string symbolArg, string snapshotId, bool includeGenerated = false)
     {
-        var candidate = SymbolId.DocCommentIdOf(symbolArg);
-
-        // Doc-comment ID format: starts with a Roslyn prefix character followed by ':'
-        // (T: for types, M: for methods, P: for properties, E: for events, F: for fields, N: for namespaces)
-        if (candidate.Length >= 2 && candidate[1] == ':' && "TMPEFN".Contains(candidate[0]))
+        List<IndexedSymbolInfo> matches;
+        if (symbolArg.Contains('|'))
         {
-            var byId = store.ResolveSymbolByDocCommentId(candidate, snapshotId, includeGenerated);
-            if (byId != null)
-                return byId;
+            matches = store.FindSymbols(SymbolKey.SymbolId, symbolArg, snapshotId, includeGenerated);
+        }
+        else if (symbolArg.Length >= 2 && symbolArg[1] == ':' && "TMPFEN".Contains(symbolArg[0]))
+        {
+            matches = store.FindSymbols(SymbolKey.DocCommentId, symbolArg, snapshotId, includeGenerated);
+        }
+        else
+        {
+            var globalFqn = symbolArg.StartsWith("global::", StringComparison.Ordinal) ? symbolArg : $"global::{symbolArg}";
+            matches = store.FindSymbols(SymbolKey.Fqn, globalFqn, snapshotId, includeGenerated);
+            if (matches.Count == 0)
+                matches = store.FindSymbols(SymbolKey.BareFqn, globalFqn, snapshotId, includeGenerated);
         }
 
-        // The full ID form carries no FQN to fall back to.
-        if (symbolArg.IndexOf('|') > 0)
-            return null;
+        if (matches.Count == 1)
+            return matches[0];
 
-        return store.ResolveSymbolByFqn(symbolArg, snapshotId, includeGenerated);
+        if (matches.Count == 0)
+            Fail($"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'. {AcceptedSymbolFormsText}");
+
+        var orderedIds = matches
+            .Select(static m => m.SymbolId.Value)
+            .OrderBy(static id => id, StringComparer.Ordinal);
+        Fail($"ERROR: Symbol '{symbolArg}' matches {matches.Count.ToString(CultureInfo.InvariantCulture)} symbols in snapshot '{snapshotId}'. Pass one of these ids: {string.Join(", ", orderedIds)}.");
+        return matches[0]; // unreachable
     }
 }

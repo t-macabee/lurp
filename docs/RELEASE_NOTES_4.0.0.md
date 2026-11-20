@@ -310,6 +310,8 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
   `InternalsVisibleTo` targets as a JSON array, NULL when none; existing rows
   read as NULL). `InternalsVisibleTo` targets participate in snapshot identity
   and freshness (`InternalsVisibleToChanged`).
+- Schema v47 adds `snapshot_symbols.bare_fqn` (the FQN without type-parameter
+  lists) and indexes on (`snapshot_id`, `fqn`) and (`snapshot_id`, `bare_fqn`).
 
 ## Snapshot lifecycle
 
@@ -384,6 +386,28 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 - `anchor.extractor_identity` names the extractor version of the capsule's snapshot.
 - `suggested_verification` commands name the indexed project or solution, not files found on disk at read time.
 - A location anchor that resolves to a type gets the type default budget.
+- `--symbol` (and MCP `symbol`) resolves only exact forms: the full id, the
+  doc-comment id, the FQN, or the FQN without type-parameter lists. A prefix, a
+  case variant or a wildcard no longer resolves, and a name that matches several
+  symbols (overloads) is an error that lists their ids. A full id must name a
+  symbol of the snapshot.
+- `find-symbol`, `get-symbol --view=metadata`, `lurp_find_symbol` and
+  `lurp_get_symbol`: `locations` lists every declaration, generated ones
+  included, each with `is_generated`; `declaration_count` equals its length.
+  `--include-generated` only decides whether a symbol with only generated
+  declarations resolves.
+
+## Symbol resolution and navigation
+
+- `navigate`, `lurp_navigate` and `context --file --line` return the innermost
+  declaration on the line: a field, a positional record property or an accessor
+  that starts inside the line is found, and a record's own lines no longer
+  return a compiler-made member.
+- `get-symbol --include-generated` resolves generated symbols and applies to the
+  `containing-type` and `surrounding` views.
+- `get-annotations --document=` and `lurp_get_annotations` `document` include
+  the annotations of every symbol declared in the document, user annotations
+  included.
 
 ## CLI and MCP surface
 
@@ -394,7 +418,7 @@ first `--strategy=full` after the upgrade rebuilds the current snapshot once.
 | Component | 3.6.1 | 4.0.0 |
 |---|---|---|
 | Tool | 3.6.1 | 4.0.0 |
-| Database schema | v37 | v46 |
+| Database schema | v37 | v47 |
 | Extractor | 1.11.0 | 1.12.0 |
 | CLI/MCP contract | v6 | v7 |
 | Output schema | v6 | v7 |

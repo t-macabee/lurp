@@ -1389,11 +1389,11 @@ public sealed class SemanticDifferTests : IDisposable
             return inner.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated);
         }
 
-        public string? GetContainingTypeSource(string symbolId, string snapshotId) =>
-            inner.GetContainingTypeSource(symbolId, snapshotId);
+        public string? GetContainingTypeSource(string symbolId, string snapshotId, bool includeGenerated) =>
+            inner.GetContainingTypeSource(symbolId, snapshotId, includeGenerated);
 
-        public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines) =>
-            inner.GetSurroundingLines(symbolId, snapshotId, contextLines);
+        public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines, bool includeGenerated) =>
+            inner.GetSurroundingLines(symbolId, snapshotId, contextLines, includeGenerated);
 
         public List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
         {
@@ -1409,9 +1409,6 @@ public sealed class SemanticDifferTests : IDisposable
 
         public List<string> GetSymbolIdsByDocumentVersionIds(string snapshotId, IEnumerable<string> documentVersionIds) =>
             inner.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds);
-
-        public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
-            inner.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated);
 
         public NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false) =>
             inner.NavigateToLocation(relativePath, line, snapshotId, includeGenerated);

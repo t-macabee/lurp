@@ -42,17 +42,22 @@ internal sealed class DeclarationWriteStore(SqliteConnection connection)
         command.Parameters.AddWithValue("@kind", decl.Kind.ToString());
         command.ExecuteNonQuery();
 
+        var fqn = decl.SymbolId.FullyQualifiedName;
+        var bareFqn = fqn is null ? null : FqnForms.RemoveTypeParameterLists(fqn);
+
         command.CommandText = """
-            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, metadata_json)
-            VALUES (@snapshotId, @symbolId, @fqn, @metadataJson)
+            INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, bare_fqn, metadata_json)
+            VALUES (@snapshotId, @symbolId, @fqn, @bareFqn, @metadataJson)
             ON CONFLICT(snapshot_id, symbol_id) DO UPDATE SET
                 fqn = excluded.fqn,
+                bare_fqn = excluded.bare_fqn,
                 metadata_json = excluded.metadata_json;
             """;
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@symbolId", decl.SymbolId.Value);
-        command.Parameters.AddWithValue("@fqn", (object?)decl.SymbolId.FullyQualifiedName ?? DBNull.Value);
+        command.Parameters.AddWithValue("@fqn", (object?)fqn ?? DBNull.Value);
+        command.Parameters.AddWithValue("@bareFqn", (object?)bareFqn ?? DBNull.Value);
         command.Parameters.AddWithValue("@metadataJson", (object?)decl.MetadataJson ?? DBNull.Value);
         command.ExecuteNonQuery();
 

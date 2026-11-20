@@ -609,6 +609,30 @@ public sealed class PinSnapshotTests : IDisposable
         var dir = CreateIndexedDirWithTwoSnapshots(out var staleId, out var latestId);
         try
         {
+            using (var connection = new SqliteConnection($"Data Source={Path.Combine(dir, "index.db")}"))
+            {
+                connection.Open();
+                using var seedCmd = connection.CreateCommand();
+                seedCmd.CommandText = """
+                    INSERT INTO documents (document_id, relative_path)
+                    VALUES ('doc-pin', 'src/Some.cs');
+                    INSERT INTO document_versions (document_version_id, document_id, content_hash, content, encoding, byte_count, line_starts, is_generated)
+                    VALUES ('dv-pin', 'doc-pin', 'h-pin', X'636C6173732054207B7D', 'utf-8', 10, '[0]', 0);
+                    INSERT INTO snapshot_documents (snapshot_id, document_version_id)
+                    VALUES (@latestId, 'dv-pin');
+                    INSERT INTO symbols (symbol_id, doc_comment_id, assembly_identity, kind)
+                    VALUES ('T:Some.Type|asm', 'T:Some.Type', 'asm', 'Type');
+                    INSERT INTO snapshot_symbols (snapshot_id, symbol_id, fqn, bare_fqn, metadata_json)
+                    VALUES (@latestId, 'T:Some.Type|asm', 'global::Some.Type', 'global::Some.Type', NULL);
+                    INSERT INTO declarations (symbol_id, document_version_id, full_start, full_end, is_partial, is_generated)
+                    VALUES ('T:Some.Type|asm', 'dv-pin', 0, 10, 0, 0);
+                    INSERT INTO snapshot_declarations (snapshot_id, declaration_id)
+                    SELECT @latestId, declaration_id FROM declarations WHERE symbol_id = 'T:Some.Type|asm' AND document_version_id = 'dv-pin';
+                    """;
+                seedCmd.Parameters.AddWithValue("@latestId", latestId);
+                seedCmd.ExecuteNonQuery();
+            }
+
             var result = CapturingOutputSink.Capture(sink => AnnotationHandler.RunAnnotate([
                 "--symbol=T:Some.Type|asm",
                 "--annotation-kind=note",

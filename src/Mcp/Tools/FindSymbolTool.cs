@@ -17,7 +17,7 @@ internal sealed class FindSymbolTool
     }
 
     [McpServerTool(Name = "lurp_find_symbol", Title = "Lurp Find Symbol", ReadOnly = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Resolve a symbol in the pinned snapshot. Accepts pipe-form docCommentId|assemblyIdentity, bare T: docCommentId, or bare FQN.")]
+    [Description("Resolve a symbol in the pinned snapshot. " + HandlerBootstrap.AcceptedSymbolFormsText + " More than one match is an error.")]
     public string LurpFindSymbol(
         string? symbol = null,
         bool? include_generated = null,
@@ -36,10 +36,8 @@ internal sealed class FindSymbolTool
             var includeGenerated = include_generated ?? false;
 
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbol, snapshotId, includeGenerated);
-            if (info == null)
-                throw McpErrorMapper.Map(new CliExitException($"ERROR: Symbol '{symbol}' not found in snapshot '{snapshotId}'. Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), or a fully-qualified name (e.g. Some.Namespace.Type).", 1));
 
-            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated: true);
             var freshness = _session.GetFreshnessJson();
 
             var envelope = new

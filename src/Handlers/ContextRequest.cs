@@ -144,7 +144,7 @@ internal sealed record ContextRequest(
 
         if (resolvedSymbol is null)
         {
-            resolvedSymbol = store.ResolveSymbolByLocation(File!, Line!.Value, snapshotId, IncludeGenerated);
+            resolvedSymbol = store.NavigateToLocation(File!, Line!.Value, snapshotId, IncludeGenerated)?.SymbolId;
             if (string.IsNullOrEmpty(resolvedSymbol))
                 return (null, new RequestError(
                     RequestErrorKind.NoSymbolAtLocation,

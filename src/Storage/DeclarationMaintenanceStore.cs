@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace Lurp.Storage;
@@ -85,14 +86,9 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         return results;
     }
 
-    internal string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
-    {
-        return NavigateToLocation(relativePath, line, snapshotId, includeGenerated)?.SymbolId;
-    }
-
     internal NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
     {
-        var (docVersionId, lineStarts) = GetDocumentLineStarts(relativePath, snapshotId);
+        var (docVersionId, lineStarts, byteCount) = GetDocumentLineStarts(relativePath, snapshotId);
         if (docVersionId == null || lineStarts == null || lineStarts.Length == 0)
             return null;
 
@@ -100,52 +96,121 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
         if (lineIndex >= lineStarts.Length)
             return null;
 
+        var lineStart = lineStarts[lineIndex];
+        var lineEnd = lineIndex + 1 < lineStarts.Length
+            ? lineStarts[lineIndex + 1]
+            : byteCount ?? int.MaxValue;
+
         using var command = _connection.CreateCommand();
         command.CommandText = $"""
             SELECT d.symbol_id, d.full_start, d.full_end, d.name_start, d.name_end,
-                   doc.relative_path, d.document_version_id
+                   doc.relative_path, d.document_version_id, s.doc_comment_id, ss.metadata_json
             FROM declarations d
             {SnapshotDeclarationLink.Join("d", "sdecl")}
             JOIN document_versions dv ON dv.document_version_id = d.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
             JOIN snapshot_documents sd ON sd.document_version_id = d.document_version_id
+            JOIN symbols s ON s.symbol_id = d.symbol_id
+            JOIN snapshot_symbols ss ON ss.symbol_id = d.symbol_id AND ss.snapshot_id = @snapshotId
             WHERE sd.snapshot_id = @snapshotId
               AND d.document_version_id = @docVersionId
               AND d.full_start IS NOT NULL AND d.full_end IS NOT NULL
-              AND d.full_start <= @byteOffset AND d.full_end > @byteOffset
+              AND d.full_start < @lineEnd AND d.full_end > @lineStart
             """;
         if (!includeGenerated)
             command.CommandText += " AND (d.is_generated = 0 OR d.is_generated IS NULL)";
-        // A primary constructor and its type share a span in an older snapshot; the id
-        // tie-break keeps the answer for one snapshot the same on every run.
-        command.CommandText += " ORDER BY (d.full_end - d.full_start) ASC, d.symbol_id ASC LIMIT 1;";
+        command.CommandText += ";";
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
         command.Parameters.AddWithValue("@docVersionId", docVersionId);
-        command.Parameters.AddWithValue("@byteOffset", lineStarts[lineIndex]);
+        command.Parameters.AddWithValue("@lineStart", lineStart);
+        command.Parameters.AddWithValue("@lineEnd", lineEnd);
 
-        using var reader = command.ExecuteReader();
-        if (!reader.Read())
+        var candidates = new List<NavigateCandidate>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var symbolId = reader.GetString(0);
+                var fullStart = reader.GetInt32(1);
+                var fullEnd = reader.GetInt32(2);
+                var nameStart = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
+                var nameEnd = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+                var docPath = reader.GetString(5);
+                var declDocVersionId = reader.GetString(6);
+                var docCommentId = reader.GetString(7);
+                var metadataJson = reader.IsDBNull(8) ? null : reader.GetString(8);
+                var metadata = SymbolMetadata.Parse(metadataJson, symbolId);
+
+                candidates.Add(new NavigateCandidate(
+                    symbolId,
+                    docPath,
+                    declDocVersionId,
+                    fullStart,
+                    fullEnd,
+                    nameStart,
+                    nameEnd,
+                    SymbolMetadata.IsImplicitlyDeclared(metadata),
+                    ClassifyKind(docCommentId, metadata)));
+            }
+        }
+
+        if (candidates.Count == 0)
             return null;
 
-        var startLineIndex = SourceLineMap.FindLineIndex(lineStarts, reader.GetInt32(1));
-        var endLineIndex = SourceLineMap.FindLineIndex(lineStarts, reader.GetInt32(2));
+        candidates.Sort(CompareCandidates);
+        var best = candidates[0];
+
+        var startLineIndex = SourceLineMap.FindLineIndex(lineStarts, best.FullStart);
+        var endLineIndex = SourceLineMap.FindLineIndex(lineStarts, best.FullEnd);
         var startLine = LineNumbers.ToOneBased(startLineIndex);
         var endLine = LineNumbers.ToOneBased(endLineIndex);
 
         return new NavigationTarget(
-            reader.GetString(0), reader.GetString(5), reader.GetString(6),
-            reader.GetInt32(1), reader.GetInt32(2),
-            reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-            reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+            best.SymbolId, best.RelativePath, best.DocumentVersionId,
+            best.FullStart, best.FullEnd,
+            best.NameStart, best.NameEnd,
             startLine,
             endLine);
     }
 
-    private (string? DocVersionId, int[]? LineStarts) GetDocumentLineStarts(string relativePath, string snapshotId)
+    private static int CompareCandidates(NavigateCandidate a, NavigateCandidate b)
+    {
+        var cmp = a.SpanLength.CompareTo(b.SpanLength);
+        if (cmp != 0) return cmp;
+        cmp = a.IsImplicitlyDeclared.CompareTo(b.IsImplicitlyDeclared);
+        if (cmp != 0) return cmp;
+        cmp = a.KindClass.CompareTo(b.KindClass);
+        if (cmp != 0) return cmp;
+        return string.CompareOrdinal(a.SymbolId, b.SymbolId);
+    }
+
+    private static int ClassifyKind(string docCommentId, JsonElement? metadata)
+    {
+        if (docCommentId.StartsWith("T:", StringComparison.Ordinal))
+            return 0;
+        if (IsConstructorDocCommentId(docCommentId))
+            return 1;
+        if (SymbolMetadata.GetString(metadata, SymbolMetadataKeys.AccessorKind) is not null)
+            return 3;
+        return 2;
+    }
+
+    private static bool IsConstructorDocCommentId(string docCommentId)
+    {
+        if (!docCommentId.StartsWith("M:", StringComparison.Ordinal))
+            return false;
+        var paren = docCommentId.IndexOf('(', StringComparison.Ordinal);
+        var withoutParams = paren >= 0 ? docCommentId.AsSpan(2, paren - 2) : docCommentId.AsSpan(2);
+        var lastDot = withoutParams.LastIndexOf('.');
+        var memberName = lastDot >= 0 ? withoutParams[(lastDot + 1)..] : withoutParams;
+        return memberName.Equals("#ctor", StringComparison.Ordinal) || memberName.Equals("#cctor", StringComparison.Ordinal);
+    }
+
+    private (string? DocVersionId, int[]? LineStarts, int? ByteCount) GetDocumentLineStarts(string relativePath, string snapshotId)
     {
         using var getDocCmd = _connection.CreateCommand();
         getDocCmd.CommandText = """
-            SELECT dv.document_version_id, dv.line_starts
+            SELECT dv.document_version_id, dv.line_starts, COALESCE(dv.byte_count, LENGTH(dv.content))
             FROM snapshot_documents sd
             JOIN document_versions dv ON dv.document_version_id = sd.document_version_id
             JOIN documents doc ON doc.document_id = dv.document_id
@@ -157,17 +222,33 @@ internal sealed class DeclarationMaintenanceStore(SqliteConnection connection)
 
         string? docVersionId;
         string? lineStartsJson;
+        int? byteCount;
         using (var reader = getDocCmd.ExecuteReader())
         {
             if (!reader.Read())
-                return (null, null);
+                return (null, null, null);
             docVersionId = reader.GetString(0);
             lineStartsJson = reader.IsDBNull(1) ? null : reader.GetString(1);
+            byteCount = reader.IsDBNull(2) ? null : reader.GetInt32(2);
         }
 
         if (lineStartsJson == null)
-            return (docVersionId, null);
+            return (docVersionId, null, byteCount);
 
-        return (docVersionId, SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId));
+        return (docVersionId, SourceLineMap.ParseLineStarts(lineStartsJson, docVersionId), byteCount);
+    }
+
+    private sealed record NavigateCandidate(
+        string SymbolId,
+        string RelativePath,
+        string DocumentVersionId,
+        int FullStart,
+        int FullEnd,
+        int NameStart,
+        int NameEnd,
+        bool IsImplicitlyDeclared,
+        int KindClass)
+    {
+        public int SpanLength => FullEnd - FullStart;
     }
 }

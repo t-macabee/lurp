@@ -44,7 +44,6 @@ internal sealed class SearchSymbolStore
                     WHERE d3.symbol_id = s.symbol_id) AS is_partial
         """;
 
-    private const string FqnOrderLimitClause = " ORDER BY ss.fqn LIMIT 1;";
     private readonly SqliteConnection _connection;
 
     public SearchSymbolStore(SqliteConnection connection)
@@ -76,7 +75,7 @@ internal sealed class SearchSymbolStore
         // (symbols with no declaration rows : metadata-only/external symbols : must
         // remain searchable), so it stays a NOT EXISTS / EXISTS disjunction rather
         // than an inner join. Do not collapse this into the single-EXISTS shape used
-        // by ResolveSymbolByFqn below : that shape requires at least one declaration
+        // by FindSymbols below : that shape requires at least one declaration
         // and would silently drop external symbols here.
         if (!includeGenerated)
             command.CommandText += ExcludeGeneratedOrExternalClause("symbol_fts.symbol_id");
@@ -302,94 +301,46 @@ internal sealed class SearchSymbolStore
         return results;
     }
 
-    /// <summary>Resolves one symbol by fully qualified name; see <see cref="SqliteIndexStore.ResolveSymbolByFqn" />.</summary>
-    public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
+    /// <summary>Finds every linked symbol matching one exact key in <paramref name="snapshotId" />, ordered by <c>symbol_id</c>.</summary>
+    public List<IndexedSymbolInfo> FindSymbols(SymbolKey key, string value, string snapshotId, bool includeGenerated = false)
     {
-        // Roslyn's FullyQualifiedFormat persists symbol FQNs with a "global::" prefix
-        // (e.g. "global::Outcome.Validation.OrderValidator"), but callers naturally type
-        // FQNs without it. Accept either form transparently.
-        var globalFqn = fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn : $"global::{fqn}";
+        if (string.IsNullOrEmpty(value))
+            return [];
+
+        var column = key switch
+        {
+            SymbolKey.SymbolId => "s.symbol_id",
+            SymbolKey.DocCommentId => "s.doc_comment_id",
+            SymbolKey.Fqn => "ss.fqn",
+            SymbolKey.BareFqn => "ss.bare_fqn",
+            _ => throw new ArgumentOutOfRangeException(nameof(key), key, null)
+        };
 
         using var command = _connection.CreateCommand();
-
         command.CommandText = $"""
             SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
             {SymbolDeclarationAggregateColumns()}
             FROM symbols s
             JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
-            WHERE (ss.fqn = @fqn OR ss.fqn = @globalFqn) AND ss.snapshot_id = @snapshotId
+            WHERE ss.snapshot_id = @snapshotId
+              AND {column} = @value
               AND EXISTS (SELECT 1 FROM declarations d
                             {SnapshotDeclarationLink.Join("d", "sdecl")}
                           WHERE d.symbol_id = s.symbol_id)
             """;
 
-        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
+        if (!includeGenerated)
+            command.CommandText += ExcludeGeneratedClause;
 
-        command.CommandText += FqnOrderLimitClause;
+        command.CommandText += " ORDER BY s.symbol_id;";
 
-        command.Parameters.AddWithValue("@fqn", fqn);
-        command.Parameters.AddWithValue("@globalFqn", globalFqn);
+        command.Parameters.AddWithValue("@value", value);
         command.Parameters.AddWithValue("@snapshotId", snapshotId);
 
+        var results = new List<IndexedSymbolInfo>();
         using var reader = command.ExecuteReader();
-        if (reader.Read())
-            return DeclarationReadStore.ReadSymbolInfo(reader);
-
-        reader.Close();
-        command.Parameters.Clear();
-        command.CommandText = $"""
-            SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-            {SymbolDeclarationAggregateColumns()}
-            FROM symbols s
-            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
-            WHERE (ss.fqn LIKE @pattern OR ss.fqn LIKE @globalPattern) AND ss.snapshot_id = @snapshotId
-              AND EXISTS (SELECT 1 FROM declarations d
-                            {SnapshotDeclarationLink.Join("d", "sdecl")}
-                          WHERE d.symbol_id = s.symbol_id)
-            """;
-
-        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
-
-        command.CommandText += FqnOrderLimitClause;
-
-        command.Parameters.AddWithValue("@pattern", $"{fqn}%");
-        command.Parameters.AddWithValue("@globalPattern", $"{globalFqn}%");
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        using var reader2 = command.ExecuteReader();
-        if (reader2.Read())
-            return DeclarationReadStore.ReadSymbolInfo(reader2);
-
-        return null;
-    }
-
-    /// <summary>Resolves one symbol by documentation comment id; see <see cref="SqliteIndexStore.ResolveSymbolByDocCommentId" />.</summary>
-    public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
-    {
-        if (string.IsNullOrWhiteSpace(docCommentId))
-            return null;
-
-        using var command = _connection.CreateCommand();
-
-        command.CommandText = $"""
-            SELECT s.symbol_id, s.doc_comment_id, s.assembly_identity, s.kind, ss.fqn, ss.metadata_json,
-            {SymbolDeclarationAggregateColumns()}
-            FROM symbols s
-            JOIN snapshot_symbols ss ON ss.symbol_id = s.symbol_id
-            WHERE s.doc_comment_id = @docCommentId AND ss.snapshot_id = @snapshotId
-            """;
-
-        if (!includeGenerated) command.CommandText += ExcludeGeneratedClause;
-
-        command.CommandText += FqnOrderLimitClause;
-
-        command.Parameters.AddWithValue("@docCommentId", docCommentId);
-        command.Parameters.AddWithValue("@snapshotId", snapshotId);
-
-        using var reader = command.ExecuteReader();
-        if (reader.Read())
-            return DeclarationReadStore.ReadSymbolInfo(reader);
-
-        return null;
+        while (reader.Read())
+            results.Add(DeclarationReadStore.ReadSymbolInfo(reader));
+        return results;
     }
 }

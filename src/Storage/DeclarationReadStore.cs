@@ -66,7 +66,7 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
         return views.Count == 0 ? null : string.Join("\n\n", views);
     }
 
-    internal string? GetContainingTypeSource(string symbolId, string snapshotId)
+    internal string? GetContainingTypeSource(string symbolId, string snapshotId, bool includeGenerated)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
@@ -91,13 +91,13 @@ internal sealed class DeclarationReadStore(SqliteConnection connection)
 
         var parentSymbolId = SymbolId.Compose(parentDocCommentId, assemblyIdentity);
 
-        return GetSymbolSource(parentSymbolId, snapshotId, ViewKind.Declaration);
+        return GetSymbolSource(parentSymbolId, snapshotId, ViewKind.Declaration, includeGenerated);
     }
 
-    internal string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines)
+    internal string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines, bool includeGenerated)
     {
         var views = new List<string>();
-        foreach (var span in GetSymbolSpanContents(symbolId, snapshotId, "full_start", "full_end"))
+        foreach (var span in GetSymbolSpanContents(symbolId, snapshotId, "full_start", "full_end", includeGenerated))
         {
             if (span.Content == null || span.Start == null || span.End == null || span.LineStarts is not { Length: > 0 })
                 continue;

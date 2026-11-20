@@ -116,7 +116,7 @@ internal sealed record ImpactRequest(
 
     internal (ImpactBinding? Binding, RequestError? Error) Bind(SqliteIndexStore store, string snapshotId)
     {
-        var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, Symbol, snapshotId);
+        var resolvedSymbolId = HandlerBootstrap.ResolveSymbolArg(store, Symbol, snapshotId, includeGenerated: true);
 
         var fingerprint = SequenceCursor.ComputeFingerprint(
             resolvedSymbolId,

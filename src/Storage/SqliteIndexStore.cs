@@ -461,16 +461,16 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _declReader!.GetSymbolSource(symbolId, snapshotId, viewKind, includeGenerated);
     }
 
-    public string? GetContainingTypeSource(string symbolId, string snapshotId)
+    public string? GetContainingTypeSource(string symbolId, string snapshotId, bool includeGenerated)
     {
         EnsureOpen();
-        return _declReader!.GetContainingTypeSource(symbolId, snapshotId);
+        return _declReader!.GetContainingTypeSource(symbolId, snapshotId, includeGenerated);
     }
 
-    public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines)
+    public string? GetSurroundingLines(string symbolId, string snapshotId, int contextLines, bool includeGenerated)
     {
         EnsureOpen();
-        return _declReader!.GetSurroundingLines(symbolId, snapshotId, contextLines);
+        return _declReader!.GetSurroundingLines(symbolId, snapshotId, contextLines, includeGenerated);
     }
 
     public List<DeclarationLocation> GetDeclarationLocations(string symbolId, string snapshotId, bool includeGenerated = false)
@@ -515,12 +515,6 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _declMaintenance!.GetSymbolIdsByDocumentVersionIds(snapshotId, documentVersionIds);
     }
 
-    public string? ResolveSymbolByLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
-    {
-        EnsureOpen();
-        return _declMaintenance!.ResolveSymbolByLocation(relativePath, line, snapshotId, includeGenerated);
-    }
-
     public NavigationTarget? NavigateToLocation(string relativePath, int line, string snapshotId, bool includeGenerated = false)
     {
         EnsureOpen();
@@ -551,6 +545,12 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
     {
         EnsureOpen();
         _annotations!.SaveAnnotations(snapshotId, annotations);
+    }
+
+    public long SaveUserAnnotation(string snapshotId, string symbolId, string kind, string value)
+    {
+        EnsureOpen();
+        return _annotations!.SaveUserAnnotation(snapshotId, symbolId, kind, value);
     }
 
     public List<EdgeRecord> GetEdges(string snapshotId, string? symbolId = null)
@@ -773,16 +773,10 @@ public class SqliteIndexStore : IEdgeStore, IDeclarationStore, IBindingIncomplet
         return _searchSymbols!.SearchSymbolsPage(query, snapshotId, limit, includeGenerated, kind, cursor);
     }
 
-    public IndexedSymbolInfo? ResolveSymbolByFqn(string fqn, string snapshotId, bool includeGenerated = false)
+    public List<IndexedSymbolInfo> FindSymbols(SymbolKey key, string value, string snapshotId, bool includeGenerated = false)
     {
         EnsureOpen();
-        return _searchSymbols!.ResolveSymbolByFqn(fqn, snapshotId, includeGenerated);
-    }
-
-    public IndexedSymbolInfo? ResolveSymbolByDocCommentId(string docCommentId, string snapshotId, bool includeGenerated = false)
-    {
-        EnsureOpen();
-        return _searchSymbols!.ResolveSymbolByDocCommentId(docCommentId, snapshotId, includeGenerated);
+        return _searchSymbols!.FindSymbols(key, value, snapshotId, includeGenerated);
     }
 
     /// <summary>

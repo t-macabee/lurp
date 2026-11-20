@@ -35,6 +35,14 @@ public enum ViewKind
     Body
 }
 
+public enum SymbolKey
+{
+    SymbolId,
+    DocCommentId,
+    Fqn,
+    BareFqn
+}
+
 public sealed class IndexedSymbolInfo
 {
     public IndexedSymbolInfo(SymbolId symbolId, IndexedSymbolKind kind, string? fullyQualifiedName, string? metadataJson, int declarationCount, bool isPartial)

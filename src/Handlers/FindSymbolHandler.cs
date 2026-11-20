@@ -17,15 +17,10 @@ internal static class FindSymbolHandler
         HandlerBootstrap.WithStore(args, HandlerBootstrap.GetArgValue(args, "--snapshot="), (store, snapshotId) =>
         {
             var info = HandlerBootstrap.ResolveSymbolInfo(store, symbolArg, snapshotId, includeGenerated);
-            if (info == null)
-                HandlerBootstrap.Fail(
-                    $"ERROR: Symbol '{symbolArg}' not found in snapshot '{snapshotId}'. " +
-                    "Pass the full 'docCommentId|assemblyIdentity' symbol ID, a doc-comment ID (e.g. T:Some.Type), " +
-                    "or a fully-qualified name (e.g. Some.Namespace.Type).");
 
             var freshness = HandlerBootstrap.ResolveFreshness(args, store, snapshotId, output);
 
-            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated);
+            var locations = store.GetDeclarationLocations(info.SymbolId.Value, snapshotId, includeGenerated: true);
 
             var payload = new
             {

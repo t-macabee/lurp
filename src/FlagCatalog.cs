@@ -16,7 +16,7 @@ namespace Lurp;
 internal static class FlagCatalog
 {
     // Modes that accept --symbol=: get-symbol, find-symbol, impact, context, annotate, and get-annotations.
-    public static readonly FlagSpec Symbol = new("--symbol=", "The symbol ID to look up. Accepts the full `docCommentId|assemblyIdentity` form, a bare doc-comment ID (e.g. `T:Some.Type`), or a fully-qualified name.", "id");
+    public static readonly FlagSpec Symbol = new("--symbol=", $"The symbol to look up. {HandlerBootstrap.AcceptedSymbolFormsText} More than one match is an error.", "id");
 
     // Modes that accept --snapshot=: get-source, outline, get-symbol, search, find-symbol, navigate,
     // impact, context, timings, pin-snapshot, annotate, retract-annotation, get-annotations,

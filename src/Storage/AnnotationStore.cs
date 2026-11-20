@@ -44,6 +44,21 @@ internal sealed class AnnotationStore
         }
     }
 
+    public long SaveUserAnnotation(string snapshotId, string symbolId, string kind, string value)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO annotations (snapshot_id, symbol_id, kind, value, document_path)
+            VALUES (@snapshotId, @symbolId, @kind, @value, NULL)
+            RETURNING annotation_id;
+            """;
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+        command.Parameters.AddWithValue("@symbolId", symbolId);
+        command.Parameters.AddWithValue("@kind", kind);
+        command.Parameters.AddWithValue("@value", value);
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     public List<AnnotationRecord> GetAnnotations(string snapshotId, string? symbolId = null)
     {
         using var command = _connection.CreateCommand();
@@ -133,24 +148,13 @@ internal sealed class AnnotationStore
         int totalCount;
         using (var countCmd = _connection.CreateCommand())
         {
-            var where = "WHERE snapshot_id = @snapshotId";
-            if (symbolId != null) where += " AND symbol_id = @symbolId";
-            if (documentPath != null) where += " AND document_path = @documentPath";
-            if (kind != null) where += " AND kind = @kind";
+            var where = BuildAnnotationsFilterWhereClause(countCmd, snapshotId, symbolId, documentPath, kind, cursor: null);
             countCmd.CommandText = $"SELECT COUNT(*) FROM annotations {where};";
-            countCmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-            if (symbolId != null) countCmd.Parameters.AddWithValue("@symbolId", symbolId);
-            if (documentPath != null) countCmd.Parameters.AddWithValue("@documentPath", documentPath);
-            if (kind != null) countCmd.Parameters.AddWithValue("@kind", kind);
             totalCount = Convert.ToInt32(countCmd.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
         using var cmd = _connection.CreateCommand();
-        var whereClause = "WHERE snapshot_id = @snapshotId";
-        if (symbolId != null) whereClause += " AND symbol_id = @symbolId";
-        if (documentPath != null) whereClause += " AND document_path = @documentPath";
-        if (kind != null) whereClause += " AND kind = @kind";
-        if (cursor != null) whereClause += " AND annotation_id > @lastAnnotationId";
+        var whereClause = BuildAnnotationsFilterWhereClause(cmd, snapshotId, symbolId, documentPath, kind, cursor);
 
         cmd.CommandText = $"""
             SELECT annotation_id, symbol_id, kind, value, document_path
@@ -159,11 +163,6 @@ internal sealed class AnnotationStore
             ORDER BY annotation_id
             LIMIT @limitPlusOne;
             """;
-        cmd.Parameters.AddWithValue("@snapshotId", snapshotId);
-        if (symbolId != null) cmd.Parameters.AddWithValue("@symbolId", symbolId);
-        if (documentPath != null) cmd.Parameters.AddWithValue("@documentPath", documentPath);
-        if (kind != null) cmd.Parameters.AddWithValue("@kind", kind);
-        if (cursor != null) cmd.Parameters.AddWithValue("@lastAnnotationId", cursor.LastAnnotationId);
         cmd.Parameters.AddWithValue("@limitPlusOne", limit + 1);
 
         var rows = new List<(long Id, AnnotationRecord Rec)>();
@@ -192,6 +191,56 @@ internal sealed class AnnotationStore
 
         var items = rows.Select(r => r.Rec).ToList();
         return new AnnotationPage(items, nextCursor, totalCount);
+    }
+
+    private static string BuildAnnotationsFilterWhereClause(
+        SqliteCommand command,
+        string snapshotId,
+        string? symbolId,
+        string? documentPath,
+        string? kind,
+        AnnotationCursor? cursor)
+    {
+        var where = "WHERE snapshot_id = @snapshotId";
+        command.Parameters.AddWithValue("@snapshotId", snapshotId);
+
+        if (symbolId != null)
+        {
+            where += " AND symbol_id = @symbolId";
+            command.Parameters.AddWithValue("@symbolId", symbolId);
+        }
+
+        if (documentPath != null)
+        {
+            where += $"""
+                  AND (
+                      document_path = @documentPath
+                      OR symbol_id IN (
+                          SELECT d.symbol_id
+                          FROM declarations d
+                          {SnapshotDeclarationLink.Join("d", "sdecl")}
+                          JOIN document_versions dv ON dv.document_version_id = d.document_version_id
+                          JOIN documents doc ON doc.document_id = dv.document_id
+                          WHERE doc.relative_path = @documentPath
+                      )
+                  )
+                """;
+            command.Parameters.AddWithValue("@documentPath", documentPath);
+        }
+
+        if (kind != null)
+        {
+            where += " AND kind = @kind";
+            command.Parameters.AddWithValue("@kind", kind);
+        }
+
+        if (cursor != null)
+        {
+            where += " AND annotation_id > @lastAnnotationId";
+            command.Parameters.AddWithValue("@lastAnnotationId", cursor.LastAnnotationId);
+        }
+
+        return where;
     }
 
     public void CopyAnnotationsToSnapshot(string fromSnapshotId, string toSnapshotId)
